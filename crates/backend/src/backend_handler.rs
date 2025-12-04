@@ -177,7 +177,8 @@ impl BackendState {
                     }
                 }
 
-                if secret_storage.write_credentials(profile.id, &credentials).await.is_err() {
+                if let Err(error) = secret_storage.write_credentials(profile.id, &credentials).await {
+                    eprintln!("Unable to write credentials to keychain: {error}");
                     self.send.send_warning("Unable to write credentials to keychain. You might need to fully log in again next time");
                 }
 

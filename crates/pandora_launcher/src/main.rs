@@ -1,6 +1,6 @@
 #![deny(unused_must_use)]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::f64::consts::PI;
 use std::sync::{Arc, RwLock};
 use std::fmt::Write;
 

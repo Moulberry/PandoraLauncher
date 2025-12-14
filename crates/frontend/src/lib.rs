@@ -277,6 +277,11 @@ pub fn start(
     });
 }
 
+pub(crate) fn is_valid_instance_name(name: &str) -> bool {
+    is_single_component_path(name) &&
+    sanitize_filename::is_sanitized_with_options(name, sanitize_filename::OptionsForCheck { windows: true, ..Default::default() })
+}
+
 pub(crate) fn is_single_component_path(path: &str) -> bool {
     let path = std::path::Path::new(path);
     let mut components = path.components().peekable();

@@ -10,7 +10,7 @@ use gpui_component::{
 
 use crate::{
     entity::{instance::InstanceEntry, DataEntities},
-    pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage},
+    pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, settings_subpage::InstanceSettingsSubpage},
     root, ui,
 };
 
@@ -58,6 +58,7 @@ impl Render for InstancePage {
             InstanceSubpage::Quickplay(_) => 0,
             InstanceSubpage::Logs(_) => 1,
             InstanceSubpage::Mods(_) => 2,
+            InstanceSubpage::Settings(_) => 4,
         };
 
         let play_icon = Icon::empty().path("icons/play.svg");
@@ -98,11 +99,13 @@ impl Render for InstancePage {
                     .child(Tab::new().label("Logs"))
                     .child(Tab::new().label("Mods"))
                     .child(Tab::new().label("Resource Packs"))
+                    .child(Tab::new().label("Settings"))
                     .on_click(cx.listener(|page, index, window, cx| {
                         let page_type = match *index {
                             0 => InstanceSubpageType::Quickplay,
                             1 => InstanceSubpageType::Logs,
                             2 => InstanceSubpageType::Mods,
+                            4 => InstanceSubpageType::Settings,
                             _ => {
                                 return;
                             },
@@ -119,6 +122,7 @@ pub enum InstanceSubpageType {
     Quickplay,
     Logs,
     Mods,
+    Settings,
 }
 
 impl InstanceSubpageType {
@@ -139,6 +143,9 @@ impl InstanceSubpageType {
             InstanceSubpageType::Mods => InstanceSubpage::Mods(cx.new(|cx| {
                 InstanceModsSubpage::new(instance, backend_handle, window, cx)
             })),
+            InstanceSubpageType::Settings => InstanceSubpage::Settings(cx.new(|cx| {
+                InstanceSettingsSubpage::new(instance, backend_handle, window, cx)
+            })),
         }
     }
 }
@@ -148,6 +155,7 @@ pub enum InstanceSubpage {
     Quickplay(Entity<InstanceQuickplaySubpage>),
     Logs(Entity<InstanceLogsSubpage>),
     Mods(Entity<InstanceModsSubpage>),
+    Settings(Entity<InstanceSettingsSubpage>),
 }
 
 impl InstanceSubpage {
@@ -156,6 +164,7 @@ impl InstanceSubpage {
             InstanceSubpage::Quickplay(_) => InstanceSubpageType::Quickplay,
             InstanceSubpage::Logs(_) => InstanceSubpageType::Logs,
             InstanceSubpage::Mods(_) => InstanceSubpageType::Mods,
+            InstanceSubpage::Settings(_) => InstanceSubpageType::Settings,
         }
     }
 
@@ -164,6 +173,7 @@ impl InstanceSubpage {
             Self::Quickplay(entity) => entity.into_any_element(),
             Self::Logs(entity) => entity.into_any_element(),
             Self::Mods(entity) => entity.into_any_element(),
+            Self::Settings(entity) => entity.into_any_element(),
         }
     }
 }

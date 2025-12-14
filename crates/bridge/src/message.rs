@@ -21,6 +21,13 @@ pub enum MessageToBackend {
         version: Ustr,
         loader: Loader,
     },
+    DeleteInstance {
+        id: InstanceID,
+    },
+    RenameInstance {
+        id: InstanceID,
+        name: Ustr,
+    },
     KillInstance {
         id: InstanceID,
     },

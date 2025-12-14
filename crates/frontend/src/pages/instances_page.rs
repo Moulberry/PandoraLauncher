@@ -132,11 +132,7 @@ impl InstancesPage {
                 let text = input_state.read(cx).value();
 
                 if !text.as_str().is_empty() {
-                    if !crate::is_single_component_path(text.as_str()) {
-                        name_invalid.store(true, Ordering::Relaxed);
-                        return;
-                    }
-                    if !sanitize_filename::is_sanitized_with_options(text.as_str(), sanitize_filename::OptionsForCheck { windows: true, ..Default::default() }) {
+                    if !crate::is_valid_instance_name(text.as_str()) {
                         name_invalid.store(true, Ordering::Relaxed);
                         return;
                     }

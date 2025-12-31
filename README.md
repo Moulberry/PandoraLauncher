@@ -9,10 +9,10 @@ Work in progress
 - Custom game output window
 - Mod browser using Modrinth's API
 - Automatic redaction of sensitive information (i.e. access tokens) in logs
+- Unique approach to modpack management (https://youtu.be/cdRVqd7b2BQ)
 
 ## Missing Features (WIP)
 - NeoForge/Forge support
-- Modpack support
 - Account switching
 
 ## FAQ

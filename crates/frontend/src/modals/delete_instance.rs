@@ -50,7 +50,11 @@ pub fn open_delete_instance(
                     .child(warning_message.clone())
                     .child(Button::new("confirm").label("I have read and understand these effects").on_click({
                         let stage = stage.clone();
-                        move |_, _, _| {
+                        let input_state = input_state.clone();
+                        move |_, window, cx| {
+                            input_state.update(cx, |input_state, cx| {
+                                input_state.focus(window, cx);
+                            });
                             stage.store(2, Ordering::Relaxed);
                         }
                     }))

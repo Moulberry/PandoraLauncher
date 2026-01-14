@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
 
-use chrono::{DateTime, Utc};
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Deserializer};
 use ustr::Ustr;
@@ -303,7 +302,8 @@ impl PartialMinecraftVersion {
 
         if let Some(minecraft_arguments) = self.minecraft_arguments {
             if let Some(curr_minecraft_arguments) = version.minecraft_arguments {
-                version.minecraft_arguments = Some(format!("{} {}", curr_minecraft_arguments, minecraft_arguments).into());
+                version.minecraft_arguments =
+                    Some(format!("{} {}", curr_minecraft_arguments, minecraft_arguments).into());
             } else {
                 version.minecraft_arguments = Some(minecraft_arguments);
             }

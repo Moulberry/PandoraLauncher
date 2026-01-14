@@ -1,19 +1,38 @@
-use std::{ops::Range, sync::{atomic::AtomicBool, Arc}, time::Duration};
+use std::{
+    ops::Range,
+    sync::{Arc, atomic::AtomicBool},
+    time::Duration,
+};
 
 use bridge::{instance::InstanceID, meta::MetadataRequest};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    breadcrumb::Breadcrumb, button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, v_flex, ActiveTheme, Icon, IconName, Selectable, StyledExt, WindowExt
+    ActiveTheme, Icon, IconName, Selectable, StyledExt, WindowExt,
+    breadcrumb::Breadcrumb,
+    button::{Button, ButtonGroup, ButtonVariants},
+    checkbox::Checkbox,
+    h_flex,
+    input::{Input, InputEvent, InputState},
+    notification::NotificationType,
+    scroll::Scrollbar,
+    skeleton::Skeleton,
+    v_flex,
 };
 use rustc_hash::FxHashSet;
-use schema::{loader::Loader, modrinth::{
-    ModrinthHit, ModrinthProjectType, ModrinthSearchRequest, ModrinthSearchResult, ModrinthSideRequirement
-}};
+use schema::{
+    loader::Loader,
+    modrinth::{
+        ModrinthHit, ModrinthProjectType, ModrinthSearchRequest, ModrinthSearchResult, ModrinthSideRequirement,
+    },
+};
 
 use crate::{
-    component::error_alert::ErrorAlert, entity::{
-        instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}, DataEntities
-    }, ts, ui
+    component::error_alert::ErrorAlert,
+    entity::{
+        DataEntities,
+        metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult},
+    },
+    ts, ui,
 };
 
 pub struct ModrinthSearchPage {
@@ -40,7 +59,13 @@ pub struct ModrinthSearchPage {
 }
 
 impl ModrinthSearchPage {
-    pub fn new(data: &DataEntities, install_for: Option<InstanceID>, breadcrumb: Box<dyn Fn() -> Breadcrumb>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        data: &DataEntities,
+        install_for: Option<InstanceID>,
+        breadcrumb: Box<dyn Fn() -> Breadcrumb>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let search_state = cx.new(|cx| InputState::new(window, cx).placeholder("Search mods...").clean_on_escape());
 
         let can_install_latest = if let Some(install_for) = install_for {
@@ -131,7 +156,12 @@ impl ModrinthSearchPage {
         self.reload(cx);
     }
 
-    fn set_filter_categories(&mut self, categories: FxHashSet<&'static str>, _window: &mut Window, cx: &mut Context<Self>) {
+    fn set_filter_categories(
+        &mut self,
+        categories: FxHashSet<&'static str>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.filter_categories == categories {
             return;
         }
@@ -181,7 +211,8 @@ impl ModrinthSearchPage {
 
         let mut facets = format!("[[\"project_type={}\"]", project_type);
 
-        let is_mod = self.filter_project_type == ModrinthProjectType::Mod && self.filter_project_type == ModrinthProjectType::Modpack;
+        let is_mod = self.filter_project_type == ModrinthProjectType::Mod
+            && self.filter_project_type == ModrinthProjectType::Modpack;
         if !self.filter_loaders.is_empty() && is_mod {
             facets.push_str(",[");
 
@@ -283,16 +314,14 @@ impl ModrinthSearchPage {
             .map(|index| {
                 let Some(hit) = self.hits.get(index) else {
                     if let Some(search_error) = self.search_error.clone() {
-                        return div()
-                            .pl_3()
-                            .pt_3()
-                            .child(ErrorAlert::new("search_error", "Error requesting from Modrinth".into(), search_error));
+                        return div().pl_3().pt_3().child(ErrorAlert::new(
+                            "search_error",
+                            "Error requesting from Modrinth".into(),
+                            search_error,
+                        ));
                     } else {
                         should_load_more = true;
-                        return div()
-                            .pl_3()
-                            .pt_3()
-                            .child(Skeleton::new().w_full().h(px(28.0 * 4.0)).rounded_lg());
+                        return div().pl_3().pt_3().child(Skeleton::new().w_full().h(px(28.0 * 4.0)).rounded_lg());
                     }
                 };
 
@@ -302,9 +331,7 @@ impl ModrinthSearchPage {
                     gpui::img(SharedUri::from(icon_url))
                         .with_fallback(|| Skeleton::new().rounded_lg().size_16().into_any_element())
                 } else {
-                    gpui::img(ImageSource::Resource(Resource::Embedded(
-                        "images/default_mod.png".into(),
-                    )))
+                    gpui::img(ImageSource::Resource(Resource::Embedded("images/default_mod.png".into())))
                 };
 
                 let name = hit
@@ -321,7 +348,12 @@ impl ModrinthSearchPage {
                     .map(SharedString::new)
                     .unwrap_or(SharedString::new_static("No Description"));
 
-                const GRAY: Hsla = Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 };
+                const GRAY: Hsla = Hsla {
+                    h: 0.0,
+                    s: 0.0,
+                    l: 0.5,
+                    a: 1.0,
+                };
                 let author_line = div().text_color(GRAY).text_sm().pb_px().child(author);
 
                 let client_side = hit.client_side.unwrap_or(ModrinthSideRequirement::Unknown);
@@ -361,17 +393,11 @@ impl ModrinthSearchPage {
                 });
 
                 let download_icon = Icon::empty().path("icons/download.svg");
-                let downloads = h_flex()
-                    .gap_0p5()
-                    .child(download_icon.clone())
-                    .child(format_downloads(hit.downloads));
+                let downloads = h_flex().gap_0p5().child(download_icon.clone()).child(format_downloads(hit.downloads));
 
-                let install_latest = self.can_install_latest && self.install_latest.load(std::sync::atomic::Ordering::Relaxed);
-                let install_text = if install_latest {
-                    "Install Latest"
-                } else {
-                    "Install"
-                };
+                let install_latest =
+                    self.can_install_latest && self.install_latest.load(std::sync::atomic::Ordering::Relaxed);
+                let install_text = if install_latest { "Install Latest" } else { "Install" };
 
                 let buttons = ButtonGroup::new(("buttons", index))
                     .layout(Axis::Vertical)
@@ -397,7 +423,7 @@ impl ModrinthSearchPage {
                                                 install_for.unwrap(),
                                                 &data,
                                                 window,
-                                                cx
+                                                cx,
                                             );
                                         } else {
                                             crate::modals::modrinth_install::open(
@@ -407,37 +433,25 @@ impl ModrinthSearchPage {
                                                 install_for,
                                                 &data,
                                                 window,
-                                                cx
+                                                cx,
                                             );
                                         }
                                     } else {
                                         window.push_notification(
-                                            (
-                                                NotificationType::Error,
-                                                "Don't know how to handle this type of content",
-                                            ),
+                                            (NotificationType::Error, "Don't know how to handle this type of content"),
                                             cx,
                                         );
                                     }
                                 }
                             }),
                     )
-                    .child(
-                        Button::new(("open", index))
-                            .label("Open Page")
-                            .icon(IconName::Globe)
-                            .info()
-                            .on_click({
-                                let project_type = hit.project_type.as_str();
-                                let project_id = hit.project_id.clone();
-                                move |_, _, cx| {
-                                    cx.open_url(&format!(
-                                        "https://modrinth.com/{}/{}",
-                                        project_type, project_id
-                                    ));
-                                }
-                            }),
-                    );
+                    .child(Button::new(("open", index)).label("Open Page").icon(IconName::Globe).info().on_click({
+                        let project_type = hit.project_type.as_str();
+                        let project_id = hit.project_id.clone();
+                        move |_, _, cx| {
+                            cx.open_url(&format!("https://modrinth.com/{}/{}", project_type, project_id));
+                        }
+                    }));
 
                 let item = h_flex()
                     .rounded_lg()
@@ -456,27 +470,9 @@ impl ModrinthSearchPage {
                             .flex_grow()
                             .gap_1()
                             .overflow_hidden()
-                            .child(
-                                h_flex()
-                                    .gap_1()
-                                    .items_end()
-                                    .line_clamp(1)
-                                    .text_lg()
-                                    .child(name)
-                                    .child(author_line),
-                            )
-                            .child(
-                                div()
-                                    .flex_auto()
-                                    .line_height(px(20.0))
-                                    .line_clamp(2)
-                                    .child(description),
-                            )
-                            .child(
-                                h_flex()
-                                    .gap_2p5()
-                                    .children(std::iter::once(environment).chain(categories)),
-                            ),
+                            .child(h_flex().gap_1().items_end().line_clamp(1).text_lg().child(name).child(author_line))
+                            .child(div().flex_auto().line_height(px(20.0)).line_clamp(2).child(description))
+                            .child(h_flex().gap_2p5().children(std::iter::once(environment).chain(categories))),
                     )
                     .child(v_flex().gap_2().child(downloads).child(buttons));
 
@@ -497,28 +493,23 @@ impl Render for ModrinthSearchPage {
         let can_load_more = self.total_hits > self.hits.len();
         let scroll_handle = self.scroll_handle.clone();
 
-        let item_count = self.hits.len() + if can_load_more || self.search_error.is_some() { 1 } else { 0 };
+        let item_count = self.hits.len()
+            + if can_load_more || self.search_error.is_some() {
+                1
+            } else {
+                0
+            };
 
         let list = h_flex()
             .image_cache(self.image_cache.clone())
             .size_full()
             .overflow_y_hidden()
             .child(
-                uniform_list(
-                    "uniform-list",
-                    item_count,
-                    cx.processor(Self::render_items),
-                )
-                .size_full()
-                .track_scroll(&scroll_handle),
+                uniform_list("uniform-list", item_count, cx.processor(Self::render_items))
+                    .size_full()
+                    .track_scroll(&scroll_handle),
             )
-            .child(
-                div()
-                    .w_3()
-                    .h_full()
-                    .py_3()
-                    .child(Scrollbar::vertical(&scroll_handle)),
-            );
+            .child(div().w_3().h_full().py_3().child(Scrollbar::vertical(&scroll_handle)));
 
         let theme = cx.theme();
         let content = v_flex()
@@ -530,7 +521,11 @@ impl Render for ModrinthSearchPage {
         let type_button_group = ButtonGroup::new("type")
             .layout(Axis::Vertical)
             .outline()
-            .child(Button::new("mods").label("Mods").selected(self.filter_project_type == ModrinthProjectType::Mod))
+            .child(
+                Button::new("mods")
+                    .label("Mods")
+                    .selected(self.filter_project_type == ModrinthProjectType::Mod),
+            )
             .child(
                 Button::new("modpacks")
                     .label("Modpacks")
@@ -541,7 +536,11 @@ impl Render for ModrinthSearchPage {
                     .label("Resourcepacks")
                     .selected(self.filter_project_type == ModrinthProjectType::Resourcepack),
             )
-            .child(Button::new("shaders").label("Shaders").selected(self.filter_project_type == ModrinthProjectType::Shader))
+            .child(
+                Button::new("shaders")
+                    .label("Shaders")
+                    .selected(self.filter_project_type == ModrinthProjectType::Shader),
+            )
             .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| match clicked[0] {
                 0 => page.set_project_type(ModrinthProjectType::Mod, window, cx),
                 1 => page.set_project_type(ModrinthProjectType::Modpack, window, cx),
@@ -550,22 +549,41 @@ impl Render for ModrinthSearchPage {
                 _ => {},
             }));
 
-        let loader_button_group = if self.filter_project_type == ModrinthProjectType::Mod || self.filter_project_type == ModrinthProjectType::Modpack {
-            Some(ButtonGroup::new("loader_group")
-                .layout(Axis::Vertical)
-                .outline()
-                .multiple(true)
-                .child(Button::new("fabric").label("Fabric").selected(self.filter_loaders.contains(&Loader::Fabric)))
-                .child(Button::new("forge").label("Forge").selected(self.filter_loaders.contains(&Loader::Forge)))
-                .child(Button::new("neoforge").label("NeoForge").selected(self.filter_loaders.contains(&Loader::NeoForge)))
-                .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
-                    page.set_filter_loaders(clicked.iter().filter_map(|index| match index {
-                        0 => Some(Loader::Fabric),
-                        1 => Some(Loader::Forge),
-                        2 => Some(Loader::NeoForge),
-                        _ => None
-                    }).collect(), window, cx);
-                })))
+        let loader_button_group = if self.filter_project_type == ModrinthProjectType::Mod
+            || self.filter_project_type == ModrinthProjectType::Modpack
+        {
+            Some(
+                ButtonGroup::new("loader_group")
+                    .layout(Axis::Vertical)
+                    .outline()
+                    .multiple(true)
+                    .child(
+                        Button::new("fabric")
+                            .label("Fabric")
+                            .selected(self.filter_loaders.contains(&Loader::Fabric)),
+                    )
+                    .child(Button::new("forge").label("Forge").selected(self.filter_loaders.contains(&Loader::Forge)))
+                    .child(
+                        Button::new("neoforge")
+                            .label("NeoForge")
+                            .selected(self.filter_loaders.contains(&Loader::NeoForge)),
+                    )
+                    .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
+                        page.set_filter_loaders(
+                            clicked
+                                .iter()
+                                .filter_map(|index| match index {
+                                    0 => Some(Loader::Fabric),
+                                    1 => Some(Loader::Forge),
+                                    2 => Some(Loader::NeoForge),
+                                    _ => None,
+                                })
+                                .collect(),
+                            window,
+                            cx,
+                        );
+                    })),
+            )
         } else {
             None
         };
@@ -584,34 +602,49 @@ impl Render for ModrinthSearchPage {
                 .outline()
                 .multiple(true)
                 .children(categories.iter().map(|id| {
-                    Button::new(*id).label(if id == &"worldgen" {
-                        "Worldgen".into()
-                    } else {
-                        ts!(*id)
-                    }).selected(self.filter_categories.contains(id))
+                    Button::new(*id)
+                        .label(if id == &"worldgen" { "Worldgen".into() } else { ts!(*id) })
+                        .selected(self.filter_categories.contains(id))
                 }))
                 .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
-                    page.set_filter_categories(clicked.iter().filter_map(|index| categories.get(*index).map(|s| *s)).collect(), window, cx);
-                })).into_any_element()
+                    page.set_filter_categories(
+                        clicked.iter().filter_map(|index| categories.get(*index).map(|s| *s)).collect(),
+                        window,
+                        cx,
+                    );
+                }))
+                .into_any_element()
         } else {
             let show_categories = self.show_categories.clone();
-            Button::new("show-categories").icon(IconName::ArrowDown).label("Categories").outline().on_click(move |_, _, _| {
-                show_categories.store(true, std::sync::atomic::Ordering::Relaxed);
-            }).into_any_element()
+            Button::new("show-categories")
+                .icon(IconName::ArrowDown)
+                .label("Categories")
+                .outline()
+                .on_click(move |_, _, _| {
+                    show_categories.store(true, std::sync::atomic::Ordering::Relaxed);
+                })
+                .into_any_element()
         };
 
         let install_latest_checkbox = if self.can_install_latest {
-            Some(Checkbox::new("install-latest").label("Install Latest").checked(self.install_latest.load(std::sync::atomic::Ordering::Relaxed)).on_click({
-                let install_latest = self.install_latest.clone();
-                move |value, _, _| {
-                    install_latest.store(*value, std::sync::atomic::Ordering::Relaxed);
-                }
-            }))
+            Some(
+                Checkbox::new("install-latest")
+                    .label("Install Latest")
+                    .checked(self.install_latest.load(std::sync::atomic::Ordering::Relaxed))
+                    .on_click({
+                        let install_latest = self.install_latest.clone();
+                        move |value, _, _| {
+                            install_latest.store(*value, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }),
+            )
         } else {
             None
         };
 
-        let parameters = v_flex().h_full().gap_3()
+        let parameters = v_flex()
+            .h_full()
+            .gap_3()
             .child(type_button_group)
             .when_some(loader_button_group, |this, group| this.child(group))
             .child(category)
@@ -709,7 +742,7 @@ const FILTER_MOD_CATEGORIES: &[&'static str] = &[
     "technology",
     "transportation",
     "utility",
-    "worldgen"
+    "worldgen",
 ];
 
 const FILTER_MODPACK_CATEGORIES: &[&'static str] = &[

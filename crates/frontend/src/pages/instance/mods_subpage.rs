@@ -1,13 +1,31 @@
-use std::{hash::{DefaultHasher, Hash, Hasher}, path::Path, sync::{
-    atomic::{AtomicU64, AtomicUsize, Ordering}, Arc
-}};
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use bridge::{
-    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{AtomicContentUpdateStatus, InstanceID, InstanceModID, InstanceModSummary, LoaderSpecificModSummary, ModSummary}, message::{AtomicBridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
+    handle::BackendHandle,
+    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget},
+    instance::{
+        AtomicContentUpdateStatus, InstanceID, InstanceModID, InstanceModSummary, LoaderSpecificModSummary, ModSummary,
+    },
+    message::{AtomicBridgeDataLoadState, MessageToBackend},
+    serial::AtomicOptionSerial,
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    breadcrumb::{Breadcrumb, BreadcrumbItem}, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, notification::{Notification, NotificationType}, switch::Switch, v_flex, ActiveTheme as _, Icon, IconName, IndexPath, Sizable, WindowExt
+    ActiveTheme as _, Icon, IconName, IndexPath, Sizable, WindowExt,
+    breadcrumb::{Breadcrumb, BreadcrumbItem},
+    button::{Button, ButtonVariants},
+    h_flex,
+    list::{ListDelegate, ListItem, ListState},
+    notification::{Notification, NotificationType},
+    switch::Switch,
+    v_flex,
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -68,7 +86,8 @@ impl InstanceModsSubpage {
                 let actual_mods = mods.read(cx);
                 list.delegate_mut().set_mods(actual_mods);
                 cx.notify();
-            }).detach();
+            })
+            .detach();
 
             ListState::new(mods_list_delegate, window, cx).selectable(false).searchable(true)
         });
@@ -93,7 +112,8 @@ impl Render for InstanceModsSubpage {
 
         let state = self.mods_state.load(Ordering::SeqCst);
         if state.should_send_load_request() {
-            self.backend_handle.send_with_serial(MessageToBackend::RequestLoadMods { id: self.instance }, &self.mods_serial);
+            self.backend_handle
+                .send_with_serial(MessageToBackend::RequestLoadMods { id: self.instance }, &self.mods_serial);
         }
 
         let header = h_flex()
@@ -112,16 +132,24 @@ impl Render for InstanceModsSubpage {
                 let instance = self.instance;
                 let instance_title = self.instance_title.clone();
                 move |_, window, cx| {
-                    let page = crate::ui::PageType::Modrinth { installing_for: Some(instance) };
+                    let page = crate::ui::PageType::Modrinth {
+                        installing_for: Some(instance),
+                    };
 
                     let instance_title = instance_title.clone();
                     let breadcrumb = move || {
                         let instances_item = BreadcrumbItem::new("Instances").on_click(|_, window, cx| {
                             root::switch_page(crate::ui::PageType::Instances, None, window, cx);
                         });
-                        let instance_item = BreadcrumbItem::new(instance_title.clone()).on_click(move |_, window, cx| {
-                            root::switch_page(crate::ui::PageType::InstancePage(instance, InstanceSubpageType::Mods), None, window, cx);
-                        });
+                        let instance_item =
+                            BreadcrumbItem::new(instance_title.clone()).on_click(move |_, window, cx| {
+                                root::switch_page(
+                                    crate::ui::PageType::InstancePage(instance, InstanceSubpageType::Mods),
+                                    None,
+                                    window,
+                                    cx,
+                                );
+                            });
                         Breadcrumb::new().text_xl().child(instances_item).child(instance_item)
                     };
 
@@ -136,7 +164,7 @@ impl Render for InstanceModsSubpage {
                         files: true,
                         directories: false,
                         multiple: true,
-                        prompt: Some("Select mods to install".into())
+                        prompt: Some("Select mods to install".into()),
                     });
 
                     let backend_handle = backend_handle.clone();
@@ -145,34 +173,35 @@ impl Render for InstanceModsSubpage {
                         let Ok(result) = receiver.await else {
                             return;
                         };
-                        _ = cx.update_window_entity(&entity, move |this, window, cx| {
-                            match result {
-                                Ok(Some(paths)) => {
-                                    let content_install = ContentInstall {
-                                        target: InstallTarget::Instance(instance),
-                                        loader_hint: this.instance_loader,
-                                        version_hint: Some(this.instance_version.into()),
-                                        files: paths.into_iter().filter_map(|path| {
+                        _ = cx.update_window_entity(&entity, move |this, window, cx| match result {
+                            Ok(Some(paths)) => {
+                                let content_install = ContentInstall {
+                                    target: InstallTarget::Instance(instance),
+                                    loader_hint: this.instance_loader,
+                                    version_hint: Some(this.instance_version.into()),
+                                    files: paths
+                                        .into_iter()
+                                        .filter_map(|path| {
                                             Some(ContentInstallFile {
                                                 replace_old: None,
-                                                path: bridge::install::ContentInstallPath::Raw(Path::new("mods").join(path.file_name()?).into()),
+                                                path: bridge::install::ContentInstallPath::Raw(
+                                                    Path::new("mods").join(path.file_name()?).into(),
+                                                ),
                                                 download: ContentDownload::File { path },
                                                 content_source: ContentSource::Manual,
                                             })
-                                        }).collect(),
-                                    };
-                                    crate::root::start_install(content_install, &backend_handle, window, cx);
-                                },
-                                Ok(None) => {},
-                                Err(error) => {
-                                    let error = format!("{}", error);
-                                    let notification = Notification::new()
-                                        .autohide(false)
-                                        .with_type(NotificationType::Error)
-                                        .title(error);
-                                    window.push_notification(notification, cx);
-                                },
-                            }
+                                        })
+                                        .collect(),
+                                };
+                                crate::root::start_install(content_install, &backend_handle, window, cx);
+                            },
+                            Ok(None) => {},
+                            Err(error) => {
+                                let error = format!("{}", error);
+                                let notification =
+                                    Notification::new().autohide(false).with_type(NotificationType::Error).title(error);
+                                window.push_notification(notification, cx);
+                            },
                         });
                     });
                     this._add_from_file_task = Some(add_from_file_task);
@@ -232,14 +261,27 @@ pub struct ModsListDelegate {
 }
 
 impl ModsListDelegate {
-    pub fn render_instance_mod_summary(&self, summary: &InstanceModSummary, selected: bool, expanded: bool, can_expand: bool, ix: usize, cx: &mut Context<ListState<Self>>) -> ListItem {
+    pub fn render_instance_mod_summary(
+        &self,
+        summary: &InstanceModSummary,
+        selected: bool,
+        expanded: bool,
+        can_expand: bool,
+        ix: usize,
+        cx: &mut Context<ListState<Self>>,
+    ) -> ListItem {
         let icon = if let Some(png_icon) = summary.mod_summary.png_icon.as_ref() {
             png_render_cache::render(Arc::clone(png_icon), cx)
         } else {
             gpui::img(ImageSource::Resource(Resource::Embedded("images/default_mod.png".into())))
         };
 
-        const GRAY: Hsla = Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0};
+        const GRAY: Hsla = Hsla {
+            h: 0.0,
+            s: 0.0,
+            l: 0.5,
+            a: 1.0,
+        };
 
         let description1 = v_flex()
             .w_1_5()
@@ -263,60 +305,80 @@ impl ModsListDelegate {
                     cx.stop_propagation();
                     let delegate = this.delegate();
                     if delegate.is_selected(element_id) {
-                        let mod_ids = delegate.mods.iter().filter_map(|summary| {
-                            if delegate.is_selected(summary.filename_hash) {
-                                Some(summary.id)
-                            } else {
-                                None
-                            }
-                        }).collect();
+                        let mod_ids = delegate
+                            .mods
+                            .iter()
+                            .filter_map(|summary| {
+                                if delegate.is_selected(summary.filename_hash) {
+                                    Some(summary.id)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
 
                         backend_handle.send(MessageToBackend::DeleteMod { id, mod_ids });
                     } else {
-                        backend_handle.send(MessageToBackend::DeleteMod { id, mod_ids: vec![mod_id] });
+                        backend_handle.send(MessageToBackend::DeleteMod {
+                            id,
+                            mod_ids: vec![mod_id],
+                        });
                     }
                 })
             })
         } else {
             let trash_icon = Icon::default().path("icons/trash-2.svg");
             let confirming_delete = self.confirming_delete.clone();
-            Button::new(("delete", element_id)).danger().icon(trash_icon).on_click(cx.listener(move |this, checked, _, cx| {
-                cx.stop_propagation();
-                let delegate = this.delegate();
-                let mut confirming_delete = confirming_delete.lock();
-                confirming_delete.clear();
-                if delegate.is_selected(element_id) {
-                    confirming_delete.extend(&delegate.selected);
-                    confirming_delete.extend(&delegate.selected_range);
-                } else {
-                    confirming_delete.insert(element_id);
-                }
-            }))
+            Button::new(("delete", element_id)).danger().icon(trash_icon).on_click(cx.listener(
+                move |this, _checked, _, cx| {
+                    cx.stop_propagation();
+                    let delegate = this.delegate();
+                    let mut confirming_delete = confirming_delete.lock();
+                    confirming_delete.clear();
+                    if delegate.is_selected(element_id) {
+                        confirming_delete.extend(&delegate.selected);
+                        confirming_delete.extend(&delegate.selected_range);
+                    } else {
+                        confirming_delete.insert(element_id);
+                    }
+                },
+            ))
         };
 
         let update_button = match summary.mod_summary.update_status.load(Ordering::Relaxed) {
             bridge::instance::ContentUpdateStatus::Unknown => None,
             bridge::instance::ContentUpdateStatus::ManualInstall => Some(
-                Button::new(("update", element_id)).warning().icon(Icon::default().path("icons/file-question-mark.svg"))
-                    .tooltip("Mod was installed manually - cannot automatically update")
+                Button::new(("update", element_id))
+                    .warning()
+                    .icon(Icon::default().path("icons/file-question-mark.svg"))
+                    .tooltip("Mod was installed manually - cannot automatically update"),
             ),
             bridge::instance::ContentUpdateStatus::ErrorNotFound => Some(
-                Button::new(("update", element_id)).danger().icon(Icon::default().path("icons/triangle-alert.svg"))
-                    .tooltip("Error while checking updates - 404 not found")
+                Button::new(("update", element_id))
+                    .danger()
+                    .icon(Icon::default().path("icons/triangle-alert.svg"))
+                    .tooltip("Error while checking updates - 404 not found"),
             ),
             bridge::instance::ContentUpdateStatus::ErrorInvalidHash => Some(
-                Button::new(("update", element_id)).danger().icon(Icon::default().path("icons/triangle-alert.svg"))
-                    .tooltip("Error while checking updates - returned invalid hash")
+                Button::new(("update", element_id))
+                    .danger()
+                    .icon(Icon::default().path("icons/triangle-alert.svg"))
+                    .tooltip("Error while checking updates - returned invalid hash"),
             ),
             bridge::instance::ContentUpdateStatus::AlreadyUpToDate => Some(
-                Button::new(("update", element_id)).icon(Icon::default().path("icons/check.svg"))
-                    .tooltip("Mod is up-to-date as of last check")
+                Button::new(("update", element_id))
+                    .icon(Icon::default().path("icons/check.svg"))
+                    .tooltip("Mod is up-to-date as of last check"),
             ),
             bridge::instance::ContentUpdateStatus::Modrinth => {
                 let loading = self.updating.lock().contains(&element_id);
                 Some(
-                    Button::new(("update", element_id)).success().loading(loading).icon(Icon::default().path("icons/download.svg"))
-                        .tooltip("Download update from Modrinth").on_click({
+                    Button::new(("update", element_id))
+                        .success()
+                        .loading(loading)
+                        .icon(Icon::default().path("icons/download.svg"))
+                        .tooltip("Download update from Modrinth")
+                        .on_click({
                             let backend_handle = self.backend_handle.clone();
                             let updating = self.updating.clone();
                             cx.listener(move |this, _, window, cx| {
@@ -326,7 +388,9 @@ impl ModsListDelegate {
                                 let delegate = this.delegate_mut();
                                 if delegate.is_selected(element_id) {
                                     for summary in &delegate.mods {
-                                        if delegate.is_selected(summary.filename_hash) && summary.mod_summary.update_status.load(Ordering::Relaxed).can_update() {
+                                        if delegate.is_selected(summary.filename_hash)
+                                            && summary.mod_summary.update_status.load(Ordering::Relaxed).can_update()
+                                        {
                                             updating.insert(summary.filename_hash);
                                             crate::root::update_single_mod(id, summary.id, &backend_handle, window, cx);
                                         }
@@ -339,7 +403,7 @@ impl ModsListDelegate {
                                     crate::root::update_single_mod(id, mod_id, &backend_handle, window, cx);
                                 }
                             })
-                        })
+                        }),
                 )
             },
         };
@@ -351,13 +415,17 @@ impl ModsListDelegate {
             .on_click(cx.listener(move |this, checked, _, _| {
                 let delegate = this.delegate();
                 if delegate.is_selected(element_id) {
-                    let mod_ids = delegate.mods.iter().filter_map(|summary| {
-                        if delegate.is_selected(summary.filename_hash) {
-                            Some(summary.id)
-                        } else {
-                            None
-                        }
-                    }).collect();
+                    let mod_ids = delegate
+                        .mods
+                        .iter()
+                        .filter_map(|summary| {
+                            if delegate.is_selected(summary.filename_hash) {
+                                Some(summary.id)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
 
                     backend_handle.send(MessageToBackend::SetModEnabled {
                         id,
@@ -383,24 +451,26 @@ impl ModsListDelegate {
                 IconName::ArrowRight
             };
 
-            let expand_control = Button::new(("expand", element_id)).icon(expand_icon).compact().small().info().on_click({
-                let expanded = self.expanded.clone();
-                let index = ix+1;
-                move |_, _, _| {
-                    let value = expanded.load(Ordering::Relaxed);
-                    if value == index {
-                        expanded.store(0, Ordering::Relaxed);
-                    } else {
-                        expanded.store(index, Ordering::Relaxed);
+            let expand_control =
+                Button::new(("expand", element_id)).icon(expand_icon).compact().small().info().on_click({
+                    let expanded = self.expanded.clone();
+                    let index = ix + 1;
+                    move |_, _, _| {
+                        let value = expanded.load(Ordering::Relaxed);
+                        if value == index {
+                            expanded.store(0, Ordering::Relaxed);
+                        } else {
+                            expanded.store(index, Ordering::Relaxed);
+                        }
                     }
-                }
-            });
+                });
 
             v_flex()
                 .items_center()
                 .gap_1()
                 .child(toggle_control)
-                .child(expand_control).into_any_element()
+                .child(expand_control)
+                .into_any_element()
         };
 
         let mut item_content = h_flex()
@@ -411,94 +481,104 @@ impl ModsListDelegate {
             .child(description1)
             .child(description2)
             .border_1()
-            .when(selected, |content| content.border_color(cx.theme().selection).bg(cx.theme().selection.alpha(0.2)));
+            .when(selected, |content| {
+                content.border_color(cx.theme().selection).bg(cx.theme().selection.alpha(0.2))
+            });
 
         if let Some(update_button) = update_button {
-            item_content = item_content.child(h_flex().absolute().right_4().gap_2().child(update_button).child(delete_button))
+            item_content =
+                item_content.child(h_flex().absolute().right_4().gap_2().child(update_button).child(delete_button))
         } else {
             item_content = item_content.child(delete_button.absolute().right_4())
         }
 
-        ListItem::new(("item", element_id)).p_1().child(item_content).on_click(cx.listener(move |this, click: &ClickEvent, _, cx| {
-            cx.stop_propagation();
-            if click.standard_click() {
-                let delegate = this.delegate_mut();
-                delegate.confirming_delete.lock().clear();
-                if click.modifiers().shift && let Some(from) = delegate.last_clicked_non_range {
-                    delegate.selected_range.clear();
+        ListItem::new(("item", element_id)).p_1().child(item_content).on_click(cx.listener(
+            move |this, click: &ClickEvent, _, cx| {
+                cx.stop_propagation();
+                if click.standard_click() {
+                    let delegate = this.delegate_mut();
+                    delegate.confirming_delete.lock().clear();
+                    if click.modifiers().shift
+                        && let Some(from) = delegate.last_clicked_non_range
+                    {
+                        delegate.selected_range.clear();
 
-                    if let Some(searched) = &delegate.searched {
-                        let from_index = searched.iter().position(|element| match element {
-                            InstanceModSummaryOrChild::InstanceModSummary(instance_mod_summary) => instance_mod_summary.filename_hash == from,
-                            InstanceModSummaryOrChild::ModEntryChild(_) => false,
-                        });
-
-                        let Some(from_index) = from_index else {
-                            return;
-                        };
-
-                        let to_index = searched.iter().position(|element| match element {
-                            InstanceModSummaryOrChild::InstanceModSummary(instance_mod_summary) => instance_mod_summary.filename_hash == element_id,
-                            InstanceModSummaryOrChild::ModEntryChild(_) => false,
-                        });
-
-                        let Some(to_index) = to_index else {
-                            return;
-                        };
-
-                        let min_index = from_index.min(to_index);
-                        let max_index = from_index.max(to_index);
-
-                        for add in searched[min_index..=max_index].iter() {
-                            match add {
+                        if let Some(searched) = &delegate.searched {
+                            let from_index = searched.iter().position(|element| match element {
                                 InstanceModSummaryOrChild::InstanceModSummary(instance_mod_summary) => {
-                                    delegate.selected_range.insert(instance_mod_summary.filename_hash);
+                                    instance_mod_summary.filename_hash == from
                                 },
-                                InstanceModSummaryOrChild::ModEntryChild(_) => {},
+                                InstanceModSummaryOrChild::ModEntryChild(_) => false,
+                            });
+
+                            let Some(from_index) = from_index else {
+                                return;
+                            };
+
+                            let to_index = searched.iter().position(|element| match element {
+                                InstanceModSummaryOrChild::InstanceModSummary(instance_mod_summary) => {
+                                    instance_mod_summary.filename_hash == element_id
+                                },
+                                InstanceModSummaryOrChild::ModEntryChild(_) => false,
+                            });
+
+                            let Some(to_index) = to_index else {
+                                return;
+                            };
+
+                            let min_index = from_index.min(to_index);
+                            let max_index = from_index.max(to_index);
+
+                            for add in searched[min_index..=max_index].iter() {
+                                match add {
+                                    InstanceModSummaryOrChild::InstanceModSummary(instance_mod_summary) => {
+                                        delegate.selected_range.insert(instance_mod_summary.filename_hash);
+                                    },
+                                    InstanceModSummaryOrChild::ModEntryChild(_) => {},
+                                }
+                            }
+                        } else {
+                            let from_index = delegate.mods.iter().position(|element| element.filename_hash == from);
+
+                            let Some(from_index) = from_index else {
+                                return;
+                            };
+
+                            let to_index = delegate.mods.iter().position(|element| element.filename_hash == element_id);
+
+                            let Some(to_index) = to_index else {
+                                return;
+                            };
+
+                            let min_index = from_index.min(to_index);
+                            let max_index = from_index.max(to_index);
+
+                            for add in delegate.mods[min_index..=max_index].iter() {
+                                delegate.selected_range.insert(add.filename_hash);
                             }
                         }
-                    } else {
-                        let from_index = delegate.mods.iter().position(|element| element.filename_hash == from);
+                    } else if click.modifiers().secondary() || click.modifiers().shift {
+                        // Cmd+Click (macos), Ctrl+Click (win/linux)
 
-                        let Some(from_index) = from_index else {
-                            return;
-                        };
+                        delegate.selected.extend(&delegate.selected_range);
+                        delegate.selected_range.clear();
 
-                        let to_index = delegate.mods.iter().position(|element| element.filename_hash == element_id);
-
-                        let Some(to_index) = to_index else {
-                            return;
-                        };
-
-                        let min_index = from_index.min(to_index);
-                        let max_index = from_index.max(to_index);
-
-                        for add in delegate.mods[min_index..=max_index].iter() {
-                            delegate.selected_range.insert(add.filename_hash);
+                        if delegate.selected.contains(&element_id) {
+                            delegate.selected.remove(&element_id);
+                        } else {
+                            delegate.selected.insert(element_id);
                         }
-                    }
-                } else if click.modifiers().secondary() || click.modifiers().shift {
-                    // Cmd+Click (macos), Ctrl+Click (win/linux)
 
-                    delegate.selected.extend(&delegate.selected_range);
-                    delegate.selected_range.clear();
-
-                    if delegate.selected.contains(&element_id) {
-                        delegate.selected.remove(&element_id);
+                        delegate.last_clicked_non_range = Some(element_id);
                     } else {
+                        delegate.selected_range.clear();
+                        delegate.selected.clear();
                         delegate.selected.insert(element_id);
+                        delegate.last_clicked_non_range = Some(element_id);
                     }
-
-                    delegate.last_clicked_non_range = Some(element_id);
-                } else {
-                    delegate.selected_range.clear();
-                    delegate.selected.clear();
-                    delegate.selected.insert(element_id);
-                    delegate.last_clicked_non_range = Some(element_id);
                 }
-            }
-
-        }))
+            },
+        ))
     }
 
     fn render_child_entry(&self, child: &ModEntryChild, cx: &mut App) -> ListItem {
@@ -509,7 +589,12 @@ impl ModsListDelegate {
             gpui::img(ImageSource::Resource(Resource::Embedded("images/default_mod.png".into())))
         };
 
-        const GRAY: Hsla = Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0};
+        const GRAY: Hsla = Hsla {
+            h: 0.0,
+            s: 0.0,
+            l: 0.5,
+            a: 1.0,
+        };
 
         let description1 = v_flex()
             .w_1_5()
@@ -550,7 +635,7 @@ impl ModsListDelegate {
                             });
                         }
                     })
-                    .px_2()
+                    .px_2(),
             )
             .child(icon.size_16().min_w_16().min_h_16().grayscale(!visually_enabled))
             .when(!visually_enabled, |this| this.line_through())
@@ -581,7 +666,10 @@ impl ModsListDelegate {
         for modification in actual_mods.iter() {
             mods.push(modification.clone());
 
-            if let LoaderSpecificModSummary::ModrinthModpack { downloads, summaries, .. } = &modification.mod_summary.extra {
+            if let LoaderSpecificModSummary::ModrinthModpack {
+                downloads, summaries, ..
+            } = &modification.mod_summary.extra
+            {
                 let mut inner_children = Vec::new();
                 for (index, download) in downloads.iter().enumerate() {
                     if !download.path.starts_with("mods/") {
@@ -603,9 +691,8 @@ impl ModsListDelegate {
                         parent_enabled: modification.enabled,
                     });
                 }
-                inner_children.sort_by(|a, b| {
-                    lexical_sort::natural_lexical_cmp(&a.lowercase_filename, &b.lowercase_filename)
-                });
+                inner_children
+                    .sort_by(|a, b| lexical_sort::natural_lexical_cmp(&a.lowercase_filename, &b.lowercase_filename));
                 children.push(inner_children);
             } else {
                 children.push(Vec::new());
@@ -690,7 +777,12 @@ impl ListDelegate for ModsListDelegate {
         }
     }
 
-    fn render_item(&mut self, ix: IndexPath, _window: &mut Window, cx: &mut Context<ListState<Self>>) -> Option<Self::Item> {
+    fn render_item(
+        &mut self,
+        ix: IndexPath,
+        _window: &mut Window,
+        cx: &mut Context<ListState<Self>>,
+    ) -> Option<Self::Item> {
         let mut index = ix.row;
 
         if let Some(searched) = &self.searched {
@@ -698,7 +790,14 @@ impl ListDelegate for ModsListDelegate {
             match item {
                 InstanceModSummaryOrChild::InstanceModSummary(instance_mod_summary) => {
                     let selected = self.is_selected(instance_mod_summary.filename_hash);
-                    return Some(self.render_instance_mod_summary(instance_mod_summary, selected, false, false, ix.row, cx));
+                    return Some(self.render_instance_mod_summary(
+                        instance_mod_summary,
+                        selected,
+                        false,
+                        false,
+                        ix.row,
+                        cx,
+                    ));
                 },
                 InstanceModSummaryOrChild::ModEntryChild(mod_entry_child) => {
                     return Some(self.render_child_entry(mod_entry_child, cx));
@@ -709,7 +808,7 @@ impl ListDelegate for ModsListDelegate {
         let expanded = self.expanded.load(Ordering::Relaxed);
 
         if expanded > 0 && index >= expanded {
-            if let Some(child) = self.children[expanded - 1].get(index-expanded) {
+            if let Some(child) = self.children[expanded - 1].get(index - expanded) {
                 return Some(self.render_child_entry(child, cx));
             }
             index -= self.children[expanded - 1].len();
@@ -717,8 +816,14 @@ impl ListDelegate for ModsListDelegate {
 
         let summary = self.mods.get(index)?;
         let selected = self.is_selected(summary.filename_hash);
-        Some(self.render_instance_mod_summary(summary, selected, index+1 == expanded, !self.children[index].is_empty(), ix.row, cx))
-
+        Some(self.render_instance_mod_summary(
+            summary,
+            selected,
+            index + 1 == expanded,
+            !self.children[index].is_empty(),
+            ix.row,
+            cx,
+        ))
     }
 
     fn set_selected_index(&mut self, _ix: Option<IndexPath>, _window: &mut Window, _cx: &mut Context<ListState<Self>>) {

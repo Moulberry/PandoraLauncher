@@ -13,7 +13,6 @@ mod backend_handler;
 
 mod account;
 mod arcfactory;
-mod config;
 mod directories;
 mod install_content;
 mod instance;

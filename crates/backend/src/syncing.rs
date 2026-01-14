@@ -1,9 +1,10 @@
 use std::{path::{Path, PathBuf}, sync::Arc, time::SystemTime};
 
-use bridge::message::{SyncState, SyncTarget};
+use bridge::message::SyncState;
 use enum_map::EnumMap;
 use enumset::EnumSet;
 use rustc_hash::FxHashMap;
+use schema::backend_config::SyncTarget;
 use strum::IntoEnumIterator;
 
 use crate::directories::LauncherDirectories;

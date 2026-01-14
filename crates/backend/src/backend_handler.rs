@@ -172,8 +172,10 @@ impl BackendState {
                 let is_err = result.is_err();
                 match result {
                     Ok(mut child) => {
-                        if let Some(stdout) = child.stdout.take() {
-                            log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
+                        if self.config.write().get().open_game_output_when_launching {
+                            if let Some(stdout) = child.stdout.take() {
+                                log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
+                            }
                         }
                         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                             instance.child = Some(child);
@@ -689,6 +691,10 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::GetBackendConfiguration { channel } => {
+                let configuration = self.config.write().get().clone();
+                _ = channel.send(configuration);
+            },
             MessageToBackend::CleanupOldLogFiles { instance: id } => {
                 let mut deleted = 0;
 
@@ -868,7 +874,12 @@ impl BackendState {
                 account_info.modify(|account_info| {
                     account_info.selected_account = Some(uuid);
                 });
-            }
+            },
+            MessageToBackend::SetOpenGameOutputAfterLaunching { value } => {
+                self.config.write().modify(|config| {
+                    config.open_game_output_when_launching = value;
+                });
+            },
         }
     }
 

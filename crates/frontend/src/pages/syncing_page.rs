@@ -1,9 +1,10 @@
-use bridge::{handle::BackendHandle, message::{MessageToBackend, SyncState, SyncTarget}};
+use bridge::{handle::BackendHandle, message::{MessageToBackend, SyncState}};
 use enumset::EnumSet;
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, tooltip::Tooltip, v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable
 };
+use schema::backend_config::SyncTarget;
 
 use crate::{entity::DataEntities, ui};
 

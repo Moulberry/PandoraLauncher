@@ -1,7 +1,7 @@
 use std::{ffi::OsString, path::Path, sync::Arc};
 
 use enumset::{EnumSet, EnumSetType};
-use schema::{instance::{InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration}, loader::Loader};
+use schema::{backend_config::{BackendConfig, SyncTarget}, instance::{InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration}, loader::Loader};
 use ustr::Ustr;
 use uuid::Uuid;
 
@@ -96,6 +96,9 @@ pub enum MessageToBackend {
     GetSyncState {
         channel: tokio::sync::oneshot::Sender<SyncState>,
     },
+    GetBackendConfiguration {
+        channel: tokio::sync::oneshot::Sender<BackendConfig>,
+    },
     SetSyncing {
         target: SyncTarget,
         value: bool,
@@ -112,6 +115,9 @@ pub enum MessageToBackend {
     },
     SelectAccount {
         uuid: Uuid,
+    },
+    SetOpenGameOutputAfterLaunching {
+        value: bool,
     }
 }
 
@@ -191,45 +197,6 @@ pub struct SyncState {
     pub total: usize,
     pub synced: enum_map::EnumMap<SyncTarget, usize>,
     pub cannot_sync: enum_map::EnumMap<SyncTarget, usize>,
-}
-
-#[derive(Debug, enum_map::Enum, EnumSetType, strum::EnumIter)]
-pub enum SyncTarget {
-    Options = 0,
-    Servers = 1,
-    Commands = 2,
-    Hotbars = 13,
-    Saves = 3,
-    Config = 4,
-    Screenshots = 5,
-    Resourcepacks = 6,
-    Shaderpacks = 7,
-    Flashback = 8,
-    DistantHorizons = 9,
-    Voxy = 10,
-    XaerosMinimap = 11,
-    Bobby = 12,
-}
-
-impl SyncTarget {
-    pub fn get_folder(self) -> Option<&'static str> {
-        match self {
-            SyncTarget::Options => None,
-            SyncTarget::Servers => None,
-            SyncTarget::Commands => None,
-            SyncTarget::Hotbars => None,
-            SyncTarget::Saves => Some("saves"),
-            SyncTarget::Config => Some("config"),
-            SyncTarget::Screenshots => Some("screenshots"),
-            SyncTarget::Resourcepacks => Some("resourcepacks"),
-            SyncTarget::Shaderpacks => Some("shaderpacks"),
-            SyncTarget::Flashback => Some("flashback"),
-            SyncTarget::DistantHorizons => Some("Distant_Horizons_server_data"),
-            SyncTarget::Voxy => Some(".voxy"),
-            SyncTarget::XaerosMinimap => Some("xaero"),
-            SyncTarget::Bobby => Some(".bobby"),
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -6250,12 +6250,14 @@ name = "schema"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "enum-map",
  "enumset",
  "indexmap 2.12.0",
  "relative-path",
  "serde",
  "serde-untagged",
  "serde_json",
+ "strum 0.27.2",
  "thiserror 2.0.17",
  "ustr",
 ]

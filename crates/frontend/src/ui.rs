@@ -374,9 +374,9 @@ impl Render for LauncherUI {
             })
             .child(IconName::Settings)
             .on_click({
-                let theme_folder = self.data.theme_folder.clone();
+                let data = self.data.clone();
                 move |_, window, cx| {
-                    let build = modals::settings::build_settings_sheet(theme_folder.clone(), window, cx);
+                    let build = modals::settings::build_settings_sheet(&data, window, cx);
                     window.open_sheet_at(gpui_component::Placement::Left, cx, build);
                 }
             });

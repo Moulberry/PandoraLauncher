@@ -15,14 +15,14 @@ use bridge::{
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use schema::{backend_config::BackendConfig, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
 use sha1::{Digest, Sha1};
 use tokio::sync::{mpsc::Receiver, OnceCell};
 use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    account::BackendAccountInfo, config::BackendConfig, directories::LauncherDirectories, id_slab::IdSlab, instance::Instance, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent
+    account::BackendAccountInfo, directories::LauncherDirectories, id_slab::IdSlab, instance::Instance, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent
 };
 
 pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHandle, recv: BackendReceiver) {

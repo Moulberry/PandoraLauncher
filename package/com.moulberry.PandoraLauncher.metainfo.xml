@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='utf-8'?>
+<component type="desktop-application">
+  <!--Created with jdAppStreamEdit 9.2-->
+  <id>com.moulberry.PandoraLauncher</id>
+  <name>Pandora Launcher</name>
+  <summary>A balanced, easy to use, and powerful modern Minecraft launcher</summary>
+  <developer id="com.moulberry">
+    <name>Moulberry</name>
+  </developer>
+  <metadata_license>FSFAP</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>Pandora is a modern Minecraft launcher that balances ease-of-use with powerful instance management features.</p>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <image type="source">https://raw.githubusercontent.com/Moulberry/PandoraLauncher/refs/heads/master/screenshots/instance.png</image>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/Moulberry/PandoraLauncher/refs/heads/master/screenshots/gameoutput.png</image>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/Moulberry/PandoraLauncher/refs/heads/master/screenshots/modrinth.png</image>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://github.com/Moulberry/PandoraLauncher/blob/master/screenshots/syncing.png?raw=true</image>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="v2.5.0" date="2026-01-13" type="stable"/>
+  </releases>
+  <url type="homepage">https://pandora.moulberry.com/</url>
+  <url type="bugtracker">https://github.com/Moulberry/PandoraLauncher/issues</url>
+  <url type="faq">https://github.com/Moulberry/PandoraLauncher?tab=readme-ov-file#faq</url>
+  <url type="donation">https://moulberry.com/</url>
+  <url type="contact">https://github.com/Moulberry</url>
+  <url type="vcs-browser">https://github.com/Moulberry/PandoraLauncher</url>
+  <categories>
+    <category>Game</category>
+    <category>Java</category>
+    <category>Amusement</category>
+    <category>AdventureGame</category>
+    <category>BlocksGame</category>
+  </categories>
+  <requires>
+    <internet>always</internet>
+  </requires>
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <memory>4096</memory>
+  </recommends>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-cartoon">moderate</content_attribute>
+    <content_attribute id="violence-fantasy">moderate</content_attribute>
+    <content_attribute id="social-chat">intense</content_attribute>
+    <content_attribute id="social-contacts">intense</content_attribute>
+    <content_attribute id="social-info">mild</content_attribute>
+  </content_rating>
+  <launchable type="desktop-id">com.moulberry.PandoraLauncher</launchable>
+  <keywords>
+    <keyword>Minecraft Launcher</keyword>
+    <keyword>Mod manager</keyword>
+  </keywords>
+</component>

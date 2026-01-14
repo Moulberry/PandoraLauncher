@@ -1,17 +1,28 @@
 use std::{
-    collections::HashMap, io::{Cursor, Write}, path::{Path, PathBuf}, sync::Arc
+    io::{Cursor, Write},
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
-use bridge::{instance::{AtomicContentUpdateStatus, ContentUpdateStatus, LoaderSpecificModSummary, ModSummary}, safe_path::SafePath};
+use bridge::{
+    instance::{AtomicContentUpdateStatus, ContentUpdateStatus, LoaderSpecificModSummary, ModSummary},
+    safe_path::SafePath,
+};
 use image::imageops::FilterType;
 use indexmap::IndexMap;
 use parking_lot::{RwLock, RwLockReadGuard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rc_zip_sync::EntryHandle;
 use rustc_hash::FxHashMap;
-use schema::{content::ContentSource, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, ModsToml}, modification::ModrinthModpackFileDownload, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson};
+use schema::{
+    content::ContentSource,
+    fabric_mod::{FabricModJson, Icon, Person},
+    forge_mod::{JarJarMetadata, ModsToml},
+    modrinth::{ModrinthFile, ModrinthSideRequirement},
+    mrpack::ModrinthIndexJson,
+};
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DeserializeAs, SerializeAs};
+use serde_with::{DeserializeAs, SerializeAs, serde_as};
 use sha1::{Digest, Sha1};
 
 #[derive(Clone)]
@@ -137,7 +148,12 @@ impl ModMetadataManager {
         }
     }
 
-    fn load_mod_summary<R: rc_zip_sync::ReadZip>(self: &Arc<Self>, hash: [u8; 20], file: &R, allow_children: bool) -> Option<Arc<ModSummary>> {
+    fn load_mod_summary<R: rc_zip_sync::ReadZip>(
+        self: &Arc<Self>,
+        hash: [u8; 20],
+        file: &R,
+        allow_children: bool,
+    ) -> Option<Arc<ModSummary>> {
         let archive = file.read_zip().ok()?;
 
         if let Some(file) = archive.by_name("fabric.mod.json") {
@@ -157,7 +173,11 @@ impl ModMetadataManager {
         }
     }
 
-    fn load_fabric_mod<R: rc_zip_sync::HasCursor>(hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ModSummary>> {
+    fn load_fabric_mod<R: rc_zip_sync::HasCursor>(
+        hash: [u8; 20],
+        archive: &rc_zip_sync::ArchiveHandle<R>,
+        file: EntryHandle<'_, R>,
+    ) -> Option<Arc<ModSummary>> {
         let mut bytes = file.bytes().ok()?;
 
         // Some mods violate the JSON spec by using raw newline characters inside strings (e.g. BetterGrassify)
@@ -167,9 +187,11 @@ impl ModMetadataManager {
             }
         }
 
-        let fabric_mod_json: FabricModJson = serde_json::from_slice(&bytes).inspect_err(|e| {
-            eprintln!("Error parsing fabric.mod.json: {e}");
-        }).ok()?;
+        let fabric_mod_json: FabricModJson = serde_json::from_slice(&bytes)
+            .inspect_err(|e| {
+                eprintln!("Error parsing fabric.mod.json: {e}");
+            })
+            .ok()?;
 
         drop(file);
 
@@ -187,11 +209,15 @@ impl ModMetadataManager {
         };
 
         let mut png_icon: Option<Arc<[u8]>> = None;
-        if let Some(icon) = icon && let Some(icon_file) = archive.by_name(&icon) {
+        if let Some(icon) = icon
+            && let Some(icon_file) = archive.by_name(&icon)
+        {
             png_icon = load_icon(icon_file);
         }
 
-        let authors = if let Some(authors) = fabric_mod_json.authors && let Some(authors) = create_authors_string(&authors) {
+        let authors = if let Some(authors) = fabric_mod_json.authors
+            && let Some(authors) = create_authors_string(&authors)
+        {
             authors.into()
         } else {
             "".into()
@@ -210,16 +236,22 @@ impl ModMetadataManager {
             version_str: format!("v{}", fabric_mod_json.version).into(),
             png_icon,
             update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
-            extra: LoaderSpecificModSummary::Fabric
+            extra: LoaderSpecificModSummary::Fabric,
         }))
     }
 
-    fn load_forge_mod<R: rc_zip_sync::HasCursor>(hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ModSummary>> {
+    fn load_forge_mod<R: rc_zip_sync::HasCursor>(
+        hash: [u8; 20],
+        archive: &rc_zip_sync::ArchiveHandle<R>,
+        file: EntryHandle<'_, R>,
+    ) -> Option<Arc<ModSummary>> {
         let bytes = file.bytes().ok()?;
 
-        let mods_toml: ModsToml = toml::from_slice(&bytes).inspect_err(|e| {
-            eprintln!("Error parsing mods.toml/neoforge.mods.toml: {e}");
-        }).ok()?;
+        let mods_toml: ModsToml = toml::from_slice(&bytes)
+            .inspect_err(|e| {
+                eprintln!("Error parsing mods.toml/neoforge.mods.toml: {e}");
+            })
+            .ok()?;
 
         let Some(first) = mods_toml.mods.first() else {
             return None;
@@ -230,7 +262,9 @@ impl ModMetadataManager {
         let name = first.display_name.clone().unwrap_or_else(|| Arc::clone(&first.mod_id));
 
         let mut png_icon: Option<Arc<[u8]>> = None;
-        if let Some(icon) = &first.logo_file && let Some(icon_file) = archive.by_name(&icon) {
+        if let Some(icon) = &first.logo_file
+            && let Some(icon_file) = archive.by_name(&icon)
+        {
             png_icon = load_icon(icon_file);
         }
 
@@ -267,14 +301,21 @@ impl ModMetadataManager {
             version_str: version.into(),
             png_icon,
             update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
-            extra: LoaderSpecificModSummary::Forge
+            extra: LoaderSpecificModSummary::Forge,
         }))
     }
 
-    fn load_modrinth_modpack<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ModSummary>> {
-        let modrinth_index_json: ModrinthIndexJson = serde_json::from_slice(&file.bytes().ok()?).inspect_err(|e| {
-            eprintln!("Error parsing modrinth.index.json: {e}");
-        }).ok()?;
+    fn load_modrinth_modpack<R: rc_zip_sync::HasCursor>(
+        self: &Arc<Self>,
+        hash: [u8; 20],
+        archive: &rc_zip_sync::ArchiveHandle<R>,
+        file: EntryHandle<'_, R>,
+    ) -> Option<Arc<ModSummary>> {
+        let modrinth_index_json: ModrinthIndexJson = serde_json::from_slice(&file.bytes().ok()?)
+            .inspect_err(|e| {
+                eprintln!("Error parsing modrinth.index.json: {e}");
+            })
+            .ok()?;
 
         let mut overrides: IndexMap<SafePath, Arc<[u8]>> = IndexMap::new();
 
@@ -352,7 +393,9 @@ impl ModMetadataManager {
             png_icon = load_icon(icon);
         }
 
-        let authors = if let Some(authors) = modrinth_index_json.authors && let Some(authors) = create_authors_string(&authors) {
+        let authors = if let Some(authors) = modrinth_index_json.authors
+            && let Some(authors) = create_authors_string(&authors)
+        {
             authors.into()
         } else if let Some(author) = modrinth_index_json.author {
             format!("By {}", author.name()).into()
@@ -373,16 +416,24 @@ impl ModMetadataManager {
                 downloads: modrinth_index_json.files,
                 summaries: summaries.into(),
                 overrides: overrides.into_iter().collect(),
-            }
+            },
         }))
     }
 
-    fn load_jarjar<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ModSummary>> {
+    #[expect(unused_variables)]
+    fn load_jarjar<R: rc_zip_sync::HasCursor>(
+        self: &Arc<Self>,
+        hash: [u8; 20],
+        archive: &rc_zip_sync::ArchiveHandle<R>,
+        file: EntryHandle<'_, R>,
+    ) -> Option<Arc<ModSummary>> {
         let bytes = file.bytes().ok()?;
 
-        let metadata_json: JarJarMetadata = serde_json::from_slice(&bytes).inspect_err(|e| {
-            eprintln!("Error parsing jarjar/metadata.json: {e}");
-        }).ok()?;
+        let metadata_json: JarJarMetadata = serde_json::from_slice(&bytes)
+            .inspect_err(|e| {
+                eprintln!("Error parsing jarjar/metadata.json: {e}");
+            })
+            .ok()?;
 
         drop(file);
 
@@ -401,7 +452,13 @@ impl ModMetadataManager {
         None
     }
 
-    fn load_from_java_manifest<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ModSummary>> {
+    #[expect(unused_variables)]
+    fn load_from_java_manifest<R: rc_zip_sync::HasCursor>(
+        self: &Arc<Self>,
+        hash: [u8; 20],
+        archive: &rc_zip_sync::ArchiveHandle<R>,
+        file: EntryHandle<'_, R>,
+    ) -> Option<Arc<ModSummary>> {
         let bytes = file.bytes().ok()?;
 
         let manifest_str = str::from_utf8(&bytes).ok()?;
@@ -443,7 +500,7 @@ impl ModMetadataManager {
             version_str: version.unwrap_or_default(),
             png_icon: None,
             update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
-            extra: LoaderSpecificModSummary::JavaModule
+            extra: LoaderSpecificModSummary::JavaModule,
         }))
     }
 }
@@ -498,8 +555,7 @@ fn create_authors_string(authors: &[Person]) -> Option<String> {
 #[serde_as]
 #[derive(Serialize)]
 struct SerializedContentSources<'a>(
-    #[serde_as(as = "FxHashMap<SerializeAsHex, _>")]
-    &'a FxHashMap<[u8; 20], ContentSource>
+    #[serde_as(as = "FxHashMap<SerializeAsHex, _>")] &'a FxHashMap<[u8; 20], ContentSource>,
 );
 
 struct SerializeAsHex {}
@@ -507,7 +563,8 @@ struct SerializeAsHex {}
 impl SerializeAs<[u8; 20]> for SerializeAsHex {
     fn serialize_as<S>(source: &[u8; 20], serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         hex::serde::serialize(source, serializer)
     }
 }
@@ -515,8 +572,7 @@ impl SerializeAs<[u8; 20]> for SerializeAsHex {
 #[serde_as]
 #[derive(Deserialize)]
 struct DeserializedContentSources(
-    #[serde_as(as = "FxHashMap<DeserializeAsHex, _>")]
-    FxHashMap<[u8; 20], ContentSource>
+    #[serde_as(as = "FxHashMap<DeserializeAsHex, _>")] FxHashMap<[u8; 20], ContentSource>,
 );
 
 struct DeserializeAsHex {}
@@ -524,7 +580,8 @@ struct DeserializeAsHex {}
 impl<'de> DeserializeAs<'de, [u8; 20]> for DeserializeAsHex {
     fn deserialize_as<D>(deserializer: D) -> Result<[u8; 20], D::Error>
     where
-        D: serde::Deserializer<'de> {
+        D: serde::Deserializer<'de>,
+    {
         hex::serde::deserialize(deserializer)
     }
 }

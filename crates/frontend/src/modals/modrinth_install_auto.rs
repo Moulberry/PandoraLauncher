@@ -1,26 +1,28 @@
-use std::{cmp::Ordering, sync::Arc};
+use std::sync::Arc;
 
-use bridge::{install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::InstanceID, message::MessageToBackend, meta::MetadataRequest, modal_action::ModalAction, safe_path::SafePath};
-use enumset::EnumSet;
-use gpui::{prelude::*, *};
-use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, dialog::Dialog, h_flex, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectItem, SelectState}, spinner::Spinner, v_flex, IndexPath, WindowExt
+use bridge::{
+    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget},
+    instance::InstanceID,
+    message::MessageToBackend,
+    meta::MetadataRequest,
+    modal_action::ModalAction,
+    safe_path::SafePath,
 };
+use gpui::{prelude::*, *};
+use gpui_component::{WindowExt, h_flex, notification::Notification, spinner::Spinner};
 use relative_path::RelativePath;
-use rustc_hash::FxHashMap;
 use schema::{
-    content::ContentSource, loader::Loader, modrinth::{
-        ModrinthDependency, ModrinthDependencyType, ModrinthLoader, ModrinthProjectType, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthVersionStatus, ModrinthVersionType
-    }
+    content::ContentSource,
+    modrinth::{
+        ModrinthDependencyType, ModrinthProjectType, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult,
+        ModrinthVersionType,
+    },
 };
 use uuid::Uuid;
 
-use crate::{
-    component::{error_alert::ErrorAlert, instance_dropdown::InstanceDropdown},
-    entity::{
-        instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}, DataEntities
-    },
-    root,
+use crate::entity::{
+    DataEntities,
+    metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState},
 };
 
 // struct VersionMatrixLoaders {
@@ -69,7 +71,11 @@ pub fn open(
 ) {
     let project_versions = FrontendMetadata::request(
         &data.metadata,
-        MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest { project_id, game_versions: None, loaders: None, }),
+        MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest {
+            project_id,
+            game_versions: None,
+            loaders: None,
+        }),
         cx,
     );
 
@@ -84,7 +90,16 @@ pub fn open(
         let title = title.clone();
         let data = data.clone();
         move |project_versions, window, cx| {
-            handle_project_versions(&data, title.clone(), key, project_type, install_for, &project_versions, window, cx);
+            handle_project_versions(
+                &data,
+                title.clone(),
+                key,
+                project_type,
+                install_for,
+                &project_versions,
+                window,
+                cx,
+            );
         }
     });
 
@@ -113,7 +128,7 @@ fn handle_project_versions(
     install_for: InstanceID,
     project_versions: &Entity<FrontendMetadataState>,
     window: &mut Window,
-    cx: &mut App
+    cx: &mut App,
 ) -> bool {
     let result: FrontendMetadataResult<ModrinthProjectVersionsResult> = project_versions.read(cx).result();
     match result {
@@ -126,24 +141,28 @@ fn handle_project_versions(
             };
             let configuration = instance.read(cx).configuration.clone();
             let modrinth_loader = configuration.loader.as_modrinth_loader();
-            let matching_versions = project_versions.0.iter().filter(|version| {
-                let Some(loaders) = version.loaders.clone() else {
-                    return false;
-                };
-                let Some(game_versions) = &version.game_versions else {
-                    return false;
-                };
-                if version.files.is_empty() {
-                    return false;
-                }
-                if !game_versions.contains(&configuration.minecraft_version) {
-                    return false;
-                }
-                if !loaders.contains(&modrinth_loader) {
-                    return false;
-                }
-                true
-            }).collect::<Vec<_>>();
+            let matching_versions = project_versions
+                .0
+                .iter()
+                .filter(|version| {
+                    let Some(loaders) = version.loaders.clone() else {
+                        return false;
+                    };
+                    let Some(game_versions) = &version.game_versions else {
+                        return false;
+                    };
+                    if version.files.is_empty() {
+                        return false;
+                    }
+                    if !game_versions.contains(&configuration.minecraft_version) {
+                        return false;
+                    }
+                    if !loaders.contains(&modrinth_loader) {
+                        return false;
+                    }
+                    true
+                })
+                .collect::<Vec<_>>();
 
             let mut highest_release = None;
             let mut highest_beta = None;
@@ -177,11 +196,7 @@ fn handle_project_versions(
 
             let version = matching_versions[highest];
 
-            let install_file = version
-                .files
-                .iter()
-                .find(|file| file.primary)
-                .unwrap_or(version.files.first().unwrap());
+            let install_file = version.files.iter().find(|file| file.primary).unwrap_or(version.files.first().unwrap());
 
             let path = match project_type {
                 ModrinthProjectType::Mod => RelativePath::new("mods").join(&*install_file.filename),
@@ -202,11 +217,8 @@ fn handle_project_versions(
             let mut files = Vec::new();
 
             let required_dependencies = version.dependencies.as_ref().map(|deps| {
-                deps
-                    .iter()
-                    .filter(|dep| {
-                        dep.project_id.is_some() && dep.dependency_type == ModrinthDependencyType::Required
-                    })
+                deps.iter()
+                    .filter(|dep| dep.project_id.is_some() && dep.dependency_type == ModrinthDependencyType::Required)
                     .cloned()
                     .collect::<Vec<_>>()
             });
@@ -218,7 +230,7 @@ fn handle_project_versions(
                         path: bridge::install::ContentInstallPath::Automatic,
                         download: ContentDownload::Modrinth {
                             project_id: dep.project_id.clone().unwrap(),
-                            version_id: dep.version_id.clone()
+                            version_id: dep.version_id.clone(),
                         },
                         content_source: ContentSource::Modrinth,
                     })
@@ -249,13 +261,24 @@ fn handle_project_versions(
                 modal_action: modal_action.clone(),
             });
 
-            crate::modals::generic::show_notification_with_note(window, cx, "Error installing content".into(), modal_action,
-                Notification::new().id1::<AutoInstallNotificationType>(key));
+            crate::modals::generic::show_notification_with_note(
+                window,
+                cx,
+                "Error installing content".into(),
+                modal_action,
+                Notification::new().id1::<AutoInstallNotificationType>(key),
+            );
 
             return true;
         },
         FrontendMetadataResult::Error(error) => {
-            push_error(title.clone(), key, format!("Error loading project versions from Modrinth:\n{error}").into(), window, cx);
+            push_error(
+                title.clone(),
+                key,
+                format!("Error loading project versions from Modrinth:\n{error}").into(),
+                window,
+                cx,
+            );
             return true;
         },
     }

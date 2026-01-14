@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fs::{File, OpenOptions, TryLockError}, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    fs::{File, OpenOptions, TryLockError},
+    path::Path,
+    sync::Arc,
+};
 
 use once_cell::sync::Lazy;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -13,12 +18,8 @@ static LOCKED: Lazy<parking_lot::Mutex<HashMap<Arc<Path>, Arc<Semaphore>>>> = La
 
 fn get_path_semaphore(path: Arc<Path>) -> Arc<Semaphore> {
     match LOCKED.lock().entry(path) {
-        std::collections::hash_map::Entry::Occupied(entry) => {
-            entry.get().clone()
-        },
-        std::collections::hash_map::Entry::Vacant(entry) => {
-            entry.insert(Arc::new(Semaphore::new(1))).clone()
-        },
+        std::collections::hash_map::Entry::Occupied(entry) => entry.get().clone(),
+        std::collections::hash_map::Entry::Vacant(entry) => entry.insert(Arc::new(Semaphore::new(1))).clone(),
     }
 }
 
@@ -43,17 +44,18 @@ impl Lockfile {
                 handle = tokio::task::spawn_blocking(move || {
                     handle.lock()?;
                     std::io::Result::Ok(handle)
-                }).await??;
-            }
+                })
+                .await??;
+            },
         }
 
         Ok(Self {
             _handle: handle,
-            _permit: permit
+            _permit: permit,
         })
     }
 
-
+    #[expect(unused)]
     pub fn try_create(path: Arc<Path>) -> std::io::Result<Option<Self>> {
         let semaphore = get_path_semaphore(path.clone());
 
@@ -68,12 +70,12 @@ impl Lockfile {
             Err(TryLockError::Error(err)) => return Err(err),
             Err(TryLockError::WouldBlock) => {
                 return Ok(None);
-            }
+            },
         }
 
         Ok(Some(Self {
             _handle: handle,
-            _permit: permit
+            _permit: permit,
         }))
     }
 }

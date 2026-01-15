@@ -7,7 +7,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    breadcrumb::{Breadcrumb, BreadcrumbItem}, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, notification::{Notification, NotificationType}, switch::Switch, v_flex, ActiveTheme as _, Icon, IconName, IndexPath, Sizable, WindowExt
+    breadcrumb::{Breadcrumb, BreadcrumbItem}, button::{Button, ButtonVariants}, h_flex, input::{SelectAll}, list::{ListDelegate, ListItem, ListState}, notification::{Notification, NotificationType}, switch::Switch, v_flex, ActiveTheme as _, Icon, IconName, IndexPath, Sizable, WindowExt
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -180,6 +180,9 @@ impl Render for InstanceModsSubpage {
             }));
 
         let mod_list = self.mod_list.clone();
+        let mod_list_for_click = mod_list.clone();
+        let mod_list_for_select_all = mod_list;
+
         v_flex().p_4().size_full().child(header).child(
             div()
                 .id("mod-list-area")
@@ -189,14 +192,32 @@ impl Render for InstanceModsSubpage {
                 .border_color(theme.border)
                 .child(self.mod_list.clone())
                 .on_click(move |_, _, cx| {
-                    cx.update_entity(&mod_list, |list, _| {
+                    cx.update_entity(&mod_list_for_click, |list, _| {
                         let delegate = list.delegate_mut();
                         delegate.selected.clear();
                         delegate.selected_range.clear();
                         delegate.last_clicked_non_range = None;
                         delegate.confirming_delete.lock().clear();
                     })
-                }),
+                })
+                .key_context("Input")
+                .on_action(move |_select_all: &SelectAll, _, cx| {
+                    let mut selection_changed = false;
+                    cx.update_entity(&mod_list_for_select_all, |list, _| {
+                        let delegate = list.delegate_mut();
+
+                        if delegate.mods.iter().any(|m| !delegate.selected.contains(&m.filename_hash)) {
+                            delegate.mods.iter().for_each(|m| {
+                                delegate.selected.insert(m.filename_hash);
+                            });
+                            delegate.confirming_delete.lock().clear();
+                            selection_changed = true;
+                        }
+                    });
+                    if selection_changed {
+                        cx.notify(mod_list_for_select_all.entity_id())
+                    }
+                })
         )
     }
 }

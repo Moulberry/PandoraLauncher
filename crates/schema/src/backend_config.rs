@@ -24,6 +24,7 @@ pub enum SyncTarget {
     Voxy = 10,
     XaerosMinimap = 11,
     Bobby = 12,
+    Litematic = 14,
 }
 
 impl SyncTarget {
@@ -43,6 +44,7 @@ impl SyncTarget {
             SyncTarget::Voxy => Some(".voxy"),
             SyncTarget::XaerosMinimap => Some("xaero"),
             SyncTarget::Bobby => Some(".bobby"),
+            SyncTarget::Litematic => Some("schematics"),
         }
     }
 }

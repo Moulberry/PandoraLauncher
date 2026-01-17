@@ -148,6 +148,11 @@ impl std::fmt::Debug for ProgressTrackerInner {
 }
 
 impl ProgressTracker {
+
+    pub fn is_network_dependent(&self) -> bool {
+        let title = self.get_title();
+        title.contains("download") || title.contains("fetch") || title.contains("auth") || title.contains("update")
+    }
     pub fn new(title: Arc<str>, sender: FrontendHandle) -> Self {
         Self {
             inner: Arc::new(ProgressTrackerInner {

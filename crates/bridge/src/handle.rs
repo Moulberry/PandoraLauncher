@@ -9,9 +9,9 @@ use crate::{message::{BridgeNotificationType, MessageToBackend, MessageToFronten
 
 pub fn create_pair() -> (BackendReceiver, BackendHandle, FrontendReceiver, FrontendHandle) {
     #[cfg(debug_assertions)]
-    let (frontend_send, frontend_recv) = tokio::sync::mpsc::channel(64);
+    let (frontend_send, frontend_recv) = tokio::sync::mpsc::channel(4192);
     #[cfg(debug_assertions)]
-    let (backend_send, backend_recv) = tokio::sync::mpsc::channel(64);
+    let (backend_send, backend_recv) = tokio::sync::mpsc::channel(4192);
 
     #[cfg(not(debug_assertions))]
     let (frontend_send, frontend_recv) = tokio::sync::mpsc::unbounded_channel();
@@ -145,9 +145,14 @@ unsafe impl Sync for FrontendHandle {}
 impl FrontendHandle {
     pub fn send(&self, message: MessageToFrontend) {
         #[cfg(debug_assertions)]
-        if let Err(tokio::sync::mpsc::error::TrySendError::Full(v)) = self.sender.try_send((message, None)) {
-            panic!("Sender is full, unable to send message: {v:?}");
-        }
+        let _ = self.sender.try_send((message, None));
+        #[cfg(not(debug_assertions))]
+        let _ = self.sender.send((message, None));
+    }
+
+    pub async fn send_async(&self, message: MessageToFrontend) {
+        #[cfg(debug_assertions)]
+        let _ = self.sender.send((message, None)).await;
         #[cfg(not(debug_assertions))]
         let _ = self.sender.send((message, None));
     }
@@ -161,9 +166,21 @@ impl FrontendHandle {
         serial.set(next_serial);
 
         #[cfg(debug_assertions)]
-        if let Err(tokio::sync::mpsc::error::TrySendError::Full(v)) = self.sender.try_send((message, Some(next_serial))) {
-            panic!("Sender is full, unable to send message: {v:?}");
-        };
+        let _ = self.sender.try_send((message, Some(next_serial)));
+        #[cfg(not(debug_assertions))]
+        let _ = self.sender.send((message, Some(next_serial)));
+    }
+
+    pub async fn send_with_serial_async(&self, message: MessageToFrontend, serial: &AtomicOptionSerial) {
+        if let Some(serial) = serial.get() && self.processed_serial.get() < serial {
+            return;
+        }
+
+        let next_serial = self.next_serial.next();
+        serial.set(next_serial);
+
+        #[cfg(debug_assertions)]
+        let _ = self.sender.send((message, Some(next_serial))).await;
         #[cfg(not(debug_assertions))]
         let _ = self.sender.send((message, Some(next_serial)));
     }

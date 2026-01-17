@@ -9,7 +9,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{content::ContentSource, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
 use serde::Deserialize;
 use tokio::{io::AsyncBufReadExt, sync::Semaphore};
-
+use bridge::keep_alive::KeepAlive;
 use crate::{
     account::{BackendAccount, MinecraftLoginInfo}, arcfactory::ArcStrFactory, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::ModUpdateAction, BackendState, LoginError
 };
@@ -165,19 +165,28 @@ impl BackendState {
                 let is_err = result.is_err();
                 match result {
                     Ok(mut child) => {
-                        if self.config.write().get().open_game_output_when_launching {
-                            if let Some(stdout) = child.stdout.take() {
-                                log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
-                            }
-                        }
+                        let game_output_buffer = Arc::new(std::sync::Mutex::new(Vec::new()));
+
+                        let game_output_id = if self.config.write().get().open_game_output_when_launching {
+                            child.stdout.take().map(|stdout| {
+                                log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone(), game_output_buffer.clone())
+                            })
+                        } else {
+                            None
+                        };
+
                         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                             instance.child = Some(child);
+                            instance.game_output_id = game_output_id;
+                            instance.game_output_buffer = game_output_buffer;
                         }
+
                     },
                     Err(ref err) => {
-                        modal_action.set_error_message(format!("{}", &err).into());
+                        modal_action.set_error_message(format!("{}", err).into());
                     },
                 }
+
 
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     self.send.send(instance.create_modify_message());
@@ -188,7 +197,6 @@ impl BackendState {
                 modal_action.set_finished();
 
                 return;
-
             },
             MessageToBackend::SetModEnabled { id, mod_ids, enabled } => {
                 let mut instance_state = self.instance_state.write();
@@ -894,6 +902,42 @@ impl BackendState {
                     config.open_game_output_when_launching = value;
                 });
             },
+            MessageToBackend::ShowGameOutputWindow { instance } => {
+                if let Some(inst) = self.instance_state.write().instances.get(instance) {
+                    if let Some(game_output_id) = inst.game_output_id {
+
+                        let keep_alive = KeepAlive::new();
+                        self.send.send(MessageToFrontend::CreateGameOutputWindow {
+                            id: game_output_id,
+                            keep_alive,
+                        });
+
+                        let buffer = inst.game_output_buffer.clone();
+                        let sender = self.send.clone();
+
+                        tokio::spawn(async move {
+                            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+                            // Clone the buffer contents to avoid holding the lock across await points
+                            let buffered = {
+                                let guard = buffer.lock().unwrap_or_else(|e| e.into_inner());
+                                guard.clone()
+                            };
+
+                            for (time, level, text) in buffered.iter() {
+                                sender.send_async(MessageToFrontend::AddGameOutput {
+                                    id: game_output_id,
+                                    time: *time,
+                                    level: *level,
+                                    text: text.clone(),
+                                }).await;
+                            }
+                        });
+                    } else {
+                    }
+                }
+            },
+
         }
     }
 

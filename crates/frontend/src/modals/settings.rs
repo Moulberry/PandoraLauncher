@@ -150,7 +150,7 @@ impl Render for Settings {
         div = div.child(crate::labelled(
             "Game Output",
             Checkbox::new("open-game-output")
-                .label("Open game output when launching")
+                .label("Open game output on launch")
                 .checked(self.backend_config.as_ref().map_or(false, |c| c.open_game_output_when_launching))
                 .on_click(cx.listener({
                     let backend_handle = self.backend_handle.clone();

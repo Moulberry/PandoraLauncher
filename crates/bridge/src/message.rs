@@ -126,6 +126,10 @@ pub enum MessageToBackend {
     SetOpenGameOutputAfterLaunching {
         value: bool,
     },
+    
+    ShowGameOutputWindow {
+        instance: InstanceID,
+    }
 }
 
 #[derive(Debug)]

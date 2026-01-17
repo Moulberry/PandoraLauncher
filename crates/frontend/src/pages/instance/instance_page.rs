@@ -89,6 +89,21 @@ impl Render for InstancePage {
                 }),
         };
 
+        let open_game_output = Button::new("open_game_output")
+            .info()
+            .icon(IconName::BookOpen)
+            .label("Open Game Output")
+            .on_click({
+                let backend_handle = self.backend_handle.clone();
+                let instance_id = instance.id;
+                move |_, window, cx| {
+                    backend_handle.send(MessageToBackend::ShowGameOutputWindow {
+                        instance: instance_id,
+                    });
+                }
+            });
+
+
         let open_dot_minecraft_button = Button::new("open_dot_minecraft")
             .info()
             .icon(IconName::FolderOpen)
@@ -101,7 +116,7 @@ impl Render for InstancePage {
         });
 
         let breadcrumb = (self.breadcrumb)().child(self.title.clone());
-        ui::page(cx, h_flex().gap_8().child(breadcrumb).child(h_flex().gap_3().child(button).child(open_dot_minecraft_button)))
+        ui::page(cx, h_flex().gap_8().child(breadcrumb).child(h_flex().gap_3().child(button).child(open_dot_minecraft_button).child(h_flex().gap_3().child(open_game_output))))
             .child(
                 TabBar::new("bar")
                     .prefix(div().w_4())

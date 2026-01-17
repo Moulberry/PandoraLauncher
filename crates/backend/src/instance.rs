@@ -3,7 +3,7 @@ use std::{
         atomic::Ordering, Arc
     }
 };
-
+use std::sync::Mutex;
 use anyhow::Context;
 use base64::Engine;
 use bridge::{
@@ -16,7 +16,7 @@ use schema::instance::InstanceConfiguration;
 use thiserror::Error;
 
 use ustr::Ustr;
-
+use bridge::game_output::GameOutputLogLevel;
 use crate::{id_slab::{GetId, Id}, mod_metadata::ModMetadataManager, persistent::Persistent, BackendStateInstances, IoOrSerializationError};
 
 #[derive(Debug)]
@@ -54,6 +54,9 @@ pub struct Instance {
     mods_generation: usize,
     pending_mods_load: Option<KeepAliveNotifySignalHandle>,
     pub mods: Option<Arc<[InstanceModSummary]>>,
+    
+    pub game_output_id: Option<usize>,
+    pub game_output_buffer: Arc<std::sync::Mutex<Vec<(i64, GameOutputLogLevel, Arc<[Arc<str>]>)>>>,
 }
 
 impl Id for InstanceID {
@@ -587,6 +590,8 @@ impl Instance {
             mods_generation: 0,
             pending_mods_load: None,
             mods: None,
+            game_output_id: None,
+            game_output_buffer: Arc::new(Mutex::new(vec![])),
         })
     }
 

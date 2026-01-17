@@ -17,11 +17,9 @@ use thiserror::Error;
 static GAME_OUTPUT_ID: AtomicUsize = AtomicUsize::new(0);
 static REPLACEMENTS: Lazy<[(Regex, &'static str); 7]> = Lazy::new(|| {
     [
-        // Access token replacements
         (regex::Regex::new(r#"SignedJWT: [^\s]+"#).unwrap(), "SignedJWT: *****"),
         (regex::Regex::new(r#"Session ID is [^\s)]+"#).unwrap(), "Session ID is *****"),
         (regex::Regex::new(r#"--accessToken, [^\s,]+"#).unwrap(), "--accessToken, *****"),
-        // Computer username replacements
         (regex::Regex::new(r#"\/home\/[^/]+\/"#).unwrap(), "/home/*****/"),
         (regex::Regex::new(r#"\/Users\/[^/]+\/"#).unwrap(), "/Users/*****/"),
         (regex::Regex::new(r#"\\Users\\[^\\]+\\"#).unwrap(), "\\Users\\*****\\"),
@@ -39,40 +37,50 @@ pub fn replace(string: &str) -> Cow<'_, str> {
     replaced
 }
 
-pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sender: FrontendHandle) {
+pub fn start_game_output(
+    stdout: ChildStdout,
+    stderr: Option<ChildStderr>,
+    sender: FrontendHandle,
+    buffer: Arc<std::sync::Mutex<Vec<(i64, GameOutputLogLevel, Arc<[Arc<str>]>)>>>,
+) -> (usize) {
     let id = GAME_OUTPUT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let keep_alive = KeepAlive::new();
-    let keep_alive_handle = keep_alive.create_handle();
-    sender.send(MessageToFrontend::CreateGameOutputWindow { id, keep_alive });
+    let keepalive = KeepAlive::new();
+    let keepalive_handle = keepalive.create_handle();
+
+    sender.send(MessageToFrontend::CreateGameOutputWindow { id, keep_alive: keepalive });
 
     if let Some(stderr) = stderr {
         let sender = sender.clone();
-        let keep_alive_handle = keep_alive_handle.clone();
+        let keepalive_handle = keepalive_handle.clone();
+        let buffer = buffer.clone();
+
         std::thread::spawn(move || {
-            let mut raw_text = String::new();
+            let mut rawtext = String::new();
             let mut reader = BufReader::new(stderr);
 
-            while keep_alive_handle.is_alive() {
-                match reader.read_line(&mut raw_text) {
-                    Err(e) => panic!("Error while reading stderr: {:?}", e),
-                    Ok(0) => {
-                        break; // EOF
-                    },
+            while keepalive_handle.is_alive() {
+                match reader.read_line(&mut rawtext) {
+                    Err(e) => panic!("Error while reading stderr: {e:?}"),
+                    Ok(0) => break,
                     Ok(_) => {
-                        let replaced = replace(&*raw_text);
+                        let replaced = replace(&rawtext);
+                        let time = Utc::now().timestamp_millis();
+                        let level = GameOutputLogLevel::Error;
+                        let text = Arc::new([replaced.trim_end().into()]);
 
-                        sender.send(MessageToFrontend::AddGameOutput {
-                            id,
-                            time: Utc::now().timestamp_millis(),
-                            level: GameOutputLogLevel::Error,
-                            text: Arc::new([replaced.trim_end().into()]),
-                        });
-                        raw_text.clear();
-                    },
+                        buffer.lock().unwrap_or_else(|e| e.into_inner()).push((time, level, text.clone()));
+
+                        
+                        sender.send(MessageToFrontend::AddGameOutput { id, time, level, text });
+
+                        rawtext.clear();
+                    }
                 }
             }
         });
     }
+
+    let buffer_clone = buffer.clone();
 
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -80,7 +88,8 @@ pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sende
             stack: Vec::new(),
             id,
             sender: sender.clone(),
-            empty_message: "<empty>".into()
+            empty_message: "empty".into(),
+            buffer: buffer_clone,
         };
         let mut log_input = LogInput {
             buffer: Vec::new(),
@@ -99,32 +108,30 @@ pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sende
                         Ok(str) => String::from(*str),
                         Err(panic_error) => match panic_error.downcast::<String>() {
                             Ok(string) => *string,
-                            Err(_) => "unable to convert panic message to &str".to_string(),
+                            Err(_) => "unable to convert panic message to str".to_string(),
                         },
                     };
-
-                    sender.send(MessageToFrontend::AddGameOutput {
-                        id,
-                        time: Utc::now().timestamp_millis(),
-                        level: GameOutputLogLevel::Fatal,
-                        text: Arc::new([format!("(Pandora) There was an error while reading the log: {panic_error_str}").into()]),
-                    });
+                    let time = Utc::now().timestamp_millis();
+                    let level = GameOutputLogLevel::Fatal;
+                    let text = Arc::new([format!("[Pandora] There was an error while reading the log: {panic_error_str}").into()]);
+                    sender.send(MessageToFrontend::AddGameOutput { id, time, level, text });
                     return;
-                },
+                }
             }
         };
+
         #[cfg(not(debug_assertions))]
         let result = log_reader.handle_output(&mut log_input);
 
         if let Err(error) = result {
-            sender.send(MessageToFrontend::AddGameOutput {
-                id,
-                time: Utc::now().timestamp_millis(),
-                level: GameOutputLogLevel::Fatal,
-                text: Arc::new([format!("(Pandora) There was an error while reading the log: {error}").into()]),
-            });
+            let time = Utc::now().timestamp_millis();
+            let level = GameOutputLogLevel::Fatal;
+            let text = Arc::new([format!("[Pandora] There was an error while reading the log: {error}").into()]);
+            sender.send(MessageToFrontend::AddGameOutput { id, time, level, text });
         }
     });
+
+    id
 }
 
 #[derive(Error, Debug)]
@@ -148,6 +155,7 @@ struct LogReader {
     id: usize,
     sender: FrontendHandle,
     empty_message: Arc<str>,
+    buffer: Arc<std::sync::Mutex<Vec<(i64, GameOutputLogLevel, Arc<[Arc<str>]>)>>>,
 }
 
 struct LogInput {
@@ -195,7 +203,6 @@ impl LogReader {
                 return Ok(());
             }
 
-            // If we are inside XML, only try to read XML
             if !self.stack.is_empty() {
                 let Some(index) = memchr::memchr(b'<', available) else {
                     let read = available.len();
@@ -209,7 +216,6 @@ impl LogReader {
                 continue;
             }
 
-            // Try to read either XML or a raw line
             let Some(index) = memchr::memchr2(b'\n', b'<', available) else {
                 let buffer_contains_non_whitespace = !available.trim_ascii().is_empty();
 
@@ -228,7 +234,6 @@ impl LogReader {
                 self.finish_text(&available[..index], &mut input.buffer)?;
                 input.reader.consume(index+1);
             } else if !available[..index].trim_ascii().is_empty() {
-                // Line contains non-whitespace before <, treat as a literal line instead of markup
                 if let Some(new_index) = memchr::memchr(b'\n', &available[index..]) {
                     self.finish_text(&available[..index+new_index], &mut input.buffer)?;
                     input.reader.consume(index+new_index+1);
@@ -282,8 +287,6 @@ impl LogReader {
 
         match available[0] {
             b'[' => {
-                // <![CDATA[..]]>
-
                 loop {
                     let available = input.reader.fill_buf()?;
                     if available.is_empty() {
@@ -321,9 +324,6 @@ impl LogReader {
                 }
             },
             b'-' => {
-                // <!-- --> (Comment)
-
-                // Check for start sequence
                 if available.len() >= 2 {
                     if available[1] != b'-' {
                         return Err(HandleOutputError::InvalidComment);
@@ -344,7 +344,7 @@ impl LogReader {
                     input.reader.consume(1);
                 }
 
-                let mut partial_end_sequence = 0; // 1 = "-", 2 = "--"
+                let mut partial_end_sequence = 0;
 
                 loop {
                     let available = input.reader.fill_buf()?;
@@ -354,7 +354,7 @@ impl LogReader {
 
                     let Some(index) = memchr::memchr(b'>', available) else {
                         if available.len() == 1 && available[0] == b'-' && partial_end_sequence == 1 {
-                            partial_end_sequence = 2; // Case when the buffer size is exactly 1 (we need 3 reads)
+                            partial_end_sequence = 2;
                         } else if available.len() >= 2 && &available[available.len()-2..] == b"--" {
                             partial_end_sequence = 2;
                         } else if available[available.len()-1] == b'-' {
@@ -386,7 +386,6 @@ impl LogReader {
                 }
             },
             b'D' | b'd' => {
-                // DOCTYPE
                 Self::skip_balanced_angle_brackets(1, input)?;
             },
             _ => {
@@ -416,7 +415,6 @@ impl LogReader {
                 input.reader.consume(read);
                 continue;
             };
-
 
             let success = if index == 0 && ended_with_question_mark {
                 true
@@ -513,7 +511,6 @@ impl LogReader {
                     }
 
                     if terminator == b'>' && name[name.len()-1] == b'/' {
-                        // Skip auto-closing tags
                         input.buffer.clear();
                         input.reader.consume(end+1);
                         return Ok(());
@@ -594,7 +591,7 @@ impl LogReader {
                     };
 
                     input.buffer.clear();
-                    input.reader.consume(end+1); // +1 to skip '=' as well
+                    input.reader.consume(end+1);
 
                     state = ElementParseState::ReadingValue(key);
                 },
@@ -636,7 +633,7 @@ impl LogReader {
                     self.apply_attribute_key_value(key, value);
 
                     input.buffer.clear();
-                    input.reader.consume(end+1); // +1 to skip '=' as well
+                    input.reader.consume(end+1);
 
                     self.skip_whitespace(input)?;
                     state = ElementParseState::ReadingKey;
@@ -780,27 +777,24 @@ impl LogReader {
         let Some(cdata) = cdata.strip_prefix(b"[CDATA[") else {
             return Err(HandleOutputError::InvalidCdata);
         };
-
         let str = str::from_utf8(cdata)?;
 
         match self.stack.last_mut() {
-            None => {
-                self.send_raw_text(str)?;
-            },
+            None => self.send_raw_text(str)?,
             Some(LogOutputState::Message { content }) => {
                 *content = Some(str.into());
-            },
+            }
             Some(LogOutputState::Throwable { content }) => {
                 *content = Some(str.into());
-            },
+            }
             last => {
-                if cfg!(debug_assertions) {
-                    panic!("Unexpected cdata on {:?}", last);
-                }
+                #[cfg(debug_assertions)]
+                panic!("Unexpected cdata on {last:?}");
             }
         }
         Ok(())
     }
+
 
     fn apply_new_element(&mut self, name: &[u8]) -> ReadAttributesForElement {
         match self.stack.last_mut() {
@@ -843,24 +837,22 @@ impl LogReader {
 
     fn apply_end_element(&mut self, name: &[u8]) -> Result<(), HandleOutputError> {
         match self.stack.last_mut() {
-            Some(LogOutputState::Event { .. }) => {
-                if name != b"log4j:Event" {
-                    return Err(HandleOutputError::UnmatchedElement(str::from_utf8(name)?.into()));
-                }
-
+            Some(LogOutputState::Event { .. }) if name == b"log4j:Event" => {
                 let Some(LogOutputState::Event { timestamp, level, mut text, mut throwable }) = self.stack.pop() else {
-                    unreachable!()
+                    unreachable!();
                 };
+
                 let mut lines = Vec::new();
 
                 if let Some(text) = text.as_mut() {
-                    let replaced = replace(&**text);
+                    let replaced = replace(text);
                     if let Cow::Owned(replaced) = replaced {
                         *text = replaced.into();
                     }
                 }
+
                 if let Some(throwable) = throwable.as_mut() {
-                    let replaced = replace(&**throwable);
+                    let replaced = replace(throwable);
                     if let Cow::Owned(replaced) = replaced {
                         *throwable = replaced.into();
                     }
@@ -868,25 +860,31 @@ impl LogReader {
 
                 if let Some(text) = &text {
                     let mut split = text.split('\n');
-                    if let Some(first) = split.next() && let Some(second) = split.next() {
-                        lines.push(Arc::from(first.trim_end()));
-                        lines.push(Arc::from(second.trim_end()));
-                        for next in split {
-                            lines.push(Arc::from(next.trim_end()));
+                    if let Some(first) = split.next() {
+                        if let Some(second) = split.next() {
+                            lines.push(Arc::from(first.trim_end()));
+                            lines.push(Arc::from(second.trim_end()));
+                            for next in split {
+                                lines.push(Arc::from(next.trim_end()));
+                            }
                         }
                     }
                 }
+
                 if let Some(throwable) = &throwable {
                     let mut split = throwable.split('\n');
-                    if let Some(first) = split.next() && let Some(second) = split.next() {
-                        if let Some(text) = text.take() && lines.is_empty() {
-                            lines.push(text);
-                        }
-
-                        lines.push(Arc::from(first.trim_end()));
-                        lines.push(Arc::from(second.trim_end()));
-                        for next in split {
-                            lines.push(Arc::from(next.trim_end()));
+                    if let Some(first) = split.next() {
+                        if let Some(second) = split.next() {
+                            if let Some(text) = text.take() {
+                                if lines.is_empty() {
+                                    lines.push(text);
+                                }
+                            }
+                            lines.push(Arc::from(first.trim_end()));
+                            lines.push(Arc::from(second.trim_end()));
+                            for next in split {
+                                lines.push(Arc::from(next.trim_end()));
+                            }
                         }
                     }
                 }
@@ -904,49 +902,46 @@ impl LogReader {
                 } else {
                     Arc::new([self.empty_message.clone()])
                 };
+
+                let time = timestamp.unwrap_or(Utc::now().timestamp_millis());
+                let level = level.unwrap_or(GameOutputLogLevel::Other);
+
+                self.buffer.lock().unwrap_or_else(|e| e.into_inner()).push((time, level, final_lines.clone()));
+                
                 self.sender.send(MessageToFrontend::AddGameOutput {
-                    id: self.id,
-                    time: timestamp.unwrap_or(Utc::now().timestamp_millis()),
-                    level: level.unwrap_or(GameOutputLogLevel::Other),
-                    text: final_lines,
-                });
-            },
-            Some(LogOutputState::Message { .. }) => {
-                if name != b"log4j:Message" {
-                    return Err(HandleOutputError::UnmatchedElement(str::from_utf8(name)?.into()));
+                        id: self.id,
+                        time,
+                        level,
+                        text: final_lines,
+                    });
                 }
-
+            Some(LogOutputState::Message { .. }) if name == b"log4j:Message" => {
                 let Some(LogOutputState::Message { content }) = self.stack.pop() else {
-                    unreachable!()
+                    unreachable!();
                 };
-
                 if let Some(LogOutputState::Event { text, .. }) = self.stack.last_mut() {
                     *text = content;
                 } else {
                     panic!("log4j:Message should only be inside log4j:Event");
                 }
-            },
-            Some(LogOutputState::Throwable { .. }) => {
-                if name != b"log4j:Throwable" {
-                    return Err(HandleOutputError::UnmatchedElement(str::from_utf8(name)?.into()));
-                }
-
+            }
+            Some(LogOutputState::Throwable { .. }) if name == b"log4j:Throwable" => {
                 let Some(LogOutputState::Throwable { content }) = self.stack.pop() else {
-                    unreachable!()
+                    unreachable!();
                 };
-
                 if let Some(LogOutputState::Event { throwable, .. }) = self.stack.last_mut() {
                     *throwable = content;
                 } else {
                     panic!("log4j:Throwable should only be inside log4j:Event");
                 }
-            },
+            }
             Some(LogOutputState::Unknown) => {
-                _ = self.stack.pop();
+                self.stack.pop();
             }
             None => {
                 return Err(HandleOutputError::UnmatchedElement(str::from_utf8(name)?.into()));
-            },
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -956,7 +951,6 @@ impl LogReader {
             Some(LogOutputState::Event { timestamp, level, .. }) => {
                 match key {
                     NamedAttributeKey::Logger => {
-                        // Ignore
                     },
                     NamedAttributeKey::Timestamp => {
                         let Ok(value) = str::from_utf8(&value) else {
@@ -978,7 +972,6 @@ impl LogReader {
                         });
                     },
                     NamedAttributeKey::Thread => {
-                        // Ignore
                     }
                     _ => {
                         if cfg!(debug_assertions) {
@@ -1053,15 +1046,21 @@ impl LogReader {
             return Ok(());
         }
 
+        let time = Utc::now().timestamp_millis();
+        let level = GameOutputLogLevel::Info;
+        let text = Arc::new([line.into()]);
+        
         self.sender.send(MessageToFrontend::AddGameOutput {
-            id: self.id,
-            time: Utc::now().timestamp_millis(),
-            level: GameOutputLogLevel::Info,
-            text: Arc::new([line.into()]),
-        });
+                id: self.id,
+                time,
+                level,
+                text,
+            });
+        
 
         Ok(())
     }
+
 }
 
 fn is_xml_whitespace(byte: u8) -> bool {

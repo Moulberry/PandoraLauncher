@@ -2,6 +2,7 @@
 name = "pandora_launcher"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 frontend.workspace = true
@@ -12,3 +13,6 @@ bridge.workspace = true
 backtrace.workspace = true
 parking_lot.workspace = true
 directories.workspace = true
+
+[build-dependencies]
+winres = "0.1.12"

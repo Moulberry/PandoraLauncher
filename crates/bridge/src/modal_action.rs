@@ -148,6 +148,7 @@ impl std::fmt::Debug for ProgressTrackerInner {
 }
 
 impl ProgressTracker {
+
     pub fn new(title: Arc<str>, sender: FrontendHandle) -> Self {
         Self {
             inner: Arc::new(ProgressTrackerInner {

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Categories=Game;Java
+Exec=PandoraLauncher-Linux
+Icon=com.moulberry.PandoraLauncher
+Name=Pandora Launcher
+Terminal=false
+Type=Application
+X-Desktop-File-Install-Version=0.28
+Keywords=Games;Minecraft;ModManager;Launcher;RustLang
+X-Flatpak=com.moulberry.PandoraLauncher

@@ -76,7 +76,7 @@ pub enum ModrinthSideRequirement {
     Unknown,
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Default, Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthProjectType {
     Mod,
@@ -84,6 +84,7 @@ pub enum ModrinthProjectType {
     Resourcepack,
     Shader,
     #[serde(other)]
+    #[default]
     Other,
 }
 

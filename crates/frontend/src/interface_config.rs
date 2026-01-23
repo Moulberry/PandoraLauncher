@@ -2,6 +2,7 @@ use std::{io::Write, path::Path, sync::Arc, time::Duration};
 
 use gpui::{App, SharedString, Task};
 use rand::RngCore;
+use schema::modrinth::ModrinthProjectType;
 use serde::{Deserialize, Serialize};
 
 use crate::ui::SerializedPageType;
@@ -20,7 +21,19 @@ pub struct InterfaceConfig {
     pub active_theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_page: SerializedPageType,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub page_path: Vec<SerializedPageType>,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub quick_delete_mods: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub quick_delete_instance: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub modrinth_install_normally: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub modrinth_page_project_type: ModrinthProjectType,
 }
+
+
 
 impl InterfaceConfig {
     pub fn init(cx: &mut App, path: Arc<Path>) {

@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use ustr::Ustr;
 
-pub const FABRIC_LOADER_MANIFEST_URL: &str = "https://meta.fabricmc.net/v2/versions/loader?limit=10";
+pub const FABRIC_LOADER_MANIFEST_URL: &str = "https://meta.fabricmc.net/v2/versions/loader";
 
 #[derive(Deserialize, Debug)]
 #[cfg_attr(debug_assertions, serde(deny_unknown_fields))]

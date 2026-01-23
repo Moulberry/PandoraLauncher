@@ -133,7 +133,8 @@ impl TableDelegate for InstanceList {
                         .child(Button::new("view").w(relative(0.5)).small().info().label("View").on_click({
                             let id = item.id;
                             move |_, window, cx| {
-                                root::switch_page(ui::PageType::InstancePage(id, InstanceSubpageType::Quickplay), None, window, cx);
+                                root::switch_page(ui::PageType::InstancePage(id, InstanceSubpageType::Quickplay),
+                                    &[ui::PageType::Instances], window, cx);
                             }
                         }))
                         .into_any_element()

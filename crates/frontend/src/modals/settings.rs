@@ -1,16 +1,23 @@
 use std::{path::Path, sync::Arc};
 
+use bridge::{handle::BackendHandle, message::MessageToBackend};
 use gpui::*;
-use gpui_component::{button::{Button, ButtonVariants}, select::{SearchableVec, Select, SelectEvent, SelectState}, sheet::Sheet, tab::{Tab, TabBar, TabVariant}, v_flex, ActiveTheme, IconName, ThemeRegistry};
+use gpui_component::{button::{Button, ButtonVariants}, checkbox::Checkbox, select::{SearchableVec, Select, SelectEvent, SelectState}, sheet::Sheet, spinner::Spinner, tab::{Tab, TabBar, TabVariant}, v_flex, ActiveTheme, IconName, Sizable, ThemeRegistry};
+use schema::backend_config::BackendConfig;
 
-use crate::interface_config::InterfaceConfig;
+use crate::{entity::DataEntities, interface_config::InterfaceConfig};
 
 struct Settings {
     theme_folder: Arc<Path>,
     theme_select: Entity<SelectState<SearchableVec<SharedString>>>,
+    backend_handle: BackendHandle,
+    pending_request: bool,
+    backend_config: Option<BackendConfig>,
+    get_configuration_task: Option<Task<()>>,
 }
 
-pub fn build_settings_sheet(theme_folder: Arc<Path>, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
+pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
+    let theme_folder = data.theme_folder.clone();
     let settings = cx.new(|cx| {
         let theme_select_delegate = SearchableVec::new(ThemeRegistry::global(cx).sorted_themes()
             .iter().map(|cfg| cfg.name.clone()).collect::<Vec<_>>());
@@ -35,10 +42,18 @@ pub fn build_settings_sheet(theme_folder: Arc<Path>, window: &mut Window, cx: &m
             gpui_component::Theme::global_mut(cx).apply_config(&theme);
         }).detach();
 
-        Settings {
+        let mut settings = Settings {
             theme_folder,
-            theme_select
-        }
+            theme_select,
+            backend_handle: data.backend_handle.clone(),
+            pending_request: false,
+            backend_config: None,
+            get_configuration_task: None,
+        };
+
+        settings.update_backend_configuration(cx);
+
+        settings
     });
 
     move |sheet, window, cx| {
@@ -65,9 +80,39 @@ pub fn build_settings_sheet(theme_folder: Arc<Path>, window: &mut Window, cx: &m
     }
 }
 
+impl Settings {
+    pub fn update_backend_configuration(&mut self, cx: &mut Context<Self>) {
+        if self.get_configuration_task.is_some() {
+            self.pending_request = true;
+            return;
+        }
+
+        let (send, recv) = tokio::sync::oneshot::channel();
+        self.get_configuration_task = Some(cx.spawn(async move |page, cx| {
+            let result: BackendConfig = recv.await.unwrap_or_default();
+            let _ = page.update(cx, move |settings, cx| {
+                settings.backend_config = Some(result);
+                settings.get_configuration_task = None;
+                cx.notify();
+
+                if settings.pending_request {
+                    settings.pending_request = false;
+                    settings.update_backend_configuration(cx);
+                }
+            });
+        }));
+
+        self.backend_handle.send(MessageToBackend::GetBackendConfiguration {
+            channel: send,
+        });
+    }
+}
+
 impl Render for Settings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
+        let interface_config = InterfaceConfig::get(cx);
+
+        let mut div = v_flex()
             .px_4()
             .py_3()
             .gap_3()
@@ -86,5 +131,43 @@ impl Render for Settings {
                     cx.open_url("https://github.com/longbridge/gpui-component/tree/main/themes");
                 }
             }))
+            .child(crate::labelled("Deletion",
+                v_flex().gap_2()
+                    .child(Checkbox::new("confirm-delete-mods")
+                        .label("Shift+Click to skip mod delete confirmation")
+                        .checked(interface_config.quick_delete_mods)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).quick_delete_mods = *value;
+                        }))
+                    .child(Checkbox::new("confirm-delete-instance")
+                        .label("Shift+Click to skip instance delete confirmation")
+                        .checked(interface_config.quick_delete_instance).on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).quick_delete_instance = *value;
+                        }))
+                    )
+            );
+
+        if let Some(backend_config) = &self.backend_config {
+            div = div
+                .child(crate::labelled(
+                    "Game Output",
+                    Checkbox::new("open-game-output")
+                        .label("Open game output when launching")
+                        .checked(backend_config.open_game_output_when_launching)
+                        .on_click(cx.listener({
+                            let backend_handle = self.backend_handle.clone();
+                            move |settings, value, _, cx| {
+                                backend_handle.send(MessageToBackend::SetOpenGameOutputAfterLaunching {
+                                    value: *value
+                                });
+                                settings.update_backend_configuration(cx);
+                            }
+                        }))
+                ))
+        } else {
+            div = div.child(Spinner::new().large());
+        }
+
+        div
     }
 }

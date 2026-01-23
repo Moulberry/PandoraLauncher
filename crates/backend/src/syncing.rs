@@ -1,9 +1,10 @@
 use std::{path::{Path, PathBuf}, sync::Arc, time::SystemTime};
 
-use bridge::message::{SyncState, SyncTarget};
+use bridge::message::SyncState;
 use enum_map::EnumMap;
 use enumset::EnumSet;
 use rustc_hash::FxHashMap;
+use schema::backend_config::SyncTarget;
 use strum::IntoEnumIterator;
 
 use crate::directories::LauncherDirectories;
@@ -36,9 +37,10 @@ pub fn apply_to_instance(sync_targets: EnumSet<SyncTarget>, directories: &Launch
             match target {
                 SyncTarget::Options => {
                     let fallback = &directories.synced_dir.join("fallback_options.txt");
-                    let combined = create_combined_options_txt(fallback, directories);
+                    let target = dot_minecraft.join("options.txt");
+                    let combined = create_combined_options_txt(fallback, &target, directories);
                     _ = crate::write_safe(&fallback, combined.as_bytes());
-                    _ = crate::write_safe(&dot_minecraft.join("options.txt"), combined.as_bytes());
+                    _ = crate::write_safe(&target, combined.as_bytes());
                 },
                 SyncTarget::Servers => {
                     if let Some(latest) = find_latest("servers.dat", directories) {
@@ -107,7 +109,7 @@ fn find_latest(filename: &'static str, directories: &LauncherDirectories) -> Opt
     latest_path
 }
 
-fn create_combined_options_txt(fallback: &Path, directories: &LauncherDirectories) -> String {
+fn create_combined_options_txt(fallback: &Path, current: &Path, directories: &LauncherDirectories) -> String {
     let mut values = read_options_txt(fallback);
 
     let Ok(read_dir) = std::fs::read_dir(&directories.instances_dir) else {
@@ -142,7 +144,12 @@ fn create_combined_options_txt(fallback: &Path, directories: &LauncherDirectorie
     paths.sort_by_key(|(time, _)| *time);
 
     for (_, path) in paths {
-        let new_values = read_options_txt(&path);
+        let mut new_values = read_options_txt(&path);
+
+        if path != current {
+            new_values.remove("resourcePacks");
+            new_values.remove("incompatibleResourcePacks");
+        }
 
         for (key, value) in new_values {
             values.insert(key, value);

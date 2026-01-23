@@ -13,3 +13,5 @@ ustr.workspace = true
 thiserror.workspace = true
 enumset.workspace = true
 relative-path.workspace = true
+enum-map.workspace = true
+strum.workspace = true

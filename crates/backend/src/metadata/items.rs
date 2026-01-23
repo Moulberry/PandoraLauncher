@@ -4,7 +4,7 @@ use std::{
 
 use reqwest::RequestBuilder;
 use schema::{
-    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::{FabricLoaderManifest, FABRIC_LOADER_MANIFEST_URL}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::{JavaRuntimes, JAVA_RUNTIMES_URL}, maven::MavenMetadataXml, modrinth::{ModrinthLoader, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult, MODRINTH_SEARCH_URL}, version::MinecraftVersion, version_manifest::{MinecraftVersionLink, MinecraftVersionManifest, MOJANG_VERSION_MANIFEST_URL}
+    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::{FABRIC_LOADER_MANIFEST_URL, FabricLoaderManifest}, forge::{ForgeMavenManifest, NeoforgeMavenManifest, VersionFragment}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::{JAVA_RUNTIMES_URL, JavaRuntimes}, maven::MavenMetadataXml, modrinth::{MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::{MOJANG_VERSION_MANIFEST_URL, MinecraftVersionLink, MinecraftVersionManifest}
 };
 use serde::Serialize;
 use ustr::Ustr;
@@ -391,7 +391,7 @@ impl MetadataItem for ModrinthV3VersionUpdateMetadataItem {
 pub struct NeoforgeInstallerMavenMetadataItem;
 
 impl MetadataItem for NeoforgeInstallerMavenMetadataItem {
-    type T = MavenMetadataXml;
+    type T = NeoforgeMavenManifest;
 
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
         client.get("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
@@ -410,14 +410,22 @@ impl MetadataItem for NeoforgeInstallerMavenMetadataItem {
     }
 
     fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
-        Ok(serde_xml_rs::from_reader(bytes)?)
+        let maven = serde_xml_rs::from_reader::<MavenMetadataXml, _>(bytes)?;
+
+        let mut versions: Vec<Ustr> = maven.versioning.versions.version.iter().cloned().collect();
+
+        versions.sort_by_cached_key(|version| {
+            VersionFragment::string_to_parts(version.as_str())
+        });
+
+        Ok(NeoforgeMavenManifest(versions.into_iter().rev().collect()))
     }
 }
 
 pub struct ForgeInstallerMavenMetadataItem;
 
 impl MetadataItem for ForgeInstallerMavenMetadataItem {
-    type T = MavenMetadataXml;
+    type T = ForgeMavenManifest;
 
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
         client.get("https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml")
@@ -436,6 +444,24 @@ impl MetadataItem for ForgeInstallerMavenMetadataItem {
     }
 
     fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
-        Ok(serde_xml_rs::from_reader(bytes)?)
+        let maven = serde_xml_rs::from_reader::<MavenMetadataXml, _>(bytes)?;
+
+        let mut versions: Vec<Ustr> = maven.versioning.versions.version.iter().cloned().collect();
+
+        versions.sort_by_cached_key(|version| {
+            if let Some((minecraft, forge)) = version.split_once('-') {
+                let mut minecraft_parts = VersionFragment::string_to_parts(minecraft);
+                let forge_parts = VersionFragment::string_to_parts(forge);
+                while minecraft_parts.len() < 3 {
+                    minecraft_parts.push(VersionFragment::Number(0));
+                }
+                minecraft_parts.extend(forge_parts.into_iter());
+                minecraft_parts
+            } else {
+                VersionFragment::string_to_parts(version.as_str())
+            }
+        });
+
+        Ok(ForgeMavenManifest(versions.into_iter().rev().collect()))
     }
 }

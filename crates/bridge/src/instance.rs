@@ -1,6 +1,6 @@
 use std::{collections::HashSet, path::Path, sync::Arc};
 
-use schema::modification::ModrinthModpackFileDownload;
+use schema::{content::ContentSource, modification::ModrinthModpackFileDownload};
 
 use crate::safe_path::SafePath;
 
@@ -20,12 +20,12 @@ impl InstanceID {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct InstanceModID {
+pub struct InstanceContentID {
     pub index: usize,
     pub generation: usize,
 }
 
-impl InstanceModID {
+impl InstanceContentID {
     pub fn dangling() -> Self {
         Self {
             index: usize::MAX,
@@ -58,40 +58,42 @@ pub struct InstanceServerSummary {
 }
 
 #[derive(Debug, Clone)]
-pub struct InstanceModSummary {
-    pub mod_summary: Arc<ModSummary>,
-    pub id: InstanceModID,
+pub struct InstanceContentSummary {
+    pub content_summary: Arc<ContentSummary>,
+    pub id: InstanceContentID,
     pub filename: Arc<str>,
-    pub lowercase_filename: Arc<str>,
+    pub lowercase_search_keys: Arc<[Arc<str>]>,
     pub filename_hash: u64,
     pub path: Arc<Path>,
     pub enabled: bool,
+    pub content_source: ContentSource,
     pub disabled_children: HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ModSummary {
-    pub id: Arc<str>,
+pub struct ContentSummary {
+    pub id: Option<Arc<str>>,
     pub hash: [u8; 20],
-    pub name: Arc<str>,
-    pub lowercase_search_key: Arc<str>,
+    pub name: Option<Arc<str>>,
     pub version_str: Arc<str>,
     pub authors: Arc<str>,
     pub png_icon: Option<Arc<[u8]>>,
     pub update_status: Arc<AtomicContentUpdateStatus>,
-    pub extra: LoaderSpecificModSummary,
+    pub extra: ContentType,
 }
 
 #[derive(Debug, Clone)]
-pub enum LoaderSpecificModSummary {
+pub enum ContentType {
     Fabric,
     Forge,
+    NeoForge,
     JavaModule,
     ModrinthModpack {
         downloads: Arc<[ModrinthModpackFileDownload]>,
-        summaries: Arc<[Option<Arc<ModSummary>>]>,
+        summaries: Arc<[Option<Arc<ContentSummary>>]>,
         overrides: Arc<[(SafePath, Arc<[u8]>)]>,
     },
+    ResourcePack,
 }
 
 

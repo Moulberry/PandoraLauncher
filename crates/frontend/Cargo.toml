@@ -35,6 +35,6 @@ serde_json.workspace = true
 rand.workspace = true
 relative-path.workspace = true
 parking_lot.workspace = true
+open.workspace = true
 
 rust-i18n = "3.1.5"
-open = "5.2.0"

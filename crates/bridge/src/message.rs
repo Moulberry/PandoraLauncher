@@ -1,13 +1,13 @@
 use std::{ffi::OsString, path::Path, sync::Arc};
 
 use enumset::{EnumSet, EnumSetType};
-use schema::{instance::{InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration}, loader::Loader};
+use schema::{backend_config::{BackendConfig, SyncTarget}, instance::{InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration}, loader::Loader};
 use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
     account::Account, game_output::GameOutputLogLevel, install::ContentInstall, instance::{
-        InstanceID, InstanceModID, InstanceModSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary,
+        InstanceID, InstanceContentID, InstanceContentSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary,
     }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction
 };
 
@@ -28,6 +28,18 @@ pub enum MessageToBackend {
     RenameInstance {
         id: InstanceID,
         name: Ustr,
+    },
+    SetInstanceMinecraftVersion {
+        id: InstanceID,
+        version: Ustr
+    },
+    SetInstanceLoader {
+        id: InstanceID,
+        loader: Loader
+    },
+    SetInstancePreferredLoaderVersion {
+        id: InstanceID,
+        loader_version: Option<&'static str>
     },
     SetInstanceMemory {
         id: InstanceID,
@@ -58,30 +70,36 @@ pub enum MessageToBackend {
     RequestLoadMods {
         id: InstanceID,
     },
-    SetModEnabled {
+    RequestLoadResourcePacks {
         id: InstanceID,
-        mod_ids: Vec<InstanceModID>,
+    },
+    SetContentEnabled {
+        id: InstanceID,
+        content_ids: Vec<InstanceContentID>,
         enabled: bool,
     },
-    SetModChildEnabled {
+    SetContentChildEnabled {
         id: InstanceID,
-        mod_id: InstanceModID,
+        content_id: InstanceContentID,
         path: Arc<str>,
         enabled: bool,
     },
-    DeleteMod {
+    DeleteContent {
         id: InstanceID,
-        mod_ids: Vec<InstanceModID>,
+        content_ids: Vec<InstanceContentID>,
     },
     InstallContent {
         content: ContentInstall,
         modal_action: ModalAction,
     },
     DownloadAllMetadata,
-    UpdateCheck { instance: InstanceID, modal_action: ModalAction },
-    UpdateMod {
+    UpdateCheck {
         instance: InstanceID,
-        mod_id: InstanceModID,
+        modal_action: ModalAction
+    },
+    UpdateContent {
+        instance: InstanceID,
+        content_id: InstanceContentID,
         modal_action: ModalAction,
     },
     Sleep5s,
@@ -95,6 +113,9 @@ pub enum MessageToBackend {
     },
     GetSyncState {
         channel: tokio::sync::oneshot::Sender<SyncState>,
+    },
+    GetBackendConfiguration {
+        channel: tokio::sync::oneshot::Sender<BackendConfig>,
     },
     SetSyncing {
         target: SyncTarget,
@@ -110,9 +131,19 @@ pub enum MessageToBackend {
     AddNewAccount {
         modal_action: ModalAction,
     },
+    AddOfflineAccount {
+        name: Arc<str>,
+        uuid: Uuid
+    },
     SelectAccount {
         uuid: Uuid,
-    }
+    },
+    DeleteAccount {
+        uuid: Uuid,
+    },
+    SetOpenGameOutputAfterLaunching {
+        value: bool,
+    },
 }
 
 #[derive(Debug)]
@@ -125,6 +156,7 @@ pub enum MessageToFrontend {
         worlds_state: Arc<AtomicBridgeDataLoadState>,
         servers_state: Arc<AtomicBridgeDataLoadState>,
         mods_state: Arc<AtomicBridgeDataLoadState>,
+        resource_packs_state: Arc<AtomicBridgeDataLoadState>,
     },
     InstanceRemoved {
         id: InstanceID,
@@ -146,7 +178,11 @@ pub enum MessageToFrontend {
     },
     InstanceModsUpdated {
         id: InstanceID,
-        mods: Arc<[InstanceModSummary]>,
+        mods: Arc<[InstanceContentSummary]>,
+    },
+    InstanceResourcePacksUpdated {
+        id: InstanceID,
+        resource_packs: Arc<[InstanceContentSummary]>,
     },
     CreateGameOutputWindow {
         id: usize,
@@ -191,45 +227,6 @@ pub struct SyncState {
     pub total: usize,
     pub synced: enum_map::EnumMap<SyncTarget, usize>,
     pub cannot_sync: enum_map::EnumMap<SyncTarget, usize>,
-}
-
-#[derive(Debug, enum_map::Enum, EnumSetType, strum::EnumIter)]
-pub enum SyncTarget {
-    Options = 0,
-    Servers = 1,
-    Commands = 2,
-    Hotbars = 13,
-    Saves = 3,
-    Config = 4,
-    Screenshots = 5,
-    Resourcepacks = 6,
-    Shaderpacks = 7,
-    Flashback = 8,
-    DistantHorizons = 9,
-    Voxy = 10,
-    XaerosMinimap = 11,
-    Bobby = 12,
-}
-
-impl SyncTarget {
-    pub fn get_folder(self) -> Option<&'static str> {
-        match self {
-            SyncTarget::Options => None,
-            SyncTarget::Servers => None,
-            SyncTarget::Commands => None,
-            SyncTarget::Hotbars => None,
-            SyncTarget::Saves => Some("saves"),
-            SyncTarget::Config => Some("config"),
-            SyncTarget::Screenshots => Some("screenshots"),
-            SyncTarget::Resourcepacks => Some("resourcepacks"),
-            SyncTarget::Shaderpacks => Some("shaderpacks"),
-            SyncTarget::Flashback => Some("flashback"),
-            SyncTarget::DistantHorizons => Some("Distant_Horizons_server_data"),
-            SyncTarget::Voxy => Some(".voxy"),
-            SyncTarget::XaerosMinimap => Some("xaero"),
-            SyncTarget::Bobby => Some(".bobby"),
-        }
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

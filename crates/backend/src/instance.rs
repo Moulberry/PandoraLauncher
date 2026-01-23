@@ -8,11 +8,13 @@ use anyhow::Context;
 use base64::Engine;
 use bridge::{
     instance::{
-        InstanceID, InstanceModID, InstanceModSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary,
+        InstanceID, InstanceContentID, InstanceContentSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary,
     }, message::{AtomicBridgeDataLoadState, BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle}
 };
 use parking_lot::RwLock;
+use relative_path::RelativePath;
 use schema::instance::InstanceConfiguration;
+use strum::IntoEnumIterator;
 use thiserror::Error;
 
 use ustr::Ustr;
@@ -26,7 +28,6 @@ pub struct Instance {
     pub dot_minecraft_path: Arc<Path>,
     pub server_dat_path: Arc<Path>,
     pub saves_path: Arc<Path>,
-    pub mods_path: Arc<Path>,
     pub name: Ustr,
     pub configuration: Persistent<InstanceConfiguration>,
 
@@ -35,7 +36,6 @@ pub struct Instance {
     pub watching_dot_minecraft: bool,
     pub watching_server_dat: bool,
     pub watching_saves_dir: bool,
-    pub watching_mods_dir: bool,
 
     pub worlds_state: Arc<AtomicBridgeDataLoadState>,
     dirty_worlds: HashSet<Arc<Path>>,
@@ -48,12 +48,88 @@ pub struct Instance {
     pending_servers_load: Option<KeepAliveNotifySignalHandle>,
     servers: Option<Arc<[InstanceServerSummary]>>,
 
-    pub mods_state: Arc<AtomicBridgeDataLoadState>,
-    dirty_mods: HashSet<Arc<Path>>,
-    all_mods_dirty: bool,
-    mods_generation: usize,
-    pending_mods_load: Option<KeepAliveNotifySignalHandle>,
-    pub mods: Option<Arc<[InstanceModSummary]>>,
+    content_generation: usize,
+
+    pub content_state: enum_map::EnumMap<ContentFolder, ContentFolderState>,
+}
+
+#[derive(Debug)]
+pub struct ContentFolderState {
+    pub path: Arc<Path>,
+    pub watching_path: bool,
+    pub load_state: Arc<AtomicBridgeDataLoadState>,
+    dirty_paths: HashSet<Arc<Path>>,
+    all_dirty: bool,
+    generation: usize,
+    pending_load: Option<KeepAliveNotifySignalHandle>,
+    summaries: Option<Arc<[InstanceContentSummary]>>,
+}
+
+#[derive(enum_map::Enum, Debug, strum::EnumIter, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ContentFolder {
+    Mods,
+    ResourcePacks,
+}
+
+impl ContentFolder {
+    pub fn path(self) -> &'static RelativePath {
+        match self {
+            ContentFolder::Mods => RelativePath::new("mods"),
+            ContentFolder::ResourcePacks => RelativePath::new("resourcepacks"),
+        }
+    }
+}
+
+impl ContentFolderState {
+    pub fn new(path: Arc<Path>) -> Self {
+        Self {
+            path,
+            watching_path: false,
+            load_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
+            dirty_paths: HashSet::new(),
+            all_dirty: true,
+            generation: 0,
+            pending_load: None,
+            summaries: None,
+        }
+    }
+
+
+    pub fn mark_dirty(&mut self, mut path: Option<Arc<Path>>) {
+        if self.all_dirty {
+            return;
+        }
+
+        if let Some(ref current_path) = path {
+            if let Some(extension) = current_path.extension() && extension == "pandorachildstate" {
+                let mut new_path = current_path.to_path_buf();
+                new_path.set_extension("");
+                if let Some(file_name) = new_path.file_name() {
+                    if file_name.as_encoded_bytes()[0] == '.' as u8 {
+                        let encoded = file_name.as_encoded_bytes().to_vec();
+                        new_path.set_file_name(unsafe {
+                            OsStr::from_encoded_bytes_unchecked(&encoded[1..])
+                        });
+                    }
+                }
+                path = Some(new_path.into());
+            }
+        }
+
+        if let Some(path) = path {
+            if !self.dirty_paths.insert(path) {
+                return;
+            }
+        } else {
+            self.all_dirty = true;
+        }
+
+        cas_update(&self.load_state, |state| match state {
+            BridgeDataLoadState::Loading => BridgeDataLoadState::LoadingDirty,
+            BridgeDataLoadState::Loaded => BridgeDataLoadState::LoadedDirty,
+            _ => state,
+        });
+    }
 }
 
 impl Id for InstanceID {
@@ -93,25 +169,29 @@ impl Instance {
     pub fn on_root_renamed(&mut self, path: &Path) {
         self.name = path.file_name().unwrap().to_string_lossy().into_owned().into();
         self.root_path = path.into();
+        self.configuration = Persistent::load_or(path.join("info_v1.json").into(), self.configuration.get().clone());
 
         let mut dot_minecraft_path = path.to_owned();
         dot_minecraft_path.push(".minecraft");
 
-        let saves_path = dot_minecraft_path.join("saves");
-        let mods_path = dot_minecraft_path.join("mods");
-        let server_dat_path = dot_minecraft_path.join("servers.dat");
+        for content_folder in ContentFolder::iter() {
+            self.content_state[content_folder].path = content_folder.path().to_path(&dot_minecraft_path).into();
+        }
 
+        self.server_dat_path = dot_minecraft_path.join("servers.dat").into();
+        self.saves_path = dot_minecraft_path.join("saves").into();
         self.dot_minecraft_path = dot_minecraft_path.into();
-        self.server_dat_path = server_dat_path.into();
-        self.saves_path = saves_path.into();
-        self.mods_path = mods_path.into();
     }
 
-    pub fn try_get_mod(&self, id: InstanceModID) -> Option<&InstanceModSummary> {
-        if id.generation != self.mods_generation {
-            return None;
+    pub fn try_get_content(&self, id: InstanceContentID) -> Option<(&InstanceContentSummary, ContentFolder)> {
+        for (folder, state) in &self.content_state {
+            if state.generation == id.generation {
+                let summaries = state.summaries.as_ref()?;
+                let content = summaries.get(id.index)?;
+                return Some((content, folder));
+            }
         }
-        self.mods.as_ref().and_then(|mods| mods.get(id.index))
+        None
     }
 
     pub async fn load_worlds(
@@ -333,11 +413,12 @@ impl Instance {
         result
     }
 
-    pub async fn load_mods(
+    pub async fn load_content(
         instances: Arc<RwLock<BackendStateInstances>>,
         id: InstanceID,
         mod_metadata_manager: &Arc<ModMetadataManager>,
-    ) -> Option<(Arc<[InstanceModSummary]>, bool)> {
+        content_folder: ContentFolder,
+    ) -> Option<(Arc<[InstanceContentSummary]>, bool)> {
         let mut await_pending: Option<KeepAliveNotifySignalHandle> = None;
 
         let (future, keep_alive) = loop {
@@ -347,41 +428,38 @@ impl Instance {
 
             let mut guard = instances.write();
             let this = guard.instances.get_mut(id)?;
+            let state = &mut this.content_state[content_folder];
 
-            if let Some(pending) = &this.pending_mods_load && !pending.is_notified() {
+            if let Some(pending) = &state.pending_load && !pending.is_notified() {
                 await_pending = Some(pending.clone());
                 continue;
             }
 
-            if cfg!(debug_assertions) && (!this.watching_dot_minecraft || !this.watching_mods_dir) {
-                panic!("Must be watching .minecraft and .minecraft/mods");
-            }
-
-            let future = if let Some(last) = &this.mods && !this.all_mods_dirty {
-                if !this.dirty_mods.is_empty() {
-                    let dirty_mods = std::mem::take(&mut this.dirty_mods);
+            let future = if let Some(last) = &state.summaries && !state.all_dirty {
+                if !state.dirty_paths.is_empty() {
+                    let dirty_paths = std::mem::take(&mut state.dirty_paths);
                     let mod_metadata_manager = mod_metadata_manager.clone();
                     let last = last.clone();
                     tokio::task::spawn_blocking(move || {
-                        Self::load_mods_dirty(dirty_mods, mod_metadata_manager, last)
+                        Self::load_content_dirty(dirty_paths, mod_metadata_manager, last)
                     })
                 } else {
                     return Some((last.clone(), false));
                 }
             } else {
-                let mods_path = this.mods_path.clone();
+                let path = state.path.clone();
                 let mod_metadata_manager = mod_metadata_manager.clone();
                 tokio::task::spawn_blocking(move || {
-                    Self::load_mods_all(&mods_path, mod_metadata_manager)
+                    Self::load_content_all(&path, mod_metadata_manager)
                 })
             };
 
             let keep_alive = KeepAliveNotifySignal::new();
-            this.pending_mods_load = Some(keep_alive.create_handle());
+            state.pending_load = Some(keep_alive.create_handle());
 
-            this.mods_state.store(BridgeDataLoadState::Loading, Ordering::Release);
-            this.all_mods_dirty = false;
-            this.dirty_mods.clear();
+            state.load_state.store(BridgeDataLoadState::Loading, Ordering::Release);
+            state.all_dirty = false;
+            state.dirty_paths.clear();
 
             break (future, keep_alive);
         };
@@ -390,29 +468,31 @@ impl Instance {
 
         let mut guard = instances.write();
         let this = guard.instances.get_mut(id)?;
+        let state = &mut this.content_state[content_folder];
 
-        cas_update(&this.mods_state, |old_state| match old_state {
+        cas_update(&state.load_state, |old_state| match old_state {
             BridgeDataLoadState::LoadingDirty => BridgeDataLoadState::LoadedDirty,
             BridgeDataLoadState::Loading => BridgeDataLoadState::Loaded,
             _ => unreachable!(),
         });
 
-        this.mods_generation = this.mods_generation.wrapping_add(1);
+        this.content_generation = this.content_generation.wrapping_add(1);
+        state.generation = this.content_generation;
         for (index, summary) in result.iter_mut().enumerate() {
-            summary.id = InstanceModID {
+            summary.id = InstanceContentID {
                 index,
-                generation: this.mods_generation,
+                generation: state.generation,
             };
         }
 
-        let result: Arc<[InstanceModSummary]> = result.into();
-        this.mods = Some(result.clone());
-        this.pending_mods_load = None;
+        let result: Arc<[InstanceContentSummary]> = result.into();
+        state.summaries = Some(result.clone());
+        state.pending_load = None;
         keep_alive.notify();
         Some((result, true))
     }
 
-    fn load_mods_all(path: &Path, mod_metadata_manager: Arc<ModMetadataManager>) -> Vec<InstanceModSummary> {
+    fn load_content_all(path: &Path, mod_metadata_manager: Arc<ModMetadataManager>) -> Vec<InstanceContentSummary> {
         let Ok(directory) = std::fs::read_dir(&path) else {
             return Vec::new();
         };
@@ -423,28 +503,28 @@ impl Instance {
 
         for entry in directory {
             let Ok(entry) = entry else {
-                eprintln!("Error reading file in mods folder: {:?}", entry.unwrap_err());
+                eprintln!("Error reading file in content folder: {:?}", entry.unwrap_err());
                 continue;
             };
 
-            if let Some(summary) = create_instance_mod_summary(&entry.path(), &mod_metadata_manager) {
+            if let Some(summary) = create_instance_content_summary(&entry.path(), &mod_metadata_manager) {
                 summaries.push(summary);
             }
         }
 
         summaries.sort_by(|a, b| {
-            a.mod_summary.id.cmp(&b.mod_summary.id)
+            a.content_summary.id.cmp(&b.content_summary.id)
                 .then_with(|| lexical_sort::natural_lexical_cmp(&a.filename, &b.filename).reverse())
         });
 
         summaries
     }
 
-    fn load_mods_dirty(
+    fn load_content_dirty(
         dirty: HashSet<Arc<Path>>,
         mod_metadata_manager: Arc<ModMetadataManager>,
-        last: Arc<[InstanceModSummary]>,
-    ) -> Vec<InstanceModSummary> {
+        last: Arc<[InstanceContentSummary]>,
+    ) -> Vec<InstanceContentSummary> {
         let mut summaries = Vec::with_capacity(last.len() + 8);
 
         let mut alternative_dirty = HashSet::new();
@@ -459,10 +539,10 @@ impl Instance {
 
             let check_alternative = !dirty.contains(&*alternate_path);
 
-            if let Some(summary) = create_instance_mod_summary(&path, &mod_metadata_manager) {
+            if let Some(summary) = create_instance_content_summary(&path, &mod_metadata_manager) {
                 summaries.push(summary);
             } else if check_alternative {
-                if let Some(summary) = create_instance_mod_summary(&alternate_path, &mod_metadata_manager) {
+                if let Some(summary) = create_instance_content_summary(&alternate_path, &mod_metadata_manager) {
                     summaries.push(summary);
                 }
             }
@@ -504,22 +584,15 @@ impl Instance {
                         filename_without_disabled.hash(&mut hasher);
                         let filename_hash = hasher.finish();
 
-                        let filename: Arc<str> = filename.into();
-                        let lowercase_filename = filename.to_lowercase();
-                        let lowercase_filename = if lowercase_filename == &*filename {
-                            filename.clone()
-                        } else {
-                            lowercase_filename.into()
-                        };
-
-                        summaries.push(InstanceModSummary {
-                            mod_summary: old_summary.mod_summary.clone(),
-                            id: InstanceModID::dangling(),
-                            lowercase_filename,
-                            filename,
+                        summaries.push(InstanceContentSummary {
+                            content_summary: old_summary.content_summary.clone(),
+                            id: InstanceContentID::dangling(),
+                            lowercase_search_keys: old_summary.lowercase_search_keys.clone(),
+                            filename: filename.into(),
                             filename_hash,
                             path: alternate_path.into(),
                             enabled,
+                            content_source: old_summary.content_source.clone(),
                             disabled_children: old_summary.disabled_children.clone(),
                         });
                     }
@@ -529,7 +602,7 @@ impl Instance {
         }
 
         summaries.sort_by(|a, b| {
-            a.mod_summary.id.cmp(&b.mod_summary.id)
+            a.content_summary.id.cmp(&b.content_summary.id)
                 .then_with(|| a.filename.cmp(&b.filename).reverse())
         });
 
@@ -551,7 +624,12 @@ impl Instance {
 
         let saves_path = dot_minecraft_path.join("saves");
         let mods_path = dot_minecraft_path.join("mods");
+        let resourcepacks_path = dot_minecraft_path.join("resourcepacks");
         let server_dat_path = dot_minecraft_path.join("servers.dat");
+
+        let content_state = enum_map::EnumMap::from_fn(|content_type: ContentFolder| {
+            ContentFolderState::new(content_type.path().to_path(&dot_minecraft_path).into())
+        });
 
         Ok(Self {
             id: InstanceID::dangling(),
@@ -559,7 +637,6 @@ impl Instance {
             dot_minecraft_path: dot_minecraft_path.into(),
             server_dat_path: server_dat_path.into(),
             saves_path: saves_path.into(),
-            mods_path: mods_path.into(),
             name: path.file_name().unwrap().to_string_lossy().into_owned().into(),
             configuration: instance_info,
 
@@ -568,7 +645,6 @@ impl Instance {
             watching_dot_minecraft: false,
             watching_server_dat: false,
             watching_saves_dir: false,
-            watching_mods_dir: false,
 
             worlds_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
             dirty_worlds: HashSet::new(),
@@ -581,12 +657,9 @@ impl Instance {
             pending_servers_load: None,
             servers: None,
 
-            mods_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
-            dirty_mods: HashSet::new(),
-            all_mods_dirty: true,
-            mods_generation: 0,
-            pending_mods_load: None,
-            mods: None,
+            content_generation: 0,
+
+            content_state,
         })
     }
 
@@ -617,42 +690,6 @@ impl Instance {
         self.dirty_servers = true;
 
         cas_update(&self.servers_state, |state| match state {
-            BridgeDataLoadState::Loading => BridgeDataLoadState::LoadingDirty,
-            BridgeDataLoadState::Loaded => BridgeDataLoadState::LoadedDirty,
-            _ => state,
-        });
-    }
-
-    pub fn mark_mods_dirty(&mut self, mut path: Option<Arc<Path>>) {
-        if self.all_mods_dirty {
-            return;
-        }
-
-        if let Some(ref current_path) = path {
-            if let Some(extension) = current_path.extension() && extension == "pandorachildstate" {
-                let mut new_path = current_path.to_path_buf();
-                new_path.set_extension("");
-                if let Some(file_name) = new_path.file_name() {
-                    if file_name.as_encoded_bytes()[0] == '.' as u8 {
-                        let encoded = file_name.as_encoded_bytes().to_vec();
-                        new_path.set_file_name(unsafe {
-                            OsStr::from_encoded_bytes_unchecked(&encoded[1..])
-                        });
-                    }
-                }
-                path = Some(new_path.into());
-            }
-        }
-
-        if let Some(path) = path {
-            if !self.dirty_mods.insert(path) {
-                return;
-            }
-        } else {
-            self.all_mods_dirty = true;
-        }
-
-        cas_update(&self.mods_state, |state| match state {
             BridgeDataLoadState::Loading => BridgeDataLoadState::LoadingDirty,
             BridgeDataLoadState::Loaded => BridgeDataLoadState::LoadedDirty,
             _ => state,
@@ -690,7 +727,7 @@ impl Instance {
     }
 }
 
-fn create_instance_mod_summary(path: &Path, mod_metadata_manager: &Arc<ModMetadataManager>) -> Option<InstanceModSummary> {
+fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMetadataManager>) -> Option<InstanceContentSummary> {
     if !path.is_file() {
         return None;
     }
@@ -700,9 +737,9 @@ fn create_instance_mod_summary(path: &Path, mod_metadata_manager: &Arc<ModMetada
     if filename.starts_with(".pandora.") {
         return None;
     }
-    let enabled = if filename.ends_with(".jar.disabled") || filename.ends_with(".mrpack.disabled") {
+    let enabled = if filename.ends_with(".jar.disabled") || filename.ends_with(".mrpack.disabled") || filename.ends_with(".zip.disabled") {
         false
-    } else if filename.ends_with(".jar") || filename.ends_with(".mrpack") {
+    } else if filename.ends_with(".jar") || filename.ends_with(".mrpack") || filename.ends_with(".zip") {
         true
     } else {
         return None;
@@ -734,15 +771,22 @@ fn create_instance_mod_summary(path: &Path, mod_metadata_manager: &Arc<ModMetada
     };
 
     let disabled_children = read_disabled_children_for(path).unwrap_or_default();
+    let content_source = mod_metadata_manager.read_content_sources().get(&summary.hash).unwrap_or_default();
 
-    Some(InstanceModSummary {
-        mod_summary: summary,
-        id: InstanceModID::dangling(),
-        lowercase_filename,
+    let lowercase_search_keys = summary.id.clone().into_iter()
+        .chain(summary.name.clone().into_iter())
+        .chain(std::iter::once(lowercase_filename))
+        .collect();
+
+    Some(InstanceContentSummary {
+        content_summary: summary,
+        id: InstanceContentID::dangling(),
+        lowercase_search_keys,
         filename,
         filename_hash,
         path: path.into(),
         enabled,
+        content_source,
         disabled_children,
     })
 }

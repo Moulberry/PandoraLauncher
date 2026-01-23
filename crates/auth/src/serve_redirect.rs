@@ -31,7 +31,7 @@ pub async fn start_server(
 ) -> Result<FinishedAuthorization, ProcessAuthorizationError> {
     let listener = tokio::net::TcpListener::bind(constants::SERVER_ADDRESS).await?;
 
-    let mut buf = [0_u8; 1024];
+    let mut buf = vec![0_u8; 1024];
     let mut read;
 
     loop {
@@ -41,6 +41,11 @@ pub async fn start_server(
         loop {
             let n = stream.read(&mut buf[read..]).await?;
             read += n;
+
+            if read == buf.len() {
+                buf.resize(buf.len() * 2, 0);
+                continue;
+            }
 
             if read == 0 {
                 break; // Accept a new connection

@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 pub mod assets_index;
+pub mod backend_config;
 pub mod content;
 pub mod fabric_launch;
 pub mod fabric_loader_manifest;
@@ -15,6 +16,7 @@ pub mod maven;
 pub mod modification;
 pub mod modrinth;
 pub mod mrpack;
+pub mod resourcepack;
 pub mod version;
 pub mod version_manifest;
 

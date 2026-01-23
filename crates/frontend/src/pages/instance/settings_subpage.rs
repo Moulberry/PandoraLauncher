@@ -1,15 +1,15 @@
-use std::{borrow::Cow, path::Path, sync::Arc};
+use std::{borrow::Cow, cmp::Ordering, path::Path, sync::Arc};
 
 use bridge::{
-    handle::BackendHandle, instance::InstanceID, message::MessageToBackend
+    handle::BackendHandle, instance::InstanceID, message::MessageToBackend, meta::MetadataRequest
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, v_flex, ActiveTheme as _, Disableable, Sizable, WindowExt
+    ActiveTheme as _, Disableable, Selectable, Sizable, WindowExt, button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, spinner::Spinner, v_flex
 };
-use schema::instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration};
+use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration}, loader::Loader, version_manifest::MinecraftVersionManifest};
 
-use crate::entity::instance::InstanceEntry;
+use crate::{entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, interface_config::InterfaceConfig, pages::instances_page::VersionList};
 
 #[derive(PartialEq, Eq)]
 enum NewNameChangeState {
@@ -19,9 +19,15 @@ enum NewNameChangeState {
 }
 
 pub struct InstanceSettingsSubpage {
+    data: DataEntities,
     instance: Entity<InstanceEntry>,
     instance_id: InstanceID,
     new_name_input_state: Entity<InputState>,
+    version_state: TypelessFrontendMetadataResult,
+    version_select_state: Entity<SelectState<VersionList>>,
+    loader: Loader,
+    loader_versions_state: TypelessFrontendMetadataResult,
+    loader_version_select_state: Entity<SelectState<SearchableVec<&'static str>>>,
     memory_override_enabled: bool,
     memory_min_input_state: Entity<InputState>,
     memory_max_input_state: Entity<InputState>,
@@ -31,25 +37,53 @@ pub struct InstanceSettingsSubpage {
     jvm_binary_path: Option<Arc<Path>>,
     new_name_change_state: NewNameChangeState,
     backend_handle: BackendHandle,
+    _observe_loader_version_subscription: Option<Subscription>,
     _select_file_task: Task<()>,
 }
 
 impl InstanceSettingsSubpage {
     pub fn new(
         instance: &Entity<InstanceEntry>,
+        data: &DataEntities,
         backend_handle: BackendHandle,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> Self {
-        let new_name_input_state = cx.new(|cx| InputState::new(window, cx));
-        cx.subscribe(&new_name_input_state, Self::on_new_name_input).detach();
-
         let entry = instance.read(cx);
         let instance_id = entry.id;
+        let loader = entry.configuration.loader;
+        let preferred_loader_version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
 
         let memory = entry.configuration.memory.unwrap_or_default();
         let jvm_flags = entry.configuration.jvm_flags.clone().unwrap_or_default();
         let jvm_binary = entry.configuration.jvm_binary.clone().unwrap_or_default();
+
+        let new_name_input_state = cx.new(|cx| InputState::new(window, cx));
+        cx.subscribe(&new_name_input_state, Self::on_new_name_input).detach();
+
+        let minecraft_versions = FrontendMetadata::request(&data.metadata, MetadataRequest::MinecraftVersionManifest, cx);
+
+        let version_select_state = cx.new(|cx| SelectState::new(VersionList::default(), None, window, cx).searchable(true));
+        cx.observe_in(&minecraft_versions, window, |page, versions, window, cx| {
+            page.update_minecraft_versions(versions, window, cx);
+        }).detach();
+        cx.subscribe(&version_select_state, Self::on_minecraft_version_selected).detach();
+
+        cx.observe_in(instance, window, |page, instance, window, cx| {
+            if page.loader_version_select_state.read(cx).selected_index(cx).is_none() {
+                let version = instance.read(cx).configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+                page.loader_version_select_state.update(cx, |select_state, cx| {
+                    select_state.set_selected_value(&version, window, cx);
+                });
+            }
+        }).detach();
+
+        let loader_version_select_state = cx.new(|cx| {
+            let mut select_state = SelectState::new(SearchableVec::new(vec![]), None, window, cx).searchable(true);
+            select_state.set_selected_value(&preferred_loader_version, window, cx);
+            select_state
+        });
+        cx.subscribe(&loader_version_select_state, Self::on_loader_version_selected).detach();
 
         let memory_min_input_state = cx.new(|cx| {
             InputState::new(window, cx).default_value(memory.min.to_string())
@@ -67,10 +101,15 @@ impl InstanceSettingsSubpage {
         });
         cx.subscribe(&jvm_flags_input_state, Self::on_jvm_flags_changed).detach();
 
-        Self {
+        let mut page = Self {
+            data: data.clone(),
             instance: instance.clone(),
             instance_id,
             new_name_input_state,
+            version_state: TypelessFrontendMetadataResult::Loading,
+            version_select_state,
+            loader,
+            loader_version_select_state,
             memory_override_enabled: memory.enabled,
             memory_min_input_state,
             memory_max_input_state,
@@ -80,12 +119,139 @@ impl InstanceSettingsSubpage {
             jvm_binary_path: jvm_binary.path.clone(),
             new_name_change_state: NewNameChangeState::NoChange,
             backend_handle,
+            loader_versions_state: TypelessFrontendMetadataResult::Loading,
+            _observe_loader_version_subscription: None,
             _select_file_task: Task::ready(())
-        }
+        };
+        page.update_minecraft_versions(minecraft_versions, window, cx);
+        page.update_loader_versions(window, cx);
+        page
     }
 }
 
 impl InstanceSettingsSubpage {
+    fn update_minecraft_versions(&mut self, versions: Entity<FrontendMetadataState>, window: &mut Window, cx: &mut Context<Self>) {
+        let result: FrontendMetadataResult<MinecraftVersionManifest> = versions.read(cx).result();
+        let versions = match result {
+            FrontendMetadataResult::Loading => {
+                Vec::new()
+            },
+            FrontendMetadataResult::Error(_) => {
+                Vec::new()
+            },
+            FrontendMetadataResult::Loaded(manifest) => {
+                manifest.versions.iter().map(|v| SharedString::from(v.id.as_str())).collect()
+            },
+        };
+
+        let current_version = self.instance.read(cx).configuration.minecraft_version;
+
+        self.version_state = result.as_typeless();
+
+        self.version_select_state.update(cx, |dropdown, cx| {
+            let mut to_select = None;
+
+            if let Some(last_selected) = dropdown.selected_value().cloned()
+                && versions.contains(&last_selected)
+            {
+                to_select = Some(last_selected);
+            }
+
+            if to_select.is_none()
+                && versions.contains(&SharedString::new_static(current_version.as_str()))
+            {
+                to_select = Some(SharedString::new_static(current_version.as_str()));
+            }
+
+            dropdown.set_items(
+                VersionList {
+                    versions: versions.clone(),
+                    matched_versions: versions,
+                },
+                window,
+                cx,
+            );
+
+            if let Some(to_select) = to_select {
+                dropdown.set_selected_value(&to_select, window, cx);
+            }
+
+            cx.notify();
+        });
+    }
+
+    fn update_loader_versions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let loader_versions = match self.loader {
+            Loader::Vanilla | Loader::Unknown => {
+                self._observe_loader_version_subscription = None;
+                self.loader_versions_state = TypelessFrontendMetadataResult::Loaded;
+                vec![""]
+            },
+            Loader::Fabric => {
+                self.update_loader_versions_for_loader(MetadataRequest::FabricLoaderManifest, |manifest: &FabricLoaderManifest| {
+                    std::iter::once("Latest")
+                        .chain(manifest.0.iter().map(|s| s.version.as_str()))
+                        .collect()
+                }, window, cx)
+            },
+            Loader::Forge => {
+                self.update_loader_versions_for_loader(MetadataRequest::ForgeMavenManifest, |manifest: &ForgeMavenManifest| {
+                    std::iter::once("Latest")
+                        .chain(manifest.0.iter().map(|s| s.as_str()))
+                        .collect()
+                }, window, cx)
+            },
+            Loader::NeoForge => {
+                self.update_loader_versions_for_loader(MetadataRequest::NeoforgeMavenManifest, |manifest: &NeoforgeMavenManifest| {
+                    std::iter::once("Latest")
+                        .chain(manifest.0.iter().map(|s| s.as_str()))
+                        .collect()
+                }, window, cx)
+            },
+        };
+        let preferred_loader_version = self.instance.read(cx).configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+        self.loader_version_select_state.update(cx, move |select_state, cx| {
+            select_state.set_items(SearchableVec::new(loader_versions), window, cx);
+            select_state.set_selected_value(&preferred_loader_version, window, cx);
+        });
+    }
+
+    fn update_loader_versions_for_loader<T>(
+        &mut self,
+        request: MetadataRequest,
+        items_fn: impl Fn(&T) -> Vec<&'static str> + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>
+    ) -> Vec<&'static str>
+    where
+        FrontendMetadataState: AsMetadataResult<T>,
+    {
+        let request = FrontendMetadata::request(&self.data.metadata, request, cx);
+
+        let result: FrontendMetadataResult<T> = request.read(cx).result();
+        let items = match &result {
+            FrontendMetadataResult::Loading => vec![],
+            FrontendMetadataResult::Loaded(manifest) => (items_fn)(&manifest),
+            FrontendMetadataResult::Error(_) => vec![],
+        };
+        self.loader_versions_state = result.as_typeless();
+        self._observe_loader_version_subscription = Some(cx.observe_in(&request, window, move |page, metadata, window, cx| {
+            let result: FrontendMetadataResult<T> = metadata.read(cx).result();
+            let versions = if let FrontendMetadataResult::Loaded(manifest) = &result {
+                (items_fn)(&manifest)
+            } else {
+                vec![]
+            };
+            page.loader_versions_state = result.as_typeless();
+            let preferred_loader_version = page.instance.read(cx).configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+            page.loader_version_select_state.update(cx, move |select_state, cx| {
+                select_state.set_items(SearchableVec::new(versions), window, cx);
+                select_state.set_selected_value(&preferred_loader_version, window, cx);
+            });
+        }));
+        items
+    }
+
     pub fn on_new_name_input(
         &mut self,
         state: Entity<InputState>,
@@ -112,6 +278,44 @@ impl InstanceSettingsSubpage {
 
             self.new_name_change_state = NewNameChangeState::Pending;
         }
+    }
+
+    pub fn on_minecraft_version_selected(
+        &mut self,
+        _state: Entity<SelectState<VersionList>>,
+        event: &SelectEvent<VersionList>,
+        _cx: &mut Context<Self>,
+    ) {
+        let SelectEvent::Confirm(value) = event;
+
+        let Some(value) = value else {
+            return;
+        };
+
+        self.backend_handle.send(MessageToBackend::SetInstanceMinecraftVersion {
+            id: self.instance_id,
+            version: value.as_str().into(),
+        });
+    }
+
+    pub fn on_loader_version_selected(
+        &mut self,
+        _state: Entity<SelectState<SearchableVec<&'static str>>>,
+        event: &SelectEvent<SearchableVec<&'static str>>,
+        _cx: &mut Context<Self>,
+    ) {
+        let SelectEvent::Confirm(value) = event;
+
+        let value = if value == &Some("Latest") {
+            None
+        } else {
+            value.clone()
+        };
+
+        self.backend_handle.send(MessageToBackend::SetInstancePreferredLoaderVersion {
+            id: self.instance_id,
+            loader_version: value,
+        });
     }
 
     pub fn on_memory_step(
@@ -219,14 +423,14 @@ impl Render for InstanceSettingsSubpage {
             SharedString::new_static("<unset>")
         };
 
-        let content = v_flex()
-            .p_4()
+        let mut basic_content = v_flex()
             .gap_4()
+            .size_full()
             .child(v_flex()
                 .child("Instance name")
                 .child(h_flex()
                     .gap_2()
-                    .child(Input::new(&self.new_name_input_state).w_64())
+                    .child(Input::new(&self.new_name_input_state))
                     .when(self.new_name_change_state != NewNameChangeState::NoChange, |this| {
                         if self.new_name_change_state == NewNameChangeState::InvalidName {
                             this.child("Invalid name")
@@ -247,7 +451,95 @@ impl Render for InstanceSettingsSubpage {
                         }
                     })
                 )
-            )
+            );
+
+        match self.version_state {
+            TypelessFrontendMetadataResult::Loading => {
+                basic_content = basic_content.child(crate::labelled(
+                    "Version",
+                    Spinner::new()
+                ))
+            },
+            TypelessFrontendMetadataResult::Loaded => {
+                basic_content = basic_content.child(crate::labelled(
+                    "Version",
+                    Select::new(&self.version_select_state).w_full()
+                ))
+            },
+            TypelessFrontendMetadataResult::Error(ref error) => {
+                basic_content = basic_content.child(format!("Error loading minecraft versions: {}", error))
+            },
+        }
+
+        basic_content = basic_content
+            .child(ButtonGroup::new("loader")
+                .outline()
+                .child(
+                    Button::new("loader-vanilla")
+                        .label("Vanilla")
+                        .selected(self.loader == Loader::Vanilla),
+                )
+                .child(
+                    Button::new("loader-fabric")
+                        .label("Fabric")
+                        .selected(self.loader == Loader::Fabric),
+                )
+                .child(
+                    Button::new("loader-forge")
+                        .label("Forge")
+                        .selected(self.loader == Loader::Forge),
+                )
+                .child(
+                    Button::new("loader-neoforge")
+                        .label("NeoForge")
+                        .selected(self.loader == Loader::NeoForge),
+                )
+                .on_click(cx.listener({
+                    let backend_handle = self.backend_handle.clone();
+                    move |page, selected: &Vec<usize>, window, cx| {
+                        let last_loader = page.loader;
+                        match selected.first() {
+                            Some(0) => page.loader = Loader::Vanilla,
+                            Some(1) => page.loader = Loader::Fabric,
+                            Some(2) => page.loader = Loader::Forge,
+                            Some(3) => page.loader = Loader::NeoForge,
+                            _ => {},
+                        };
+                        if page.loader != last_loader {
+                            backend_handle.send(MessageToBackend::SetInstanceLoader {
+                                id: page.instance_id,
+                                loader: page.loader,
+                            });
+                            page.update_loader_versions(window, cx);
+                            cx.notify();
+                        }
+                    }
+                }))
+            );
+
+        if self.loader != Loader::Vanilla {
+            match self.loader_versions_state {
+                TypelessFrontendMetadataResult::Loading => {
+                    basic_content = basic_content.child(crate::labelled(
+                        "Loader Version",
+                        Spinner::new()
+                    ))
+                },
+                TypelessFrontendMetadataResult::Loaded => {
+                    basic_content = basic_content.child(crate::labelled(
+                        "Loader Version",
+                        Select::new(&self.loader_version_select_state).w_full()
+                    ))
+                },
+                TypelessFrontendMetadataResult::Error(ref error) => {
+                    basic_content = basic_content.child(format!("Error loading possible loader versions: {}", error))
+                },
+            }
+        }
+
+        let runtime_content = v_flex()
+            .gap_4()
+            .size_full()
             .child(v_flex()
                 .gap_1()
                 .child(Checkbox::new("memory").label("Set Memory").checked(memory_override_enabled).on_click(cx.listener(|page, value, _, cx| {
@@ -262,11 +554,11 @@ impl Render for InstanceSettingsSubpage {
                 })))
                 .child(h_flex()
                     .gap_1()
-                    .child(NumberInput::new(&self.memory_min_input_state).max_w_64().small().suffix("MiB").disabled(!memory_override_enabled))
+                    .child(NumberInput::new(&self.memory_min_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
                     .child("Min"))
                 .child(h_flex()
                     .gap_1()
-                    .child(NumberInput::new(&self.memory_max_input_state).max_w_64().small().suffix("MiB").disabled(!memory_override_enabled))
+                    .child(NumberInput::new(&self.memory_max_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
                     .child("Max"))
                 )
             .child(v_flex()
@@ -281,7 +573,7 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(div().max_w_64().child(Input::new(&self.jvm_flags_input_state).disabled(!jvm_flags_enabled)))
+                .child(Input::new(&self.jvm_flags_input_state).disabled(!jvm_flags_enabled))
             )
             .child(v_flex()
                 .gap_1()
@@ -295,7 +587,7 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(div().max_w_64().child(Button::new("select_jvm_binary").success().label(jvm_binary_label).disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
+                .child(Button::new("select_jvm_binary").success().label(jvm_binary_label).disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
                     let receiver = cx.prompt_for_paths(PathPromptOptions {
                         files: true,
                         directories: false,
@@ -331,18 +623,41 @@ impl Render for InstanceSettingsSubpage {
                         });
                     });
                     this._select_file_task = add_from_file_task;
-                }))))
-            )
-            .child(Button::new("delete").max_w_64().label("Delete this instance").danger().on_click({
+                })))
+            );
+
+        let danger_content = v_flex()
+            .gap_4()
+            .size_full()
+            .child(Button::new("delete").label("Delete this instance").danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
-                move |_, window, cx| {
+                move |click: &ClickEvent, window, cx| {
                     let instance = instance.read(cx);
                     let id = instance.id;
                     let name = instance.name.clone();
-                    crate::modals::delete_instance::open_delete_instance(id, name, backend_handle.clone(), window, cx);
+
+                    if InterfaceConfig::get(cx).quick_delete_instance && click.modifiers().shift {
+                        backend_handle.send(bridge::message::MessageToBackend::DeleteInstance {
+                            id
+                        });
+                    } else {
+                        crate::modals::delete_instance::open_delete_instance(id, name, backend_handle.clone(), window, cx);
+                    }
+
                 }
             }));
+
+        let sections = h_flex()
+            .size_full()
+            .justify_evenly()
+            .p_4()
+            .gap_4()
+            .child(basic_content)
+            .child(div().bg(cx.theme().border).h_full().w_0p5())
+            .child(runtime_content)
+            .child(div().bg(cx.theme().border).h_full().w_0p5())
+            .child(danger_content);
 
         v_flex()
             .p_4()
@@ -353,7 +668,7 @@ impl Render for InstanceSettingsSubpage {
                 .border_1()
                 .rounded(theme.radius)
                 .border_color(theme.border)
-                .child(content)
+                .child(sections)
             )
     }
 }

@@ -162,6 +162,10 @@ impl ProgressTracker {
         }
     }
 
+    pub fn id(&self) -> usize {
+        Arc::as_ptr(&self.inner).addr()
+    }
+
     pub fn get_title(&self) -> Arc<str> {
         self.inner.title.read().unwrap().clone()
     }

@@ -5,8 +5,10 @@ use notify::{
     EventKind,
     event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode},
 };
+use rustc_hash::FxHashSet;
+use strum::IntoEnumIterator;
 
-use crate::{BackendState, WatchTarget};
+use crate::{BackendState, WatchTarget, instance::ContentFolder};
 
 #[derive(Debug)]
 enum FilesystemEvent {
@@ -26,7 +28,7 @@ impl FilesystemEvent {
 }
 
 struct AfterDebounceEffects {
-    reload_mods: HashSet<InstanceID>,
+    reload_immediately: FxHashSet<(InstanceID, ContentFolder)>,
 }
 
 impl BackendState {
@@ -34,7 +36,7 @@ impl BackendState {
         match result {
             Ok(events) => {
                 let mut after_debounce_effects = AfterDebounceEffects {
-                    reload_mods: HashSet::new(),
+                    reload_immediately: Default::default(),
                 };
 
                 let mut last_event: Option<FilesystemEvent> = None;
@@ -56,8 +58,8 @@ impl BackendState {
                 if let Some(last_event) = last_event.take() {
                     self.handle_filesystem_event(last_event, &mut after_debounce_effects).await;
                 }
-                for id in after_debounce_effects.reload_mods {
-                    tokio::task::spawn(self.clone().load_instance_mods(id));
+                for (instance_id, folder) in after_debounce_effects.reload_immediately {
+                    tokio::task::spawn(self.clone().load_instance_content(instance_id, folder));
                 }
             },
             Err(_) => {
@@ -184,7 +186,7 @@ impl BackendState {
                 }
 
                 instance_state.instance_by_path.clear();
-                instance_state.reload_mods_immediately.clear();
+                instance_state.reload_immediately.clear();
 
                 true
             },
@@ -219,9 +221,9 @@ impl BackendState {
                 }
                 true
             },
-            WatchTarget::InstanceModsDir { id } => {
+            WatchTarget::InstanceContentDir { id, folder } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    instance.mark_mods_dirty(None);
+                    instance.content_state[folder].mark_dirty(None);
                 }
                 true
             },
@@ -229,7 +231,9 @@ impl BackendState {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.mark_world_dirty(None);
                     instance.mark_servers_dirty();
-                    instance.mark_mods_dirty(None);
+                    for folder in ContentFolder::iter() {
+                        instance.content_state[folder].mark_dirty(None);
+                    }
                 }
                 true
             },
@@ -264,8 +268,10 @@ impl BackendState {
                     if instance.watching_server_dat {
                         self.watch_filesystem(&instance.server_dat_path, WatchTarget::ServersDat { id });
                     }
-                    if instance.watching_mods_dir {
-                        self.watch_filesystem(&instance.mods_path, WatchTarget::InstanceModsDir { id });
+                    for folder in ContentFolder::iter() {
+                        if instance.content_state[folder].watching_path {
+                            self.watch_filesystem(&instance.content_state[folder].path, WatchTarget::InstanceContentDir { id, folder });
+                        }
                     }
                     true
                 } else {
@@ -322,7 +328,9 @@ impl BackendState {
                 {
                     instance.mark_world_dirty(None);
                     instance.mark_servers_dirty();
-                    instance.mark_mods_dirty(None);
+                    for folder in ContentFolder::iter() {
+                        instance.content_state[folder].mark_dirty(None);
+                    }
 
                     if instance.watching_dot_minecraft {
                         self.watch_filesystem(path, WatchTarget::InstanceDotMinecraftDir { id });
@@ -333,8 +341,10 @@ impl BackendState {
                     if instance.watching_server_dat {
                         self.watch_filesystem(&instance.server_dat_path.clone(), WatchTarget::ServersDat { id });
                     }
-                    if instance.watching_mods_dir {
-                        self.watch_filesystem(&instance.mods_path.clone(), WatchTarget::InstanceModsDir { id });
+                    for folder in ContentFolder::iter() {
+                        if instance.content_state[folder].watching_path {
+                            self.watch_filesystem(&instance.content_state[folder].path, WatchTarget::InstanceContentDir { id, folder });
+                        }
                     }
                 }
             },
@@ -344,16 +354,23 @@ impl BackendState {
                     return;
                 };
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    match file_name.to_str() {
-                        Some("mods") if instance.watching_mods_dir => {
-                            instance.mark_mods_dirty(None);
-                            self.watch_filesystem(path, WatchTarget::InstanceModsDir { id });
-                        },
-                        Some("saves") if instance.watching_saves_dir => {
+                    let Some(name) = file_name.to_str() else {
+                        return;
+                    };
+
+                    for folder in ContentFolder::iter() {
+                        if name == folder.path().as_str() && instance.content_state[folder].watching_path {
+                            instance.content_state[folder].mark_dirty(None);
+                            self.watch_filesystem(path, WatchTarget::InstanceContentDir { id, folder });
+                            return;
+                        }
+                    }
+                    match name {
+                        "saves" if instance.watching_saves_dir => {
                             instance.mark_world_dirty(None);
                             self.watch_filesystem(path, WatchTarget::InstanceSavesDir { id });
                         },
-                        Some("servers.dat") if instance.watching_server_dat => {
+                        "servers.dat" if instance.watching_server_dat => {
                             instance.mark_servers_dirty();
                             self.watch_filesystem(path, WatchTarget::ServersDat { id });
                         },
@@ -381,12 +398,12 @@ impl BackendState {
                     instance.mark_world_dirty(Some(path.clone()));
                 }
             },
-            WatchTarget::InstanceModsDir { id } => {
+            WatchTarget::InstanceContentDir { id, folder } => {
                 let mut instance_state = self.instance_state.write();
                 if let Some(instance) = instance_state.instances.get_mut(id) {
-                    instance.mark_mods_dirty(Some(path.clone()));
-                    if let Some(reload_immediately) = instance_state.reload_mods_immediately.take(&id) {
-                        after_debounce_effects.reload_mods.insert(reload_immediately);
+                    instance.content_state[folder].mark_dirty(Some(path.clone()));
+                    if instance_state.reload_immediately.remove(&(id, folder)) {
+                        after_debounce_effects.reload_immediately.insert((id, folder));
                     }
                 }
             },
@@ -420,12 +437,12 @@ impl BackendState {
                     instance.mark_world_dirty(Some(path.clone()));
                 }
             },
-            WatchTarget::InstanceModsDir { id } => {
+            WatchTarget::InstanceContentDir { id, folder } => {
                 let mut instance_state = self.instance_state.write();
                 if let Some(instance) = instance_state.instances.get_mut(id) {
-                    instance.mark_mods_dirty(Some(path.clone()));
-                    if let Some(reload_immediately) = instance_state.reload_mods_immediately.take(&id) {
-                        after_debounce_effects.reload_mods.insert(reload_immediately);
+                    instance.content_state[folder].mark_dirty(Some(path.clone()));
+                    if instance_state.reload_immediately.remove(&(id, folder)) {
+                        after_debounce_effects.reload_immediately.insert((id, folder));
                     }
                 }
             },
@@ -464,7 +481,14 @@ fn get_simple_event(event: notify::Event) -> Option<FilesystemEvent> {
             },
             ModifyKind::Metadata(_) => None,
             ModifyKind::Name(rename_mode) => match rename_mode {
-                RenameMode::Any => None,
+                RenameMode::Any => {
+                    let path = event.paths[0].clone().into();
+                    if std::fs::exists(&path).unwrap_or(true) {
+                        Some(FilesystemEvent::Change(path))
+                    } else {
+                        Some(FilesystemEvent::Remove(path))
+                    }
+                },
                 RenameMode::To => Some(FilesystemEvent::Change(event.paths[0].clone().into())),
                 RenameMode::From => Some(FilesystemEvent::Remove(event.paths[0].clone().into())),
                 RenameMode::Both => {

@@ -5,43 +5,34 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    breadcrumb::Breadcrumb, button::{Button, ButtonVariants}, h_flex, tab::{Tab, TabBar}, Icon, IconName
+    button::{Button, ButtonVariants}, h_flex, tab::{Tab, TabBar}, Icon, IconName
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entity::{instance::InstanceEntry, DataEntities},
-    pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, settings_subpage::InstanceSettingsSubpage},
-    root, ui,
+    component::page_path::PagePath, entity::{DataEntities, instance::InstanceEntry}, pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, root, ui
 };
 
 pub struct InstancePage {
-    breadcrumb: Box<dyn Fn() -> Breadcrumb>,
+    page_path: PagePath,
     backend_handle: BackendHandle,
-    title: SharedString,
+    data: DataEntities,
     instance: Entity<InstanceEntry>,
     subpage: InstanceSubpage,
-    _instance_subscription: Subscription,
 }
 
 impl InstancePage {
-    pub fn new(instance_id: InstanceID, subpage: InstanceSubpageType, data: &DataEntities, breadcrumb: Box<dyn Fn() -> Breadcrumb>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(instance_id: InstanceID, subpage: InstanceSubpageType, page_path: PagePath, data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let instance = data.instances.read(cx).entries.get(&instance_id).unwrap().clone();
 
-        let _instance_subscription = cx.observe(&instance, |page, instance, cx| {
-            let instance = instance.read(cx);
-            page.title = instance.title().into();
-        });
-
-        let subpage = subpage.create(&instance, data.backend_handle.clone(), window, cx);
+        let subpage = subpage.create(&instance, data, data.backend_handle.clone(), window, cx);
 
         Self {
-            breadcrumb,
+            page_path,
             backend_handle: data.backend_handle.clone(),
-            title: instance.read(cx).title().into(),
+            data: data.clone(),
             instance,
             subpage,
-            _instance_subscription,
         }
     }
 
@@ -49,7 +40,7 @@ impl InstancePage {
         if page_type == self.subpage.page_type() {
             return;
         }
-        self.subpage = page_type.create(&self.instance, self.backend_handle.clone(), window, cx);
+        self.subpage = page_type.create(&self.instance, &self.data, self.backend_handle.clone(), window, cx);
     }
 }
 
@@ -59,7 +50,8 @@ impl Render for InstancePage {
             InstanceSubpage::Quickplay(_) => 0,
             InstanceSubpage::Logs(_) => 1,
             InstanceSubpage::Mods(_) => 2,
-            InstanceSubpage::Settings(_) => 3,
+            InstanceSubpage::ResourcePacks(_) => 3,
+            InstanceSubpage::Settings(_) => 4,
         };
 
         let play_icon = Icon::empty().path("icons/play.svg");
@@ -100,7 +92,7 @@ impl Render for InstancePage {
             }
         });
 
-        let breadcrumb = (self.breadcrumb)().child(self.title.clone());
+        let breadcrumb = self.page_path.create_breadcrumb(&self.data, cx);
         ui::page(cx, h_flex().gap_8().child(breadcrumb).child(h_flex().gap_3().child(button).child(open_dot_minecraft_button)))
             .child(
                 TabBar::new("bar")
@@ -110,13 +102,15 @@ impl Render for InstancePage {
                     .child(Tab::new().label("Quickplay"))
                     .child(Tab::new().label("Logs"))
                     .child(Tab::new().label("Mods"))
+                    .child(Tab::new().label("Resource Packs"))
                     .child(Tab::new().label("Settings"))
                     .on_click(cx.listener(|page, index, window, cx| {
                         let page_type = match *index {
                             0 => InstanceSubpageType::Quickplay,
                             1 => InstanceSubpageType::Logs,
                             2 => InstanceSubpageType::Mods,
-                            3 => InstanceSubpageType::Settings,
+                            3 => InstanceSubpageType::ResourcePacks,
+                            4 => InstanceSubpageType::Settings,
                             _ => {
                                 return;
                             },
@@ -134,6 +128,7 @@ pub enum InstanceSubpageType {
     Quickplay,
     Logs,
     Mods,
+    ResourcePacks,
     Settings,
 }
 
@@ -141,6 +136,7 @@ impl InstanceSubpageType {
     pub fn create(
         self,
         instance: &Entity<InstanceEntry>,
+        data: &DataEntities,
         backend_handle: BackendHandle,
         window: &mut gpui::Window,
         cx: &mut App
@@ -155,8 +151,11 @@ impl InstanceSubpageType {
             InstanceSubpageType::Mods => InstanceSubpage::Mods(cx.new(|cx| {
                 InstanceModsSubpage::new(instance, backend_handle, window, cx)
             })),
+            InstanceSubpageType::ResourcePacks => InstanceSubpage::ResourcePacks(cx.new(|cx| {
+                InstanceResourcePacksSubpage::new(instance, backend_handle, window, cx)
+            })),
             InstanceSubpageType::Settings => InstanceSubpage::Settings(cx.new(|cx| {
-                InstanceSettingsSubpage::new(instance, backend_handle, window, cx)
+                InstanceSettingsSubpage::new(instance, data, backend_handle, window, cx)
             })),
         }
     }
@@ -167,6 +166,7 @@ pub enum InstanceSubpage {
     Quickplay(Entity<InstanceQuickplaySubpage>),
     Logs(Entity<InstanceLogsSubpage>),
     Mods(Entity<InstanceModsSubpage>),
+    ResourcePacks(Entity<InstanceResourcePacksSubpage>),
     Settings(Entity<InstanceSettingsSubpage>),
 }
 
@@ -176,6 +176,7 @@ impl InstanceSubpage {
             InstanceSubpage::Quickplay(_) => InstanceSubpageType::Quickplay,
             InstanceSubpage::Logs(_) => InstanceSubpageType::Logs,
             InstanceSubpage::Mods(_) => InstanceSubpageType::Mods,
+            InstanceSubpage::ResourcePacks(_) => InstanceSubpageType::ResourcePacks,
             InstanceSubpage::Settings(_) => InstanceSubpageType::Settings,
         }
     }
@@ -185,6 +186,7 @@ impl InstanceSubpage {
             Self::Quickplay(entity) => entity.into_any_element(),
             Self::Logs(entity) => entity.into_any_element(),
             Self::Mods(entity) => entity.into_any_element(),
+            Self::ResourcePacks(entity) => entity.into_any_element(),
             Self::Settings(entity) => entity.into_any_element(),
         }
     }

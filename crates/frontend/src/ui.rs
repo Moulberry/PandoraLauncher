@@ -3,13 +3,16 @@ use std::sync::Arc;
 use bridge::{instance::InstanceID, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    breadcrumb::{Breadcrumb, BreadcrumbItem}, button::{Button, ButtonVariants}, h_flex, resizable::{h_resizable, resizable_panel, ResizableState}, sidebar::{Sidebar, SidebarFooter, SidebarGroup, SidebarMenu, SidebarMenuItem}, v_flex, ActiveTheme as _, Icon, IconName, WindowExt
+    breadcrumb::{Breadcrumb, BreadcrumbItem}, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, resizable::{h_resizable, resizable_panel, ResizableState}, sidebar::{Sidebar, SidebarFooter, SidebarGroup, SidebarMenu, SidebarMenuItem}, v_flex, ActiveTheme as _, Disableable, Icon, IconName, WindowExt
 };
+use rand::Rng;
+use schema::modrinth::ModrinthProjectType;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
-    entity::{
-        instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}, DataEntities
+    component::page_path::PagePath, entity::{
+        DataEntities, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
     }, interface_config::InterfaceConfig, modals, pages::{instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, syncing_page::SyncingPage}, png_render_cache, root
 };
 
@@ -30,6 +33,7 @@ pub enum PageType {
     Syncing,
     Modrinth {
         installing_for: Option<InstanceID>,
+        project_type: Option<ModrinthProjectType>,
     },
     InstancePage(InstanceID, InstanceSubpageType),
 }
@@ -39,13 +43,13 @@ impl PageType {
         match self {
             PageType::Instances => SerializedPageType::Instances,
             PageType::Syncing => SerializedPageType::Syncing,
-            PageType::Modrinth { installing_for } => {
+            PageType::Modrinth { installing_for, .. } => {
                 if let Some(installing_for) = installing_for {
                     if let Some(name) = InstanceEntries::find_name_by_id(&data.instances, *installing_for, cx) {
                         return SerializedPageType::Modrinth { installing_for: Some(name) };
                     }
                 }
-                SerializedPageType::Modrinth { installing_for: None}
+                SerializedPageType::Modrinth { installing_for: None }
             },
             PageType::InstancePage(id, _) => {
                 if let Some(name) = InstanceEntries::find_name_by_id(&data.instances, *id, cx) {
@@ -64,10 +68,10 @@ impl PageType {
             SerializedPageType::Modrinth { installing_for } => {
                 if let Some(installing_for) = installing_for {
                     if let Some(id) = InstanceEntries::find_id_by_name(&data.instances, installing_for, cx) {
-                        return PageType::Modrinth { installing_for: Some(id) };
+                        return PageType::Modrinth { installing_for: Some(id), project_type: None };
                     }
                 }
-                PageType::Modrinth { installing_for: None}
+                PageType::Modrinth { installing_for: None, project_type: None }
             },
             SerializedPageType::InstancePage(name) => {
                 if let Some(id) = InstanceEntries::find_id_by_name(&data.instances, name, cx) {
@@ -117,7 +121,7 @@ impl LauncherPage {
         match self {
             LauncherPage::Instances(_) => PageType::Instances,
             LauncherPage::Syncing(_) => PageType::Syncing,
-            LauncherPage::Modrinth { installing_for, .. } => PageType::Modrinth { installing_for: *installing_for },
+            LauncherPage::Modrinth { installing_for, .. } => PageType::Modrinth { installing_for: *installing_for, project_type: None },
             LauncherPage::InstancePage(id, subpage, _) => PageType::InstancePage(*id, *subpage),
         }
     }
@@ -158,7 +162,7 @@ impl LauncherUI {
                 if let LauncherPage::InstancePage(id, _, _) = this.page
                     && id == event.id
                 {
-                    this.switch_page(PageType::Instances, None, window, cx);
+                    this.switch_page(PageType::Instances, &[], window, cx);
                 }
                 cx.notify();
             });
@@ -172,11 +176,13 @@ impl LauncherUI {
                 cx.notify();
             });
 
-        let page_type = PageType::from_serialized(&InterfaceConfig::get(cx).main_page, data, cx);
+        let config = InterfaceConfig::get(cx);
+        let page_type = PageType::from_serialized(&config.main_page, data, cx);
+        let page_path: Vec<PageType> = config.page_path.iter().map(|page| PageType::from_serialized(page, data, cx)).collect();
 
         Self {
             data: data.clone(),
-            page: Self::create_page(&data, page_type, None, window, cx),
+            page: Self::create_page(&data, page_type, &page_path, window, cx),
             sidebar_state,
             recent_instances,
             _instance_added_subscription,
@@ -186,7 +192,8 @@ impl LauncherUI {
         }
     }
 
-    fn create_page(data: &DataEntities, page: PageType, breadcrumb: Option<Box<dyn Fn() -> Breadcrumb>>, window: &mut Window, cx: &mut Context<Self>) -> LauncherPage {
+    fn create_page(data: &DataEntities, page: PageType, path: &[PageType], window: &mut Window, cx: &mut Context<Self>) -> LauncherPage {
+        let path = PagePath::new(path.iter().cloned().chain(std::iter::once(page)).collect());
         match page {
             PageType::Instances => {
                 LauncherPage::Instances(cx.new(|cx| InstancesPage::new(data, window, cx)))
@@ -194,10 +201,9 @@ impl LauncherUI {
             PageType::Syncing => {
                 LauncherPage::Syncing(cx.new(|cx| SyncingPage::new(data, window, cx)))
             },
-            PageType::Modrinth { installing_for } => {
-                let breadcrumb = breadcrumb.unwrap_or(Box::new(|| Breadcrumb::new().text_xl()));
+            PageType::Modrinth { installing_for, project_type } => {
                 let page = cx.new(|cx| {
-                    ModrinthSearchPage::new(data, installing_for, breadcrumb, window, cx)
+                    ModrinthSearchPage::new(installing_for, project_type, path, data, window, cx)
                 });
                 LauncherPage::Modrinth {
                     installing_for,
@@ -205,22 +211,25 @@ impl LauncherUI {
                 }
             },
             PageType::InstancePage(id, subpage) => {
-                let breadcrumb = breadcrumb.unwrap_or(Box::new(|| Breadcrumb::new().text_xl().child(BreadcrumbItem::new("Instances").on_click(|_, window, cx| {
-                    root::switch_page(PageType::Instances, None, window, cx);
-                }))));
                 LauncherPage::InstancePage(id, subpage, cx.new(|cx| {
-                    InstancePage::new(id, subpage, data, breadcrumb, window, cx)
+                    InstancePage::new(id, subpage, path, data, window, cx)
                 }))
             },
         }
     }
 
-    pub fn switch_page(&mut self, page: PageType, breadcrumb: Option<Box<dyn Fn() -> Breadcrumb>>, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn switch_page(&mut self, page: PageType, breadcrumbs: &[PageType], window: &mut Window, cx: &mut Context<Self>) {
         if self.page.page_type() == page {
             return;
         }
-        InterfaceConfig::get_mut(cx).main_page = page.to_serialized(&self.data, cx);
-        self.page = Self::create_page(&self.data, page, breadcrumb, window, cx);
+
+        let main_page = page.to_serialized(&self.data, cx);
+        let page_path = breadcrumbs.iter().map(|page| page.to_serialized(&self.data, cx)).collect();
+        let config = InterfaceConfig::get_mut(cx);
+        config.main_page = main_page;
+        config.page_path = page_path;
+
+        self.page = Self::create_page(&self.data, page, breadcrumbs, window, cx);
         cx.notify();
     }
 }
@@ -234,21 +243,21 @@ impl Render for LauncherUI {
                 SidebarMenuItem::new("Instances")
                     .active(page_type == PageType::Instances)
                     .on_click(cx.listener(|launcher, _, window, cx| {
-                        launcher.switch_page(PageType::Instances, None, window, cx);
+                        launcher.switch_page(PageType::Instances, &[], window, cx);
                     })),
                 SidebarMenuItem::new("Syncing")
                     .active(page_type == PageType::Syncing)
                     .on_click(cx.listener(|launcher, _, window, cx| {
-                        launcher.switch_page(PageType::Syncing, None, window, cx);
+                        launcher.switch_page(PageType::Syncing, &[], window, cx);
                     })),
             ]),
         );
 
         let launcher_group = SidebarGroup::new("Content").child(
             SidebarMenu::new().children([SidebarMenuItem::new("Modrinth")
-                .active(page_type == PageType::Modrinth { installing_for: None })
+                .active(page_type == PageType::Modrinth { installing_for: None, project_type: None })
                 .on_click(cx.listener(|launcher, _, window, cx| {
-                    launcher.switch_page(PageType::Modrinth { installing_for: None }, None, window, cx);
+                    launcher.switch_page(PageType::Modrinth { installing_for: None, project_type: None }, &[], window, cx);
                 }))]),
         );
 
@@ -270,7 +279,7 @@ impl Render for LauncherUI {
                     SidebarMenuItem::new(name)
                         .active(active)
                         .on_click(cx.listener(move |launcher, _, window, cx| {
-                            launcher.switch_page(PageType::InstancePage(id, InstanceSubpageType::Quickplay), None, window, cx);
+                            launcher.switch_page(PageType::InstancePage(id, InstanceSubpageType::Quickplay), &[PageType::Instances], window, cx);
                         }))
                 }),
             ));
@@ -319,6 +328,8 @@ impl Render for LauncherUI {
                             (accounts.accounts.clone(), accounts.selected_account_uuid)
                         };
 
+                        let trash_icon = Icon::default().path("icons/trash-2.svg");
+
                         let items = accounts.iter().map(|account| {
                             let head = if let Some(head) = &account.head {
                                 let resize = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
@@ -330,35 +341,106 @@ impl Render for LauncherUI {
 
                             let selected = Some(account.uuid) == selected_account;
 
-                            Button::new(account_name.clone())
-                                .when(selected, |this| {
-                                    this.info()
-                                })
-                                .h_10()
-                                .child(head.size_8().min_w_8().min_h_8())
-                                .child(account_name)
-                                .when(!selected, |this| {
-                                    this.on_click({
+                            h_flex()
+                                .gap_2()
+                                .w_full()
+                                .child(Button::new(account_name.clone())
+                                    .flex_grow()
+                                    .when(selected, |this| {
+                                        this.info()
+                                    })
+                                    .h_10()
+                                    .child(head.size_8().min_w_8().min_h_8())
+                                    .child(account_name.clone())
+                                    .when(!selected, |this| {
+                                        this.on_click({
+                                            let backend_handle = backend_handle.clone();
+                                            let uuid = account.uuid;
+                                            move |_, _, _| {
+                                                backend_handle.send(MessageToBackend::SelectAccount { uuid });
+                                            }
+                                        })
+                                    }))
+                                .child(Button::new((account_name.clone(), 1))
+                                    .icon(trash_icon.clone())
+                                    .h_10()
+                                    .w_10()
+                                    .danger()
+                                    .on_click({
                                         let backend_handle = backend_handle.clone();
                                         let uuid = account.uuid;
                                         move |_, _, _| {
-                                            backend_handle.send(MessageToBackend::SelectAccount { uuid });
+                                            backend_handle.send(MessageToBackend::DeleteAccount { uuid });
                                         }
-                                    })
-                                })
+                                    }))
+
                         });
 
                         sheet
                             .title("Accounts")
                             .overlay_top(crate::root::sheet_margin_top(window))
-                            .gap_2()
-                            .child(Button::new("Add account").h_10().success().icon(IconName::Plus).label("Add account").on_click({
-                                let backend_handle = backend_handle.clone();
-                                move |_, window, cx| {
-                                    crate::root::start_new_account_login(&backend_handle, window, cx);
-                                }
-                            }))
-                            .children(items)
+                            .child(v_flex()
+                                .gap_2()
+                                .child(Button::new("add-account").h_10().success().icon(IconName::Plus).label("Add account").on_click({
+                                    let backend_handle = backend_handle.clone();
+                                    move |_, window, cx| {
+                                        crate::root::start_new_account_login(&backend_handle, window, cx);
+                                    }
+                                }))
+                                .child(Button::new("add-offline").h_10().success().icon(IconName::Plus).label("Add offline account").on_click({
+                                    let backend_handle = backend_handle.clone();
+                                    move |_, window, cx| {
+                                        let name_input = cx.new(|cx| {
+                                            InputState::new(window, cx)
+                                        });
+                                        let uuid_input = cx.new(|cx| {
+                                            InputState::new(window, cx).placeholder("Random")
+                                        });
+                                        let backend_handle = backend_handle.clone();
+                                        window.open_dialog(cx, move |dialog, _, cx| {
+                                            let username = name_input.read(cx).value();
+                                            let valid_name = username.len() >= 1 && username.len() <= 16 &&
+                                                username.as_bytes().iter().all(|c| *c > 32 && *c < 127);
+                                            let uuid = uuid_input.read(cx).value();
+                                            let valid_uuid = uuid.is_empty() || Uuid::try_parse(&uuid).is_ok();
+
+                                            let valid = valid_name && valid_uuid;
+
+                                            let backend_handle = backend_handle.clone();
+                                            let mut add_button = Button::new("add").label("Add").disabled(!valid).on_click(move |_, window, cx| {
+                                                window.close_all_dialogs(cx);
+
+                                                let uuid = if let Ok(uuid) = Uuid::try_parse(&uuid) {
+                                                   uuid
+                                                } else {
+                                                    let uuid: u128 = rand::thread_rng().r#gen();
+                                                    let uuid = (uuid & !0xF0000000000000000000) | 0x30000000000000000000; // set version to 3
+                                                    Uuid::from_u128(uuid)
+                                                };
+
+                                                backend_handle.send(MessageToBackend::AddOfflineAccount {
+                                                    name: username.clone().into(),
+                                                    uuid
+                                                });
+                                            });
+
+                                            if valid {
+                                                add_button = add_button.success();
+                                            }
+
+                                            dialog.title("Add offline account")
+                                                .child(v_flex()
+                                                    .gap_2()
+                                                    .child(crate::labelled("Name", Input::new(&name_input)))
+                                                    .child(crate::labelled("UUID", Input::new(&uuid_input)))
+                                                    .child(add_button)
+                                                )
+                                        });
+                                    }
+                                }))
+                                .children(items)
+                            )
+
                     });
                 }
             });
@@ -374,9 +456,9 @@ impl Render for LauncherUI {
             })
             .child(IconName::Settings)
             .on_click({
-                let theme_folder = self.data.theme_folder.clone();
+                let data = self.data.clone();
                 move |_, window, cx| {
-                    let build = modals::settings::build_settings_sheet(theme_folder.clone(), window, cx);
+                    let build = modals::settings::build_settings_sheet(&data, window, cx);
                     window.open_sheet_at(gpui_component::Placement::Left, cx, build);
                 }
             });

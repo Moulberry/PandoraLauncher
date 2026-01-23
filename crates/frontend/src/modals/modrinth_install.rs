@@ -34,6 +34,7 @@ struct InstallDialog {
     project_versions: Arc<[ModrinthProjectVersion]>,
     data: DataEntities,
     project_type: ModrinthProjectType,
+    project_id: Arc<str>,
 
     version_matrix: FxHashMap<&'static str, VersionMatrixLoaders>,
     instances: Option<Entity<SelectState<InstanceDropdown>>>,
@@ -66,16 +67,21 @@ pub fn open(
 ) {
     let project_versions = FrontendMetadata::request(
         &data.metadata,
-        MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest { project_id, game_versions: None, loaders: None, }),
+        MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest {
+            project_id: project_id.clone(),
+            game_versions: None,
+            loaders: None,
+        }),
         cx,
     );
 
-    open_from_entity(SharedString::new(name), project_versions, project_type, install_for, data.clone(), window, cx);
+    open_from_entity(SharedString::new(name), project_versions, project_id, project_type, install_for, data.clone(), window, cx);
 }
 
 fn open_from_entity(
     name: SharedString,
     project_versions: Entity<FrontendMetadataState>,
+    project_id: Arc<str>,
     project_type: ModrinthProjectType,
     install_for: Option<InstanceID>,
     data: DataEntities,
@@ -89,7 +95,7 @@ fn open_from_entity(
         FrontendMetadataResult::Loading => {
             let _subscription = window.observe(&project_versions, cx, move |project_versions, window, cx| {
                 window.close_all_dialogs(cx);
-                open_from_entity(name.clone(), project_versions, project_type, install_for, data.clone(), window, cx);
+                open_from_entity(name.clone(), project_versions, project_id.clone(), project_type, install_for, data.clone(), window, cx);
             });
             window.open_dialog(cx, move |dialog, _, _| {
                 let _ = &_subscription;
@@ -191,6 +197,7 @@ fn open_from_entity(
                     project_versions: valid_project_versions.into(),
                     data,
                     project_type,
+                    project_id,
                     version_matrix,
                     instances: None,
                     unsupported_instances: 0,
@@ -251,6 +258,7 @@ fn open_from_entity(
                     project_versions: valid_project_versions.into(),
                     data,
                     project_type,
+                    project_id,
                     version_matrix,
                     instances,
                     unsupported_instances,
@@ -665,7 +673,7 @@ impl InstallDialog {
                                             project_id: dep.project_id.clone().unwrap(),
                                             version_id: dep.version_id.clone()
                                         },
-                                        content_source: ContentSource::Modrinth,
+                                        content_source: ContentSource::ModrinthProject { project: dep.project_id.clone().unwrap() },
                                     })
                                 }
                             }
@@ -678,7 +686,9 @@ impl InstallDialog {
                                     sha1: install_file.hashes.sha1.clone(),
                                     size: install_file.size,
                                 },
-                                content_source: ContentSource::Modrinth,
+                                content_source: ContentSource::ModrinthProject {
+                                    project: this.project_id.clone()
+                                },
                             });
 
                             let content_install = ContentInstall {

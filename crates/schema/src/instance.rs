@@ -9,6 +9,8 @@ use crate::loader::Loader;
 pub struct InstanceConfiguration {
     pub minecraft_version: Ustr,
     pub loader: Loader,
+    #[serde(default)]
+    pub preferred_loader_version: Option<Ustr>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_memory_configuration")]
     pub memory: Option<InstanceMemoryConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_flags_configuration")]

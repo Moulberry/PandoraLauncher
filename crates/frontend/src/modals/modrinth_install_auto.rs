@@ -69,14 +69,18 @@ pub fn open(
 ) {
     let project_versions = FrontendMetadata::request(
         &data.metadata,
-        MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest { project_id, game_versions: None, loaders: None, }),
+        MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest {
+            project_id: project_id.clone(),
+            game_versions: None,
+            loaders: None,
+        }),
         cx,
     );
 
     let key = Uuid::new_v4();
     let title = SharedString::new(format!("Install {}", name));
 
-    if handle_project_versions(data, title.clone(), key, project_type, install_for, &project_versions, window, cx) {
+    if handle_project_versions(data, title.clone(), key, project_id.clone(), project_type, install_for, &project_versions, window, cx) {
         return;
     }
 
@@ -84,7 +88,7 @@ pub fn open(
         let title = title.clone();
         let data = data.clone();
         move |project_versions, window, cx| {
-            handle_project_versions(&data, title.clone(), key, project_type, install_for, &project_versions, window, cx);
+            handle_project_versions(&data, title.clone(), key, project_id.clone(), project_type, install_for, &project_versions, window, cx);
         }
     });
 
@@ -109,6 +113,7 @@ fn handle_project_versions(
     data: &DataEntities,
     title: SharedString,
     key: Uuid,
+    project_id: Arc<str>,
     project_type: ModrinthProjectType,
     install_for: InstanceID,
     project_versions: &Entity<FrontendMetadataState>,
@@ -126,6 +131,7 @@ fn handle_project_versions(
             };
             let configuration = instance.read(cx).configuration.clone();
             let modrinth_loader = configuration.loader.as_modrinth_loader();
+            let is_mod = project_type == ModrinthProjectType::Mod || project_type == ModrinthProjectType::Modpack;
             let matching_versions = project_versions.0.iter().filter(|version| {
                 let Some(loaders) = version.loaders.clone() else {
                     return false;
@@ -139,7 +145,7 @@ fn handle_project_versions(
                 if !game_versions.contains(&configuration.minecraft_version) {
                     return false;
                 }
-                if !loaders.contains(&modrinth_loader) {
+                if is_mod && !loaders.contains(&modrinth_loader) {
                     return false;
                 }
                 true
@@ -220,7 +226,9 @@ fn handle_project_versions(
                             project_id: dep.project_id.clone().unwrap(),
                             version_id: dep.version_id.clone()
                         },
-                        content_source: ContentSource::Modrinth,
+                        content_source: ContentSource::ModrinthProject {
+                            project: dep.project_id.clone().unwrap()
+                        },
                     })
                 }
             }
@@ -233,7 +241,9 @@ fn handle_project_versions(
                     sha1: install_file.hashes.sha1.clone(),
                     size: install_file.size,
                 },
-                content_source: ContentSource::Modrinth,
+                content_source: ContentSource::ModrinthProject {
+                    project: project_id
+                },
             });
 
             let content_install = ContentInstall {

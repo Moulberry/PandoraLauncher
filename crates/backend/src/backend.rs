@@ -10,19 +10,19 @@ use auth::{
     serve_redirect::{self, ProcessAuthorizationError},
 };
 use bridge::{
-    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{InstanceID, InstanceModSummary, InstanceServerSummary, InstanceWorldSummary, LoaderSpecificModSummary}, message::MessageToFrontend, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{InstanceID, InstanceContentSummary, InstanceServerSummary, InstanceWorldSummary, ContentType}, message::MessageToFrontend, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use schema::{backend_config::BackendConfig, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
 use sha1::{Digest, Sha1};
 use tokio::sync::{mpsc::Receiver, OnceCell};
 use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    account::BackendAccountInfo, config::BackendConfig, directories::LauncherDirectories, id_slab::IdSlab, instance::Instance, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent
+    account::{BackendAccountInfo, MinecraftLoginInfo}, directories::LauncherDirectories, id_slab::IdSlab, instance::{Instance, ContentFolder}, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent
 };
 
 pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHandle, recv: BackendReceiver) {
@@ -33,7 +33,8 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         .expect("Failed to initialize Tokio runtime");
 
     let http_client = reqwest::ClientBuilder::new()
-        // .connect_timeout(Duration::from_secs(5))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(15))
         .redirect(Policy::none())
         .use_rustls_tls()
         .user_agent("PandoraLauncher/0.1.0 (https://github.com/Moulberry/PandoraLauncher)")
@@ -64,7 +65,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         instances: IdSlab::default(),
         instance_by_path: HashMap::new(),
         instances_generation: 0,
-        reload_mods_immediately: FxHashSet::default(),
+        reload_immediately: Default::default(),
     };
 
     let mut state_file_watching = BackendStateFileWatching {
@@ -119,14 +120,14 @@ pub enum WatchTarget {
     InstanceWorldDir { id: InstanceID },
     InstanceSavesDir { id: InstanceID },
     ServersDat { id: InstanceID },
-    InstanceModsDir { id: InstanceID },
+    InstanceContentDir { id: InstanceID, folder: ContentFolder },
 }
 
 pub struct BackendStateInstances {
     pub instances: IdSlab<Instance>,
     pub instance_by_path: HashMap<PathBuf, InstanceID>,
     pub instances_generation: usize,
-    pub reload_mods_immediately: FxHashSet<InstanceID>,
+    pub reload_immediately: FxHashSet<(InstanceID, ContentFolder)>,
 }
 
 pub struct BackendStateFileWatching {
@@ -290,7 +291,8 @@ impl BackendState {
                 configuration: instance.configuration.get().clone(),
                 worlds_state: Arc::clone(&instance.worlds_state),
                 servers_state: Arc::clone(&instance.servers_state),
-                mods_state: Arc::clone(&instance.mods_state),
+                mods_state: Arc::clone(&instance.content_state[ContentFolder::Mods].load_state),
+                resource_packs_state: Arc::clone(&instance.content_state[ContentFolder::ResourcePacks].load_state),
             };
             self.send.send(message);
 
@@ -611,7 +613,7 @@ impl BackendState {
     pub async fn prelaunch_apply_modpacks(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
         let (loader, minecraft_version, mod_dir) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let configuration = instance.configuration.get();
-            (configuration.loader, configuration.minecraft_version, instance.mods_path.clone())
+            (configuration.loader, configuration.minecraft_version, instance.content_state[ContentFolder::Mods].path.clone())
         } else {
             return Vec::new();
         };
@@ -620,7 +622,7 @@ impl BackendState {
             return Vec::new();
         }
 
-        let Some(mods) = self.clone().load_instance_mods(id).await else {
+        let Some(mods) = self.clone().load_instance_content(id, ContentFolder::Mods).await else {
             return Vec::new();
         };
 
@@ -656,7 +658,7 @@ impl BackendState {
                 continue;
             }
 
-            if let LoaderSpecificModSummary::ModrinthModpack { downloads, overrides, .. } = &summary.mod_summary.extra {
+            if let ContentType::ModrinthModpack { downloads, overrides, .. } = &summary.content_summary.extra {
                 let downloads = downloads.clone();
 
                 let filtered_downloads = downloads.iter().filter(|dl| {
@@ -683,7 +685,7 @@ impl BackendState {
                                 sha1: file.hashes.sha1.clone(),
                                 size: file.file_size,
                             },
-                            content_source: schema::content::ContentSource::Modrinth,
+                            content_source: schema::content::ContentSource::ModrinthUnknown,
                         })
                     }).collect(),
                 };
@@ -829,7 +831,7 @@ impl BackendState {
 
     }
 
-    pub async fn load_instance_mods(self, id: InstanceID) -> Option<Arc<[InstanceModSummary]>> {
+    pub async fn load_instance_content(self, id: InstanceID, folder: ContentFolder) -> Option<Arc<[InstanceContentSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
             if !instance.watching_dot_minecraft {
@@ -840,25 +842,36 @@ impl BackendState {
                     });
                 }
             }
-            if !instance.watching_mods_dir {
-                instance.watching_mods_dir = true;
-                let mods_path = instance.mods_path.clone();
-                if file_watching.watcher.watch(&mods_path, notify::RecursiveMode::NonRecursive).is_ok() {
-                    file_watching.watching.insert(mods_path.clone(), WatchTarget::InstanceModsDir { id: instance.id });
+            let content_state = &mut instance.content_state[folder];
+            if !content_state.watching_path {
+                content_state.watching_path = true;
+                let path = content_state.path.clone();
+                if file_watching.watcher.watch(&path, notify::RecursiveMode::NonRecursive).is_ok() {
+                    file_watching.watching.insert(path.clone(), WatchTarget::InstanceContentDir { id: instance.id, folder });
                 }
             }
         }
 
-        let result = Instance::load_mods(self.instance_state.clone(), id, &self.mod_metadata_manager).await;
+        let result = Instance::load_content(self.instance_state.clone(), id, &self.mod_metadata_manager, folder).await;
 
-        if let Some((mods, newly_loaded)) = result.clone() && newly_loaded {
-            self.send.send(MessageToFrontend::InstanceModsUpdated {
-                id,
-                mods: Arc::clone(&mods)
-            });
+        if let Some((content, newly_loaded)) = result.clone() && newly_loaded {
+            match folder {
+                ContentFolder::Mods => {
+                    self.send.send(MessageToFrontend::InstanceModsUpdated {
+                        id,
+                        mods: Arc::clone(&content)
+                    });
+                },
+                ContentFolder::ResourcePacks => {
+                    self.send.send(MessageToFrontend::InstanceResourcePacksUpdated {
+                        id,
+                        resource_packs: Arc::clone(&content)
+                    });
+                },
+            }
         }
 
-        result.map(|(mods, _)| mods)
+        result.map(|(content, _)| content)
     }
 
     pub async fn load_instance_worlds(self, id: InstanceID) -> Option<Arc<[InstanceWorldSummary]>> {
@@ -946,6 +959,7 @@ impl BackendState {
         let instance_info = InstanceConfiguration {
             minecraft_version: Ustr::from(version),
             loader,
+            preferred_loader_version: None,
             memory: None,
             jvm_flags: None,
             jvm_binary: None,
@@ -979,6 +993,41 @@ impl BackendState {
                 self.send.send_error(format!("Unable to rename instance folder: {}", err));
             }
         }
+    }
+
+    pub async fn get_login_info(&self, modal_action: &ModalAction) -> Option<MinecraftLoginInfo> {
+        let selected_account = {
+            let mut account_info = self.account_info.write();
+            let account_info = account_info.get();
+
+            let mut selected_account = account_info.selected_account;
+
+            if let Some(uuid) = selected_account {
+                if let Some(account) = account_info.accounts.get(&uuid) {
+                    if account.offline {
+                        return Some(MinecraftLoginInfo {
+                            uuid,
+                            username: account.username.clone(),
+                            access_token: None
+                        })
+                    }
+                } else {
+                    selected_account = None;
+                }
+            }
+
+            selected_account
+        };
+
+        let Some((profile, access_token)) = self.login_flow(modal_action, selected_account).await else {
+            return None;
+        };
+
+        Some(MinecraftLoginInfo {
+            uuid: profile.id,
+            username: profile.name.clone(),
+            access_token: Some(access_token),
+        })
     }
 }
 

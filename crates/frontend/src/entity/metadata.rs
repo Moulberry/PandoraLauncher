@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use bridge::{handle::BackendHandle, keep_alive::KeepAliveHandle, message::MessageToBackend, meta::{MetadataRequest, MetadataResult}};
 use gpui::{prelude::*, *};
-use schema::{modrinth::{ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
+use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, maven::MavenMetadataXml, modrinth::{ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
 
 #[derive(Debug)]
 pub enum FrontendMetadataState {
@@ -16,6 +16,22 @@ pub enum FrontendMetadataState {
 pub enum FrontendMetadataResult<'a, T> {
     Loading,
     Loaded(&'a T),
+    Error(SharedString),
+}
+
+impl <'a, T> FrontendMetadataResult<'a, T> {
+    pub fn as_typeless(self) -> TypelessFrontendMetadataResult {
+        match self {
+            FrontendMetadataResult::Loading => TypelessFrontendMetadataResult::Loading,
+            FrontendMetadataResult::Loaded(_) => TypelessFrontendMetadataResult::Loaded,
+            FrontendMetadataResult::Error(error) => TypelessFrontendMetadataResult::Error(error),
+        }
+    }
+}
+
+pub enum TypelessFrontendMetadataResult {
+    Loading,
+    Loaded,
     Error(SharedString),
 }
 
@@ -118,3 +134,6 @@ macro_rules! define_as_metadata_result {
 define_as_metadata_result!(MinecraftVersionManifest);
 define_as_metadata_result!(ModrinthSearchResult);
 define_as_metadata_result!(ModrinthProjectVersionsResult);
+define_as_metadata_result!(FabricLoaderManifest);
+define_as_metadata_result!(ForgeMavenManifest);
+define_as_metadata_result!(NeoforgeMavenManifest);

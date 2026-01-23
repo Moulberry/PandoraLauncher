@@ -3,7 +3,7 @@ use std::{path::Path, sync::{Arc, RwLock}};
 use bridge::{
     handle::BackendHandle,
     install::ContentInstall,
-    instance::{InstanceID, InstanceModID},
+    instance::{InstanceID, InstanceContentID},
     message::{MessageToBackend, QuickPlayLaunch},
     modal_action::ModalAction,
 };
@@ -171,16 +171,16 @@ pub fn start_update_check(
 
 pub fn update_single_mod(
     instance: InstanceID,
-    mod_id: InstanceModID,
+    mod_id: InstanceContentID,
     backend_handle: &BackendHandle,
     window: &mut Window,
     cx: &mut App,
 ) {
     let modal_action = ModalAction::default();
 
-    backend_handle.send(MessageToBackend::UpdateMod {
+    backend_handle.send(MessageToBackend::UpdateContent {
         instance,
-        mod_id,
+        content_id: mod_id,
         modal_action: modal_action.clone(),
     });
 
@@ -206,14 +206,14 @@ pub fn upload_log_file(
 
 pub fn switch_page(
     page: PageType,
-    breadcrumb: Option<Box<dyn Fn() -> Breadcrumb>>,
+    breadcrumbs: &[PageType],
     window: &mut Window,
     cx: &mut App,
 ) {
     cx.update_global::<LauncherRootGlobal, ()>(|global, cx| {
         global.root.update(cx, |launcher_root, cx| {
             launcher_root.ui.update(cx, |ui, cx| {
-                ui.switch_page(page, breadcrumb, window, cx);
+                ui.switch_page(page, breadcrumbs, window, cx);
             });
         });
     });

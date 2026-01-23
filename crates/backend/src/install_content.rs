@@ -1,7 +1,7 @@
 use std::{ffi::{OsStr, OsString}, io::Write, path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{LoaderSpecificModSummary, ModSummary}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, ContentSummary}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
 use reqwest::StatusCode;
 use schema::{content::ContentSource, loader::Loader, modrinth::{ModrinthLoader, ModrinthProjectVersionsRequest}};
@@ -42,7 +42,7 @@ struct InstallFromContentLibrary {
     hash: [u8; 20],
     install_path: Arc<Path>,
     content_file: ContentInstallFile,
-    mod_summary: Option<Arc<ModSummary>>,
+    mod_summary: Option<Arc<ContentSummary>>,
 }
 
 #[derive(Clone)]
@@ -137,9 +137,12 @@ impl BackendState {
                                 ContentInstallPath::Automatic => {
                                     let base = if let Some(mod_summary) = &mod_summary {
                                         match mod_summary.extra {
-                                            LoaderSpecificModSummary::Fabric | LoaderSpecificModSummary::Forge | LoaderSpecificModSummary::JavaModule | LoaderSpecificModSummary::ModrinthModpack { .. } => {
+                                            ContentType::Fabric | ContentType::Forge | ContentType::NeoForge | ContentType::JavaModule | ContentType::ModrinthModpack { .. } => {
                                                 Path::new("mods")
                                             },
+                                            ContentType::ResourcePack => {
+                                                Path::new("resourcepacks")
+                                            }
                                         }
                                     } else if let Some(loaders) = &version.loaders {
                                         let mut base = None;
@@ -308,7 +311,7 @@ impl BackendState {
                 let sources = files.iter()
                     .filter_map(|install| {
                         if install.content_file.content_source != ContentSource::Manual {
-                            Some((install.hash.clone(), install.content_file.content_source))
+                            Some((install.hash.clone(), install.content_file.content_source.clone()))
                         } else {
                             None
                         }
@@ -334,11 +337,11 @@ impl BackendState {
         }
     }
 
-    async fn download_file_into_library(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: &Arc<str>, size: usize, semaphore: &tokio::sync::Semaphore) -> Result<(PathBuf, [u8; 20], Option<Arc<ModSummary>>), ContentInstallError> {
+    async fn download_file_into_library(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: &Arc<str>, size: usize, semaphore: &tokio::sync::Semaphore) -> Result<(PathBuf, [u8; 20], Option<Arc<ContentSummary>>), ContentInstallError> {
         let mut result = self.download_file_into_library_inner(modal_action, name, url, sha1, size, semaphore).await?;
 
         if let Some(summary) = &result.2 {
-            if let LoaderSpecificModSummary::ModrinthModpack { downloads, .. } = &summary.extra {
+            if let ContentType::ModrinthModpack { downloads, .. } = &summary.extra {
                 let mut tasks = Vec::new();
 
                 for download in downloads.iter() {
@@ -363,7 +366,7 @@ impl BackendState {
         Ok(result)
     }
 
-    async fn download_file_into_library_inner(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: &Arc<str>, size: usize, semaphore: &tokio::sync::Semaphore) -> Result<(PathBuf, [u8; 20], Option<Arc<ModSummary>>), ContentInstallError> {
+    async fn download_file_into_library_inner(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: &Arc<str>, size: usize, semaphore: &tokio::sync::Semaphore) -> Result<(PathBuf, [u8; 20], Option<Arc<ContentSummary>>), ContentInstallError> {
 
         let mut expected_hash = [0u8; 20];
         let Ok(_) = hex::decode_to_slice(&**sha1, &mut expected_hash) else {

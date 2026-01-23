@@ -1,8 +1,14 @@
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ContentSource {
+    #[default]
     Manual,
-    Modrinth,
+    ModrinthUnknown,
+    ModrinthProject {
+        project: Arc<str>
+    }
 }

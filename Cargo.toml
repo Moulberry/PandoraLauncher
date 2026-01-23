@@ -77,7 +77,7 @@ sha2 = "0.10.9"
 url = "2.5.7"
 nt-time = { version = "0.12.1", features = ["chrono"] }
 obfstr = "0.4.4"
-uuid = "1.18.1"
+uuid = { version = "1.18.1", features = ["serde"] }
 keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "linux-native-sync-persistent"] }
 xmlparser = "0.13.6"
 heapless = "0.9.1"
@@ -89,7 +89,7 @@ parking_lot = { version = "0.12.5", features = ["deadlock_detection"] }
 lzma-rs = "0.3.0"
 httparse = "1.10.1"
 enum-map = "2.7.3"
-strum = "0.27.2"
+strum = { version = "0.27.2", features = ["derive"] }
 rayon = "1.11.0"
 rc-zip-sync = "4.4.2"
 relative-path = { version = "2.0.1", features = ["serde"] }
@@ -97,3 +97,7 @@ shell-words = "1.1.1"
 serde-xml-rs = "0.8.2"
 memchr = "2.7.6"
 toml = "0.9.11"
+clap = { version = "4.5.54", features = ["derive"] }
+indicatif = "0.18.3"
+open = "5.2.0"
+native-dialog = "0.9.4"

@@ -27,7 +27,7 @@ cargo packager --config '{'\
 '  "identifier": "com.moulberry.pandoralauncher",'\
 '  "resources": [],'\
 '  "binaries": [{ "path": "PandoraLauncher-macOS", "main": true }],'\
-'  "icons": ["package/icon_32x32.png"]'\
+'  "icons": ["package/mac.icns"]'\
 '}'
 
 mv dist/PandoraLauncher-macOS dist/PandoraLauncher-macOS-$version-Universal

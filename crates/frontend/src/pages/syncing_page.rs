@@ -1,9 +1,10 @@
-use bridge::{handle::BackendHandle, message::{MessageToBackend, SyncState, SyncTarget}};
+use bridge::{handle::BackendHandle, message::{MessageToBackend, SyncState}};
 use enumset::EnumSet;
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, tooltip::Tooltip, v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable
 };
+use schema::backend_config::SyncTarget;
 
 use crate::{entity::DataEntities, ui};
 
@@ -140,7 +141,8 @@ impl Render for SyncingPage {
             .child(self.create_entry("dh", "Sync Distant Horizons (Distant_Horizons_server_data) folder", SyncTarget::DistantHorizons, warning, info, cx))
             .child(self.create_entry("voxy", "Sync Voxy (.voxy) folder", SyncTarget::Voxy, warning, info, cx))
             .child(self.create_entry("xaero", "Sync Xaero's Minimap (xaero) folder", SyncTarget::XaerosMinimap, warning, info, cx))
-            .child(self.create_entry("bobby", "Sync Bobby (.bobby) folder", SyncTarget::Bobby, warning, info, cx));
+            .child(self.create_entry("bobby", "Sync Bobby (.bobby) folder", SyncTarget::Bobby, warning, info, cx))
+            .child(self.create_entry("litematic", "Litematic (schematic) folder", SyncTarget::Litematic, warning, info, cx));
 
         ui::page(cx, h_flex().gap_8().child("Syncing")).child(content).overflow_y_scrollbar()
     }

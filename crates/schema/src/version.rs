@@ -302,11 +302,7 @@ impl PartialMinecraftVersion {
         }
 
         if let Some(minecraft_arguments) = self.minecraft_arguments {
-            if let Some(curr_minecraft_arguments) = version.minecraft_arguments {
-                version.minecraft_arguments = Some(format!("{} {}", curr_minecraft_arguments, minecraft_arguments).into());
-            } else {
-                version.minecraft_arguments = Some(minecraft_arguments);
-            }
+            version.minecraft_arguments = Some(minecraft_arguments);
         }
 
         if let Some(minimum_launcher_version) = self.minimum_launcher_version {

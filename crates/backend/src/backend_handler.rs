@@ -2,16 +2,18 @@ use std::{io::{BufRead, Read, Seek, SeekFrom, Write}, path::Path, sync::{atomic:
 
 use auth::{credentials::AccountCredentials, models::{MinecraftAccessToken, MinecraftProfileResponse}, secret::PlatformSecretStorage};
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{InstanceStatus, LoaderSpecificModSummary, ModSummary}, message::{LogFiles, MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
+    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{InstanceStatus, ContentType, ContentSummary}, message::{LogFiles, MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
 };
 use futures::TryFutureExt;
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{content::ContentSource, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
 use serde::Deserialize;
+use strum::IntoEnumIterator;
 use tokio::{io::AsyncBufReadExt, sync::Semaphore};
+use ustr::Ustr;
 
 use crate::{
-    account::{BackendAccount, MinecraftLoginInfo}, arcfactory::ArcStrFactory, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::ModUpdateAction, BackendState, LoginError
+    BackendState, LoginError, account::{BackendAccount, MinecraftLoginInfo}, arcfactory::ArcStrFactory, instance::ContentFolder, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::ModUpdateAction
 };
 
 impl BackendState {
@@ -25,6 +27,18 @@ impl BackendState {
                         bridge::meta::MetadataRequest::MinecraftVersionManifest => {
                             let (result, handle) = meta.fetch_with_keepalive(&MinecraftVersionManifestMetadataItem, force_reload).await;
                             (result.map(MetadataResult::MinecraftVersionManifest), handle)
+                        },
+                        bridge::meta::MetadataRequest::FabricLoaderManifest => {
+                            let (result, handle) = meta.fetch_with_keepalive(&FabricLoaderManifestMetadataItem, force_reload).await;
+                            (result.map(MetadataResult::FabricLoaderManifest), handle)
+                        },
+                        bridge::meta::MetadataRequest::ForgeMavenManifest => {
+                            let (result, handle) = meta.fetch_with_keepalive(&ForgeInstallerMavenMetadataItem, force_reload).await;
+                            (result.map(MetadataResult::ForgeMavenManifest), handle)
+                        },
+                        bridge::meta::MetadataRequest::NeoforgeMavenManifest => {
+                            let (result, handle) = meta.fetch_with_keepalive(&NeoforgeInstallerMavenMetadataItem, force_reload).await;
+                            (result.map(MetadataResult::NeoforgeMavenManifest), handle)
                         },
                         bridge::meta::MetadataRequest::ModrinthSearch(ref search) => {
                             let (result, handle) = meta.fetch_with_keepalive(&ModrinthSearchMetadataItem(search), force_reload).await;
@@ -50,7 +64,10 @@ impl BackendState {
                 tokio::task::spawn(self.clone().load_instance_servers(id));
             },
             MessageToBackend::RequestLoadMods { id } => {
-                tokio::task::spawn(self.clone().load_instance_mods(id));
+                tokio::task::spawn(self.clone().load_instance_content(id, ContentFolder::Mods));
+            },
+            MessageToBackend::RequestLoadResourcePacks { id } => {
+                tokio::task::spawn(self.clone().load_instance_content(id, ContentFolder::ResourcePacks));
             },
             MessageToBackend::CreateInstance { name, version, loader } => {
                 self.create_instance(&name, &version, loader).await;
@@ -66,6 +83,28 @@ impl BackendState {
             MessageToBackend::RenameInstance { id, name } => {
                 self.rename_instance(id, &name).await;
             },
+            MessageToBackend::SetInstanceMinecraftVersion { id, version } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.minecraft_version = version;
+                    });
+                }
+            },
+            MessageToBackend::SetInstanceLoader { id, loader } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.loader = loader;
+                        configuration.preferred_loader_version = None;
+                    });
+                }
+            },
+            MessageToBackend::SetInstancePreferredLoaderVersion { id, loader_version } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.preferred_loader_version = loader_version.map(Ustr::from);
+                    });
+                }
+            }
             MessageToBackend::SetInstanceMemory { id, memory } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.configuration.modify(|configuration| {
@@ -110,15 +149,8 @@ impl BackendState {
                 quick_play,
                 modal_action,
             } => {
-                let selected_account = self.account_info.write().get().selected_account;
-                let Some((profile, access_token)) = self.login_flow(&modal_action, selected_account).await else {
+                let Some(login_info) = self.get_login_info(&modal_action).await else {
                     return;
-                };
-
-                let login_info = MinecraftLoginInfo {
-                    uuid: profile.id,
-                    username: profile.name.clone(),
-                    access_token,
                 };
 
                 let add_mods = tokio::select! {
@@ -172,8 +204,10 @@ impl BackendState {
                 let is_err = result.is_err();
                 match result {
                     Ok(mut child) => {
-                        if let Some(stdout) = child.stdout.take() {
-                            log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
+                        if self.config.write().get().open_game_output_when_launching {
+                            if let Some(stdout) = child.stdout.take() {
+                                log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
+                            }
                         }
                         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                             instance.child = Some(child);
@@ -195,7 +229,7 @@ impl BackendState {
                 return;
 
             },
-            MessageToBackend::SetModEnabled { id, mod_ids, enabled } => {
+            MessageToBackend::SetContentEnabled { id, content_ids: mod_ids, enabled } => {
                 let mut instance_state = self.instance_state.write();
                 let Some(instance) = instance_state.instances.get_mut(id) else {
                     return;
@@ -204,7 +238,7 @@ impl BackendState {
                 let mut reload = FxHashSet::default();
 
                 for mod_id in mod_ids {
-                    if let Some(instance_mod) = instance.try_get_mod(mod_id) {
+                    if let Some((instance_mod, folder)) = instance.try_get_content(mod_id) {
                         if instance_mod.enabled == enabled {
                             return;
                         }
@@ -217,16 +251,16 @@ impl BackendState {
                         };
 
                         let _ = std::fs::rename(&instance_mod.path, new_path);
-                        reload.insert(id);
+                        reload.insert((id, folder));
                     }
                 }
 
-                instance_state.reload_mods_immediately.extend(reload);
+                instance_state.reload_immediately.extend(reload);
             },
-            MessageToBackend::SetModChildEnabled { id, mod_id, path, enabled } => {
+            MessageToBackend::SetContentChildEnabled { id, content_id: mod_id, path, enabled } => {
                 let mut instance_state = self.instance_state.write();
                 if let Some(instance) = instance_state.instances.get_mut(id)
-                    && let Some(instance_mod) = instance.try_get_mod(mod_id)
+                    && let Some((instance_mod, folder)) = instance.try_get_content(mod_id)
                 {
                     let Some(child_state_path) = crate::child_state_path(&instance_mod.path) else {
                         return;
@@ -234,7 +268,7 @@ impl BackendState {
 
                     match set_mod_child_enabled(&child_state_path, &*path, enabled) {
                         Ok(_) => {
-                            instance_state.reload_mods_immediately.insert(id);
+                            instance_state.reload_immediately.insert((id, folder));
                         },
                         Err(error) => {
                             let error = format!("Error occured while updating child state: {error}");
@@ -251,7 +285,7 @@ impl BackendState {
                 modal_action.set_finished();
                 self.send.send(MessageToFrontend::Refresh);
             },
-            MessageToBackend::DeleteMod { id, mod_ids } => {
+            MessageToBackend::DeleteContent { id, content_ids: mod_ids } => {
                 let mut instance_state = self.instance_state.write();
                 let Some(instance) = instance_state.instances.get_mut(id) else {
                     self.send.send_error("Unable to find instance, unknown id");
@@ -261,16 +295,16 @@ impl BackendState {
                 let mut reload = FxHashSet::default();
 
                 for mod_id in mod_ids {
-                    let Some(instance_mod) = instance.try_get_mod(mod_id) else {
+                    let Some((instance_mod, folder)) = instance.try_get_content(mod_id) else {
                         self.send.send_error("Unable to delete mod, invalid id");
                         return;
                     };
 
                     let _ = std::fs::remove_file(&instance_mod.path);
-                    reload.insert(id);
+                    reload.insert((id, folder));
                 }
 
-                instance_state.reload_mods_immediately.extend(reload);
+                instance_state.reload_immediately.extend(reload);
             },
             MessageToBackend::UpdateCheck { instance: id, modal_action } => {
                 let (loader, version) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
@@ -283,10 +317,14 @@ impl BackendState {
                     return;
                 };
 
-                let Some(mods) = self.clone().load_instance_mods(id).await else {
-                    modal_action.set_finished();
-                    return;
-                };
+                let mut content = Vec::new();
+                for folder in ContentFolder::iter() {
+                    let Some(summaries) = self.clone().load_instance_content(id, folder).await else {
+                        modal_action.set_finished();
+                        return;
+                    };
+                    content.extend_from_slice(&*summaries);
+                }
 
                 let modrinth_loader = loader.as_modrinth_loader();
                 if modrinth_loader == ModrinthLoader::Unknown {
@@ -295,18 +333,38 @@ impl BackendState {
                     return;
                 }
 
-                let tracker = ProgressTracker::new("Checking mods".into(), self.send.clone());
-                tracker.set_total(mods.len());
+                let tracker = ProgressTracker::new("Checking content".into(), self.send.clone());
+                tracker.set_total(content.len());
                 modal_action.trackers.push(tracker.clone());
 
                 let semaphore = Semaphore::new(8);
 
-                let params = VersionUpdateParameters {
+                let mod_params = &VersionUpdateParameters {
                     loaders: [modrinth_loader].into(),
                     game_versions: [version].into(),
                 };
 
-                let modrinth_modpack_params = VersionV3UpdateParameters {
+                let fabric_mod_params = &VersionUpdateParameters {
+                    loaders: [ModrinthLoader::Fabric].into(),
+                    game_versions: [version].into(),
+                };
+
+                let forge_mod_params = &VersionUpdateParameters {
+                    loaders: [ModrinthLoader::Forge].into(),
+                    game_versions: [version].into(),
+                };
+
+                let neoforge_mod_params = &VersionUpdateParameters {
+                    loaders: [ModrinthLoader::NeoForge].into(),
+                    game_versions: [version].into(),
+                };
+
+                let resourcepack_params = &VersionUpdateParameters {
+                    loaders: [ModrinthLoader::Minecraft].into(),
+                    game_versions: [version].into(),
+                };
+
+                let modrinth_modpack_params = &VersionV3UpdateParameters {
                     loaders: ["mrpack".into()].into(),
                     loader_fields: VersionV3LoaderFields {
                         mrpack_loaders: [modrinth_loader].into(),
@@ -319,18 +377,16 @@ impl BackendState {
                 let mut futures = Vec::new();
 
                 struct UpdateResult {
-                    mod_summary: Arc<ModSummary>,
+                    mod_summary: Arc<ContentSummary>,
                     action: ModUpdateAction,
                 }
 
                 { // Scope is needed so await doesn't complain about the non-send RwLockReadGuard
                     let sources = self.mod_metadata_manager.read_content_sources();
-                    for summary in mods.iter() {
-                        let source = sources.get(&summary.mod_summary.hash).copied().unwrap_or(ContentSource::Manual);
+                    for summary in content.iter() {
+                        let source = sources.get(&summary.content_summary.hash).unwrap_or(ContentSource::Manual);
                         let semaphore = &semaphore;
                         let meta = &meta;
-                        let params = &params;
-                        let modpack_params = &modrinth_modpack_params;
                         let tracker = &tracker;
                         futures.push(async move {
                             match source {
@@ -339,18 +395,45 @@ impl BackendState {
                                     tracker.notify();
                                     Ok(ModUpdateAction::ManualInstall)
                                 },
-                                ContentSource::Modrinth => {
+                                ContentSource::ModrinthUnknown | ContentSource::ModrinthProject { .. } => {
                                     let permit = semaphore.acquire().await.unwrap();
-                                    let result = if matches!(summary.mod_summary.extra, LoaderSpecificModSummary::ModrinthModpack { .. }) {
-                                        meta.fetch(&ModrinthV3VersionUpdateMetadataItem {
-                                            sha1: hex::encode(summary.mod_summary.hash).into(),
-                                            params: modpack_params.clone()
-                                        }).await
-                                    } else {
-                                        meta.fetch(&ModrinthVersionUpdateMetadataItem {
-                                            sha1: hex::encode(summary.mod_summary.hash).into(),
-                                            params: params.clone()
-                                        }).await
+                                    let result = match summary.content_summary.extra {
+                                        ContentType::Fabric => {
+                                            meta.fetch(&ModrinthVersionUpdateMetadataItem {
+                                                sha1: hex::encode(summary.content_summary.hash).into(),
+                                                params: fabric_mod_params.clone()
+                                            }).await
+                                        },
+                                        ContentType::Forge => {
+                                            meta.fetch(&ModrinthVersionUpdateMetadataItem {
+                                                sha1: hex::encode(summary.content_summary.hash).into(),
+                                                params: forge_mod_params.clone()
+                                            }).await
+                                        },
+                                        ContentType::NeoForge => {
+                                            meta.fetch(&ModrinthVersionUpdateMetadataItem {
+                                                sha1: hex::encode(summary.content_summary.hash).into(),
+                                                params: neoforge_mod_params.clone()
+                                            }).await
+                                        },
+                                        ContentType::JavaModule => {
+                                            meta.fetch(&ModrinthVersionUpdateMetadataItem {
+                                                sha1: hex::encode(summary.content_summary.hash).into(),
+                                                params: mod_params.clone()
+                                            }).await
+                                        },
+                                        ContentType::ModrinthModpack { .. } => {
+                                            meta.fetch(&ModrinthV3VersionUpdateMetadataItem {
+                                                sha1: hex::encode(summary.content_summary.hash).into(),
+                                                params: modrinth_modpack_params.clone()
+                                            }).await
+                                        },
+                                        ContentType::ResourcePack => {
+                                            meta.fetch(&ModrinthVersionUpdateMetadataItem {
+                                                sha1: hex::encode(summary.content_summary.hash).into(),
+                                                params: resourcepack_params.clone()
+                                            }).await
+                                        },
                                     };
                                     drop(permit);
 
@@ -362,6 +445,14 @@ impl BackendState {
                                     }
 
                                     let result = result?;
+
+                                    if let ContentSource::ModrinthProject { ref project } = source {
+                                        if &result.0.project_id != project {
+                                            eprintln!("Refusing to update {:?}, mismatched project ids: expected {}, got {}",
+                                                summary.content_summary.hash, &result.0.project_id, &project);
+                                            return Ok(ModUpdateAction::ErrorNotFound);
+                                        }
+                                    }
 
                                     let install_file = result
                                         .0
@@ -375,15 +466,18 @@ impl BackendState {
                                         return Ok(ModUpdateAction::ErrorInvalidHash);
                                     };
 
-                                    if latest_hash == summary.mod_summary.hash {
+                                    if latest_hash == summary.content_summary.hash {
                                         Ok(ModUpdateAction::AlreadyUpToDate)
                                     } else {
-                                        Ok(ModUpdateAction::Modrinth(install_file.clone()))
+                                        Ok(ModUpdateAction::Modrinth {
+                                            file: install_file.clone(),
+                                            project_id: result.0.project_id.clone(),
+                                        })
                                     }
                                 },
                             }
                         }.map_ok(|action| UpdateResult {
-                            mod_summary: summary.mod_summary.clone(),
+                            mod_summary: summary.content_summary.clone(),
                             action,
                         }));
                     }
@@ -411,17 +505,17 @@ impl BackendState {
                 tracker.set_finished(ProgressTrackerFinishType::Normal);
                 modal_action.set_finished();
             },
-            MessageToBackend::UpdateMod { instance: id, mod_id, modal_action } => {
+            MessageToBackend::UpdateContent { instance: id, content_id: mod_id, modal_action } => {
                 let content_install = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     let configuration = instance.configuration.get();
                     let (loader, minecraft_version) = (configuration.loader, configuration.minecraft_version);
-                    let Some(mod_summary) = instance.try_get_mod(mod_id) else {
+                    let Some((mod_summary, _)) = instance.try_get_content(mod_id) else {
                         self.send.send_error("Can't update mod in instance, unknown mod id");
                         modal_action.set_finished();
                         return;
                     };
 
-                    let Some(update_info) = self.mod_metadata_manager.updates.read().get(&mod_summary.mod_summary.hash).cloned() else {
+                    let Some(update_info) = self.mod_metadata_manager.updates.read().get(&mod_summary.content_summary.hash).cloned() else {
                         self.send.send_error("Can't update mod in instance, missing update action");
                         modal_action.set_finished();
                         return;
@@ -448,8 +542,8 @@ impl BackendState {
                             modal_action.set_finished();
                             return;
                         },
-                        ModUpdateAction::Modrinth(modrinth_file) => {
-                            let mut path = mod_summary.path.with_file_name(&*modrinth_file.filename);
+                        ModUpdateAction::Modrinth { file, project_id } => {
+                            let mut path = mod_summary.path.with_file_name(&*file.filename);
                             if !mod_summary.enabled {
                                 path.add_extension("disabled");
                             }
@@ -462,11 +556,11 @@ impl BackendState {
                                     replace_old: Some(mod_summary.path.clone()),
                                     path: bridge::install::ContentInstallPath::Raw(path.into()),
                                     download: ContentDownload::Url {
-                                        url: modrinth_file.url.clone(),
-                                        sha1: modrinth_file.hashes.sha1.clone(),
-                                        size: modrinth_file.size,
+                                        url: file.url.clone(),
+                                        sha1: file.hashes.sha1.clone(),
+                                        size: file.size,
                                     },
-                                    content_source: ContentSource::Modrinth,
+                                    content_source: ContentSource::ModrinthProject { project: project_id },
                                 }].into(),
                             }
                         },
@@ -689,6 +783,10 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::GetBackendConfiguration { channel } => {
+                let configuration = self.config.write().get().clone();
+                _ = channel.send(configuration);
+            },
             MessageToBackend::CleanupOldLogFiles { instance: id } => {
                 let mut deleted = 0;
 
@@ -857,6 +955,17 @@ impl BackendState {
             MessageToBackend::AddNewAccount { modal_action } => {
                 self.login_flow(&modal_action, None).await;
             },
+            MessageToBackend::AddOfflineAccount { name, uuid } => {
+                let mut account_info = self.account_info.write();
+                account_info.modify(|account_info| {
+                    account_info.accounts.insert(uuid, BackendAccount {
+                        username: name,
+                        offline: true,
+                        head: None
+                    });
+                    account_info.selected_account = Some(uuid);
+                });
+            },
             MessageToBackend::SelectAccount { uuid } => {
                 let mut account_info = self.account_info.write();
 
@@ -868,7 +977,22 @@ impl BackendState {
                 account_info.modify(|account_info| {
                     account_info.selected_account = Some(uuid);
                 });
-            }
+            },
+            MessageToBackend::DeleteAccount { uuid } => {
+                let mut account_info = self.account_info.write();
+
+                account_info.modify(|account_info| {
+                    account_info.accounts.remove(&uuid);
+                    if account_info.selected_account == Some(uuid) {
+                        account_info.selected_account = None;
+                    }
+                });
+            },
+            MessageToBackend::SetOpenGameOutputAfterLaunching { value } => {
+                self.config.write().modify(|config| {
+                    config.open_game_output_when_launching = value;
+                });
+            },
         }
     }
 

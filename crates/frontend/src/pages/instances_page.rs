@@ -20,8 +20,8 @@ use gpui_component::{
 use schema::{loader::Loader, version_manifest::{MinecraftVersionManifest, MinecraftVersionType}};
 
 use crate::{
-    component::instance_list::InstanceList,
-    entity::{instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}, DataEntities},
+    component::{instance_list::InstanceList, page_path::PagePath},
+    entity::{DataEntities, instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}},
     ui,
 };
 

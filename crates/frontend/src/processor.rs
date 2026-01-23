@@ -37,6 +37,7 @@ impl Processor {
                 worlds_state,
                 servers_state,
                 mods_state,
+                resource_packs_state,
             } => {
                 InstanceEntries::add(
                     &self.data.instances,
@@ -47,6 +48,7 @@ impl Processor {
                     worlds_state,
                     servers_state,
                     mods_state,
+                    resource_packs_state,
                     cx,
                 );
             },
@@ -78,6 +80,9 @@ impl Processor {
             },
             MessageToFrontend::InstanceModsUpdated { id, mods } => {
                 InstanceEntries::set_mods(&self.data.instances, id, mods, cx);
+            },
+            MessageToFrontend::InstanceResourcePacksUpdated { id, resource_packs } => {
+                InstanceEntries::set_resource_packs(&self.data.instances, id, resource_packs, cx);
             },
             MessageToFrontend::AddNotification { notification_type, message } => {
                 self.main_window_handle.update(cx, |_, window, cx| {

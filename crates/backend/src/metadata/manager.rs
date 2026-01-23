@@ -5,7 +5,7 @@ use std::{
 use bridge::keep_alive::{KeepAlive, KeepAliveHandle};
 use reqwest::StatusCode;
 use schema::{
-    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, maven::MavenMetadataXml, modrinth::{ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
+    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, maven::MavenMetadataXml, modrinth::{ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
 };
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
@@ -23,8 +23,8 @@ pub struct MetadataManagerStates {
     pub(super) minecraft_version_manifest: MetaLoadStateWrapper<MinecraftVersionManifest>,
     pub(super) mojang_java_runtimes: MetaLoadStateWrapper<JavaRuntimes>,
     pub(super) fabric_loader_manifest: MetaLoadStateWrapper<FabricLoaderManifest>,
-    pub(super) neoforge_installer_maven_manifest: MetaLoadStateWrapper<MavenMetadataXml>,
-    pub(super) forge_installer_maven_manifest: MetaLoadStateWrapper<MavenMetadataXml>,
+    pub(super) neoforge_installer_maven_manifest: MetaLoadStateWrapper<NeoforgeMavenManifest>,
+    pub(super) forge_installer_maven_manifest: MetaLoadStateWrapper<ForgeMavenManifest>,
     pub(super) fabric_launch: HashMap<(Ustr, Ustr), MetaLoadStateWrapper<FabricLaunch>>,
     pub(super) version_info: HashMap<Ustr, MetaLoadStateWrapper<MinecraftVersion>>,
     pub(super) assets_index: HashMap<Ustr, MetaLoadStateWrapper<AssetsIndex>>,
@@ -308,7 +308,7 @@ impl MetadataManager {
             }
 
             let mut result: Result<Arc<I::T>, MetaLoadError> = async move {
-                let response = request.timeout(std::time::Duration::from_secs(5)).send().await?;
+                let response = request.send().await?;
 
                 let status = response.status();
                 if status != StatusCode::OK {

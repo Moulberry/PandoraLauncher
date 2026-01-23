@@ -9,7 +9,7 @@ use uuid::Uuid;
 pub struct MinecraftLoginInfo {
     pub uuid: Uuid,
     pub username: Arc<str>,
-    pub access_token: MinecraftAccessToken,
+    pub access_token: Option<MinecraftAccessToken>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -39,6 +39,8 @@ impl BackendAccountInfo {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BackendAccount {
     pub username: Arc<str>,
+    #[serde(default)]
+    pub offline: bool,
     pub head: Option<Arc<[u8]>>,
 }
 
@@ -46,6 +48,7 @@ impl BackendAccount {
     pub fn new_from_profile(profile: &MinecraftProfileResponse) -> Self {
         Self {
             username: profile.name.clone(),
+            offline: false,
             head: None,
         }
     }

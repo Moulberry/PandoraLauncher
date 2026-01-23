@@ -32,6 +32,15 @@ impl<T: Serialize + for <'de> Deserialize<'de>> Persistent<T> {
         })
     }
 
+    pub fn load_or(path: Arc<Path>, default_value: T) -> Self {
+        let data = crate::read_json(&path).unwrap_or(default_value);
+        Self {
+            path,
+            dirty: false,
+            data,
+        }
+    }
+
     pub fn modify(&mut self, func: impl FnOnce(&mut T)) {
         if self.dirty {
             self.load_from_disk();

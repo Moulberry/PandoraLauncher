@@ -5,6 +5,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::{MinecraftAccessToken, TokenWithExpiry, XstsToken};
 
+#[derive(Debug)]
+pub enum TokenValidationResult {
+    Valid,
+    Invalid(Vec<TokenType>),
+}
+
+#[derive(Debug)]
+pub enum TokenType {
+    AccessToken,
+    Xsts,
+    Xbl,
+    MsaAccess,
+    MsaRefresh,
+}
+
 #[derive(Default, Deserialize, Serialize)]
 pub struct AccountCredentials {
     pub msa_refresh: Option<Arc<str>>,
@@ -47,6 +62,55 @@ impl AuthStageWithData {
             AuthStageWithData::XboxLive(..) => AuthStage::XboxLive,
             AuthStageWithData::XboxSecure { .. } => AuthStage::XboxSecure,
             AuthStageWithData::AccessToken(..) => AuthStage::AccessToken,
+        }
+    }
+}
+
+impl AccountCredentials {
+    pub fn validate_token_chain(&self) -> TokenValidationResult {
+        let now = Utc::now();
+        let mut invalid_tokens = Vec::new();
+
+        if let Some(access_token) = &self.access_token {
+            if now >= access_token.expiry {
+                invalid_tokens.push(TokenType::AccessToken);
+            }
+        } else {
+            invalid_tokens.push(TokenType::AccessToken);
+        }
+
+        if let Some(xsts) = &self.xsts {
+            if now >= xsts.expiry {
+                invalid_tokens.push(TokenType::Xsts);
+            }
+        } else {
+            invalid_tokens.push(TokenType::Xsts);
+        }
+
+        if let Some(xbl) = &self.xbl {
+            if now >= xbl.expiry {
+                invalid_tokens.push(TokenType::Xbl);
+            }
+        } else {
+            invalid_tokens.push(TokenType::Xbl);
+        }
+
+        if let Some(msa_access) = &self.msa_access {
+            if now >= msa_access.expiry {
+                invalid_tokens.push(TokenType::MsaAccess);
+            }
+        } else {
+            invalid_tokens.push(TokenType::MsaAccess);
+        }
+
+        if self.msa_refresh.is_none() {
+            invalid_tokens.push(TokenType::MsaRefresh);
+        }
+
+        if invalid_tokens.is_empty() {
+            TokenValidationResult::Valid
+        } else {
+            TokenValidationResult::Invalid(invalid_tokens)
         }
     }
 }

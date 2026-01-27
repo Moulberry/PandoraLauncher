@@ -83,4 +83,12 @@ impl<T: Serialize + for<'de> Deserialize<'de>> Persistent<T> {
 
         self.data = data;
     }
+
+    pub fn get_mut(&mut self) -> &mut T {
+        if self.dirty {
+            self.load_from_disk();
+        }
+
+        &mut self.data
+    }
 }

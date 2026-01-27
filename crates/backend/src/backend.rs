@@ -1,29 +1,47 @@
 use std::{
-    collections::{HashMap, HashSet}, io::Cursor, path::{Path, PathBuf}, sync::Arc, time::{Duration, SystemTime}
+    collections::{HashMap, HashSet},
+    io::Cursor,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::{Duration, SystemTime},
 };
 
 use auth::{
     authenticator::{Authenticator, MsaAuthorizationError, XboxAuthenticateError},
-    credentials::{AccountCredentials, AUTH_STAGE_COUNT},
+    credentials::{AUTH_STAGE_COUNT, AccountCredentials},
     models::{MinecraftAccessToken, MinecraftProfileResponse, SkinState},
     secret::{PlatformSecretStorage, SecretStorageError},
     serve_redirect::{self, ProcessAuthorizationError},
 };
 use bridge::{
-    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{InstanceID, InstanceContentSummary, InstanceServerSummary, InstanceWorldSummary, ContentType}, message::MessageToFrontend, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    handle::{BackendHandle, BackendReceiver, FrontendHandle},
+    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath},
+    instance::{ContentType, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceWorldSummary},
+    message::MessageToFrontend,
+    modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType},
+    safe_path::SafePath,
 };
 use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{backend_config::BackendConfig, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use schema::{
+    backend_config::BackendConfig, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement,
+};
 use sha1::{Digest, Sha1};
-use tokio::sync::{mpsc::Receiver, OnceCell};
+use tokio::sync::{OnceCell, mpsc::Receiver};
 use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    account::{BackendAccountInfo, MinecraftLoginInfo}, directories::LauncherDirectories, id_slab::IdSlab, instance::{Instance, ContentFolder}, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent
+    account::{BackendAccountInfo, MinecraftLoginInfo},
+    directories::LauncherDirectories,
+    id_slab::IdSlab,
+    instance::{ContentFolder, Instance},
+    launch::Launcher,
+    metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager},
+    mod_metadata::ModMetadataManager,
+    persistent::Persistent,
 };
 
 pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHandle, recv: BackendReceiver) {
@@ -50,17 +68,16 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
 
     let directories = Arc::new(LauncherDirectories::new(launcher_dir));
 
-    let meta = Arc::new(MetadataManager::new(
-        http_client.clone(),
-        directories.metadata_dir.clone(),
-    ));
+    let meta = Arc::new(MetadataManager::new(http_client.clone(), directories.metadata_dir.clone()));
 
     let (watcher_tx, watcher_rx) = tokio::sync::mpsc::channel::<notify_debouncer_full::DebounceEventResult>(64);
     let watcher = notify_debouncer_full::new_debouncer(Duration::from_millis(100), None, move |event| {
         let _ = watcher_tx.blocking_send(event);
-    }).unwrap();
+    })
+    .unwrap();
 
-    let mod_metadata_manager = ModMetadataManager::load(directories.content_meta_dir.clone(), directories.content_library_dir.clone());
+    let mod_metadata_manager =
+        ModMetadataManager::load(directories.content_meta_dir.clone(), directories.content_library_dir.clone());
 
     let state_instances = BackendStateInstances {
         instances: IdSlab::default(),
@@ -106,7 +123,16 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     log::debug!("Doing initial backend load");
 
     runtime.block_on(async {
-        state.send.send(state.account_info.write().get().create_update_message());
+        let update_message = {
+            let mut account_info = state.account_info.write();
+            if let Ok(storage) = PlatformSecretStorage::new().await {
+                state.secret_storage.set(Ok(storage)).ok();
+                let storage = state.secret_storage.get().unwrap().as_ref().unwrap();
+                account_info.get_mut().validate_accounts(&storage).await;
+            }
+            account_info.get().create_update_message()
+        };
+        state.send.send(update_message);
         state.load_all_instances().await;
     });
 
@@ -120,12 +146,25 @@ pub enum WatchTarget {
     RootDir,
     InstancesDir,
     InvalidInstanceDir,
-    InstanceDir { id: InstanceID },
-    InstanceDotMinecraftDir { id: InstanceID },
-    InstanceWorldDir { id: InstanceID },
-    InstanceSavesDir { id: InstanceID },
-    ServersDat { id: InstanceID },
-    InstanceContentDir { id: InstanceID, folder: ContentFolder },
+    InstanceDir {
+        id: InstanceID,
+    },
+    InstanceDotMinecraftDir {
+        id: InstanceID,
+    },
+    InstanceWorldDir {
+        id: InstanceID,
+    },
+    InstanceSavesDir {
+        id: InstanceID,
+    },
+    ServersDat {
+        id: InstanceID,
+    },
+    InstanceContentDir {
+        id: InstanceID,
+        folder: ContentFolder,
+    },
 }
 
 pub struct BackendStateInstances {
@@ -157,16 +196,12 @@ pub struct BackendState {
     pub account_info: Arc<RwLock<Persistent<BackendAccountInfo>>>,
     pub config: Arc<RwLock<Persistent<BackendConfig>>>,
     pub secret_storage: Arc<OnceCell<Result<PlatformSecretStorage, SecretStorageError>>>,
-    pub head_cache: Arc<RwLock<FxHashMap<Arc<str>, HeadCacheEntry>>>
+    pub head_cache: Arc<RwLock<FxHashMap<Arc<str>, HeadCacheEntry>>>,
 }
 
 pub enum HeadCacheEntry {
-    Pending {
-        accounts: Vec<Uuid>,
-    },
-    Success {
-        head: Arc<[u8]>,
-    },
+    Pending { accounts: Vec<Uuid> },
+    Success { head: Arc<[u8]> },
     Failed,
 }
 
@@ -185,7 +220,9 @@ impl BackendState {
 
         let mut paths_with_time = Vec::new();
 
-        self.file_watching.write().watch_filesystem(self.directories.instances_dir.clone(), WatchTarget::InstancesDir);
+        self.file_watching
+            .write()
+            .watch_filesystem(self.directories.instances_dir.clone(), WatchTarget::InstancesDir);
         for entry in std::fs::read_dir(&self.directories.instances_dir).unwrap() {
             let Ok(entry) = entry else {
                 log::warn!("Error reading directory in instances folder: {:?}", entry.unwrap_err());
@@ -251,7 +288,9 @@ impl BackendState {
                 if let Some(existing) = instance_state.instance_by_path.get(path)
                     && let Some(existing_instance) = instance_state.instances.remove(*existing)
                 {
-                    self.send.send(MessageToFrontend::InstanceRemoved { id: existing_instance.id});
+                    self.send.send(MessageToFrontend::InstanceRemoved {
+                        id: existing_instance.id,
+                    });
                     show_errors = true;
                 }
 
@@ -282,10 +321,7 @@ impl BackendState {
             instance_state.instances_generation = instance_state.instances_generation.wrapping_add(1);
 
             let instance = instance_state.instances.insert(move |index| {
-                let instance_id = InstanceID {
-                    index,
-                    generation,
-                };
+                let instance_id = InstanceID { index, generation };
                 instance.id = instance_id;
                 instance
             });
@@ -310,11 +346,17 @@ impl BackendState {
             instance.id
         };
 
-        self.file_watching.write().watch_filesystem(path.into(), WatchTarget::InstanceDir { id: instance_id });
+        self.file_watching
+            .write()
+            .watch_filesystem(path.into(), WatchTarget::InstanceDir { id: instance_id });
         true
     }
 
-    async fn handle(mut self, mut backend_recv: BackendReceiver, mut watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>) {
+    async fn handle(
+        mut self,
+        mut backend_recv: BackendReceiver,
+        mut watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>,
+    ) {
         let mut interval = tokio::time::interval(Duration::from_millis(1000));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         tokio::pin!(interval);
@@ -391,7 +433,8 @@ impl BackendState {
                 } else if stage < last_stage && !allow_backwards {
                     log::error!(
                         "Stage {:?} went backwards from {:?} when going backwards isn't allowed. This is most likely a bug with the auth flow!",
-                        stage, last_stage
+                        stage,
+                        last_stage
                     );
                     return Err(LoginError::LoginStageErrorBackwards);
                 } else if stage == last_stage {
@@ -558,12 +601,17 @@ impl BackendState {
                         }
                     });
                 },
-                HeadCacheEntry::Failed => {}
+                HeadCacheEntry::Failed => {},
             }
             return;
         }
 
-        head_cache.insert(skin.url.clone(), HeadCacheEntry::Pending { accounts: vec![profile.id] });
+        head_cache.insert(
+            skin.url.clone(),
+            HeadCacheEntry::Pending {
+                accounts: vec![profile.id],
+            },
+        );
 
         let head_cache = self.head_cache.clone();
         let account_info = self.account_info.clone();
@@ -647,12 +695,17 @@ impl BackendState {
     }
 
     pub async fn prelaunch_apply_modpacks(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
-        let (loader, minecraft_version, mod_dir) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let configuration = instance.configuration.get();
-            (configuration.loader, configuration.minecraft_version, instance.content_state[ContentFolder::Mods].path.clone())
-        } else {
-            return Vec::new();
-        };
+        let (loader, minecraft_version, mod_dir) =
+            if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                let configuration = instance.configuration.get();
+                (
+                    configuration.loader,
+                    configuration.minecraft_version,
+                    instance.content_state[ContentFolder::Mods].path.clone(),
+                )
+            } else {
+                return Vec::new();
+            };
 
         if loader == Loader::Vanilla {
             return Vec::new();
@@ -695,7 +748,10 @@ impl BackendState {
                 continue;
             }
 
-            if let ContentType::ModrinthModpack { downloads, overrides, .. } = &summary.content_summary.extra {
+            if let ContentType::ModrinthModpack {
+                downloads, overrides, ..
+            } = &summary.content_summary.extra
+            {
                 let downloads = downloads.clone();
 
                 let filtered_downloads = downloads.iter().filter(|dl| {
@@ -712,30 +768,33 @@ impl BackendState {
                     target: bridge::install::InstallTarget::Library,
                     loader_hint: loader,
                     version_hint: Some(minecraft_version.into()),
-                    files: filtered_downloads.clone().filter_map(|file| {
-                        let path = SafePath::new(&file.path)?;
-                        Some(ContentInstallFile {
-                            replace_old: None,
-                            path: ContentInstallPath::Safe(path),
-                            download: ContentDownload::Url {
-                                url: file.downloads[0].clone(),
-                                sha1: file.hashes.sha1.clone(),
-                                size: file.file_size,
-                            },
-                            content_source: schema::content::ContentSource::ModrinthUnknown,
+                    files: filtered_downloads
+                        .clone()
+                        .filter_map(|file| {
+                            let path = SafePath::new(&file.path)?;
+                            Some(ContentInstallFile {
+                                replace_old: None,
+                                path: ContentInstallPath::Safe(path),
+                                download: ContentDownload::Url {
+                                    url: file.downloads[0].clone(),
+                                    sha1: file.hashes.sha1.clone(),
+                                    size: file.file_size,
+                                },
+                                content_source: schema::content::ContentSource::ModrinthUnknown,
+                            })
                         })
-                    }).collect(),
+                        .collect(),
                 };
 
                 self.install_content(content_install, modal_action.clone()).await;
 
                 modpack_installs.push(ModpackInstall {
-                    hashed_downloads: filtered_downloads.map(|download| {
-                        HashedDownload {
+                    hashed_downloads: filtered_downloads
+                        .map(|download| HashedDownload {
                             sha1: download.hashes.sha1.clone(),
                             path: download.path.clone(),
-                        }
-                    }).collect(),
+                        })
+                        .collect(),
                     overrides: overrides.clone(),
                 });
             }
@@ -762,7 +821,8 @@ impl BackendState {
                     continue;
                 };
 
-                let path = crate::create_content_library_path(content_library_dir, expected_hash, dest_path.extension());
+                let path =
+                    crate::create_content_library_path(content_library_dir, expected_hash, dest_path.extension());
 
                 if file.path.starts_with("mods/") && file.path.ends_with(".jar") {
                     if loader_supports_add_mods {
@@ -796,16 +856,22 @@ impl BackendState {
                         let mut hasher = Sha1::new();
                         hasher.update(&file2);
                         hasher.finalize().into()
-                    }).await.unwrap();
+                    })
+                    .await
+                    .unwrap();
 
-                    let path = crate::create_content_library_path(content_library_dir, expected_hash, dest_path.extension());
+                    let path =
+                        crate::create_content_library_path(content_library_dir, expected_hash, dest_path.extension());
 
                     if !path.exists() {
                         let _ = std::fs::create_dir_all(path.parent().unwrap());
                         let _ = tokio::fs::write(&path, file).await;
                     }
 
-                    if dest_path.starts_with("mods") && let Some(extension) = dest_path.extension() && extension == "jar" {
+                    if dest_path.starts_with("mods")
+                        && let Some(extension) = dest_path.extension()
+                        && extension == "jar"
+                    {
                         if loader_supports_add_mods {
                             return Some(path);
                         } else if let Some(filename) = dest_path.file_name() {
@@ -840,64 +906,75 @@ impl BackendState {
             let mut file_watching = self.file_watching.write();
             if !instance.watching_dot_minecraft {
                 instance.watching_dot_minecraft = true;
-                file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                    id: instance.id,
-                });
+                file_watching.watch_filesystem(
+                    instance.dot_minecraft_path.clone(),
+                    WatchTarget::InstanceDotMinecraftDir { id: instance.id },
+                );
             }
             if !instance.watching_server_dat {
                 instance.watching_server_dat = true;
-                file_watching.watch_filesystem(instance.server_dat_path.clone(), WatchTarget::ServersDat {
-                    id: instance.id,
-                });
+                file_watching
+                    .watch_filesystem(instance.server_dat_path.clone(), WatchTarget::ServersDat { id: instance.id });
             }
         }
 
         let result = Instance::load_servers(self.instance_state.clone(), id).await;
 
-        if let Some((servers, newly_loaded)) = result.clone() && newly_loaded {
+        if let Some((servers, newly_loaded)) = result.clone()
+            && newly_loaded
+        {
             self.send.send(MessageToFrontend::InstanceServersUpdated {
                 id,
-                servers: Arc::clone(&servers)
+                servers: Arc::clone(&servers),
             });
         }
 
         result.map(|(servers, _)| servers)
-
     }
 
-    pub async fn load_instance_content(self, id: InstanceID, folder: ContentFolder) -> Option<Arc<[InstanceContentSummary]>> {
+    pub async fn load_instance_content(
+        self,
+        id: InstanceID,
+        folder: ContentFolder,
+    ) -> Option<Arc<[InstanceContentSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
             if !instance.watching_dot_minecraft {
                 instance.watching_dot_minecraft = true;
-                file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                    id: instance.id,
-                });
+                file_watching.watch_filesystem(
+                    instance.dot_minecraft_path.clone(),
+                    WatchTarget::InstanceDotMinecraftDir { id: instance.id },
+                );
             }
             let content_state = &mut instance.content_state[folder];
             if !content_state.watching_path {
                 content_state.watching_path = true;
-                file_watching.watch_filesystem(content_state.path.clone(), WatchTarget::InstanceContentDir {
-                    id: instance.id,
-                    folder
-                });
+                file_watching.watch_filesystem(
+                    content_state.path.clone(),
+                    WatchTarget::InstanceContentDir {
+                        id: instance.id,
+                        folder,
+                    },
+                );
             }
         }
 
         let result = Instance::load_content(self.instance_state.clone(), id, &self.mod_metadata_manager, folder).await;
 
-        if let Some((content, newly_loaded)) = result.clone() && newly_loaded {
+        if let Some((content, newly_loaded)) = result.clone()
+            && newly_loaded
+        {
             match folder {
                 ContentFolder::Mods => {
                     self.send.send(MessageToFrontend::InstanceModsUpdated {
                         id,
-                        mods: Arc::clone(&content)
+                        mods: Arc::clone(&content),
                     });
                 },
                 ContentFolder::ResourcePacks => {
                     self.send.send(MessageToFrontend::InstanceResourcePacksUpdated {
                         id,
-                        resource_packs: Arc::clone(&content)
+                        resource_packs: Arc::clone(&content),
                     });
                 },
             }
@@ -911,31 +988,31 @@ impl BackendState {
             let mut file_watching = self.file_watching.write();
             if !instance.watching_dot_minecraft {
                 instance.watching_dot_minecraft = true;
-                file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                    id: instance.id,
-                });
+                file_watching.watch_filesystem(
+                    instance.dot_minecraft_path.clone(),
+                    WatchTarget::InstanceDotMinecraftDir { id: instance.id },
+                );
             }
             if !instance.watching_saves_dir {
                 instance.watching_saves_dir = true;
-                file_watching.watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir {
-                    id: instance.id,
-                });
+                file_watching
+                    .watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir { id: instance.id });
             }
         }
 
         let result = Instance::load_worlds(self.instance_state.clone(), id).await;
 
-        if let Some((worlds, newly_loaded)) = result.clone() && newly_loaded {
+        if let Some((worlds, newly_loaded)) = result.clone()
+            && newly_loaded
+        {
             self.send.send(MessageToFrontend::InstanceWorldsUpdated {
                 id,
-                worlds: Arc::clone(&worlds)
+                worlds: Arc::clone(&worlds),
             });
 
             let mut file_watching = self.file_watching.write();
             for summary in worlds.iter() {
-                file_watching.watch_filesystem(summary.level_path.clone(), WatchTarget::InstanceWorldDir {
-                    id,
-                });
+                file_watching.watch_filesystem(summary.level_path.clone(), WatchTarget::InstanceWorldDir { id });
             }
         }
 
@@ -943,7 +1020,13 @@ impl BackendState {
     }
 
     pub async fn create_instance_sanitized(&self, name: &str, version: &str, loader: Loader) -> Option<PathBuf> {
-        let mut name = sanitize_filename::sanitize_with_options(name, sanitize_filename::Options { windows: true, ..Default::default() });
+        let mut name = sanitize_filename::sanitize_with_options(
+            name,
+            sanitize_filename::Options {
+                windows: true,
+                ..Default::default()
+            },
+        );
 
         if self.instance_state.read().instances.iter().any(|i| i.name == name) {
             let original_name = name.clone();
@@ -966,10 +1049,17 @@ impl BackendState {
             return None;
         }
         if !crate::is_single_component_path(&name) {
-            self.send.send_warning(format!("Unable to create instance, name must not be a path: {}", name));
+            self.send
+                .send_warning(format!("Unable to create instance, name must not be a path: {}", name));
             return None;
         }
-        if !sanitize_filename::is_sanitized_with_options(&*name, sanitize_filename::OptionsForCheck { windows: true, ..Default::default() }) {
+        if !sanitize_filename::is_sanitized_with_options(
+            &*name,
+            sanitize_filename::OptionsForCheck {
+                windows: true,
+                ..Default::default()
+            },
+        ) {
             self.send.send_warning(format!("Unable to create instance, name is invalid: {}", name));
             return None;
         }
@@ -978,7 +1068,9 @@ impl BackendState {
             return None;
         }
 
-        self.file_watching.write().watch_filesystem(self.directories.instances_dir.clone(), WatchTarget::InstancesDir);
+        self.file_watching
+            .write()
+            .watch_filesystem(self.directories.instances_dir.clone(), WatchTarget::InstancesDir);
 
         let instance_dir = self.directories.instances_dir.join(name);
 
@@ -1001,10 +1093,17 @@ impl BackendState {
 
     pub async fn rename_instance(&self, id: InstanceID, name: &str) {
         if !crate::is_single_component_path(&name) {
-            self.send.send_warning(format!("Unable to rename instance, name must not be a path: {}", name));
+            self.send
+                .send_warning(format!("Unable to rename instance, name must not be a path: {}", name));
             return;
         }
-        if !sanitize_filename::is_sanitized_with_options(&*name, sanitize_filename::OptionsForCheck { windows: true, ..Default::default() }) {
+        if !sanitize_filename::is_sanitized_with_options(
+            &*name,
+            sanitize_filename::OptionsForCheck {
+                windows: true,
+                ..Default::default()
+            },
+        ) {
             self.send.send_warning(format!("Unable to rename instance, name is invalid: {}", name));
             return;
         }
@@ -1036,8 +1135,8 @@ impl BackendState {
                         return Some(MinecraftLoginInfo {
                             uuid,
                             username: account.username.clone(),
-                            access_token: None
-                        })
+                            access_token: None,
+                        });
                     }
                 } else {
                     selected_account = None;
@@ -1106,7 +1205,9 @@ impl BackendStateFileWatching {
 
         if self.watching.contains_key(&path) {
             paths.push(path.clone());
-        } else if let Some(parent) = path.parent() && self.watching.contains_key(parent) {
+        } else if let Some(parent) = path.parent()
+            && self.watching.contains_key(parent)
+        {
             paths.push(path.clone());
         }
 
@@ -1114,13 +1215,17 @@ impl BackendStateFileWatching {
             for link in links {
                 if self.watching.contains_key(link) {
                     paths.push(link.clone());
-                } else if let Some(link_parent) = link.parent() && self.watching.contains_key(link_parent) {
+                } else if let Some(link_parent) = link.parent()
+                    && self.watching.contains_key(link_parent)
+                {
                     paths.push(link.clone());
                 }
             }
         }
 
-        if let Some(parent) = path.parent() && let Some(filename) = path.file_name() {
+        if let Some(parent) = path.parent()
+            && let Some(filename) = path.file_name()
+        {
             if let Some(links) = self.symlink_src_to_links.get(parent) {
                 for link_parent in links {
                     let child_link: Arc<Path> = link_parent.join(filename).into();

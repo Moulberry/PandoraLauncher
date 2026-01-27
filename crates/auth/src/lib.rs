@@ -5,3 +5,4 @@ pub mod error;
 pub mod models;
 pub mod secret;
 pub mod serve_redirect;
+pub mod storage;

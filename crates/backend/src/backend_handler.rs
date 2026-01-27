@@ -1,19 +1,53 @@
-use std::{io::{BufRead, Read, Seek, SeekFrom, Write}, path::Path, sync::{atomic::Ordering, Arc}, time::{Duration, SystemTime}};
+use std::{
+    io::{BufRead, Read, Seek, SeekFrom, Write},
+    path::Path,
+    sync::{Arc, atomic::Ordering},
+    time::{Duration, SystemTime},
+};
 
-use auth::{credentials::AccountCredentials, models::{MinecraftAccessToken, MinecraftProfileResponse}, secret::PlatformSecretStorage};
+use auth::{
+    credentials::AccountCredentials,
+    models::{MinecraftAccessToken, MinecraftProfileResponse},
+    secret::PlatformSecretStorage,
+};
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{InstanceStatus, ContentType, ContentSummary}, message::{LogFiles, MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
+    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget},
+    instance::{ContentSummary, ContentType, InstanceStatus},
+    message::{LogFiles, MessageToBackend, MessageToFrontend},
+    meta::MetadataResult,
+    modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType},
+    serial::AtomicOptionSerial,
 };
 use futures::TryFutureExt;
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{content::ContentSource, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
+use schema::{
+    content::ContentSource,
+    modrinth::ModrinthLoader,
+    version::{LaunchArgument, LaunchArgumentValue},
+};
 use serde::Deserialize;
 use strum::IntoEnumIterator;
 use tokio::{io::AsyncBufReadExt, sync::Semaphore};
 use ustr::Ustr;
 
 use crate::{
-    BackendState, LoginError, account::{BackendAccount, MinecraftLoginInfo}, arcfactory::ArcStrFactory, instance::ContentFolder, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::ModUpdateAction
+    BackendState, LoginError,
+    account::{BackendAccount, MinecraftLoginInfo},
+    arcfactory::ArcStrFactory,
+    instance::ContentFolder,
+    launch::{ArgumentExpansionKey, LaunchError},
+    log_reader,
+    metadata::{
+        items::{
+            AssetsIndexMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem,
+            MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem,
+            ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem,
+            MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem,
+            VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters,
+        },
+        manager::MetaLoadError,
+    },
+    mod_metadata::ModUpdateAction,
 };
 
 impl BackendState {
@@ -25,27 +59,37 @@ impl BackendState {
                 tokio::task::spawn(async move {
                     let (result, keep_alive_handle) = match request {
                         bridge::meta::MetadataRequest::MinecraftVersionManifest => {
-                            let (result, handle) = meta.fetch_with_keepalive(&MinecraftVersionManifestMetadataItem, force_reload).await;
+                            let (result, handle) =
+                                meta.fetch_with_keepalive(&MinecraftVersionManifestMetadataItem, force_reload).await;
                             (result.map(MetadataResult::MinecraftVersionManifest), handle)
                         },
                         bridge::meta::MetadataRequest::FabricLoaderManifest => {
-                            let (result, handle) = meta.fetch_with_keepalive(&FabricLoaderManifestMetadataItem, force_reload).await;
+                            let (result, handle) =
+                                meta.fetch_with_keepalive(&FabricLoaderManifestMetadataItem, force_reload).await;
                             (result.map(MetadataResult::FabricLoaderManifest), handle)
                         },
                         bridge::meta::MetadataRequest::ForgeMavenManifest => {
-                            let (result, handle) = meta.fetch_with_keepalive(&ForgeInstallerMavenMetadataItem, force_reload).await;
+                            let (result, handle) =
+                                meta.fetch_with_keepalive(&ForgeInstallerMavenMetadataItem, force_reload).await;
                             (result.map(MetadataResult::ForgeMavenManifest), handle)
                         },
                         bridge::meta::MetadataRequest::NeoforgeMavenManifest => {
-                            let (result, handle) = meta.fetch_with_keepalive(&NeoforgeInstallerMavenMetadataItem, force_reload).await;
+                            let (result, handle) =
+                                meta.fetch_with_keepalive(&NeoforgeInstallerMavenMetadataItem, force_reload).await;
                             (result.map(MetadataResult::NeoforgeMavenManifest), handle)
                         },
                         bridge::meta::MetadataRequest::ModrinthSearch(ref search) => {
-                            let (result, handle) = meta.fetch_with_keepalive(&ModrinthSearchMetadataItem(search), force_reload).await;
+                            let (result, handle) =
+                                meta.fetch_with_keepalive(&ModrinthSearchMetadataItem(search), force_reload).await;
                             (result.map(MetadataResult::ModrinthSearchResult), handle)
                         },
                         bridge::meta::MetadataRequest::ModrinthProjectVersions(ref project_versions) => {
-                            let (result, handle) = meta.fetch_with_keepalive(&ModrinthProjectVersionsMetadataItem(project_versions), force_reload).await;
+                            let (result, handle) = meta
+                                .fetch_with_keepalive(
+                                    &ModrinthProjectVersionsMetadataItem(project_versions),
+                                    force_reload,
+                                )
+                                .await;
                             (result.map(MetadataResult::ModrinthProjectVersionsResult), handle)
                         },
                     };
@@ -53,7 +97,7 @@ impl BackendState {
                     send.send(MessageToFrontend::MetadataResult {
                         request,
                         result,
-                        keep_alive_handle
+                        keep_alive_handle,
                     });
                 });
             },
@@ -104,7 +148,7 @@ impl BackendState {
                         configuration.preferred_loader_version = loader_version.map(Ustr::from);
                     });
                 }
-            }
+            },
             MessageToBackend::SetInstanceMemory { id, memory } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.configuration.modify(|configuration| {
@@ -167,31 +211,42 @@ impl BackendState {
                     return;
                 }
 
-                let (dot_minecraft, configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    if instance.child.is_some() {
-                        self.send.send_warning("Can't launch instance, already running");
-                        modal_action.set_error_message("Can't launch instance, already running".into());
+                let (dot_minecraft, configuration) =
+                    if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                        if instance.child.is_some() {
+                            self.send.send_warning("Can't launch instance, already running");
+                            modal_action.set_error_message("Can't launch instance, already running".into());
+                            modal_action.set_finished();
+                            return;
+                        }
+
+                        self.send.send(MessageToFrontend::MoveInstanceToTop { id });
+                        self.send.send(instance.create_modify_message_with_status(InstanceStatus::Launching));
+
+                        (instance.dot_minecraft_path.clone(), instance.configuration.get().clone())
+                    } else {
+                        self.send.send_error("Can't launch instance, unknown id");
+                        modal_action.set_error_message("Can't launch instance, unknown id".into());
                         modal_action.set_finished();
                         return;
-                    }
-
-                    self.send.send(MessageToFrontend::MoveInstanceToTop {
-                        id
-                    });
-                    self.send.send(instance.create_modify_message_with_status(InstanceStatus::Launching));
-
-                    (instance.dot_minecraft_path.clone(), instance.configuration.get().clone())
-                } else {
-                    self.send.send_error("Can't launch instance, unknown id");
-                    modal_action.set_error_message("Can't launch instance, unknown id".into());
-                    modal_action.set_finished();
-                    return;
-                };
+                    };
 
                 let launch_tracker = ProgressTracker::new(Arc::from("Launching"), self.send.clone());
                 modal_action.trackers.push(launch_tracker.clone());
 
-                let result = self.launcher.launch(&self.redirecting_http_client, dot_minecraft, configuration, quick_play, login_info, add_mods, &launch_tracker, &modal_action).await;
+                let result = self
+                    .launcher
+                    .launch(
+                        &self.redirecting_http_client,
+                        dot_minecraft,
+                        configuration,
+                        quick_play,
+                        login_info,
+                        add_mods,
+                        &launch_tracker,
+                        &modal_action,
+                    )
+                    .await;
 
                 if matches!(result, Err(LaunchError::CancelledByUser)) {
                     self.send.send(MessageToFrontend::CloseModal);
@@ -222,14 +277,21 @@ impl BackendState {
                     self.send.send(instance.create_modify_message());
                 }
 
-                launch_tracker.set_finished(if is_err { ProgressTrackerFinishType::Error } else { ProgressTrackerFinishType::Normal });
+                launch_tracker.set_finished(if is_err {
+                    ProgressTrackerFinishType::Error
+                } else {
+                    ProgressTrackerFinishType::Normal
+                });
                 launch_tracker.notify();
                 modal_action.set_finished();
 
                 return;
-
             },
-            MessageToBackend::SetContentEnabled { id, content_ids: mod_ids, enabled } => {
+            MessageToBackend::SetContentEnabled {
+                id,
+                content_ids: mod_ids,
+                enabled,
+            } => {
                 let mut instance_state = self.instance_state.write();
                 let Some(instance) = instance_state.instances.get_mut(id) else {
                     return;
@@ -257,7 +319,12 @@ impl BackendState {
 
                 instance_state.reload_immediately.extend(reload);
             },
-            MessageToBackend::SetContentChildEnabled { id, content_id: mod_id, path, enabled } => {
+            MessageToBackend::SetContentChildEnabled {
+                id,
+                content_id: mod_id,
+                path,
+                enabled,
+            } => {
                 let mut instance_state = self.instance_state.write();
                 if let Some(instance) = instance_state.instances.get_mut(id)
                     && let Some((instance_mod, folder)) = instance.try_get_content(mod_id)
@@ -285,7 +352,10 @@ impl BackendState {
                 modal_action.set_finished();
                 self.send.send(MessageToFrontend::Refresh);
             },
-            MessageToBackend::DeleteContent { id, content_ids: mod_ids } => {
+            MessageToBackend::DeleteContent {
+                id,
+                content_ids: mod_ids,
+            } => {
                 let mut instance_state = self.instance_state.write();
                 let Some(instance) = instance_state.instances.get_mut(id) else {
                     self.send.send_error("Unable to find instance, unknown id");
@@ -306,7 +376,10 @@ impl BackendState {
 
                 instance_state.reload_immediately.extend(reload);
             },
-            MessageToBackend::UpdateCheck { instance: id, modal_action } => {
+            MessageToBackend::UpdateCheck {
+                instance: id,
+                modal_action,
+            } => {
                 let (loader, version) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     let configuration = instance.configuration.get();
                     (configuration.loader, configuration.minecraft_version)
@@ -381,7 +454,8 @@ impl BackendState {
                     action: ModUpdateAction,
                 }
 
-                { // Scope is needed so await doesn't complain about the non-send RwLockReadGuard
+                {
+                    // Scope is needed so await doesn't complain about the non-send RwLockReadGuard
                     let sources = self.mod_metadata_manager.read_content_sources();
                     for summary in content.iter() {
                         let source = sources.get(&summary.content_summary.hash).unwrap_or(ContentSource::Manual);
@@ -505,7 +579,11 @@ impl BackendState {
                 tracker.set_finished(ProgressTrackerFinishType::Normal);
                 modal_action.set_finished();
             },
-            MessageToBackend::UpdateContent { instance: id, content_id: mod_id, modal_action } => {
+            MessageToBackend::UpdateContent {
+                instance: id,
+                content_id: mod_id,
+                modal_action,
+            } => {
                 let content_install = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     let configuration = instance.configuration.get();
                     let (loader, minecraft_version) = (configuration.loader, configuration.minecraft_version);
@@ -515,7 +593,9 @@ impl BackendState {
                         return;
                     };
 
-                    let Some(update_info) = self.mod_metadata_manager.updates.read().get(&mod_summary.content_summary.hash).cloned() else {
+                    let Some(update_info) =
+                        self.mod_metadata_manager.updates.read().get(&mod_summary.content_summary.hash).cloned()
+                    else {
                         self.send.send_error("Can't update mod in instance, missing update action");
                         modal_action.set_finished();
                         return;
@@ -561,7 +641,8 @@ impl BackendState {
                                         size: file.size,
                                     },
                                     content_source: ContentSource::ModrinthProject { project: project_id },
-                                }].into(),
+                                }]
+                                .into(),
                             }
                         },
                     }
@@ -735,7 +816,10 @@ impl BackendState {
                         paths_with_time.sort_by_key(|(_, t)| *t);
                         let paths = paths_with_time.into_iter().map(|(p, _)| p).rev().collect();
 
-                        let _ = channel.send(LogFiles { paths, total_gzipped_size: total_gzipped_size.min(usize::MAX as u64) as usize });
+                        let _ = channel.send(LogFiles {
+                            paths,
+                            total_gzipped_size: total_gzipped_size.min(usize::MAX as u64) as usize,
+                        });
                     }
                 }
             },
@@ -883,7 +967,12 @@ impl BackendState {
                     return;
                 }
 
-                let result = self.http_client.post("https://api.mclo.gs/1/log").form(&[("content", &*replaced)]).send().await;
+                let result = self
+                    .http_client
+                    .post("https://api.mclo.gs/1/log")
+                    .form(&[("content", &*replaced)])
+                    .send()
+                    .await;
 
                 let resp = match result {
                     Ok(resp) => resp,
@@ -958,11 +1047,14 @@ impl BackendState {
             MessageToBackend::AddOfflineAccount { name, uuid } => {
                 let mut account_info = self.account_info.write();
                 account_info.modify(|account_info| {
-                    account_info.accounts.insert(uuid, BackendAccount {
-                        username: name,
-                        offline: true,
-                        head: None
-                    });
+                    account_info.accounts.insert(
+                        uuid,
+                        BackendAccount {
+                            username: name,
+                            offline: true,
+                            head: None,
+                        },
+                    );
                     account_info.selected_account = Some(uuid);
                 });
             },
@@ -999,17 +1091,18 @@ impl BackendState {
                         return;
                     };
 
-                    let args = &[
-                        "--run-instance",
-                        instance.name.as_str()
-                    ];
+                    let args = &["--run-instance", instance.name.as_str()];
                     crate::shortcut::create_shortcut(path, &format!("Launch {}", instance.name), &current_exe, args);
                 }
             },
         }
     }
 
-    pub async fn login_flow(&self, modal_action: &ModalAction, selected_account: Option<uuid::Uuid>) -> Option<(MinecraftProfileResponse, MinecraftAccessToken)> {
+    pub async fn login_flow(
+        &self,
+        modal_action: &ModalAction,
+        selected_account: Option<uuid::Uuid>,
+    ) -> Option<(MinecraftProfileResponse, MinecraftAccessToken)> {
         let mut credentials = if let Some(selected_account) = selected_account {
             let secret_storage = match self.secret_storage.get_or_init(PlatformSecretStorage::new).await {
                 Ok(secret_storage) => secret_storage,
@@ -1017,16 +1110,15 @@ impl BackendState {
                     modal_action.set_error_message(format!("Error initializing secret storage: {error}").into());
                     modal_action.set_finished();
                     return None;
-                }
+                },
             };
 
             match secret_storage.read_credentials(selected_account).await {
                 Ok(credentials) => credentials.unwrap_or_default(),
                 Err(error) => {
                     log::warn!("Unable to read credentials from keychain: {error}");
-                    self.send.send_warning(
-                        "Unable to read credentials from keychain. You will need to log in again",
-                    );
+                    self.send
+                        .send_warning("Unable to read credentials from keychain. You will need to log in again");
                     AccountCredentials::default()
                 },
             }
@@ -1050,7 +1142,7 @@ impl BackendState {
                 modal_action.set_error_message(format!("Error initializing secret storage: {error}").into());
                 modal_action.set_finished();
                 return None;
-            }
+            },
         };
 
         let (profile, access_token) = match login_result {
@@ -1078,11 +1170,29 @@ impl BackendState {
             let _ = secret_storage.delete_credentials(selected_account).await;
         }
 
-        self.update_account_info_with_profile(&profile);
-
         if let Err(error) = secret_storage.write_credentials(profile.id, &credentials).await {
             log::warn!("Unable to write credentials to keychain: {error}");
-            self.send.send_warning("Unable to write credentials to keychain. You might need to fully log in again next time");
+            self.send.send_warning(
+                "Unable to write credentials to keychain. You might need to fully log in again next time",
+            );
+            return None;
+        }
+
+        let verify_credentials = secret_storage.read_credentials(profile.id).await;
+        match verify_credentials {
+            Ok(Some(_)) => {
+                self.update_account_info_with_profile(&profile);
+            },
+            Ok(None) => {
+                log::error!("Credential verification failed: credentials not found after write");
+                self.send.send_error("Failed to save credentials securely");
+                return None;
+            },
+            Err(error) => {
+                log::error!("Credential verification failed: {error}");
+                self.send.send_error("Failed to verify saved credentials");
+                return None;
+            },
         }
 
         Some((profile, access_token))
@@ -1123,11 +1233,15 @@ impl BackendState {
 
             let asset_index = format!("{}", version_info.assets);
 
-            let Ok(_) = self.meta.fetch(&AssetsIndexMetadataItem {
-                url: version_info.asset_index.url,
-                cache: self.directories.assets_index_dir.join(format!("{}.json", &asset_index)).into(),
-                hash: version_info.asset_index.sha1,
-            }).await else {
+            let Ok(_) = self
+                .meta
+                .fetch(&AssetsIndexMetadataItem {
+                    url: version_info.asset_index.url,
+                    cache: self.directories.assets_index_dir.join(format!("{}.json", &asset_index)).into(),
+                    hash: version_info.asset_index.sha1,
+                })
+                .await
+            else {
                 panic!("Can't get assets index {:?}", version_info.asset_index.url);
             };
 
@@ -1165,18 +1279,23 @@ impl BackendState {
                     continue;
                 }
 
-                let runtime_component_dir = self.directories.runtime_base_dir.join(jre_component).join(platform_name.as_str());
+                let runtime_component_dir =
+                    self.directories.runtime_base_dir.join(jre_component).join(platform_name.as_str());
                 let _ = std::fs::create_dir_all(&runtime_component_dir);
                 let Ok(runtime_component_dir) = runtime_component_dir.canonicalize() else {
                     panic!("Unable to create runtime component dir");
                 };
 
                 for runtime_component in components {
-                    let Ok(manifest) = self.meta.fetch(&MojangJavaRuntimeComponentMetadataItem {
-                        url: runtime_component.manifest.url,
-                        cache: runtime_component_dir.join("manifest.json").into(),
-                        hash: runtime_component.manifest.sha1,
-                    }).await else {
+                    let Ok(manifest) = self
+                        .meta
+                        .fetch(&MojangJavaRuntimeComponentMetadataItem {
+                            url: runtime_component.manifest.url,
+                            cache: runtime_component_dir.join("manifest.json").into(),
+                            hash: runtime_component.manifest.sha1,
+                        })
+                        .await
+                    else {
                         panic!("Unable to get java runtime component manifest");
                     };
 
@@ -1207,11 +1326,7 @@ impl BackendState {
 }
 
 fn set_mod_child_enabled(child_state_path: &Path, child: &str, enabled: bool) -> std::io::Result<()> {
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .read(true)
-        .open(child_state_path)?;
+    let mut file = std::fs::OpenOptions::new().create(true).write(true).read(true).open(child_state_path)?;
 
     let _ = file.lock();
 
@@ -1230,7 +1345,7 @@ fn set_mod_child_enabled(child_state_path: &Path, child: &str, enabled: bool) ->
             string.push_str(&line);
         } else {
             let from = was_enabled.unwrap();
-            string.replace_range(from..from+line.len() , "");
+            string.replace_range(from..from + line.len(), "");
         }
         file.set_len(0)?;
         file.seek(SeekFrom::Start(0))?;
@@ -1248,7 +1363,7 @@ fn check_argument_expansions(argument: &str) {
         } else if dollar_last && character == '{' {
             let remaining = &argument[i..];
             if let Some(end) = remaining.find('}') {
-                let to_expand = &argument[i+1..i+end];
+                let to_expand = &argument[i + 1..i + end];
                 if ArgumentExpansionKey::from_str(to_expand).is_none() {
                     panic!("Unsupported argument: {:?}", to_expand);
                 }

@@ -1172,8 +1172,8 @@ impl BackendState {
 
         if let Err(error) = secret_storage.write_credentials(profile.id, &credentials).await {
             log::warn!("Unable to write credentials to keychain: {error}");
-            self.send.send_warning(
-                "Unable to write credentials to keychain. You might need to fully log in again next time",
+            self.send.send_error(
+                "Authentication failed: Unable to save credentials to secure storage. Please check your system's credential manager permissions.",
             );
             return None;
         }
@@ -1186,12 +1186,14 @@ impl BackendState {
             },
             Ok(None) => {
                 log::error!("Credential verification failed: credentials not found after write");
-                self.send.send_error("Failed to save credentials securely");
+                self.send.send_error(
+                    "Authentication failed: Unable to save credentials securely. Please try logging in again.",
+                );
                 return None;
             },
             Err(error) => {
                 log::error!("Credential verification failed: {error}");
-                self.send.send_error("Failed to verify saved credentials");
+                self.send.send_error("Authentication failed: Unable to verify saved credentials. Please check your system's credential manager and try again.");
                 return None;
             },
         }

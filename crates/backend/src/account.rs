@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+use crate::directories::LauncherDirectories;
 use auth::models::{MinecraftAccessToken, MinecraftProfileResponse};
+use auth::{credentials::AccountCredentials, secret::PlatformSecretStorage};
 use bridge::{account::Account, message::MessageToFrontend};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -12,13 +14,31 @@ pub struct MinecraftLoginInfo {
     pub access_token: Option<MinecraftAccessToken>,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct BackendAccountInfo {
     pub accounts: FxHashMap<Uuid, BackendAccount>,
     pub selected_account: Option<Uuid>,
 }
 
 impl BackendAccountInfo {
+    pub async fn validate_accounts(&mut self, storage: &PlatformSecretStorage) {
+        let mut accounts_to_remove = Vec::new();
+
+        for (uuid, _account) in &self.accounts {
+            match storage.read_credentials(*uuid).await {
+                Ok(Some(_)) => continue,
+                Ok(None) | Err(_) => accounts_to_remove.push(*uuid),
+            }
+        }
+
+        for uuid in accounts_to_remove {
+            self.accounts.remove(&uuid);
+            if self.selected_account == Some(uuid) {
+                self.selected_account = None;
+            }
+        }
+    }
+
     pub fn create_update_message(&self) -> MessageToFrontend {
         let mut accounts = Vec::with_capacity(self.accounts.len());
         for (uuid, account) in &self.accounts {
@@ -36,7 +56,7 @@ impl BackendAccountInfo {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BackendAccount {
     pub username: Arc<str>,
     #[serde(default)]

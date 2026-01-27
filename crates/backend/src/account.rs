@@ -14,7 +14,7 @@ pub struct MinecraftLoginInfo {
     pub access_token: Option<MinecraftAccessToken>,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct BackendAccountInfo {
     pub accounts: FxHashMap<Uuid, BackendAccount>,
     pub selected_account: Option<Uuid>,
@@ -56,7 +56,7 @@ impl BackendAccountInfo {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BackendAccount {
     pub username: Arc<str>,
     #[serde(default)]

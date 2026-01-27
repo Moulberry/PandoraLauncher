@@ -123,16 +123,17 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     log::debug!("Doing initial backend load");
 
     runtime.block_on(async {
-        let update_message = {
+        {
             let mut account_info = state.account_info.write();
             if let Ok(storage) = PlatformSecretStorage::new().await {
                 state.secret_storage.set(Ok(storage)).ok();
                 let storage = state.secret_storage.get().unwrap().as_ref().unwrap();
                 account_info.get_mut().validate_accounts(&storage).await;
             }
-            account_info.get().create_update_message()
-        };
-        state.send.send(update_message);
+            let update_message = account_info.get().create_update_message();
+            drop(account_info);
+            state.send.send(update_message);
+        }
         state.load_all_instances().await;
     });
 

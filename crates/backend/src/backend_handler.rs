@@ -1182,7 +1182,7 @@ impl BackendState {
         match verify_credentials {
             Ok(Some(_)) => {
                 self.update_account_info_with_profile(&profile);
-                self.reload_account_state();
+                self.sync_account_state();
             },
             Ok(None) => {
                 log::error!("Credential verification failed: credentials not found after write");
@@ -1207,6 +1207,46 @@ impl BackendState {
         let update_message = account_info.get().create_update_message();
         drop(account_info);
         self.send.send(update_message);
+    }
+
+    pub fn sync_account_state(&self) {
+        let current_message = {
+            let mut account_info = self.account_info.write();
+            account_info.get().create_update_message()
+        };
+
+        let updated_message = {
+            let mut account_info = self.account_info.write();
+            account_info.load_from_disk();
+            account_info.get().create_update_message()
+        };
+
+        if !self.are_account_messages_equal(&current_message, &updated_message) {
+            self.send.send(updated_message);
+        }
+    }
+
+    fn are_account_messages_equal(&self, msg1: &MessageToFrontend, msg2: &MessageToFrontend) -> bool {
+        match (msg1, msg2) {
+            (
+                MessageToFrontend::AccountsUpdated {
+                    accounts: acc1,
+                    selected_account: sel1,
+                },
+                MessageToFrontend::AccountsUpdated {
+                    accounts: acc2,
+                    selected_account: sel2,
+                },
+            ) => {
+                acc1.len() == acc2.len()
+                    && sel1 == sel2
+                    && acc1
+                        .iter()
+                        .zip(acc2.iter())
+                        .all(|(a1, a2)| a1.uuid == a2.uuid && a1.username == a2.username)
+            },
+            _ => false,
+        }
     }
 
     pub fn update_account_info_with_profile(&self, profile: &MinecraftProfileResponse) {

@@ -2072,6 +2072,35 @@ pub struct LaunchContext {
 
 impl LaunchContext {
     pub fn launch(mut self, version_info: &MinecraftVersion) -> std::io::Result<std::process::Child> {
+        #[cfg(target_os = "linux")]
+        let use_mangohud = self.configuration.linux_wrapper.map(|w| w.use_mangohud).unwrap_or(false);
+        #[cfg(target_os = "linux")]
+        let use_gamemode = self.configuration.linux_wrapper.map(|w| w.use_gamemode).unwrap_or(false);
+
+        #[cfg(target_os = "linux")]
+        let mut command = match (use_mangohud, use_gamemode) {
+            (true, true) => {
+                let mut cmd = std::process::Command::new("mangohud");
+                cmd.arg("gamemoderun");
+                cmd.arg(&*self.java_path);
+                cmd
+            }
+            (true, false) => {
+                let mut cmd = std::process::Command::new("mangohud");
+                cmd.arg(&*self.java_path);
+                cmd
+            }
+            (false, true) => {
+                let mut cmd = std::process::Command::new("gamemoderun");
+                cmd.arg(&*self.java_path);
+                cmd
+            }
+            (false, false) => {
+                std::process::Command::new(&*self.java_path)
+            }
+        };
+
+        #[cfg(not(target_os = "linux"))]
         let mut command = std::process::Command::new(&*self.java_path);
 
         command.current_dir(&self.game_dir);

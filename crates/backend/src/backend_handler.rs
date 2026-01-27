@@ -1182,6 +1182,7 @@ impl BackendState {
         match verify_credentials {
             Ok(Some(_)) => {
                 self.update_account_info_with_profile(&profile);
+                self.reload_account_state();
             },
             Ok(None) => {
                 log::error!("Credential verification failed: credentials not found after write");
@@ -1196,6 +1197,14 @@ impl BackendState {
         }
 
         Some((profile, access_token))
+    }
+
+    fn reload_account_state(&self) {
+        let mut account_info = self.account_info.write();
+        account_info.load_from_disk();
+        let update_message = account_info.get().create_update_message();
+        drop(account_info);
+        self.send.send(update_message);
     }
 
     pub fn update_account_info_with_profile(&self, profile: &MinecraftProfileResponse) {

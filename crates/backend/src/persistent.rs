@@ -5,13 +5,13 @@ use serde::{Deserialize, Serialize};
 use crate::IoOrSerializationError;
 
 #[derive(Debug)]
-pub struct Persistent<T: Serialize + for <'de> Deserialize<'de>> {
+pub struct Persistent<T: Serialize + for<'de> Deserialize<'de>> {
     path: Arc<Path>,
     dirty: bool,
-    data: T
+    data: T,
 }
 
-impl<T: Serialize + for <'de> Deserialize<'de> + Default> Persistent<T> {
+impl<T: Serialize + for<'de> Deserialize<'de> + Default> Persistent<T> {
     pub fn load(path: Arc<Path>) -> Self {
         let data = crate::read_json(&path).unwrap_or_default();
         Self {
@@ -22,7 +22,7 @@ impl<T: Serialize + for <'de> Deserialize<'de> + Default> Persistent<T> {
     }
 }
 
-impl<T: Serialize + for <'de> Deserialize<'de>> Persistent<T> {
+impl<T: Serialize + for<'de> Deserialize<'de>> Persistent<T> {
     pub fn try_load(path: Arc<Path>) -> Result<Self, IoOrSerializationError> {
         let data = crate::read_json(&path)?;
         Ok(Self {
@@ -74,7 +74,7 @@ impl<T: Serialize + for <'de> Deserialize<'de>> Persistent<T> {
         self.dirty = true;
     }
 
-    fn load_from_disk(&mut self) {
+    pub fn load_from_disk(&mut self) {
         self.dirty = false;
 
         let Ok(data) = crate::read_json(&self.path) else {

@@ -15,8 +15,8 @@ struct SyncLink {
 }
 
 trait Syncer {
-    fn link(self);
-    fn unlink(self);
+    fn link(&self);
+    fn unlink(&self);
 }
 
 struct SymlinkSync {
@@ -24,11 +24,11 @@ struct SymlinkSync {
 }
 
 impl Syncer for SymlinkSync {
-    fn link(self) {
+    fn link(&self) {
         _ = linking::link(&self.link.source, &self.link.target);
     }
 
-    fn unlink(self) {
+    fn unlink(&self) {
         _ = linking::unlink_if_targeting(&self.link.source, &self.link.target);
     }
 }
@@ -38,12 +38,12 @@ struct CopySaveSync {
 }
 
 impl Syncer for CopySaveSync {
-    fn link(self) {
-        _ = std::fs::copy(self.link.source, self.link.target);
+    fn link(&self) {
+        _ = std::fs::copy(&self.link.source, &self.link.target);
     }
 
-    fn unlink(self) {
-        _ = std::fs::copy(self.link.target, self.link.source);
+    fn unlink(&self) {
+        _ = std::fs::copy(&self.link.target, &self.link.source);
     }
 }
 
@@ -52,32 +52,28 @@ struct CopyDeleteSync {
 }
 
 impl Syncer for CopyDeleteSync {
-    fn link(self) {
-        _ = std::fs::copy(self.link.source, self.link.target);
+    fn link(&self) {
+        _ = std::fs::copy(&self.link.source, &self.link.target);
     }
 
-    fn unlink(self) {
-        _ = std::fs::remove_file(self.link.target);
+    fn unlink(&self) {
+        _ = std::fs::remove_file(&self.link.target);
     }
 }
 
 struct ChildrenSync {
-    target_dir: Box<Path>,
-    sources: Box<[Box<Path>]>,
-    source_dirs: Box<[Box<Path>]>,
+    link: SyncLink,
     keep_name: bool
 }
 
 impl ChildrenSync {
     fn source_to_target_path(&self, source_path: &Path) -> Option<PathBuf> {
         let name = source_path.file_name().unwrap_or_else(|| OsStr::new(""));
-        let target_base_path = self.target_dir.join(&name);
+        let target_base_path = self.link.target.join(&name);
         
-       return Some(if self.keep_name {
-            if target_base_path.try_exists().unwrap_or(true) {
-                return None;
-            }
-            target_base_path
+        if self.keep_name {
+            if target_base_path.try_exists().unwrap_or(true) { return None; }
+            return Some(target_base_path)
         } else {
             let mut err_count: u8 = 0;
             loop {
@@ -86,72 +82,66 @@ impl ChildrenSync {
                 let number = rand::random::<u32>();
                 let target_path = target_base_path.with_added_extension(format!("{number:0>8x}.plsync"));
                 
-                if !target_path.try_exists().unwrap_or(true) { break target_path; }
+                if !target_path.try_exists().unwrap_or(true) { return Some(target_path); }
                 err_count += 1;
             }
-        });
+        }
     }
 }
 
 impl Syncer for ChildrenSync {
-    fn link(self) {
-        if !self.target_dir.is_dir() { return; }
+    fn link(&self) {
+        if !self.link.source.is_dir() || !self.link.target.is_dir() { return; }
         
-        for dir_path in &self.source_dirs {
-            if !dir_path.exists() { continue; }
-            
-            let Ok(dir) = dir_path.read_dir() else { continue; };
-            for r in dir {
-                let Ok(entry) = r else { continue };
-                let source_path = entry.path();
-                
-                let Some(target_path) = self.source_to_target_path(&source_path) else { continue };
-                
-                _ = linking::link(&source_path, &target_path);
-            }
-        }
-        
-        for source_path in &self.sources {
-            if !source_path.exists() { continue; }
-            
+        let Ok(dir) = self.link.source.read_dir() else { return; };
+        for entry in dir.flatten() {
+            let source_path = entry.path();
             let Some(target_path) = self.source_to_target_path(&source_path) else { continue };
             
             _ = linking::link(&source_path, &target_path);
         }
-        
     }
 
-    fn unlink(self) {
-        let mut all_sources: HashSet<PathBuf> = HashSet::new();
+    fn unlink(&self) {
+        if !self.link.source.is_dir() || !self.link.target.is_dir() { return; }
         
-        for dir_path in &self.source_dirs {
-            if !dir_path.exists() { continue; }
-            
-            let Ok(dir) = dir_path.read_dir() else { continue; };
-            for r in dir {
-                let Ok(entry) = r else { continue };
-                let source_path = entry.path();
-                
-                all_sources.insert(source_path);
-            }
+        let mut sources: HashSet<PathBuf> = HashSet::new();
+        
+        let Ok(dir) = self.link.source.read_dir() else { return; };
+        for entry in dir.flatten() {
+            sources.insert(entry.path());
         }
         
-        for source_path in &self.sources {
-            if !source_path.exists() { continue; }
-            all_sources.insert(source_path.to_path_buf());
-        }
-        
-        let Ok(dir) = self.target_dir.read_dir() else { return; };
-        for r in dir {
-            let Ok(entry) = r else { continue };
-            
+        let Ok(dir) = self.link.target.read_dir() else { return; };
+        for entry in dir.flatten() {
             let target_path = entry.path();
-            if target_path.is_symlink() {
-                let Ok(source_path) = target_path.read_link() else { continue; };
-                if all_sources.contains(&source_path) {
-                    _ = std::fs::remove_file(target_path);
-                }
-            }
+
+            if !target_path.is_symlink() { continue; }
+
+            let Ok(source_path) = target_path.read_link() else { continue; };
+            if !sources.contains(&source_path) { continue; }
+
+            let target_path_no_extension = if !self.keep_name {
+                let mut target_path = target_path.clone();
+
+                let Some(extension) = target_path.extension() else { continue; };
+                if extension != "plsync" { continue; };
+                target_path.set_extension("");
+
+                let Some(extension) = target_path.extension() else { continue; };
+                if extension.len() != 8 { continue; };
+                target_path.set_extension("");
+
+                target_path
+            } else {
+                target_path.clone()
+            };
+
+            let Some(source_file_name) = source_path.file_name() else { continue; };
+            let Some(target_file_name) = target_path_no_extension.file_name() else { continue; };
+            if source_file_name != target_file_name { continue; }
+
+            _ = std::fs::remove_file(target_path);
         }
     }
 }
@@ -161,11 +151,11 @@ struct CustomScriptSync {
 }
 
 impl Syncer for CustomScriptSync {
-    fn link(self) {
+    fn link(&self) {
         todo!()
     }
 
-    fn unlink(self) {
+    fn unlink(&self) {
         todo!()
     }
 }

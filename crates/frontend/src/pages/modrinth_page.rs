@@ -773,13 +773,19 @@ impl Render for ModrinthSearchPage {
             }).into_any_element()
         };
 
-        let parameters = v_flex().h_full().gap_3()
-            .child(type_button_group)
-            .when_some(loader_button_group, |this, group| this.child(group))
-            .child(category);
+        let parameters = h_flex()
+            .h_full()
+            .min_h_0()
+            .flex_1()
+            .overflow_y_scrollbar()
+            .child(v_flex().h_full().gap_3()
+                .child(type_button_group)
+                .when_some(loader_button_group, |this, group| this.child(group))
+                .child(category)
+            );
 
         ui::page(cx, self.page_path.create_breadcrumb(&self.data, cx))
-            .child(h_flex().size_full().p_3().gap_3().child(parameters).child(content))
+            .child(h_flex().flex_1().min_h_0().size_full().p_3().gap_3().child(parameters).child(content))
     }
 }
 

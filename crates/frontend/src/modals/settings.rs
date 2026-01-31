@@ -2,7 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use bridge::{handle::BackendHandle, message::MessageToBackend};
 use gpui::*;
-use gpui_component::{button::{Button, ButtonVariants}, checkbox::Checkbox, select::{Select, SelectEvent, SelectState}, sheet::Sheet, spinner::Spinner, tab::{Tab, TabBar}, v_flex, ActiveTheme, IconName, Sizable, ThemeRegistry};
+use gpui_component::{button::{Button, ButtonVariants}, checkbox::Checkbox, select::{SearchableVec, Select, SelectEvent, SelectState}, sheet::Sheet, spinner::Spinner, tab::{Tab, TabBar}, v_flex, ActiveTheme, IconName, Sizable, ThemeRegistry};
 use schema::backend_config::BackendConfig;
 
 use crate::{entity::DataEntities, interface_config::{InterfaceConfig, ThemeMode}};
@@ -10,6 +10,8 @@ use crate::{entity::DataEntities, interface_config::{InterfaceConfig, ThemeMode}
 struct Settings {
     theme_folder: Arc<Path>,
     mode_select: Entity<SelectState<ThemeMode>>,
+    light_theme_select: Entity<SelectState<SearchableVec<SharedString>>>,
+    dark_theme_select: Entity<SelectState<SearchableVec<SharedString>>>,
     backend_handle: BackendHandle,
     pending_request: bool,
     backend_config: Option<BackendConfig>,
@@ -36,9 +38,65 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             crate::theme_utils::update_theme(cx);
         }).detach();
 
+        let light_theme_select = cx.new(|cx| {
+            let themes: Vec<SharedString> = ThemeRegistry::global(cx).themes().keys().cloned().collect();
+            let delegate = SearchableVec::new(themes);
+            let mut state = SelectState::new(
+                delegate,
+                None,
+                window,
+                cx,
+            );
+            state.set_selected_value(
+                &InterfaceConfig::get(cx).preferred_light_theme.clone(),
+                window,
+                cx,
+            );
+            state
+        });
+
+        cx.subscribe_in(&light_theme_select, window, |_, entity, _: &SelectEvent<_>, _, cx| {
+            let Some(theme) = entity.read(cx).selected_value().cloned() else {
+                return;
+            };
+
+            InterfaceConfig::get_mut(cx).preferred_light_theme = theme;
+            crate::theme_utils::update_theme(cx);
+        })
+        .detach();
+
+        let dark_theme_select = cx.new(|cx| {
+            let themes: Vec<SharedString> = ThemeRegistry::global(cx).themes().keys().cloned().collect();
+            let delegate = SearchableVec::new(themes);
+            let mut state = SelectState::new(
+                delegate,
+                None,
+                window,
+                cx,
+            );
+            state.set_selected_value(
+                &InterfaceConfig::get(cx).preferred_dark_theme.clone(),
+                window,
+                cx,
+            );
+            state
+        });
+
+        cx.subscribe_in(&dark_theme_select, window, |_, entity, _: &SelectEvent<_>, _, cx| {
+            let Some(theme) = entity.read(cx).selected_value().cloned() else {
+                return;
+            };
+
+            InterfaceConfig::get_mut(cx).preferred_dark_theme = theme;
+            crate::theme_utils::update_theme(cx);
+        })
+        .detach();
+
         let mut settings = Settings {
             theme_folder,
             mode_select,
+            light_theme_select,
+            dark_theme_select,
             backend_handle: data.backend_handle.clone(),
             pending_request: false,
             backend_config: None,
@@ -112,6 +170,14 @@ impl Render for Settings {
             .child(crate::labelled(
                 "Theme Mode",
                 Select::new(&self.mode_select)
+            ))
+            .child(crate::labelled(
+                "Preferred Light Theme",
+                Select::new(&self.light_theme_select),
+            ))
+            .child(crate::labelled(
+                "Preferred Dark Theme",
+                Select::new(&self.dark_theme_select),
             ))
             .child(Button::new("open-theme-folder").info().icon(IconName::FolderOpen).label("Open theme folder").on_click({
                 let theme_folder = self.theme_folder.clone();

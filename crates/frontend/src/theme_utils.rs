@@ -4,8 +4,8 @@ use gpui::*;
 pub fn update_theme(cx: &mut App) {
     let config = InterfaceConfig::get(cx);
     let theme_mode = config.theme_mode;
-    let light_theme: SharedString = "Default Light".into();
-    let dark_theme: SharedString = "Default Dark".into();
+    let light_theme = config.preferred_light_theme.clone();
+    let dark_theme = config.preferred_dark_theme.clone();
 
     let theme_name = match theme_mode {
         interface_config::ThemeMode::System => {

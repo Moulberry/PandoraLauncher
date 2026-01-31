@@ -31,6 +31,10 @@ pub struct InterfaceConfig {
     pub active_theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub theme_mode: ThemeMode,
+    #[serde(default = "default_light_theme", deserialize_with = "schema::try_deserialize")]
+    pub preferred_light_theme: SharedString,
+    #[serde(default = "default_dark_theme", deserialize_with = "schema::try_deserialize")]
+    pub preferred_dark_theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_page: SerializedPageType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -92,6 +96,14 @@ impl InterfaceConfigHolder {
         };
         _ = write_safe(&self.path, &bytes);
     }
+}
+
+fn default_light_theme() -> SharedString {
+    "Default Light".into()
+}
+
+fn default_dark_theme() -> SharedString {
+    "Default Dark".into()
 }
 
 pub(crate) fn try_read_json<T: std::fmt::Debug + Default + for <'de> Deserialize<'de>>(path: &Path) -> T {

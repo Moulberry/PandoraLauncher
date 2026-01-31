@@ -1,6 +1,7 @@
 use std::{io::Write, path::Path, sync::Arc, time::Duration};
 
-use gpui::{App, SharedString, Task};
+use gpui::{App, SharedString, Task, Window};
+use gpui_component::{select::{SelectDelegate, SelectItem, SelectState}, IndexPath};
 use rand::RngCore;
 use schema::modrinth::ModrinthProjectType;
 use serde::{Deserialize, Serialize};
@@ -15,10 +16,21 @@ struct InterfaceConfigHolder {
 
 impl gpui::Global for InterfaceConfigHolder {}
 
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeMode {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub active_theme: SharedString,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub theme_mode: ThemeMode,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_page: SerializedPageType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -112,4 +124,60 @@ pub(crate) fn write_safe(path: &Path, content: &[u8]) -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+impl SelectItem for ThemeMode {
+    type Value = Self;
+
+    fn title(&self) -> SharedString {
+        match self {
+            ThemeMode::System => "System".into(),
+            ThemeMode::Light => "Light".into(),
+            ThemeMode::Dark => "Dark".into(),
+        }
+    }
+
+    fn value(&self) -> &Self::Value {
+        self
+    }
+}
+
+impl SelectDelegate for ThemeMode {
+    type Item = ThemeMode;
+
+    fn items_count(&self, _section: usize) -> usize {
+        3
+    }
+
+    fn item(&self, ix: IndexPath) -> Option<&Self::Item> {
+        match ix.row {
+            0 => Some(&ThemeMode::System),
+            1 => Some(&ThemeMode::Light),
+            2 => Some(&ThemeMode::Dark),
+            _ => None,
+        }
+    }
+
+    fn position<V>(&self, value: &V) -> Option<IndexPath>
+    where
+        Self::Item: SelectItem<Value = V>,
+        V: PartialEq,
+    {
+        let items = [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark];
+        for (ix, item) in items.iter().enumerate() {
+            if item.value() == value {
+                return Some(IndexPath::default().row(ix));
+            }
+        }
+        None
+    }
+
+    fn perform_search(
+        &mut self,
+        _query: &str,
+        _window: &mut Window,
+        _: &mut gpui::Context<SelectState<Self>>,
+    ) -> Task<()> {
+        Task::ready(())
+    }
 }

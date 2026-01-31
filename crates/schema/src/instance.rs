@@ -11,12 +11,30 @@ pub struct InstanceConfiguration {
     pub loader: Loader,
     #[serde(default)]
     pub preferred_loader_version: Option<Ustr>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_memory_configuration")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_memory_configuration"
+    )]
     pub memory: Option<InstanceMemoryConfiguration>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_flags_configuration")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_jvm_flags_configuration"
+    )]
     pub jvm_flags: Option<InstanceJvmFlagsConfiguration>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_binary_configuration")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_jvm_binary_configuration"
+    )]
     pub jvm_binary: Option<InstanceJvmBinaryConfiguration>,
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_linux_wrapper_configuration"
+    )]
+    pub linux_wrapper: Option<InstanceLinuxWrapperConfiguration>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
@@ -43,9 +61,9 @@ impl Default for InstanceMemoryConfiguration {
 
 fn is_default_memory_configuration(config: &Option<InstanceMemoryConfiguration>) -> bool {
     if let Some(config) = config {
-        !config.enabled &&
-            config.min == InstanceMemoryConfiguration::DEFAULT_MIN &&
-            config.max == InstanceMemoryConfiguration::DEFAULT_MAX
+        !config.enabled
+            && config.min == InstanceMemoryConfiguration::DEFAULT_MIN
+            && config.max == InstanceMemoryConfiguration::DEFAULT_MAX
     } else {
         true
     }
@@ -74,6 +92,20 @@ pub struct InstanceJvmBinaryConfiguration {
 fn is_default_jvm_binary_configuration(config: &Option<InstanceJvmBinaryConfiguration>) -> bool {
     if let Some(config) = config {
         !config.enabled && config.path.is_none()
+    } else {
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Default)]
+pub struct InstanceLinuxWrapperConfiguration {
+    pub use_mangohud: bool,
+    pub use_gamemode: bool,
+}
+
+fn is_default_linux_wrapper_configuration(config: &Option<InstanceLinuxWrapperConfiguration>) -> bool {
+    if let Some(config) = config {
+        !config.use_mangohud && !config.use_gamemode
     } else {
         true
     }

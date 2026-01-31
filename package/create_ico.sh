@@ -18,6 +18,3 @@ done
 
 # use imagemagick to create ico file
 convert $PWD/windows_icons/*.png windows.ico
-
-# delete folder
-rm -R windows_icons

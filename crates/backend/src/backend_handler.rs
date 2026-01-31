@@ -126,6 +126,13 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::SetInstanceLinuxWrapper { id, linux_wrapper } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.linux_wrapper = Some(linux_wrapper);
+                    });
+                }
+            },
             MessageToBackend::KillInstance { id } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     if let Some(mut child) = instance.child.take() {

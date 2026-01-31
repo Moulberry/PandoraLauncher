@@ -23,7 +23,7 @@ cargo packager --config '{'\
 '  "identifier": "com.moulberry.pandoralauncher",'\
 '  "resources": [],'\
 '  "binaries": [{ "path": "PandoraLauncher-Linux", "main": true }],'\
-'  "icons": ["package/windows.ico"]'\
+'  "icons": ["package/windows_icons/icon_16x16.png", "package/windows_icons/icon_32x32.png", "package/windows_icons/icon_48x48.png", "package/windows_icons/icon_256x256.png"]'\
 '}'
 
 mv dist/PandoraLauncher-Linux dist/PandoraLauncher-Linux-$version-x86_64-Portable

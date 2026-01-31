@@ -7,7 +7,7 @@ use gpui::{prelude::*, *};
 use gpui_component::{
     ActiveTheme as _, Disableable, Selectable, Sizable, WindowExt, button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, spinner::Spinner, v_flex
 };
-use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration}, loader::Loader, version_manifest::MinecraftVersionManifest};
+use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration}, loader::Loader, version_manifest::MinecraftVersionManifest};
 
 use crate::{entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, interface_config::InterfaceConfig, pages::instances_page::VersionList};
 
@@ -35,6 +35,14 @@ pub struct InstanceSettingsSubpage {
     jvm_flags_input_state: Entity<InputState>,
     jvm_binary_enabled: bool,
     jvm_binary_path: Option<Arc<Path>>,
+    #[cfg(target_os = "linux")]
+    use_mangohud: bool,
+    #[cfg(target_os = "linux")]
+    use_gamemode: bool,
+    #[cfg(target_os = "linux")]
+    mangohud_available: bool,
+    #[cfg(target_os = "linux")]
+    gamemode_available: bool,
     new_name_change_state: NewNameChangeState,
     backend_handle: BackendHandle,
     _observe_loader_version_subscription: Option<Subscription>,
@@ -57,6 +65,7 @@ impl InstanceSettingsSubpage {
         let memory = entry.configuration.memory.unwrap_or_default();
         let jvm_flags = entry.configuration.jvm_flags.clone().unwrap_or_default();
         let jvm_binary = entry.configuration.jvm_binary.clone().unwrap_or_default();
+        let linux_wrapper = entry.configuration.linux_wrapper.unwrap_or_default();
 
         let new_name_input_state = cx.new(|cx| InputState::new(window, cx));
         cx.subscribe(&new_name_input_state, Self::on_new_name_input).detach();
@@ -117,6 +126,14 @@ impl InstanceSettingsSubpage {
             jvm_flags_input_state,
             jvm_binary_enabled: jvm_binary.enabled,
             jvm_binary_path: jvm_binary.path.clone(),
+            #[cfg(target_os = "linux")]
+            use_mangohud: linux_wrapper.use_mangohud,
+            #[cfg(target_os = "linux")]
+            use_gamemode: linux_wrapper.use_gamemode,
+            #[cfg(target_os = "linux")]
+            mangohud_available: Self::is_command_available("mangohud"),
+            #[cfg(target_os = "linux")]
+            gamemode_available: Self::is_command_available("gamemoderun"),
             new_name_change_state: NewNameChangeState::NoChange,
             backend_handle,
             loader_versions_state: TypelessFrontendMetadataResult::Loading,
@@ -401,6 +418,24 @@ impl InstanceSettingsSubpage {
             path: self.jvm_binary_path.clone(),
         }
     }
+
+    #[cfg(target_os = "linux")]
+    fn get_linux_wrapper_configuration(&self) -> InstanceLinuxWrapperConfiguration {
+        InstanceLinuxWrapperConfiguration {
+            use_mangohud: self.use_mangohud,
+            use_gamemode: self.use_gamemode,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn is_command_available(command: &str) -> bool {
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("command -v {command}"))
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
 }
 
 impl Render for InstanceSettingsSubpage {
@@ -625,6 +660,32 @@ impl Render for InstanceSettingsSubpage {
                     this._select_file_task = add_from_file_task;
                 })))
             );
+
+        #[cfg(target_os = "linux")]
+        let runtime_content = runtime_content.child(v_flex()
+            .gap_1()
+            .child("Linux Performance")
+            .child(Checkbox::new("use_mangohud").label("Use MangoHud").checked(self.use_mangohud).disabled(!self.mangohud_available).on_click(cx.listener(|page, value, _, cx| {
+                if page.use_mangohud != *value {
+                    page.use_mangohud = *value;
+                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                        id: page.instance_id,
+                        linux_wrapper: page.get_linux_wrapper_configuration()
+                    });
+                    cx.notify();
+                }
+            })))
+            .child(Checkbox::new("use_gamemode").label("Use GameMode").checked(self.use_gamemode).disabled(!self.gamemode_available).on_click(cx.listener(|page, value, _, cx| {
+                if page.use_gamemode != *value {
+                    page.use_gamemode = *value;
+                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                        id: page.instance_id,
+                        linux_wrapper: page.get_linux_wrapper_configuration()
+                    });
+                    cx.notify();
+                }
+            })))
+        );
 
         let actions_content = v_flex()
             .gap_4()

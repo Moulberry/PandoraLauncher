@@ -1,4 +1,4 @@
-use std::{path::{Path, PathBuf}, sync::Arc, time::SystemTime};
+use std::{collections::HashSet, ffi::OsStr, path::{Path, PathBuf}, sync::Arc, time::SystemTime};
 
 use bridge::message::SyncState;
 use enum_map::EnumMap;
@@ -8,6 +8,157 @@ use schema::backend_config::SyncTarget;
 use strum::IntoEnumIterator;
 
 use crate::directories::LauncherDirectories;
+
+struct SyncLink {
+    source: Box<Path>,
+    target: Box<Path>
+}
+
+trait Syncer {
+    fn link(&self);
+    fn unlink(&self);
+}
+
+struct SymlinkSync {
+    link: SyncLink
+}
+
+impl Syncer for SymlinkSync {
+    fn link(&self) {
+        _ = linking::link(&self.link.source, &self.link.target);
+    }
+
+    fn unlink(&self) {
+        _ = linking::unlink_if_targeting(&self.link.source, &self.link.target);
+    }
+}
+
+struct CopySaveSync {
+    link: SyncLink
+}
+
+impl Syncer for CopySaveSync {
+    fn link(&self) {
+        _ = std::fs::copy(&self.link.source, &self.link.target);
+    }
+
+    fn unlink(&self) {
+        _ = std::fs::copy(&self.link.target, &self.link.source);
+    }
+}
+
+struct CopyDeleteSync {
+    link: SyncLink
+}
+
+impl Syncer for CopyDeleteSync {
+    fn link(&self) {
+        _ = std::fs::copy(&self.link.source, &self.link.target);
+    }
+
+    fn unlink(&self) {
+        _ = std::fs::remove_file(&self.link.target);
+    }
+}
+
+struct ChildrenSync {
+    link: SyncLink,
+    keep_name: bool
+}
+
+impl ChildrenSync {
+    fn source_to_target_path(&self, source_path: &Path) -> Option<PathBuf> {
+        let name = source_path.file_name().unwrap_or_else(|| OsStr::new(""));
+        let target_base_path = self.link.target.join(&name);
+        
+        if self.keep_name {
+            if target_base_path.try_exists().unwrap_or(true) { return None; }
+            return Some(target_base_path)
+        } else {
+            let mut err_count: u8 = 0;
+            loop {
+                if err_count == 255 { return None; }
+                
+                let number = rand::random::<u32>();
+                let target_path = target_base_path.with_added_extension(format!("{number:0>8x}.plsync"));
+                
+                if !target_path.try_exists().unwrap_or(true) { return Some(target_path); }
+                err_count += 1;
+            }
+        }
+    }
+}
+
+impl Syncer for ChildrenSync {
+    fn link(&self) {
+        if !self.link.source.is_dir() || !self.link.target.is_dir() { return; }
+        
+        let Ok(dir) = self.link.source.read_dir() else { return; };
+        for entry in dir.flatten() {
+            let source_path = entry.path();
+            let Some(target_path) = self.source_to_target_path(&source_path) else { continue };
+            
+            _ = linking::link(&source_path, &target_path);
+        }
+    }
+
+    fn unlink(&self) {
+        if !self.link.source.is_dir() || !self.link.target.is_dir() { return; }
+        
+        let mut sources: HashSet<PathBuf> = HashSet::new();
+        
+        let Ok(dir) = self.link.source.read_dir() else { return; };
+        for entry in dir.flatten() {
+            sources.insert(entry.path());
+        }
+        
+        let Ok(dir) = self.link.target.read_dir() else { return; };
+        for entry in dir.flatten() {
+            let target_path = entry.path();
+
+            if !target_path.is_symlink() { continue; }
+
+            let Ok(source_path) = target_path.read_link() else { continue; };
+            if !sources.contains(&source_path) { continue; }
+
+            let target_path_no_extension = if !self.keep_name {
+                let mut target_path = target_path.clone();
+
+                let Some(extension) = target_path.extension() else { continue; };
+                if extension != "plsync" { continue; };
+                target_path.set_extension("");
+
+                let Some(extension) = target_path.extension() else { continue; };
+                if extension.len() != 8 { continue; };
+                target_path.set_extension("");
+
+                target_path
+            } else {
+                target_path.clone()
+            };
+
+            let Some(source_file_name) = source_path.file_name() else { continue; };
+            let Some(target_file_name) = target_path_no_extension.file_name() else { continue; };
+            if source_file_name != target_file_name { continue; }
+
+            _ = std::fs::remove_file(target_path);
+        }
+    }
+}
+
+struct CustomScriptSync {
+    link: SyncLink
+}
+
+impl Syncer for CustomScriptSync {
+    fn link(&self) {
+        todo!()
+    }
+
+    fn unlink(&self) {
+        todo!()
+    }
+}
 
 pub fn apply_to_instance(sync_targets: EnumSet<SyncTarget>, directories: &LauncherDirectories, dot_minecraft: Arc<Path>) {
     _ = std::fs::create_dir_all(&dot_minecraft);
@@ -28,10 +179,10 @@ pub fn apply_to_instance(sync_targets: EnumSet<SyncTarget>, directories: &Launch
 
             if want {
                 if !path.exists() {
-                    _ = linking::link_dir(&target_dir, &path);
+                    _ = linking::link(&target_dir, &path);
                 }
             } else {
-                _ = linking::unlink_dir_if_targeting(&target_dir, &path);
+                _ = linking::unlink_if_targeting(&target_dir, &path);
             }
         } else if want {
             match target {
@@ -284,7 +435,7 @@ pub fn enable_all(target: SyncTarget, directories: &LauncherDirectories) -> std:
         if let Some(parent) = path.parent() {
             _ = std::fs::create_dir_all(parent);
         }
-        linking::link_dir(&target_dir, path)?;
+        linking::link(&target_dir, path)?;
     }
 
     Ok(true)
@@ -314,7 +465,7 @@ pub fn disable_all(target: SyncTarget, directories: &LauncherDirectories) -> std
     let target_dir = directories.synced_dir.join(non_hidden_sync_folder);
 
     for path in &paths {
-        linking::unlink_dir_if_targeting(&target_dir, path)?;
+        linking::unlink_if_targeting(&target_dir, path)?;
     }
 
     Ok(())
@@ -324,7 +475,7 @@ pub fn disable_all(target: SyncTarget, directories: &LauncherDirectories) -> std
 mod linking {
     use std::path::Path;
 
-    pub fn link_dir(original: &Path, link: &Path) -> std::io::Result<()> {
+    pub fn link(original: &Path, link: &Path) -> std::io::Result<()> {
         std::os::unix::fs::symlink(original, link)
     }
 
@@ -336,7 +487,7 @@ mod linking {
         target == original
     }
 
-    pub fn unlink_dir_if_targeting(original: &Path, link: &Path) -> std::io::Result<()> {
+    pub fn unlink_if_targeting(original: &Path, link: &Path) -> std::io::Result<()> {
         let Ok(target) = std::fs::read_link(link) else {
             return Ok(());
         };
@@ -353,7 +504,7 @@ mod linking {
 mod linking {
     use std::path::Path;
 
-    pub fn link_dir(original: &Path, link: &Path) -> std::io::Result<()> {
+    pub fn link(original: &Path, link: &Path) -> std::io::Result<()> {
         junction::create(original, link)
     }
 
@@ -365,7 +516,7 @@ mod linking {
         target == original
     }
 
-    pub fn unlink_dir_if_targeting(original: &Path, link: &Path) -> std::io::Result<()> {
+    pub fn unlink_if_targeting(original: &Path, link: &Path) -> std::io::Result<()> {
         let Ok(target) = junction::get_target(link) else {
             return Ok(());
         };

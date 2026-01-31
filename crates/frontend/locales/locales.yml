@@ -117,6 +117,8 @@ gui:
   en: GUI
 worldgen:
   en: World Generation
+worldgen-short:
+  en: Worldgen
 multiplayer:
   en: Multiplayer
 quests:

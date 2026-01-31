@@ -40,6 +40,19 @@ macro_rules! ts {
 }
 pub(crate) use ts;
 
+macro_rules! ts_short {
+    ($id:expr) => {{
+        let short_key = format!("{}-short", $id);
+        let translated = rust_i18n::t!(&short_key);
+        if translated.ends_with("-short") {
+            ts!($id)
+        } else {
+            SharedString::new_static(ustr::ustr(&*translated).as_str())
+        }
+    }};
+}
+pub(crate) use ts_short;
+
 #[derive(rust_embed::RustEmbed)]
 #[folder = "../../assets"]
 #[include = "icons/**/*.svg"]

@@ -16,25 +16,14 @@ struct InterfaceConfigHolder {
 
 impl gpui::Global for InterfaceConfigHolder {}
 
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
-#[serde(rename_all = "snake_case")]
-pub enum ThemeMode {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
+
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub active_theme: SharedString,
-    #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub theme_mode: ThemeMode,
-    #[serde(default = "default_light_theme", deserialize_with = "schema::try_deserialize")]
-    pub preferred_light_theme: SharedString,
-    #[serde(default = "default_dark_theme", deserialize_with = "schema::try_deserialize")]
-    pub preferred_dark_theme: SharedString,
+    #[serde(default = "default_theme_selection", deserialize_with = "schema::try_deserialize")]
+    pub theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_page: SerializedPageType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -97,13 +86,8 @@ impl InterfaceConfigHolder {
         _ = write_safe(&self.path, &bytes);
     }
 }
-
-fn default_light_theme() -> SharedString {
-    "Default Light".into()
-}
-
-fn default_dark_theme() -> SharedString {
-    "Default Dark".into()
+fn default_theme_selection() -> SharedString {
+    "System Default".into()
 }
 
 pub(crate) fn try_read_json<T: std::fmt::Debug + Default + for <'de> Deserialize<'de>>(path: &Path) -> T {
@@ -138,58 +122,4 @@ pub(crate) fn write_safe(path: &Path, content: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
-impl SelectItem for ThemeMode {
-    type Value = Self;
 
-    fn title(&self) -> SharedString {
-        match self {
-            ThemeMode::System => "System".into(),
-            ThemeMode::Light => "Light".into(),
-            ThemeMode::Dark => "Dark".into(),
-        }
-    }
-
-    fn value(&self) -> &Self::Value {
-        self
-    }
-}
-
-impl SelectDelegate for ThemeMode {
-    type Item = ThemeMode;
-
-    fn items_count(&self, _section: usize) -> usize {
-        3
-    }
-
-    fn item(&self, ix: IndexPath) -> Option<&Self::Item> {
-        match ix.row {
-            0 => Some(&ThemeMode::System),
-            1 => Some(&ThemeMode::Light),
-            2 => Some(&ThemeMode::Dark),
-            _ => None,
-        }
-    }
-
-    fn position<V>(&self, value: &V) -> Option<IndexPath>
-    where
-        Self::Item: SelectItem<Value = V>,
-        V: PartialEq,
-    {
-        let items = [ThemeMode::System, ThemeMode::Light, ThemeMode::Dark];
-        for (ix, item) in items.iter().enumerate() {
-            if item.value() == value {
-                return Some(IndexPath::default().row(ix));
-            }
-        }
-        None
-    }
-
-    fn perform_search(
-        &mut self,
-        _query: &str,
-        _window: &mut Window,
-        _: &mut gpui::Context<SelectState<Self>>,
-    ) -> Task<()> {
-        Task::ready(())
-    }
-}

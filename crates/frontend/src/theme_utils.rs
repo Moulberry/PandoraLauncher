@@ -3,19 +3,13 @@ use gpui::*;
 
 pub fn update_theme(cx: &mut App) {
     let config = InterfaceConfig::get(cx);
-    let theme_mode = config.theme_mode;
-    let light_theme = config.preferred_light_theme.clone();
-    let dark_theme = config.preferred_dark_theme.clone();
-
-    let theme_name = match theme_mode {
-        interface_config::ThemeMode::System => {
-            match cx.window_appearance() {
-                WindowAppearance::Light => light_theme,
-                _ => dark_theme,
-            }
-        },
-        interface_config::ThemeMode::Light => light_theme,
-        interface_config::ThemeMode::Dark => dark_theme,
+    let theme_name = if config.theme == "System Default" {
+        match cx.window_appearance() {
+            WindowAppearance::Light => "Default Light".into(),
+            _ => "Default Dark".into(),
+        }
+    } else {
+        config.theme.clone()
     };
 
     if theme_name.is_empty() {

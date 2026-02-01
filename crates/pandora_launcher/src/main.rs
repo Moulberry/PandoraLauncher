@@ -214,12 +214,12 @@ fn setup_logging(level: log::LevelFilter) -> Result<(), fern::InitError> {
         .level_for("bridge", level)
         .level(log::LevelFilter::Info);
 
-    let colors_line = ColoredLevelConfig::new();
+    let colors_line = ColoredLevelConfig::new().info(fern::colors::Color::BrightWhite);
 
     let file_config = fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
-                "[{time} {level} {target}] {message}\x1B[0m",
+                "[{time} {level} {target}] {message}",
                 time = humantime::format_rfc3339_seconds(SystemTime::now()),
                 level = record.level(),
                 target = record.target(),

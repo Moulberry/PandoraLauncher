@@ -20,8 +20,7 @@ impl gpui::Global for InterfaceConfigHolder {}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct InterfaceConfig {
-    #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub active_theme: SharedString,
+
     #[serde(default = "default_theme_selection", deserialize_with = "schema::try_deserialize")]
     pub theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]

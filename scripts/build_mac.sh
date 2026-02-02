@@ -43,7 +43,7 @@ if [[ -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY" ]]; then
     cargo packager signer sign dist/PandoraLauncher.app.tar.gz
 
     echo "{
-\"version\": \"$version\",
+    \"version\": \"$version\",
     \"downloads\": {
         \"universal\": {
             \"executable\": {

@@ -1,6 +1,6 @@
 [Desktop Entry]
-Categories=Game;Java
-Exec=PandoraLauncher-Linux
+Categories=Game;LauncherStore;GameTool
+Exec=pandora_launcher
 Icon=com.moulberry.PandoraLauncher
 Name=Pandora Launcher
 Terminal=false

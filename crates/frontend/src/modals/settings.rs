@@ -21,8 +21,12 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
     let settings = cx.new(|cx| {        
 
         let theme_select = cx.new(|cx| {
-            let mut themes: Vec<SharedString> = ThemeRegistry::global(cx).themes().keys().cloned().collect();
-            themes.insert(0, "System Default".into());
+            let mut themes: Vec<SharedString> = ThemeRegistry::global(cx)
+                .sorted_themes()
+                .iter()
+                .map(|cfg| cfg.name.clone())
+                .collect();
+            themes.insert(0, crate::theme_utils::SYSTEM_DEFAULT_THEME.into());
             let delegate = SearchableVec::new(themes);
             let mut state = SelectState::new(
                 delegate,
@@ -31,7 +35,7 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
                 cx,
             );
             state.set_selected_value(
-                &InterfaceConfig::get(cx).theme.clone(),
+                &InterfaceConfig::get(cx).active_theme.clone(),
                 window,
                 cx,
             );
@@ -43,7 +47,7 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
                 return;
             };
 
-            InterfaceConfig::get_mut(cx).theme = theme;
+            InterfaceConfig::get_mut(cx).active_theme = theme;
             crate::theme_utils::update_theme(cx);
         }).detach();
 

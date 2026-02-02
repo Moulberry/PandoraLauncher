@@ -22,7 +22,7 @@ impl gpui::Global for InterfaceConfigHolder {}
 pub struct InterfaceConfig {
 
     #[serde(default = "default_theme_selection", deserialize_with = "schema::try_deserialize")]
-    pub theme: SharedString,
+    pub active_theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_page: SerializedPageType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -86,7 +86,7 @@ impl InterfaceConfigHolder {
     }
 }
 fn default_theme_selection() -> SharedString {
-    "System Default".into()
+    "Default Dark".into()
 }
 
 pub(crate) fn try_read_json<T: std::fmt::Debug + Default + for <'de> Deserialize<'de>>(path: &Path) -> T {

@@ -453,27 +453,15 @@ impl ModrinthSearchPage {
                             if project_type != ModrinthProjectType::Other {
                                 match &main_action {
                                     PrimaryAction::Install | PrimaryAction::Reinstall => {
-                                        if let Some(install_for_id) = install_for {
-                                            crate::modals::modrinth_install::open_version_picker(
-                                                name.as_str(),
-                                                project_id.clone(),
-                                                project_type,
-                                                install_for_id,
-                                                &data,
-                                                window,
-                                                cx,
-                                            );
-                                        } else {
-                                            crate::modals::modrinth_install::open(
-                                                name.as_str(),
-                                                project_id.clone(),
-                                                project_type,
-                                                None,
-                                                &data,
-                                                window,
-                                                cx,
-                                            );
-                                        }
+                                        crate::modals::modrinth_install::open(
+                                            name.as_str(),
+                                            project_id.clone(),
+                                            project_type,
+                                            install_for,
+                                            &data,
+                                            window,
+                                            cx,
+                                        );
                                     },
                                     PrimaryAction::InstallLatest => {
                                         crate::modals::modrinth_install_auto::open(

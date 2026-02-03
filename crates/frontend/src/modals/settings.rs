@@ -2,7 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use bridge::{handle::BackendHandle, message::MessageToBackend};
 use gpui::*;
-use gpui_component::{button::{Button, ButtonVariants}, checkbox::Checkbox, select::{SearchableVec, Select, SelectEvent, SelectState}, sheet::Sheet, spinner::Spinner, tab::{Tab, TabBar, TabVariant}, v_flex, ActiveTheme, IconName, Sizable, ThemeRegistry};
+use gpui_component::{button::{Button, ButtonVariants}, checkbox::Checkbox, select::{SearchableVec, Select, SelectEvent, SelectState}, sheet::Sheet, spinner::Spinner, tab::{Tab, TabBar}, v_flex, ActiveTheme, IconName, Sizable, ThemeRegistry};
 use schema::backend_config::BackendConfig;
 
 use crate::{entity::DataEntities, interface_config::InterfaceConfig};
@@ -18,28 +18,37 @@ struct Settings {
 
 pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
     let theme_folder = data.theme_folder.clone();
-    let settings = cx.new(|cx| {
-        let theme_select_delegate = SearchableVec::new(ThemeRegistry::global(cx).sorted_themes()
-            .iter().map(|cfg| cfg.name.clone()).collect::<Vec<_>>());
+    let settings = cx.new(|cx| {        
 
         let theme_select = cx.new(|cx| {
-            let mut state = SelectState::new(theme_select_delegate, Default::default(), window, cx).searchable(true);
-            state.set_selected_value(&cx.theme().theme_name().clone(), window, cx);
+            let mut themes: Vec<SharedString> = ThemeRegistry::global(cx)
+                .sorted_themes()
+                .iter()
+                .map(|cfg| cfg.name.clone())
+                .collect();
+            themes.insert(0, crate::theme_utils::SYSTEM_DEFAULT_THEME.into());
+            let delegate = SearchableVec::new(themes);
+            let mut state = SelectState::new(
+                delegate,
+                None,
+                window,
+                cx,
+            );
+            state.set_selected_value(
+                &InterfaceConfig::get(cx).active_theme.clone(),
+                window,
+                cx,
+            );
             state
         });
 
         cx.subscribe_in(&theme_select, window, |_, entity, _: &SelectEvent<_>, _, cx| {
-            let Some(theme_name) = entity.read(cx).selected_value().cloned() else {
+             let Some(theme) = entity.read(cx).selected_value().cloned() else {
                 return;
             };
 
-            InterfaceConfig::get_mut(cx).active_theme = theme_name.clone();
-
-            let Some(theme) = gpui_component::ThemeRegistry::global(cx).themes().get(&SharedString::new(theme_name.trim_ascii())).cloned() else {
-                return;
-            };
-
-            gpui_component::Theme::global_mut(cx).apply_config(&theme);
+            InterfaceConfig::get_mut(cx).active_theme = theme;
+            crate::theme_utils::update_theme(cx);
         }).detach();
 
         let mut settings = Settings {
@@ -62,7 +71,6 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             .selected_index(0)
             .underline()
             .child(Tab::new().label("Interface"))
-            // .child(Tab::new().label("Game"))
             .on_click(|index, window, cx| {
                 // todo: switch
             });
@@ -118,7 +126,7 @@ impl Render for Settings {
             .gap_3()
             .child(crate::labelled(
                 "Theme",
-                Select::new(&self.theme_select)
+                Select::new(&self.theme_select),
             ))
             .child(Button::new("open-theme-folder").info().icon(IconName::FolderOpen).label("Open theme folder").on_click({
                 let theme_folder = self.theme_folder.clone();

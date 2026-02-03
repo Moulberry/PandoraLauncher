@@ -17,7 +17,7 @@ use parking_lot::RwLock;
 use crate::{
     entity::{
         DataEntities, PanicMessages, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata
-    }, interface_config::InterfaceConfig, processor::Processor, root::{LauncherRoot, LauncherRootGlobal}
+    }, interface_config::InterfaceConfig, processor::Processor, root::{LauncherRoot, LauncherRootGlobal}, theme_utils::update_theme
 };
 
 pub mod component;
@@ -30,6 +30,7 @@ pub mod png_render_cache;
 pub mod processor;
 pub mod root;
 pub mod ui;
+pub mod theme_utils;
 
 rust_i18n::i18n!("locales");
 
@@ -112,17 +113,12 @@ pub fn start(
         let theme_folder = launcher_dir.join("themes");
 
         _ = gpui_component::ThemeRegistry::watch_dir(theme_folder.clone(), cx, move |cx| {
-            let theme_name = InterfaceConfig::get(cx).active_theme.clone();
-            if theme_name.is_empty() {
-                return;
-            }
-
-            let Some(theme) = gpui_component::ThemeRegistry::global(cx).themes().get(&SharedString::new(theme_name.trim_ascii())).cloned() else {
-                return;
-            };
-
-            gpui_component::Theme::global_mut(cx).apply_config(&theme);
+            update_theme(cx);
         });
+
+
+
+        update_theme(cx);
 
         let theme = gpui_component::Theme::global_mut(cx);
         theme.font_family = SharedString::new_static(MAIN_FONT);

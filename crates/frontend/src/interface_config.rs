@@ -1,6 +1,7 @@
 use std::{io::Write, path::Path, sync::Arc, time::Duration};
 
-use gpui::{App, SharedString, Task};
+use gpui::{App, SharedString, Task, Window};
+use gpui_component::{select::{SelectDelegate, SelectItem, SelectState}, IndexPath};
 use rand::RngCore;
 use schema::modrinth::ModrinthProjectType;
 use serde::{Deserialize, Serialize};
@@ -15,9 +16,12 @@ struct InterfaceConfigHolder {
 
 impl gpui::Global for InterfaceConfigHolder {}
 
+
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct InterfaceConfig {
-    #[serde(default, deserialize_with = "schema::try_deserialize")]
+
+    #[serde(default = "default_theme_selection", deserialize_with = "schema::try_deserialize")]
     pub active_theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_window_bounds: WindowBounds,
@@ -108,6 +112,9 @@ impl InterfaceConfigHolder {
         _ = write_safe(&self.path, &bytes);
     }
 }
+fn default_theme_selection() -> SharedString {
+    "Default Dark".into()
+}
 
 pub(crate) fn try_read_json<T: std::fmt::Debug + Default + for <'de> Deserialize<'de>>(path: &Path) -> T {
     let Ok(data) = std::fs::read(path) else {
@@ -140,3 +147,5 @@ pub(crate) fn write_safe(path: &Path, content: &[u8]) -> std::io::Result<()> {
 
     Ok(())
 }
+
+

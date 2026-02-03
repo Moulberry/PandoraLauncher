@@ -92,7 +92,8 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     let account_info = Persistent::load(directories.accounts_json.clone());
 
     // Load config
-    let mut config: Persistent<BackendConfig> = Persistent::load(directories.config_json.clone());
+    let config = Persistent::load(directories.config_json.clone());
+    let config = Arc::new(RwLock::new(config));
 
     let mut state = BackendState {
         self_handle,
@@ -103,16 +104,10 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         instance_state: Arc::new(RwLock::new(state_instances)),
         file_watching: Arc::new(RwLock::new(state_file_watching)),
         directories: Arc::clone(&directories),
-        launcher: {
-            let mut launcher = Launcher::new(meta, directories, send);
-            if let Some(global_memory) = config.get().global_memory_max {
-                launcher.global_memory_max = Some(global_memory);
-            }
-            launcher
-        },
+        launcher: Launcher::new(meta, directories, send, Arc::clone(&config)),
         mod_metadata_manager: Arc::new(mod_metadata_manager),
         account_info: Arc::new(RwLock::new(account_info)),
-        config: Arc::new(RwLock::new(config)),
+        config: Arc::clone(&config),
         secret_storage: Arc::new(OnceCell::new()),
         head_cache: Default::default(),
     };
@@ -196,7 +191,7 @@ impl BackendState {
         self.handle(recv, watcher_rx).await;
     }
 
-    pub async fn load_all_instances(&mut self) {
+    pub async fn load_all_instances(&self) {
         log::info!("Loading all instances");
 
         let mut paths_with_time = Vec::new();
@@ -245,7 +240,7 @@ impl BackendState {
         }
     }
 
-    pub fn remove_instance(&mut self, id: InstanceID) {
+    pub fn remove_instance(&self, id: InstanceID) {
         log::info!("Removing instance {id:?}");
 
         let mut instance_state = self.instance_state.write();
@@ -256,7 +251,7 @@ impl BackendState {
         }
     }
 
-    pub fn load_instance_from_path(&mut self, path: &Path, mut show_errors: bool, show_success: bool) -> bool {
+    pub fn load_instance_from_path(&self, path: &Path, mut show_errors: bool, show_success: bool) -> bool {
         let instance = Instance::load_from_folder(&path);
 
         let instance_id = {
@@ -360,7 +355,7 @@ impl BackendState {
         }
     }
 
-    async fn handle_tick(&mut self) {
+    async fn handle_tick(&self) {
         self.meta.expire().await;
 
         let mut instance_state = self.instance_state.write();

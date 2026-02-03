@@ -32,7 +32,7 @@ struct AfterDebounceEffects {
 }
 
 impl BackendState {
-    pub async fn handle_filesystem(&mut self, result: notify_debouncer_full::DebounceEventResult) {
+    pub async fn handle_filesystem(&self, result: notify_debouncer_full::DebounceEventResult) {
         match result {
             Ok(events) => {
                 let mut after_debounce_effects = AfterDebounceEffects {
@@ -72,7 +72,7 @@ impl BackendState {
     }
 
     async fn handle_filesystem_change_event(
-        &mut self,
+        &self,
         path: Arc<Path>,
         after_debounce_effects: &mut AfterDebounceEffects,
     ) {
@@ -90,7 +90,7 @@ impl BackendState {
     }
 
     async fn handle_filesystem_remove_event(
-        &mut self,
+        &self,
         path: Arc<Path>,
         target: Option<WatchTarget>,
         after_debounce_effects: &mut AfterDebounceEffects,
@@ -110,7 +110,7 @@ impl BackendState {
     }
 
     async fn handle_filesystem_event(
-        &mut self,
+        &self,
         event: FilesystemEvent,
         after_debounce_effects: &mut AfterDebounceEffects,
     ) {
@@ -161,7 +161,7 @@ impl BackendState {
     }
 
     async fn filesystem_handle_change(
-        &mut self,
+        &self,
         target: WatchTarget,
         _path: &Arc<Path>,
         _after_debounce_effects: &mut AfterDebounceEffects,
@@ -178,7 +178,7 @@ impl BackendState {
     }
 
     async fn filesystem_handle_removed(
-        &mut self,
+        &self,
         target: WatchTarget,
         path: &Arc<Path>,
         _after_debounce_effects: &mut AfterDebounceEffects,
@@ -250,7 +250,7 @@ impl BackendState {
     }
 
     async fn filesystem_handle_renamed(
-        &mut self,
+        &self,
         from_target: WatchTarget,
         from: &Arc<Path>,
         to: &Arc<Path>,
@@ -293,7 +293,7 @@ impl BackendState {
     }
 
     async fn filesystem_handle_child_change(
-        &mut self,
+        &self,
         parent: WatchTarget,
         parent_path: &Path,
         path: &Arc<Path>,
@@ -422,7 +422,7 @@ impl BackendState {
     }
 
     async fn filesystem_handle_child_removed(
-        &mut self,
+        &self,
         parent: WatchTarget,
         parent_path: &Path,
         path: &Arc<Path>,

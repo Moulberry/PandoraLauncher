@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl BackendState {
-    pub async fn handle_message(&mut self, message: MessageToBackend) {
+    pub async fn handle_message(&self, message: MessageToBackend) {
         match message {
             MessageToBackend::RequestMetadata { request, force_reload } => {
                 let meta = self.meta.clone();
@@ -1026,7 +1026,6 @@ impl BackendState {
                 write.modify(|config| {
                     config.global_memory_max = value;
                 });
-                self.launcher.global_memory_max = value;
             },
             MessageToBackend::InstallUpdate { update, modal_action } => {
                 tokio::task::spawn(crate::update::install_update(self.redirecting_http_client.clone(), self.directories.clone(), self.send.clone(), update, modal_action));

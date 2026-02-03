@@ -24,6 +24,10 @@ use crate::{
         MetaLoadError, MetadataManager,
     }}
 };
+use parking_lot::RwLock;
+use schema::backend_config::BackendConfig;
+use crate::persistent::Persistent;
+
 
 #[derive(Clone)]
 pub struct Launcher {
@@ -31,7 +35,7 @@ pub struct Launcher {
     directories: Arc<LauncherDirectories>,
     launch_wrapper: Arc<Path>,
     sender: FrontendHandle,
-    pub global_memory_max: Option<u32>,
+    pub backend_config: Arc<RwLock<Persistent<BackendConfig>>>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -71,14 +75,14 @@ pub enum AddVanillaJar {
 }
 
 impl Launcher {
-    pub fn new(meta: Arc<MetadataManager>, directories: Arc<LauncherDirectories>, sender: FrontendHandle) -> Self {
+    pub fn new(meta: Arc<MetadataManager>, directories: Arc<LauncherDirectories>, sender: FrontendHandle, backend_config: Arc<RwLock<Persistent<BackendConfig>>>) -> Self {
         let launch_wrapper = launch_wrapper::create_wrapper(&directories.temp_dir).into();
         Self {
             meta,
             directories,
             launch_wrapper,
             sender,
-            global_memory_max: None,
+            backend_config: backend_config,
         }
     }
 
@@ -216,6 +220,9 @@ impl Launcher {
             }
         }
 
+
+        let global_memory_max = self.backend_config.write().get().global_memory_max;
+
         let launch_context = LaunchContext {
             launch_wrapper_path: self.launch_wrapper.clone(),
             java_path,
@@ -231,7 +238,7 @@ impl Launcher {
             rule_context: launch_rule_context,
             login_info,
             add_mods,
-            global_memory_max: self.global_memory_max,
+            global_memory_max,
         };
 
         if modal_action.has_requested_cancel() {

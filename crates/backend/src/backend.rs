@@ -9,6 +9,7 @@ use auth::{
     secret::{PlatformSecretStorage, SecretStorageError},
     serve_redirect::{self, ProcessAuthorizationError},
 };
+use base64::Engine;
 use bridge::{
     handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{InstanceID, InstanceContentSummary, InstanceServerSummary, InstanceWorldSummary, ContentType}, message::MessageToFrontend, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
@@ -17,6 +18,7 @@ use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{backend_config::BackendConfig, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use serde::Deserialize;
 use sha1::{Digest, Sha1};
 use tokio::sync::{mpsc::Receiver, OnceCell};
 use ustr::Ustr;
@@ -33,18 +35,24 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         .build()
         .expect("Failed to initialize Tokio runtime");
 
+    let user_agent = if let Some(version) = option_env!("PANDORA_RELEASE_VERSION") {
+        format!("PandoraLauncher/{version} (https://github.com/Moulberry/PandoraLauncher)")
+    } else {
+        "PandoraLauncher/dev (https://github.com/Moulberry/PandoraLauncher)".to_string()
+    };
+
     let http_client = reqwest::ClientBuilder::new()
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(15))
         .redirect(Policy::none())
         .use_rustls_tls()
-        .user_agent("PandoraLauncher/0.1.0 (https://github.com/Moulberry/PandoraLauncher)")
+        .user_agent(&user_agent)
         .build()
         .unwrap();
 
     let redirecting_http_client = reqwest::ClientBuilder::new()
         .use_rustls_tls()
-        .user_agent("PandoraLauncher/0.1.0 (https://github.com/Moulberry/PandoraLauncher)")
+        .user_agent(&user_agent)
         .build()
         .unwrap();
 
@@ -173,6 +181,8 @@ pub enum HeadCacheEntry {
 impl BackendState {
     async fn start(self, recv: BackendReceiver, watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>) {
         log::info!("Starting backend");
+
+        tokio::task::spawn(crate::update::check_for_updates(self.redirecting_http_client.clone(), self.send.clone()));
 
         // Pre-fetch version manifest
         self.meta.load(&MinecraftVersionManifestMetadataItem).await;

@@ -13,7 +13,7 @@ use schema::{content::ContentSource, loader::Loader, modrinth::{
 use crate::{
     component::{error_alert::ErrorAlert, page_path::PagePath}, entity::{
         DataEntities, instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
-    }, interface_config::InterfaceConfig, ts, ui
+    }, interface_config::InterfaceConfig, ts, ts_short, ui
 };
 
 pub struct ModrinthSearchPage {
@@ -752,11 +752,7 @@ impl Render for ModrinthSearchPage {
                 .multiple(true)
                 .children(categories.iter().map(|id| {
                     Button::new(*id)
-                        .label(if id == &"worldgen" {
-                            "Worldgen".into()
-                        } else {
-                            ts!(*id)
-                        })
+                        .label(ts_short!(id))
                         .when_some(icon_for(id), |this, icon| {
                             this.icon(Icon::empty().path(icon))
                         })
@@ -825,7 +821,7 @@ fn icon_for(str: &str) -> Option<&'static str> {
         "technology" => Some("icons/hard-drive.svg"),
         "transportation" => Some("icons/truck.svg"),
         "utility" => Some("icons/briefcase.svg"),
-        "world-generation" | "locale" => Some("icons/globe.svg"),
+        "worldgen" | "locale" => Some("icons/globe.svg"),
         "audio" => Some("icons/headphones.svg"),
         "blocks" | "rift" => Some("icons/box.svg"),
         "core-shaders" => Some("icons/cpu.svg"),

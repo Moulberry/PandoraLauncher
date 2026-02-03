@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{instance::InstanceID, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, IconName, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, resizable::{ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, v_flex
+    ActiveTheme as _, Disableable, Icon, IconName, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, v_flex
 };
 use rand::Rng;
 use schema::modrinth::ModrinthProjectType;
@@ -20,6 +20,7 @@ pub struct LauncherUI {
     data: DataEntities,
     page: LauncherPage,
     sidebar_state: Entity<ResizableState>,
+    default_sidebar_width: f32,
     recent_instances: heapless::Vec<(InstanceID, SharedString), 3>,
     _instance_added_subscription: Subscription,
     _instance_modified_subscription: Subscription,
@@ -131,6 +132,17 @@ impl LauncherUI {
     pub fn new(data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let sidebar_state = cx.new(|_| ResizableState::default());
 
+        cx.subscribe::<_, ResizablePanelEvent>(&sidebar_state, |this, resizable, event, cx| {
+            let ResizablePanelEvent::Resized = event;
+
+            let sizes = resizable.read(cx).sizes();
+            if sizes.len() > 0 {
+                let width = sizes[0].to_f64() as f32;
+                InterfaceConfig::get_mut(cx).sidebar_width = width;
+                this.default_sidebar_width = width;
+            }
+        }).detach();
+
         let recent_instances = data
             .instances
             .read(cx)
@@ -180,10 +192,16 @@ impl LauncherUI {
         let page_type = PageType::from_serialized(&config.main_page, data, cx);
         let page_path: Vec<PageType> = config.page_path.iter().map(|page| PageType::from_serialized(page, data, cx)).collect();
 
+        let mut default_sidebar_width = InterfaceConfig::get(cx).sidebar_width;
+        if default_sidebar_width <= 0.0 {
+            default_sidebar_width = 150.0;
+        }
+
         Self {
             data: data.clone(),
             page: Self::create_page(&data, page_type, &page_path, window, cx),
             sidebar_state,
+            default_sidebar_width,
             recent_instances,
             _instance_added_subscription,
             _instance_modified_subscription,
@@ -488,7 +506,7 @@ impl Render for LauncherUI {
 
         h_resizable("container")
             .with_state(&self.sidebar_state)
-            .child(resizable_panel().size(px(150.)).size_range(px(130.)..px(200.)).child(sidebar))
+            .child(resizable_panel().size(px(self.default_sidebar_width)).size_range(px(130.)..px(200.)).child(sidebar))
             .child(self.page.clone().into_any_element())
     }
 }

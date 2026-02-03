@@ -11,7 +11,7 @@ use schema::{
         InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
         InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration,
     },
-    loader::Loader,
+    loader::Loader, pandora_update::{UpdateManifest, UpdateManifestExe, UpdatePrompt},
 };
 use ustr::Ustr;
 use uuid::Uuid;
@@ -170,6 +170,10 @@ pub enum MessageToBackend {
         id: InstanceID,
         path: PathBuf
     },
+    InstallUpdate {
+        update: UpdatePrompt,
+        modal_action: ModalAction,
+    }
 }
 
 #[derive(Debug)]
@@ -237,6 +241,9 @@ pub enum MessageToFrontend {
         request: MetadataRequest,
         result: Result<MetadataResult, Arc<str>>,
         keep_alive_handle: Option<KeepAliveHandle>,
+    },
+    UpdateAvailable {
+        update: UpdatePrompt,
     },
 }
 

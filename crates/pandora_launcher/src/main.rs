@@ -10,6 +10,7 @@ use std::time::SystemTime;
 use bridge::message::MessageToFrontend;
 use bridge::modal_action::{ModalAction, ProgressTrackerFinishType};
 use clap::Parser;
+use fern::colors::ColoredLevelConfig;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use native_dialog::DialogBuilder;
 use parking_lot::RwLock;
@@ -213,27 +214,32 @@ fn setup_logging(level: log::LevelFilter) -> Result<(), fern::InitError> {
         .level_for("bridge", level)
         .level(log::LevelFilter::Info);
 
-    // Separate file config so we can include year, month and day in file logs
+    let colors_line = ColoredLevelConfig::new().info(fern::colors::Color::BrightWhite);
+
     let file_config = fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
-                "[{} {} {}] {}",
-                humantime::format_rfc3339_seconds(SystemTime::now()),
-                record.level(),
-                record.target(),
-                message
+                "[{time} {level} {target}] {message}",
+                time = humantime::format_rfc3339_seconds(SystemTime::now()),
+                level = record.level(),
+                target = record.target(),
+                message = message
             ))
         })
         .chain(fern::log_file("launcher.log")?);
 
     let stdout_config = fern::Dispatch::new()
-        .format(|out, message, record| {
+        .format(move |out, message, record| {
             out.finish(format_args!(
-                "[{} {} {}] {}",
-                humantime::format_rfc3339_seconds(SystemTime::now()),
-                record.level(),
-                record.target(),
-                message
+                "{color_line}[{time} {level} {target}{color_line}] {message}\x1B[0m",
+                color_line = format_args!(
+                    "\x1B[{}m",
+                    colors_line.get_color(&record.level()).to_fg_str()
+                ),
+                time = humantime::format_rfc3339_seconds(SystemTime::now()),
+                level = record.level(),
+                target = record.target(),
+                message = message
             ))
         })
         .chain(std::io::stdout());

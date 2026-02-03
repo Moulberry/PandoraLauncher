@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::{Arc, atomic::AtomicBool}};
 
 use bridge::{instance::InstanceStatus, message::{BridgeNotificationType, MessageToFrontend}};
-use gpui::{px, size, AnyWindowHandle, App, AppContext, Entity, SharedString, TitlebarOptions, WindowDecorations, WindowHandle, WindowOptions};
+use gpui::{AnyWindowHandle, App, AppContext, Entity, SharedString, TitlebarOptions, Window, WindowDecorations, WindowHandle, WindowOptions, px, size};
 use gpui_component::{notification::{Notification, NotificationType}, Root, WindowExt};
 
 use crate::{entity::{DataEntities, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata}, game_output::{GameOutput, GameOutputRoot}, interface_config::InterfaceConfig};
@@ -11,16 +11,41 @@ pub struct Processor {
     game_output_windows: HashMap<usize, (WindowHandle<Root>, Entity<GameOutput>)>,
     main_window_handle: Option<AnyWindowHandle>,
     main_window_hidden: Arc<AtomicBool>,
+    waiting_for_window: Vec<MessageToFrontend>,
 }
 
 impl Processor {
-    pub fn new(data: DataEntities, main_window_handle: AnyWindowHandle, main_window_hidden: Arc<AtomicBool>) -> Self {
+    pub fn new(data: DataEntities, main_window_hidden: Arc<AtomicBool>) -> Self {
         Self {
             data,
             game_output_windows: HashMap::new(),
-            main_window_handle: Some(main_window_handle),
+            main_window_handle: None,
             main_window_hidden,
+            waiting_for_window: Vec::new(),
         }
+    }
+
+    pub fn set_main_window_handle(&mut self, window: AnyWindowHandle, cx: &mut App) {
+        self.main_window_handle = Some(window);
+        self.process_messages_waiting_for_window(cx);
+    }
+
+    pub fn process_messages_waiting_for_window(&mut self, cx: &mut App) {
+        for message in std::mem::take(&mut self.waiting_for_window) {
+            self.process(message, cx);
+        }
+    }
+
+    #[inline(always)]
+    pub fn with_main_window(&mut self, message: MessageToFrontend, cx: &mut App, func: impl FnOnce(&mut Processor, MessageToFrontend, &mut Window, &mut App)) {
+        let Some(handle) = self.main_window_handle else {
+            self.waiting_for_window.push(message);
+            return;
+        };
+
+        _ = handle.update(cx, |_, window, cx| {
+            (func)(self, message, window, cx);
+        });
     }
 
     pub fn process(&mut self, message: MessageToFrontend, cx: &mut App) {
@@ -75,8 +100,9 @@ impl Processor {
                     }
                 } else if status == InstanceStatus::NotRunning {
                     if self.main_window_handle.is_none() && self.main_window_hidden.load(std::sync::atomic::Ordering::SeqCst) {
-                        self.main_window_handle = Some(crate::open_main_window(&self.data, None, cx));
+                        self.main_window_handle = Some(crate::open_main_window(&self.data, cx));
                         self.main_window_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                        self.process_messages_waiting_for_window(cx);
                     }
                 }
 
@@ -102,11 +128,12 @@ impl Processor {
             MessageToFrontend::InstanceResourcePacksUpdated { id, resource_packs } => {
                 InstanceEntries::set_resource_packs(&self.data.instances, id, resource_packs, cx);
             },
-            MessageToFrontend::AddNotification { notification_type, message } => {
-                let Some(handle) = self.main_window_handle else {
-                    return;
-                };
-                _ = handle.update(cx, |_, window, cx| {
+            MessageToFrontend::AddNotification { .. } => {
+                self.with_main_window(message, cx, |_, message, window, cx| {
+                    let MessageToFrontend::AddNotification { notification_type, message } = message else {
+                        unreachable!();
+                    };
+
                     let notification_type = match notification_type {
                         BridgeNotificationType::Success => NotificationType::Success,
                         BridgeNotificationType::Info => NotificationType::Info,
@@ -178,6 +205,15 @@ impl Processor {
             MessageToFrontend::MetadataResult { request, result, keep_alive_handle } => {
                 FrontendMetadata::set(&self.data.metadata, request, result, keep_alive_handle, cx);
             },
+            MessageToFrontend::UpdateAvailable { .. } => {
+                self.with_main_window(message, cx, |this, message, window, cx| {
+                    let MessageToFrontend::UpdateAvailable { update } = message else {
+                        unreachable!();
+                    };
+
+                    crate::modals::update_prompt::open_update_prompt(update, this.data.backend_handle.clone(), window, cx);
+                });
+            }
         }
     }
 }

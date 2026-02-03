@@ -16,6 +16,7 @@ pub mod maven;
 pub mod modification;
 pub mod modrinth;
 pub mod mrpack;
+pub mod pandora_update;
 pub mod resourcepack;
 pub mod version;
 pub mod version_manifest;

@@ -27,6 +27,7 @@ mod id_slab;
 mod persistent;
 mod shortcut;
 mod syncing;
+mod update;
 
 pub(crate) fn is_single_component_path(path: &str) -> bool {
     let path = std::path::Path::new(path);

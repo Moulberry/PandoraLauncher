@@ -45,6 +45,11 @@ jobs:
         uses: rui314/setup-mold@v1
 
       - name: Run build script
+        env:
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY: ${{ secrets.SIGNER_SECRET_KEY }}
+          CARGO_PACKAGER_SIGN_PRIVATE_KEY_PASSWORD: ${{ secrets.SIGNER_PASSWORD }}
+          PANDORA_UPDATE_PUBKEY: ${{ secrets.SIGNER_PUBLIC_KEY }}
+          GITHUB_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
         run: ${{ matrix.platform.buildscript }} ${{ github.ref_name }}
         shell: bash
 

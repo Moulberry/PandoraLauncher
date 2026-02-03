@@ -168,7 +168,7 @@ impl Render for Settings {
                             }))
                         .child(Checkbox::new("open-game-output")
                             .label("Open game output on launch")
-                            .checked(backend_config.open_game_output_when_launching)
+                            .checked(!backend_config.dont_open_game_output_when_launching)
                             .on_click(cx.listener({
                                 let backend_handle = self.backend_handle.clone();
                                 move |settings, value, _, cx| {

@@ -211,21 +211,50 @@ impl ModrinthSearchPage {
         let mut facets = format!("[[\"project_type={}\"]", project_type);
 
         let is_mod = self.filter_project_type == ModrinthProjectType::Mod || self.filter_project_type == ModrinthProjectType::Modpack;
-        if !self.filter_loaders.is_empty() && is_mod {
-            facets.push_str(",[");
+        let is_mod_or_shader = is_mod || self.filter_project_type == ModrinthProjectType::Shader;
+        let filter_by_instance = self.install_for.is_some() && is_mod_or_shader;
 
-            let mut first = true;
-            for loader in &self.filter_loaders {
-                if first {
-                    first = false;
+        let instance_version_and_loader = self.install_for.and_then(|id| {
+            self.data.instances.read(cx).entries.get(&id).map(|entry| {
+                let inst = entry.read(cx);
+                (inst.configuration.minecraft_version.clone(), inst.configuration.loader)
+            })
+        });
+
+        if is_mod {
+            let loaders_to_use: Vec<Loader> = if filter_by_instance {
+                if let Some((_, loader)) = &instance_version_and_loader
+                    && *loader != Loader::Vanilla
+                {
+                    vec![*loader]
                 } else {
-                    facets.push(',');
+                    self.filter_loaders.iter().copied().collect()
                 }
-                facets.push_str("\"categories:");
-                facets.push_str(loader.as_modrinth_loader().id());
-                facets.push('"');
+            } else if !self.filter_loaders.is_empty() {
+                self.filter_loaders.iter().copied().collect()
+            } else {
+                Vec::new()
+            };
+            if !loaders_to_use.is_empty() {
+                facets.push_str(",[");
+                for (i, loader) in loaders_to_use.iter().enumerate() {
+                    if i > 0 {
+                        facets.push(',');
+                    }
+                    facets.push_str("\"categories:");
+                    facets.push_str(loader.as_modrinth_loader().id());
+                    facets.push('"');
+                }
+                facets.push_str("]");
             }
-            facets.push(']');
+        }
+
+        if filter_by_instance {
+            if let Some((minecraft_version, _)) = &instance_version_and_loader {
+                facets.push_str(",[\"versions:");
+                facets.push_str(minecraft_version.as_str());
+                facets.push_str("\"]");
+            }
         }
 
         if !self.filter_categories.is_empty() {

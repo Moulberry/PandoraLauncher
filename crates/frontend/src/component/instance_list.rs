@@ -11,7 +11,7 @@ use gpui_component::Icon;
 use crate::{
     entity::{
         instance::{InstanceAddedEvent, InstanceEntry, InstanceModifiedEvent, InstanceRemovedEvent}, DataEntities
-    }, modals, pages::instance::instance_page::InstanceSubpageType, root, ui
+    }, interface_config::InterfaceConfig, modals, pages::instance::instance_page::InstanceSubpageType, root, ui
 };
 
 pub struct InstanceList {
@@ -160,8 +160,12 @@ impl TableDelegate for InstanceList {
                                 .small()
                                 .compact()
                                 .icon(trash_icon)
-                                .on_click(move |_, window, cx| {
-                                    modals::delete_instance::open_delete_instance(id, name.clone(), backend_handle.clone(), window, cx);
+                                .on_click(move |click: &gpui::ClickEvent, window, cx| {
+                                    if InterfaceConfig::get(cx).quick_delete_instance && click.modifiers().shift {
+                                        backend_handle.send(bridge::message::MessageToBackend::DeleteInstance { id });
+                                    } else {
+                                        modals::delete_instance::open_delete_instance(id, name.clone(), backend_handle.clone(), window, cx);
+                                    }
                                 }),
                         )
                         .into_any_element()

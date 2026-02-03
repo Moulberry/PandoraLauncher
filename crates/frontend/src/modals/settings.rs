@@ -1,8 +1,8 @@
 use std::{path::Path, sync::Arc};
 
 use bridge::{handle::BackendHandle, message::MessageToBackend};
-use gpui::*;
-use gpui_component::{button::{Button, ButtonVariants}, checkbox::Checkbox, select::{SearchableVec, Select, SelectEvent, SelectState}, sheet::Sheet, spinner::Spinner, tab::{Tab, TabBar}, v_flex, ActiveTheme, IconName, Sizable, ThemeRegistry};
+use gpui::{prelude::*, *};
+use gpui_component::{button::{Button, ButtonVariants}, checkbox::Checkbox, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent, StepAction}, select::{SearchableVec, Select, SelectEvent, SelectState}, sheet::Sheet, spinner::Spinner, tab::{Tab, TabBar}, v_flex, h_flex, ActiveTheme, IconName, Sizable, ThemeRegistry};
 use schema::backend_config::BackendConfig;
 
 use crate::{entity::DataEntities, interface_config::InterfaceConfig};
@@ -14,6 +14,12 @@ struct Settings {
     pending_request: bool,
     backend_config: Option<BackendConfig>,
     get_configuration_task: Option<Task<()>>,
+    save_memory_task: Option<Task<()>>,
+    global_memory_max_state: Entity<InputState>,
+    global_java_path_state: Entity<InputState>,
+    global_jvm_args_state: Entity<InputState>,
+    pub active_tab: usize,
+    window_handle: AnyWindowHandle,
 }
 
 pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
@@ -49,7 +55,73 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
 
             InterfaceConfig::get_mut(cx).active_theme = theme;
             crate::theme_utils::update_theme(cx);
-        }).detach();
+        })
+        .detach();
+        
+        let config = InterfaceConfig::get(cx);
+        let global_memory_max = config.global_memory_max.unwrap_or(0);
+        let global_java_path = config.global_java_path.clone().unwrap_or_default();
+        let global_jvm_args = config.global_jvm_args.clone().unwrap_or_default();
+
+        let global_memory_max_state = cx.new(|cx| InputState::new(window, cx).default_value(global_memory_max.to_string()));
+        cx.subscribe_in(&global_memory_max_state, window, |settings, entity, event: &NumberInputEvent, window, cx: &mut Context<Settings>| {
+            if let NumberInputEvent::Step(action) = event {
+                let current = entity.read(cx).value().parse::<u32>().unwrap_or(0);
+                let new_value = match action {
+                    StepAction::Increment => current.saturating_add(512).min(32768),
+                    StepAction::Decrement => current.saturating_sub(512).max(0),
+                };
+                entity.update(cx, |input, cx| {
+                    input.set_value(new_value.to_string(), window, cx);
+                });
+                let value = if new_value == 0 { None } else { Some(new_value) };
+                InterfaceConfig::get_mut(cx).global_memory_max = value;
+                
+                settings.save_memory_task = Some(cx.spawn(async move |mut settings, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+                    _ = settings.update(cx, |settings, _cx| {
+                        settings.backend_handle.send(MessageToBackend::SetGlobalMemoryMax { value });
+                        settings.save_memory_task = None;
+                    });
+                }));
+            }
+        })
+        .detach();
+        cx.subscribe(&global_memory_max_state, |settings, entity, event: &InputEvent, cx: &mut Context<Settings>| {
+             if let InputEvent::Change = event {
+                 let value = entity.read(cx).value().parse::<u32>().ok().filter(|&v| v > 0);
+                 InterfaceConfig::get_mut(cx).global_memory_max = value;
+
+                 settings.save_memory_task = Some(cx.spawn(async move |mut settings, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(500)).await;
+                    _ = settings.update(cx, |settings, _cx| {
+                        settings.backend_handle.send(MessageToBackend::SetGlobalMemoryMax { value });
+                        settings.save_memory_task = None;
+                    });
+                }));
+             }
+        })
+        .detach();
+
+        let global_java_path_state = cx.new(|cx| InputState::new(window, cx).default_value(global_java_path));
+        cx.subscribe(&global_java_path_state, |_, entity, event: &InputEvent, cx: &mut Context<Settings>| {
+            if let InputEvent::Change = event {
+                let value = entity.read(cx).value();
+                let mut config = InterfaceConfig::get_mut(cx);
+                config.global_java_path = if value.is_empty() { None } else { Some(value.to_string()) };
+            }
+        })
+        .detach();
+
+        let global_jvm_args_state = cx.new(|cx| InputState::new(window, cx).default_value(global_jvm_args));
+        cx.subscribe(&global_jvm_args_state, |_, entity, event: &InputEvent, cx: &mut Context<Settings>| {
+            if let InputEvent::Change = event {
+                let value = entity.read(cx).value();
+                let mut config = InterfaceConfig::get_mut(cx);
+                config.global_jvm_args = if value.is_empty() { None } else { Some(value.to_string()) };
+            }
+        })
+        .detach();
 
         let mut settings = Settings {
             theme_folder,
@@ -58,6 +130,12 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             pending_request: false,
             backend_config: None,
             get_configuration_task: None,
+            save_memory_task: None,
+            global_memory_max_state,
+            global_java_path_state,
+            global_jvm_args_state,
+            active_tab: 0,
+            window_handle: window.window_handle().into(),
         };
 
         settings.update_backend_configuration(cx);
@@ -66,13 +144,21 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
     });
 
     move |sheet, window, cx| {
+        let active_tab = settings.read(cx).active_tab;
         let tab_bar = TabBar::new("bar")
             .prefix(div().w_4())
-            .selected_index(0)
+            .selected_index(active_tab)
             .underline()
             .child(Tab::new().label("Interface"))
-            .on_click(|index, window, cx| {
-                // todo: switch
+            .child(Tab::new().label("Launcher"))
+            .on_click({
+                let settings = settings.clone();
+                move |index, _, cx| {
+                    settings.update(cx, |settings, cx| {
+                        settings.active_tab = *index;
+                        cx.notify();
+                    });
+                }
             });
 
         sheet
@@ -99,8 +185,15 @@ impl Settings {
         self.get_configuration_task = Some(cx.spawn(async move |page, cx| {
             let result: BackendConfig = recv.await.unwrap_or_default();
             let _ = page.update(cx, move |settings, cx| {
-                settings.backend_config = Some(result);
+                settings.backend_config = Some(result.clone());
                 settings.get_configuration_task = None;
+                
+                let _ = settings.window_handle.update(cx, |_, window, cx| {
+                    settings.global_memory_max_state.update(cx, |state, cx| {
+                        state.set_value(result.global_memory_max.unwrap_or(0).to_string(), window, cx);
+                    });
+                });
+
                 cx.notify();
 
                 if settings.pending_request {
@@ -120,67 +213,63 @@ impl Render for Settings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let interface_config = InterfaceConfig::get(cx);
 
-        let mut div = v_flex()
-            .px_4()
-            .py_3()
-            .gap_3()
-            .child(crate::labelled(
-                "Theme",
-                Select::new(&self.theme_select),
-            ))
-            .child(Button::new("open-theme-folder").info().icon(IconName::FolderOpen).label("Open theme folder").on_click({
-                let theme_folder = self.theme_folder.clone();
-                move |_, window, cx| {
-                    crate::open_folder(&theme_folder, window, cx);
-                }
-            }))
-            .child(Button::new("open-theme-repo").info().icon(IconName::Globe).label("Open theme repository").on_click({
-                move |_, _, cx| {
-                    cx.open_url("https://github.com/longbridge/gpui-component/tree/main/themes");
-                }
-            }))
-            .child(crate::labelled("Deletion",
-                v_flex().gap_2()
-                    .child(Checkbox::new("confirm-delete-mods")
-                        .label("Shift+Click to skip mod delete confirmation")
-                        .checked(interface_config.quick_delete_mods)
-                        .on_click(|value, _, cx| {
-                            InterfaceConfig::get_mut(cx).quick_delete_mods = *value;
-                        }))
-                    .child(Checkbox::new("confirm-delete-instance")
-                        .label("Shift+Click to skip instance delete confirmation")
-                        .checked(interface_config.quick_delete_instance).on_click(|value, _, cx| {
-                            InterfaceConfig::get_mut(cx).quick_delete_instance = *value;
-                        }))
-                    )
-            );
+        let mut div = v_flex().px_4().py_3().gap_3();
 
-        if let Some(backend_config) = &self.backend_config {
+        if self.active_tab == 0 {
             div = div
-                .child(crate::labelled(
-                    "Launching",
+                .child(crate::labelled("Theme", Select::new(&self.theme_select)))
+                .child(Button::new("open-theme-folder").info().icon(IconName::FolderOpen).label("Open theme folder").on_click({
+                    let theme_folder = self.theme_folder.clone();
+                    move |_, window, cx| { crate::open_folder(&theme_folder, window, cx); }
+                }))
+                .child(Button::new("open-theme-repo").info().icon(IconName::Globe).label("Open theme repository").on_click({
+                    move |_, _, cx| { cx.open_url("https://github.com/longbridge/gpui-component/tree/main/themes"); }
+                }))
+                .child(crate::labelled("Deletion",
                     v_flex().gap_2()
-                        .child(Checkbox::new("hide-on-launch")
-                            .label("Hide main window on launch")
-                            .checked(interface_config.hide_main_window_on_launch)
-                            .on_click(|value, _, cx| {
-                                InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
-                            }))
-                        .child(Checkbox::new("open-game-output")
-                            .label("Open game output on launch")
-                            .checked(!backend_config.dont_open_game_output_when_launching)
-                            .on_click(cx.listener({
-                                let backend_handle = self.backend_handle.clone();
-                                move |settings, value, _, cx| {
-                                    backend_handle.send(MessageToBackend::SetOpenGameOutputAfterLaunching {
-                                        value: *value
-                                    });
-                                    settings.update_backend_configuration(cx);
-                                }
-                            })))
-                ))
-        } else {
-            div = div.child(Spinner::new().large());
+                        .child(Checkbox::new("confirm-delete-mods")
+                            .label("Shift+Click to skip mod delete confirmation")
+                            .checked(interface_config.quick_delete_mods)
+                            .on_click(|value, _, cx| { InterfaceConfig::get_mut(cx).quick_delete_mods = *value; }))
+                        .child(Checkbox::new("confirm-delete-instance")
+                            .label("Shift+Click to skip instance delete confirmation")
+                            .checked(interface_config.quick_delete_instance).on_click(|value, _, cx| { InterfaceConfig::get_mut(cx).quick_delete_instance = *value; }))
+                ));
+        } else if self.active_tab == 1 {
+             div = div.child(crate::labelled("Global Launcher Settings",
+                v_flex().gap_2()
+                    .child(h_flex().gap_2().items_center().child(gpui::div().w_32().child("Memory")).child(NumberInput::new(&self.global_memory_max_state).suffix("MB")))
+                    .child(h_flex().gap_2().items_center().child(gpui::div().w_32().child("Java Path")).child(Input::new(&self.global_java_path_state)))
+                    .child(h_flex().gap_2().items_center().child(gpui::div().w_32().child("JVM Args")).child(Input::new(&self.global_jvm_args_state)))
+            ));
+
+            if let Some(backend_config) = &self.backend_config {
+                div = div
+                    .child(crate::labelled(
+                        "Launching",
+                        v_flex().gap_2()
+                            .child(Checkbox::new("hide-on-launch")
+                                .label("Hide main window on launch")
+                                .checked(interface_config.hide_main_window_on_launch)
+                                .on_click(|value, _, cx| {
+                                    InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
+                                }))
+                            .child(Checkbox::new("open-game-output")
+                                .label("Open game output on launch")
+                                .checked(!backend_config.dont_open_game_output_when_launching)
+                                .on_click(cx.listener({
+                                    let backend_handle = self.backend_handle.clone();
+                                    move |settings, value, _, cx| {
+                                        backend_handle.send(MessageToBackend::SetOpenGameOutputAfterLaunching {
+                                            value: *value
+                                        });
+                                        settings.update_backend_configuration(cx);
+                                    }
+                                })))
+                    ))
+            } else {
+                div = div.child(Spinner::new().large());
+            }
         }
 
         div

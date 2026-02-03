@@ -41,6 +41,12 @@ pub struct InterfaceConfig {
     pub modrinth_page_project_type: ModrinthProjectType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub global_java_path: Option<String>,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub global_jvm_args: Option<String>,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub global_memory_max: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -147,5 +153,3 @@ pub(crate) fn write_safe(path: &Path, content: &[u8]) -> std::io::Result<()> {
 
     Ok(())
 }
-
-

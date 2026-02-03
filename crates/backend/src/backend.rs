@@ -92,7 +92,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     let account_info = Persistent::load(directories.accounts_json.clone());
 
     // Load config
-    let config = Persistent::load(directories.config_json.clone());
+    let mut config: Persistent<BackendConfig> = Persistent::load(directories.config_json.clone());
 
     let mut state = BackendState {
         self_handle,
@@ -103,7 +103,13 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         instance_state: Arc::new(RwLock::new(state_instances)),
         file_watching: Arc::new(RwLock::new(state_file_watching)),
         directories: Arc::clone(&directories),
-        launcher: Launcher::new(meta, directories, send),
+        launcher: {
+            let mut launcher = Launcher::new(meta, directories, send);
+            if let Some(global_memory) = config.get().global_memory_max {
+                launcher.global_memory_max = Some(global_memory);
+            }
+            launcher
+        },
         mod_metadata_manager: Arc::new(mod_metadata_manager),
         account_info: Arc::new(RwLock::new(account_info)),
         config: Arc::new(RwLock::new(config)),

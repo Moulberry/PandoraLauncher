@@ -166,6 +166,9 @@ pub enum MessageToBackend {
     SetOpenGameOutputAfterLaunching {
         value: bool,
     },
+    SetGlobalMemoryMax {
+        value: Option<u32>,
+    },
     CreateInstanceShortcut {
         id: InstanceID,
         path: PathBuf

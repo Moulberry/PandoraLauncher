@@ -31,6 +31,7 @@ pub struct Launcher {
     directories: Arc<LauncherDirectories>,
     launch_wrapper: Arc<Path>,
     sender: FrontendHandle,
+    pub global_memory_max: Option<u32>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -77,6 +78,7 @@ impl Launcher {
             directories,
             launch_wrapper,
             sender,
+            global_memory_max: None,
         }
     }
 
@@ -228,7 +230,8 @@ impl Launcher {
             log_configuration,
             rule_context: launch_rule_context,
             login_info,
-            add_mods
+            add_mods,
+            global_memory_max: self.global_memory_max,
         };
 
         if modal_action.has_requested_cancel() {
@@ -2068,6 +2071,7 @@ pub struct LaunchContext {
     pub rule_context: LaunchRuleContext,
     pub login_info: MinecraftLoginInfo,
     pub add_mods: Vec<PathBuf>,
+    pub global_memory_max: Option<u32>,
 }
 
 impl LaunchContext {
@@ -2131,6 +2135,8 @@ impl LaunchContext {
         if let Some(memory) = &self.configuration.memory && memory.enabled {
             command.arg(format!("-Xms{}m", memory.min));
             command.arg(format!("-Xmx{}m", memory.max.max(memory.min).max(128)));
+        } else if let Some(global_max) = self.global_memory_max {
+             command.arg(format!("-Xmx{}m", global_max.max(128)));
         }
         if let Some(jvm_flags) = &self.configuration.jvm_flags && jvm_flags.enabled {
             if let Ok(split) = shell_words::split(&jvm_flags.flags) {

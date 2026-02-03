@@ -54,6 +54,9 @@ struct InstallDialog {
     install_dependencies: bool,
 
     mod_version_select_state: Option<Entity<SelectState<SearchableVec<ModVersionItem>>>>,
+
+    /// When set, the modal will pre-select this version (by id) in the version dropdown.
+    selected_version_id: Option<Arc<str>>,
 }
 
 pub fn open(
@@ -65,6 +68,19 @@ pub fn open(
     window: &mut Window,
     cx: &mut App,
 ) {
+    open_with_version(name, project_id, project_type, install_for, data, window, cx, None);
+}
+
+pub fn open_with_version(
+    name: &str,
+    project_id: Arc<str>,
+    project_type: ModrinthProjectType,
+    install_for: Option<InstanceID>,
+    data: &DataEntities,
+    window: &mut Window,
+    cx: &mut App,
+    selected_version_id: Option<Arc<str>>,
+) {
     let project_versions = FrontendMetadata::request(
         &data.metadata,
         MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest {
@@ -75,7 +91,17 @@ pub fn open(
         cx,
     );
 
-    open_from_entity(SharedString::new(name), project_versions, project_id, project_type, install_for, data.clone(), window, cx);
+    open_from_entity(
+        SharedString::new(name),
+        project_versions,
+        project_id,
+        project_type,
+        install_for,
+        data.clone(),
+        window,
+        cx,
+        selected_version_id,
+    );
 }
 
 fn open_from_entity(
@@ -87,6 +113,7 @@ fn open_from_entity(
     data: DataEntities,
     window: &mut Window,
     cx: &mut App,
+    selected_version_id: Option<Arc<str>>,
 ) {
     let title = SharedString::new(format!("Install {}", name));
 
@@ -95,7 +122,7 @@ fn open_from_entity(
         FrontendMetadataResult::Loading => {
             let _subscription = window.observe(&project_versions, cx, move |project_versions, window, cx| {
                 window.close_all_dialogs(cx);
-                open_from_entity(name.clone(), project_versions, project_id.clone(), project_type, install_for, data.clone(), window, cx);
+                open_from_entity(name.clone(), project_versions, project_id.clone(), project_type, install_for, data.clone(), window, cx, selected_version_id.clone());
             });
             window.open_dialog(cx, move |dialog, _, _| {
                 let _ = &_subscription;
@@ -211,6 +238,7 @@ fn open_from_entity(
                     install_dependencies: true,
                     mod_version_select_state: None,
                     last_selected_loader: None,
+                    selected_version_id: selected_version_id.clone(),
                 };
                 install_dialog.show(window, cx);
             } else {
@@ -272,6 +300,7 @@ fn open_from_entity(
                     install_dependencies: true,
                     mod_version_select_state: None,
                     last_selected_loader: None,
+                    selected_version_id: selected_version_id.clone(),
                 };
                 install_dialog.show(window, cx);
             }
@@ -287,6 +316,187 @@ fn open_from_entity(
 fn open_error_dialog(title: SharedString, text: SharedString, window: &mut Window, cx: &mut App) {
     window.open_dialog(cx, move |modal, _, _| {
         modal.title(title.clone()).child(text.clone())
+    });
+}
+
+/// Opens a version-picker dialog (dropdown-style). When user selects a version, opens the full install modal with that version pre-selected.
+pub fn open_version_picker(
+    name: &str,
+    project_id: Arc<str>,
+    project_type: ModrinthProjectType,
+    install_for: InstanceID,
+    data: &DataEntities,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let project_versions = FrontendMetadata::request(
+        &data.metadata,
+        MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest {
+            project_id: project_id.clone(),
+            game_versions: None,
+            loaders: None,
+        }),
+        cx,
+    );
+
+    let title = SharedString::new(format!("Select version: {}", name));
+    let result: FrontendMetadataResult<ModrinthProjectVersionsResult> = project_versions.read(cx).result();
+    match result {
+        FrontendMetadataResult::Loading => {
+            let name_owned = SharedString::new(name.to_string());
+            let data_clone = data.clone();
+            let _subscription = window.observe(&project_versions, cx, move |project_versions, window, cx| {
+                window.close_all_dialogs(cx);
+                open_version_picker_from_entity(
+                    name_owned.as_str(),
+                    project_versions,
+                    project_id.clone(),
+                    project_type,
+                    install_for,
+                    data_clone.clone(),
+                    window,
+                    cx,
+                );
+            });
+            window.open_dialog(cx, move |dialog, _, _| {
+                let _ = &_subscription;
+                dialog
+                    .title(title.clone())
+                    .child(h_flex().gap_2().child("Loading versions...").child(Spinner::new()))
+            });
+        },
+        FrontendMetadataResult::Loaded(_) => {
+            open_version_picker_from_entity(
+                name,
+                project_versions,
+                project_id,
+                project_type,
+                install_for,
+                data.clone(),
+                window,
+                cx,
+            );
+        },
+        FrontendMetadataResult::Error(message) => {
+            window.open_dialog(cx, move |modal, _, _| {
+                modal
+                    .title(title.clone())
+                    .child(ErrorAlert::new("error", "Error requesting from Modrinth".into(), message.clone()))
+            });
+        },
+    }
+}
+
+fn open_version_picker_from_entity(
+    name: &str,
+    project_versions: Entity<FrontendMetadataState>,
+    project_id: Arc<str>,
+    project_type: ModrinthProjectType,
+    install_for: InstanceID,
+    data: DataEntities,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let result: FrontendMetadataResult<ModrinthProjectVersionsResult> = project_versions.read(cx).result();
+    let FrontendMetadataResult::Loaded(versions) = result else {
+        return;
+    };
+
+    let Some(instance) = data.instances.read(cx).entries.get(&install_for) else {
+        open_error_dialog(
+            "Select version".into(),
+            "Unable to find instance".into(),
+            window,
+            cx,
+        );
+        return;
+    };
+    let instance = instance.read(cx);
+    let minecraft_version = instance.configuration.minecraft_version.as_str();
+    let instance_loader = instance.configuration.loader;
+
+    let filtered: Vec<ModrinthProjectVersion> = versions
+        .0
+        .iter()
+        .filter(|version| {
+            let Some(game_versions) = &version.game_versions else {
+                return false;
+            };
+            let Some(loaders) = &version.loaders else {
+                return false;
+            };
+            if version.files.is_empty() {
+                return false;
+            }
+            if let Some(status) = version.status
+                && !matches!(status, ModrinthVersionStatus::Listed | ModrinthVersionStatus::Archived)
+            {
+                return false;
+            }
+            let matches_game = game_versions.iter().any(|v| v.as_str() == minecraft_version);
+            let matches_loader = match project_type {
+                ModrinthProjectType::Mod | ModrinthProjectType::Modpack => {
+                    instance_loader == Loader::Vanilla
+                        || loaders.contains(&instance_loader.as_modrinth_loader())
+                },
+                _ => true,
+            };
+            matches_game && matches_loader
+        })
+        .cloned()
+        .collect();
+
+    if filtered.is_empty() {
+        open_error_dialog(
+            "Select version".into(),
+            SharedString::from(format!("No versions found for {}", minecraft_version)),
+            window,
+            cx,
+        );
+        return;
+    }
+
+    let title = SharedString::new(format!("Select version: {}", name));
+    let name_owned = SharedString::new(name);
+    let data = data.clone();
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        let mut content = v_flex().gap_1();
+        for (index, version) in filtered.iter().enumerate() {
+            let version_id = version.id.clone();
+            let version_label = version
+                .version_number
+                .clone()
+                .unwrap_or(version.name.clone().unwrap_or(version.id.clone()));
+            let mut version_label = SharedString::new(version_label);
+            match version.version_type {
+                Some(ModrinthVersionType::Beta) => version_label = format!("{} (Beta)", version_label).into(),
+                Some(ModrinthVersionType::Alpha) => version_label = format!("{} (Alpha)", version_label).into(),
+                _ => {},
+            }
+            let name_for_button = name_owned.clone();
+            let project_id_btn = project_id.clone();
+            let data_btn = data.clone();
+            content = content.child(
+                Button::new(("version", index))
+                    .label(version_label)
+                    .success()
+                    .w_full()
+                    .on_click(move |_, window, cx| {
+                        window.close_all_dialogs(cx);
+                        open_with_version(
+                            name_for_button.as_str(),
+                            project_id_btn.clone(),
+                            project_type,
+                            Some(install_for),
+                            &data_btn,
+                            window,
+                            cx,
+                            Some(version_id.clone()),
+                        );
+                    }),
+            );
+        }
+        dialog.title(title.clone()).child(content)
     });
 }
 
@@ -551,10 +761,20 @@ impl InstallDialog {
 
             let highest = highest_release.or(highest_beta).or(highest_alpha);
 
+            let default_index = self
+                .selected_version_id
+                .as_ref()
+                .and_then(|id| {
+                    mod_versions
+                        .iter()
+                        .position(|item| item.version.id.as_ref() == id.as_ref())
+                })
+                .or(highest);
+
             self.mod_version_select_state = Some(cx.new(|cx| {
                 let mut select_state =
                     SelectState::new(SearchableVec::new(mod_versions), None, window, cx).searchable(true);
-                if let Some(index) = highest {
+                if let Some(index) = default_index {
                     select_state.set_selected_index(Some(IndexPath::default().row(index)), window, cx);
                 }
                 select_state

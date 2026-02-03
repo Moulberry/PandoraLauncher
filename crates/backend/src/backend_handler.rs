@@ -295,8 +295,20 @@ impl BackendState {
                 self.download_all_metadata().await;
             },
             MessageToBackend::InstallContent { content, modal_action } => {
+                let target = content.target.clone();
                 self.install_content(content, modal_action.clone()).await;
                 modal_action.set_finished();
+                if let InstallTarget::Instance(id) = target {
+                    {
+                        let mut instance_state = self.instance_state.write();
+                        if let Some(instance) = instance_state.instances.get_mut(id) {
+                            instance.content_state[ContentFolder::Mods].mark_dirty(None);
+                            instance.content_state[ContentFolder::ResourcePacks].mark_dirty(None);
+                        }
+                    }
+                    let _ = self.clone().load_instance_content(id, ContentFolder::Mods).await;
+                    let _ = self.clone().load_instance_content(id, ContentFolder::ResourcePacks).await;
+                }
                 self.send.send(MessageToFrontend::Refresh);
             },
             MessageToBackend::DeleteContent { id, content_ids: mod_ids } => {

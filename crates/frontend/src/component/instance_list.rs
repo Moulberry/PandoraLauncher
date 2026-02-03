@@ -6,11 +6,12 @@ use gpui_component::{
     h_flex,
     table::{Column, ColumnSort, TableDelegate, TableState},
 };
+use gpui_component::Icon;
 
 use crate::{
     entity::{
         instance::{InstanceAddedEvent, InstanceEntry, InstanceModifiedEvent, InstanceRemovedEvent}, DataEntities
-    }, pages::instance::instance_page::InstanceSubpageType, root, ui
+    }, modals, pages::instance::instance_page::InstanceSubpageType, root, ui
 };
 
 pub struct InstanceList {
@@ -64,6 +65,11 @@ impl InstanceList {
                         .width(150.)
                         .fixed_left()
                         .resizable(true),
+                    Column::new("remove", "")
+                        .width(44.)
+                        .fixed_left()
+                        .movable(false)
+                        .resizable(false),
                 ],
                 items,
                 backend_handle: data.backend_handle.clone(),
@@ -140,6 +146,26 @@ impl TableDelegate for InstanceList {
                         .into_any_element()
                 },
                 "loader" => item.configuration.loader.name().into_any_element(),
+                "remove" => {
+                    let backend_handle = self.backend_handle.clone();
+                    let id = item.id;
+                    let name = item.name.clone();
+                    let trash_icon = Icon::default().path("icons/trash-2.svg");
+                    h_flex()
+                        .size_full()
+                        .items_center()
+                        .child(
+                            Button::new(("remove", row_ix))
+                                .danger()
+                                .small()
+                                .compact()
+                                .icon(trash_icon)
+                                .on_click(move |_, window, cx| {
+                                    modals::delete_instance::open_delete_instance(id, name.clone(), backend_handle.clone(), window, cx);
+                                }),
+                        )
+                        .into_any_element()
+                },
                 _ => "Unknown".into_any_element(),
             }
         } else {

@@ -161,28 +161,31 @@ fn open_from_entity(
 
                 let minecraft_version = instance.configuration.minecraft_version.as_str();
                 let instance_loader = instance.configuration.loader;
+                let allow_all_versions = project_type == ModrinthProjectType::Resourcepack
+                    || project_type == ModrinthProjectType::Shader;
 
-                let Some(loaders) = version_matrix.get(minecraft_version) else {
-                    let error_message = SharedString::from(&format!("No mod versions found for {}", minecraft_version));
-                    open_error_dialog(title.clone(), error_message, window, cx);
-                    return;
-                };
-
-                let mut valid_loader = true;
-                if project_type == ModrinthProjectType::Mod || project_type == ModrinthProjectType::Modpack {
-                    valid_loader = instance_loader == Loader::Vanilla
+                let fixed_minecraft_version = if allow_all_versions {
+                    None
+                } else {
+                    let Some(loaders) = version_matrix.get(minecraft_version) else {
+                        let error_message = SharedString::from(&format!("No mod versions found for {}", minecraft_version));
+                        open_error_dialog(title.clone(), error_message, window, cx);
+                        return;
+                    };
+                    let valid_loader = project_type != ModrinthProjectType::Mod && project_type != ModrinthProjectType::Modpack
+                        || instance_loader == Loader::Vanilla
                         || loaders.loaders.contains(instance_loader.as_modrinth_loader());
-                }
-                if !valid_loader {
-                    let error_message = SharedString::from(&format!("No mod versions found for {} {}",
-                        instance_loader.name(), minecraft_version));
-                    open_error_dialog(title.clone(), error_message, window, cx);
-                    return;
-                }
+                    if !valid_loader {
+                        let error_message = SharedString::from(&format!("No mod versions found for {} {}",
+                            instance_loader.name(), minecraft_version));
+                        open_error_dialog(title.clone(), error_message, window, cx);
+                        return;
+                    }
+                    Some(minecraft_version)
+                };
 
                 let title = title.clone();
                 let instance_id = instance.id;
-                let fixed_minecraft_version = Some(minecraft_version);
                 let fixed_loader = if (project_type == ModrinthProjectType::Mod
                     || project_type == ModrinthProjectType::Modpack)
                     && instance_loader != Loader::Vanilla

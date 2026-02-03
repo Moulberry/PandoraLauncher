@@ -132,6 +132,7 @@ fn handle_project_versions(
             let configuration = instance.read(cx).configuration.clone();
             let modrinth_loader = configuration.loader.as_modrinth_loader();
             let is_mod = project_type == ModrinthProjectType::Mod || project_type == ModrinthProjectType::Modpack;
+            let allow_all_versions = project_type == ModrinthProjectType::Resourcepack || project_type == ModrinthProjectType::Shader;
             let matching_versions = project_versions.0.iter().filter(|version| {
                 let Some(loaders) = version.loaders.clone() else {
                     return false;
@@ -142,7 +143,12 @@ fn handle_project_versions(
                 if version.files.is_empty() {
                     return false;
                 }
-                if !game_versions.contains(&configuration.minecraft_version) {
+                if let Some(status) = version.status
+                    && !matches!(status, ModrinthVersionStatus::Listed | ModrinthVersionStatus::Archived)
+                {
+                    return false;
+                }
+                if !allow_all_versions && !game_versions.contains(&configuration.minecraft_version) {
                     return false;
                 }
                 if is_mod && !loaders.contains(&modrinth_loader) {

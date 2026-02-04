@@ -991,6 +991,7 @@ impl BackendState {
             memory: None,
             jvm_flags: None,
             jvm_binary: None,
+            sync: None,
         };
 
         let info_path = instance_dir.join("info_v1.json");

@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{collections::HashSet, path::Path, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use ustr::Ustr;
@@ -17,6 +17,8 @@ pub struct InstanceConfiguration {
     pub jvm_flags: Option<InstanceJvmFlagsConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_binary_configuration")]
     pub jvm_binary: Option<InstanceJvmBinaryConfiguration>,
+    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_sync_configuration")]
+    pub sync: Option<InstanceSyncConfiguration>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone)]
@@ -74,6 +76,20 @@ pub struct InstanceJvmBinaryConfiguration {
 fn is_default_jvm_binary_configuration(config: &Option<InstanceJvmBinaryConfiguration>) -> bool {
     if let Some(config) = config {
         !config.enabled && config.path.is_none()
+    } else {
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct InstanceSyncConfiguration {
+    pub enabled: bool,
+    pub sync_ids: HashSet<u64>,
+}
+
+fn is_default_sync_configuration(config: &Option<InstanceSyncConfiguration>) -> bool {
+    if let Some(config) = config {
+        !config.enabled && config.sync_ids.is_empty()
     } else {
         true
     }

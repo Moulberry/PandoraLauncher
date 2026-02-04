@@ -19,7 +19,6 @@ pub enum SyncType {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SyncEntry {
-    id: usize,
     enabled: bool,
     sync: SyncType,
 }

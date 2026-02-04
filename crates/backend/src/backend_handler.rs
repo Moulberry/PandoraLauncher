@@ -126,6 +126,13 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::SetInstanceSync { id, sync } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.sync = Some(sync);
+                    });
+                }
+            },
             MessageToBackend::KillInstance { id } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     if let Some(mut child) = instance.child.take() {
@@ -783,6 +790,35 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::AddSync { entry, id_channel } => {
+                self.config.write().modify(|config| {
+                    let mut err: u8 = 0;
+                    loop {
+                        if err == 255 { panic!(); }
+
+                        let id = rand::random::<u64>();
+                        if !config.sync_list.contains_key(&id) {
+                            config.sync_list.insert(id, entry);
+                            _ = id_channel.send(id);
+                            break;
+                        }
+
+                        err += 1;
+                    }
+                });
+            },
+            MessageToBackend::ModifySync { id, new_entry } => {
+                self.config.write().modify(|config| {
+                    if !config.sync_list.contains_key(&id) { return; }
+                    config.sync_list.insert(id, new_entry);
+                });
+            }
+            MessageToBackend::DeleteSync { id } => {
+                self.config.write().modify(|config| {
+                    if !config.sync_list.contains_key(&id) { return; }
+                    config.sync_list.remove(&id);
+                });
+            }
             MessageToBackend::GetBackendConfiguration { channel } => {
                 let configuration = self.config.write().get().clone();
                 _ = channel.send(configuration);

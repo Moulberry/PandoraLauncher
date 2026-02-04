@@ -845,6 +845,10 @@ fn icon_for(str: &str) -> Option<&'static str> {
         "lightweight" | "liteloader" => Some("icons/feather.svg"),
         "multiplayer" => Some("icons/users.svg"),
         "quests" => Some("icons/network.svg"),
+        "modded" => Some("icons/puzzle.svg"),
+        "simplistic" => Some("icons/box.svg"),
+        "themed" => Some("icons/palette.svg"),
+        "tweaks" => Some("icons/sliders-vertical.svg"),
         _ => None,
     }
 }

@@ -1025,11 +1025,56 @@ impl BackendState {
         }
 
         let new_instance_dir = self.directories.instances_dir.join(name);
+        let paths_to_unwatch = self.file_watching.read().get_instance_paths(id);
+        {
+            let mut file_watching = self.file_watching.write();
+            for path in paths_to_unwatch {
+                file_watching.unwatch_filesystem(&path);
+            }
+        }
 
-        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let result = std::fs::rename(&instance.root_path, new_instance_dir);
-            if let Err(err) = result {
-                self.send.send_error(format!("Unable to rename instance folder: {}", err));
+        let result = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+            std::fs::rename(&instance.root_path, &new_instance_dir)
+        } else {
+            Ok(())
+        };
+
+        if let Err(err) = result {
+            self.send.send_error(format!("Unable to rename instance folder: {}", err));
+
+             if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                instance.watching_dot_minecraft = false;
+                instance.watching_server_dat = false;
+                instance.watching_saves_dir = false;
+                for state in instance.content_state.values_mut() {
+                    state.watching_path = false;
+                }
+                
+                self.file_watching.write().watch_filesystem(instance.root_path.clone(), WatchTarget::InstanceDir { id });
+            }
+        } else {
+            let mut instance_state = self.instance_state.write();
+            let state = &mut *instance_state;
+            let instances = &mut state.instances;
+            let instance_by_path = &mut state.instance_by_path;
+
+            if let Some(instance) = instances.get_mut(id) {
+                let old_path = instance.root_path.to_path_buf();
+                instance.on_root_renamed(&new_instance_dir);
+                
+                instance_by_path.remove(&old_path);
+                instance_by_path.insert(new_instance_dir.clone(), id);
+                
+                instance.watching_dot_minecraft = false;
+                instance.watching_server_dat = false;
+                instance.watching_saves_dir = false;
+                for state in instance.content_state.values_mut() {
+                    state.watching_path = false;
+                }
+
+                self.send.send(instance.create_modify_message());
+
+                self.file_watching.write().watch_filesystem(instance.root_path.clone(), WatchTarget::InstanceDir { id });
             }
         }
     }
@@ -1145,6 +1190,33 @@ impl BackendStateFileWatching {
         }
 
         paths
+    }
+
+    pub fn get_instance_paths(&self, instance_id: InstanceID) -> Vec<Arc<Path>> {
+        let mut paths = Vec::new();
+        for (path, target) in &self.watching {
+            match target {
+                WatchTarget::InstanceDir { id } |
+                WatchTarget::InstanceDotMinecraftDir { id } |
+                WatchTarget::InstanceWorldDir { id } |
+                WatchTarget::InstanceSavesDir { id } |
+                WatchTarget::ServersDat { id } |
+                WatchTarget::InstanceContentDir { id, .. } => {
+                    if *id == instance_id {
+                        paths.push(path.clone());
+                    }
+                },
+                _ => {}
+            }
+        }
+        paths
+    }
+
+    pub fn unwatch_filesystem(&mut self, path: &Path) {
+        if let Err(err) = self.watcher.unwatch(path) {
+             log::warn!("Error stopping watch for {:?}: {:?}", path, err);
+        }
+        self.remove(path);
     }
 }
 

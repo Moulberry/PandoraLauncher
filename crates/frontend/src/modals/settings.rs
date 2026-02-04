@@ -15,9 +15,7 @@ struct Settings {
     backend_config: Option<BackendConfig>,
     get_configuration_task: Option<Task<()>>,
     global_memory_max_state: Entity<InputState>,
-    global_jvm_args_state: Entity<InputState>,
-    pub active_tab: usize,
-    window_handle: AnyWindowHandle,
+    active_tab: usize,
 }
 
 pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
@@ -55,9 +53,6 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             crate::theme_utils::update_theme(cx);
         })
         .detach();
-        
-        let config = InterfaceConfig::get(cx);
-        let global_jvm_args = config.global_jvm_args.clone().unwrap_or_default();
 
         let global_memory_max_state = cx.new(|cx| InputState::new(window, cx).default_value("0".to_string()));
         let backend_handle_for_debounce = data.backend_handle.clone();
@@ -73,11 +68,7 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
                 });
                 let value = if new_value == 0 { None } else { Some(new_value) };
                 
-                // Send immediately to backend with detached task
-                let backend_handle = backend_handle_for_debounce.clone();
-                cx.background_executor().spawn(async move {
-                    backend_handle.send(MessageToBackend::SetGlobalMemoryMax { value });
-                }).detach();
+                backend_handle_for_debounce.send(MessageToBackend::SetGlobalMemoryMax { value });
             }
         })
         .detach();
@@ -87,25 +78,8 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
              if let InputEvent::Change = event {
                  let value = entity.read(cx).value().parse::<u32>().ok().filter(|&v| v > 0);
                  
-                 // Debounce with detached task that won't be dropped
-                 let backend_handle = backend_handle_for_input.clone();
-                 cx.background_executor().spawn(async move {
-                     gpui::Timer::after(std::time::Duration::from_millis(500)).await;
-                     backend_handle.send(MessageToBackend::SetGlobalMemoryMax { value });
-                 }).detach();
+                 backend_handle_for_input.send(MessageToBackend::SetGlobalMemoryMax { value });
              }
-        })
-        .detach();
-
-        // global_java_path was removed - it was never used
-
-        let global_jvm_args_state = cx.new(|cx| InputState::new(window, cx).default_value(global_jvm_args));
-        cx.subscribe(&global_jvm_args_state, |_, entity, event: &InputEvent, cx: &mut Context<Settings>| {
-            if let InputEvent::Change = event {
-                let value = entity.read(cx).value();
-                let mut config = InterfaceConfig::get_mut(cx);
-                config.global_jvm_args = if value.is_empty() { None } else { Some(value.to_string()) };
-            }
         })
         .detach();
 
@@ -117,9 +91,7 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             backend_config: None,
             get_configuration_task: None,
             global_memory_max_state,
-            global_jvm_args_state,
             active_tab: 0,
-            window_handle: window.window_handle().into(),
         };
 
         settings.update_backend_configuration(cx);
@@ -169,7 +141,7 @@ impl Settings {
         self.get_configuration_task = Some(cx.spawn(async move |page, cx| {
             let result: BackendConfig = recv.await.unwrap_or_default();
             let _ = page.update(cx, move |settings, cx| {
-                settings.backend_config = Some(result.clone());
+                settings.backend_config = Some(result);
                 settings.get_configuration_task = None;
 
                 cx.notify();
@@ -214,10 +186,9 @@ impl Render for Settings {
                             .checked(interface_config.quick_delete_instance).on_click(|value, _, cx| { InterfaceConfig::get_mut(cx).quick_delete_instance = *value; }))
                 ));
         } else if self.active_tab == 1 {
-             div = div.child(crate::labelled("Global Launcher Settings",
+            div = div.child(crate::labelled("Global Launcher Settings",
                 v_flex().gap_2()
                     .child(h_flex().gap_2().items_center().child(gpui::div().w_32().child("Memory")).child(NumberInput::new(&self.global_memory_max_state).suffix("MB")))
-                    .child(h_flex().gap_2().items_center().child(gpui::div().w_32().child("JVM Args")).child(Input::new(&self.global_jvm_args_state)))
             ));
 
             if let Some(backend_config) = &self.backend_config {

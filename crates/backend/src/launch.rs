@@ -35,7 +35,7 @@ pub struct Launcher {
     directories: Arc<LauncherDirectories>,
     launch_wrapper: Arc<Path>,
     sender: FrontendHandle,
-    pub backend_config: Arc<RwLock<Persistent<BackendConfig>>>,
+    backend_config: Arc<RwLock<Persistent<BackendConfig>>>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -82,7 +82,7 @@ impl Launcher {
             directories,
             launch_wrapper,
             sender,
-            backend_config: backend_config,
+            backend_config,
         }
     }
 

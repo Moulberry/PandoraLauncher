@@ -1020,7 +1020,6 @@ impl BackendState {
                     crate::shortcut::create_shortcut(path, &format!("Launch {}", instance.name), &current_exe, args);
                 }
             },
-
             MessageToBackend::SetGlobalMemoryMax { value } => {
                 let mut write = self.config.write();
                 write.modify(|config| {

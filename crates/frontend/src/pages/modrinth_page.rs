@@ -3,7 +3,7 @@ use std::{ops::Range, sync::{atomic::AtomicBool, Arc}, time::Duration};
 use bridge::{instance::{AtomicContentUpdateStatus, ContentUpdateStatus, InstanceID, InstanceContentID, InstanceContentSummary}, message::MessageToBackend, meta::MetadataRequest, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, IconName, Selectable, StyledExt, WindowExt, breadcrumb::Breadcrumb, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, tooltip::Tooltip, v_flex
+    ActiveTheme, Icon, IconName, Selectable, StyledExt, WindowExt, breadcrumb::Breadcrumb, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, label::Label, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, tooltip::Tooltip, v_flex
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{content::ContentSource, loader::Loader, modrinth::{
@@ -745,29 +745,43 @@ impl Render for ModrinthSearchPage {
             ModrinthProjectType::Other => &[],
         };
 
-        let category = if self.show_categories.load(std::sync::atomic::Ordering::Relaxed) {
-            ButtonGroup::new("category_group")
-                .layout(Axis::Vertical)
-                .outline()
-                .multiple(true)
-                .children(categories.iter().map(|id| {
-                    Button::new(*id)
-                        .label(ts_short!(id))
-                        .when_some(icon_for(id), |this, icon| {
-                            this.icon(Icon::empty().path(icon))
-                        })
-                        .selected(self.filter_categories.contains(id)
-                    )
-                }))
-                .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
-                    page.set_filter_categories(clicked.iter().filter_map(|index| categories.get(*index).map(|s| *s)).collect(), window, cx);
-                })).into_any_element()
-        } else {
-            let show_categories = self.show_categories.clone();
-            Button::new("show-categories").icon(IconName::ArrowDown).label("Categories").outline().on_click(move |_, _, _| {
-                show_categories.store(true, std::sync::atomic::Ordering::Relaxed);
-            }).into_any_element()
-        };
+        let is_shown = self.show_categories.load(std::sync::atomic::Ordering::Relaxed);
+        let show_categories = self.show_categories.clone();
+
+        let category = v_flex()
+            .gap_1()
+            .child(
+                Button::new("toggle-categories")
+                    .label("Categories")
+                    .icon(if is_shown { IconName::ChevronUp } else { IconName::ChevronDown })
+                    .when(!is_shown, |this| this.outline())
+                    .on_click(move |_, _, _| {
+                        show_categories.store(!is_shown, std::sync::atomic::Ordering::Relaxed);
+                    })
+            )
+            .child(
+                ButtonGroup::new("category_group")
+                    .layout(Axis::Vertical)
+                    .outline()
+                    .multiple(true)
+                    .children(categories.iter().map(|id| {
+                        Button::new(*id)
+                            .child(
+                                h_flex().w_full().justify_start().gap_2()
+                                .when_some(icon_for(id), |this, icon| {
+                                    this.child(Icon::empty().path(icon))
+                                })
+                                .child(Label::new(ts_short!(id))))
+                            .selected(self.filter_categories.contains(id))
+                    }))
+                    .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
+                        page.set_filter_categories(clicked.iter()
+                            .filter_map(|index| categories.get(*index).map(|s| *s))
+                            .collect(), window, cx);
+                    }))
+                    .when(!is_shown, |this| this.invisible().h_0())
+            )
+            .into_any_element();
 
         let parameters = h_flex()
             .h_full()

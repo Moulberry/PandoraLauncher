@@ -342,7 +342,12 @@ impl BackendState {
                         return;
                     };
 
-                    let _ = std::fs::remove_file(&instance_mod.path);
+                    _ = std::fs::remove_file(&instance_mod.path);
+
+                    if let Some(aux_path) = crate::pandora_aux_path_for_content(&instance_mod) {
+                        _ = std::fs::remove_file(aux_path);
+                    }
+
                     reload.insert((id, folder));
                 }
 

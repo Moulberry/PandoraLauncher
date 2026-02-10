@@ -359,7 +359,7 @@ impl Render for SyncingPage {
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .text_lg()
-                    .child("Global Instance Configuration"),
+                    .child("Global JVM Config"),
             )
             .child(
                 v_flex()
@@ -368,7 +368,7 @@ impl Render for SyncingPage {
                         v_flex()
                             .gap_1()
                             .child(Checkbox::new("global_memory")
-                                .label("Enable Global Memory Override")
+                                .label("Enable Global Memory")
                                 .checked(self.global_memory_enabled)
                                 .on_click(cx.listener(|page, value, _, cx| {
                                     page.global_memory_enabled = *value;
@@ -402,7 +402,7 @@ impl Render for SyncingPage {
                         v_flex()
                             .gap_1()
                             .child(Checkbox::new("global_jvm_flags")
-                                .label("Enable Global JVM Flags Override")
+                                .label("Enable Global JVM Flags")
                                 .checked(self.global_jvm_flags_enabled)
                                 .on_click(cx.listener(|page, value, _, cx| {
                                     page.global_jvm_flags_enabled = *value;
@@ -422,7 +422,7 @@ impl Render for SyncingPage {
                         v_flex()
                             .gap_1()
                             .child(Checkbox::new("global_jvm_binary")
-                                .label("Enable Global JVM Binary Override")
+                                .label("Enable Global JVM Binary")
                                 .checked(self.global_jvm_binary_enabled)
                                 .on_click(cx.listener(|page, value, _, cx| {
                                     page.global_jvm_binary_enabled = *value;

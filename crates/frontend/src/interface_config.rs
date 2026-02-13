@@ -2,7 +2,7 @@ use std::{io::Write, path::Path, sync::Arc, time::Duration};
 
 use gpui::{App, SharedString, Task};
 use rand::RngCore;
-use schema::modrinth::ModrinthProjectType;
+use schema::{modrinth::ModrinthProjectType, instance::{InstanceMemoryConfiguration, InstanceJvmFlagsConfiguration, InstanceJvmBinaryConfiguration}};
 use serde::{Deserialize, Serialize};
 
 use crate::ui::SerializedPageType;
@@ -37,6 +37,14 @@ pub struct InterfaceConfig {
     pub modrinth_page_project_type: ModrinthProjectType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
+    #[serde(default)]
+    pub global_override_enabled: bool,
+    #[serde(default)]
+    pub global_memory: Option<InstanceMemoryConfiguration>,
+    #[serde(default)]
+    pub global_jvm_flags: Option<InstanceJvmFlagsConfiguration>,
+    #[serde(default)]
+    pub global_jvm_binary: Option<InstanceJvmBinaryConfiguration>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

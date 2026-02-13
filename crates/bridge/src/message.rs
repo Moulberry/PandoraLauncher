@@ -147,6 +147,14 @@ pub enum MessageToBackend {
         target: SyncTarget,
         value: bool,
     },
+    SetGlobalInstanceOverrides {
+        memory_enabled: bool,
+        memory: Option<InstanceMemoryConfiguration>,
+        jvm_flags_enabled: bool,
+        jvm_flags: Option<InstanceJvmFlagsConfiguration>,
+        jvm_binary_enabled: bool,
+        jvm_binary: Option<InstanceJvmBinaryConfiguration>,
+    },
     CleanupOldLogFiles {
         instance: InstanceID,
     },

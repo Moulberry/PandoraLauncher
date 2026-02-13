@@ -181,7 +181,7 @@ impl BackendState {
                     return;
                 }
 
-                let (dot_minecraft, configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                let (dot_minecraft, mut configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     if instance.child.is_some() {
                         self.send.send_warning("Can't launch instance, already running");
                         modal_action.set_error_message("Can't launch instance, already running".into());
@@ -201,6 +201,18 @@ impl BackendState {
                     modal_action.set_finished();
                     return;
                 };
+
+                // Apply global instance overrides (only if instance doesn't have own setting)
+                let backend_config = self.config.write().get().clone();
+                if backend_config.global_memory_enabled && configuration.memory.is_none() {
+                    configuration.memory = backend_config.global_memory;
+                }
+                if backend_config.global_jvm_flags_enabled && configuration.jvm_flags.is_none() {
+                    configuration.jvm_flags = backend_config.global_jvm_flags;
+                }
+                if backend_config.global_jvm_binary_enabled && configuration.jvm_binary.is_none() {
+                    configuration.jvm_binary = backend_config.global_jvm_binary;
+                }
 
                 let launch_tracker = ProgressTracker::new(Arc::from("Launching"), self.send.clone());
                 modal_action.trackers.push(launch_tracker.clone());
@@ -840,6 +852,17 @@ impl BackendState {
             MessageToBackend::GetBackendConfiguration { channel } => {
                 let configuration = self.config.write().get().clone();
                 _ = channel.send(configuration);
+            },
+            MessageToBackend::SetGlobalInstanceOverrides { memory_enabled, memory, jvm_flags_enabled, jvm_flags, jvm_binary_enabled, jvm_binary } => {
+                let mut write = self.config.write();
+                write.modify(|config| {
+                    config.global_memory_enabled = memory_enabled;
+                    config.global_memory = memory;
+                    config.global_jvm_flags_enabled = jvm_flags_enabled;
+                    config.global_jvm_flags = jvm_flags;
+                    config.global_jvm_binary_enabled = jvm_binary_enabled;
+                    config.global_jvm_binary = jvm_binary;
+                });
             },
             MessageToBackend::CleanupOldLogFiles { instance: id } => {
                 let mut deleted = 0;

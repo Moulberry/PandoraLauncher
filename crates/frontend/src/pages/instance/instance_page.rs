@@ -10,7 +10,7 @@ use gpui_component::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::page_path::PagePath, entity::{DataEntities, instance::InstanceEntry}, pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, root, ui
+    component::page_path::PagePath, entity::{DataEntities, instance::InstanceEntry}, pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, root, ts, ui
 };
 
 pub struct InstancePage {
@@ -63,19 +63,19 @@ impl Render for InstancePage {
 
         let button = match instance.status {
             InstanceStatus::NotRunning => {
-                Button::new("start_instance").success().icon(play_icon).label("Start Instance").on_click(
+                Button::new("start_instance").success().icon(play_icon).label(ts!("instance.start.label")).on_click(
                     move |_, window, cx| {
                         root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
                     },
                 )
             },
             InstanceStatus::Launching => {
-                Button::new("launching").warning().icon(IconName::Loader).label("Launching...")
+                Button::new("launching").warning().icon(IconName::Loader).label(ts!("instance.start.starting"))
             },
             InstanceStatus::Running => Button::new("kill_instance")
                 .danger()
                 .icon(IconName::Close)
-                .label("Kill Instance")
+                .label(ts!("instance.kill"))
                 .on_click(move |_, _, _| {
                     backend_handle.send(MessageToBackend::KillInstance { id });
                 }),
@@ -84,7 +84,7 @@ impl Render for InstancePage {
         let open_dot_minecraft_button = Button::new("open_dot_minecraft")
             .info()
             .icon(IconName::FolderOpen)
-            .label("Open .minecraft folder")
+            .label(ts!("instance.open_folder"))
             .on_click({
             let dot_minecraft = instance.dot_minecraft_folder.clone();
             move |_, window, cx| {
@@ -99,11 +99,11 @@ impl Render for InstancePage {
                     .prefix(div().w_4())
                     .selected_index(selected_index)
                     .underline()
-                    .child(Tab::new().label("Quickplay"))
-                    .child(Tab::new().label("Logs"))
-                    .child(Tab::new().label("Mods"))
-                    .child(Tab::new().label("Resource Packs"))
-                    .child(Tab::new().label("Settings"))
+                    .child(Tab::new().label(ts!("instance.quickplay")))
+                    .child(Tab::new().label(ts!("instance.logs.title")))
+                    .child(Tab::new().label(ts!("instance.content.mods")))
+                    .child(Tab::new().label(ts!("instance.content.resourcepacks")))
+                    .child(Tab::new().label(ts!("settings.title")))
                     .on_click(cx.listener(|page, index, window, cx| {
                         let page_type = match *index {
                             0 => InstanceSubpageType::Quickplay,

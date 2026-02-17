@@ -6,7 +6,7 @@ use gpui_component::{
 };
 use schema::backend_config::SyncTarget;
 
-use crate::{entity::DataEntities, ui};
+use crate::{entity::DataEntities, ts, ui};
 
 pub struct SyncingPage {
     backend_handle: BackendHandle,
@@ -55,7 +55,7 @@ impl SyncingPage {
         });
     }
 
-    pub fn create_entry(&mut self, id: &'static str, label: &'static str, target: SyncTarget, warning: Hsla, info: Hsla, cx: &mut Context<Self>) -> Div {
+    pub fn create_entry(&mut self, id: &'static str, label: SharedString, target: SyncTarget, warning: Hsla, info: Hsla, cx: &mut Context<Self>) -> Div {
         let synced_count = self.sync_state.synced[target];
         let cannot_sync_count = self.sync_state.cannot_sync[target];
         let enabled = self.sync_state.want_sync.contains(target);
@@ -67,7 +67,7 @@ impl SyncingPage {
             .disabled(disabled)
             .checked(enabled)
             .when(disabled, |this| this.tooltip(move |window, cx| {
-                Tooltip::new(format!("{} instance(s) already contain a '{}' folder. Please safely backup and remove the folders to enable syncing", cannot_sync_count, target.get_folder().unwrap_or("???"))).build(window, cx)
+                Tooltip::new(ts!("instance.sync.already_exists", num = cannot_sync_count, name = target.get_folder().unwrap_or("???"))).build(window, cx)
             }))
             .on_click(cx.listener(move |page, value, _, cx| {
             backend_handle.send(MessageToBackend::SetSyncing {
@@ -89,13 +89,13 @@ impl SyncingPage {
         } else {
             if (enabled || synced_count > 0) && target.get_folder().is_some() {
                 base = base.child(h_flex().gap_1().flex_shrink().text_color(info)
-                    .child(format!("({}/{} folders synced)", synced_count, self.sync_state.total))
+                    .child(ts!("instance.sync.folders_count", num1 = synced_count, num2 = self.sync_state.total))
                 );
             }
             if enabled && cannot_sync_count > 0 {
                 base = base.child(h_flex().gap_1().flex_shrink().text_color(warning)
                     .child(Icon::default().path("icons/triangle-alert.svg"))
-                    .child(format!("{}/{} instances are unable to be synced!", cannot_sync_count, self.sync_state.total))
+                    .child(ts!("instance.sync.unable_count", num1 = cannot_sync_count, num2 = self.sync_state.total))
                 );
             }
         }
@@ -109,9 +109,9 @@ impl Render for SyncingPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.loading == EnumSet::all() {
             let content = v_flex().size_full().p_3().gap_3()
-                .child("These options allow for syncing various files/folders across instances")
+                .child(ts!("instance.sync.description"))
                 .child(Spinner::new().with_size(gpui_component::Size::Large));
-            return ui::page(cx, h_flex().gap_8().child("Syncing")).child(content).overflow_y_scrollbar();
+            return ui::page(cx, h_flex().gap_8().child(ts!("instance.sync.label"))).child(content).overflow_y_scrollbar();
         }
 
         let sync_folder = self.sync_state.sync_folder.clone();
@@ -119,31 +119,31 @@ impl Render for SyncingPage {
         let warning = cx.theme().red;
         let info = cx.theme().blue;
         let content = v_flex().size_full().p_3().gap_3()
-            .child("These options allow for syncing various files/folders across instances")
+            .child(ts!("instance.sync.description"))
             .when_some(sync_folder, |this, sync_folder| {
-                this.child(Button::new("open").info().icon(IconName::FolderOpen).label("Open synced folders directory").on_click(move |_, window, cx| {
+                this.child(Button::new("open").info().icon(IconName::FolderOpen).label(ts!("instance.sync.open_folder")).on_click(move |_, window, cx| {
                     crate::open_folder(&sync_folder, window, cx);
                 }).w_72())
             })
-            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child("Files"))
-            .child(self.create_entry("options", "Sync options.txt", SyncTarget::Options, warning, info, cx))
-            .child(self.create_entry("servers", "Sync servers.dat", SyncTarget::Servers, warning, info, cx))
-            .child(self.create_entry("commands", "Sync command_history.txt", SyncTarget::Commands, warning, info, cx))
-            .child(self.create_entry("hotbars", "Sync hotbar.nbt", SyncTarget::Hotbars, warning, info, cx))
-            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child("Folders"))
-            .child(self.create_entry("saves", "Sync saves folder", SyncTarget::Saves, warning, info, cx))
-            .child(self.create_entry("config", "Sync config folder", SyncTarget::Config, warning, info, cx))
-            .child(self.create_entry("screenshots", "Sync screenshots folder", SyncTarget::Screenshots, warning, info, cx))
-            .child(self.create_entry("resourcepacks", "Sync resourcepacks folder", SyncTarget::Resourcepacks, warning, info, cx))
-            .child(self.create_entry("shaderpacks", "Sync shaderpacks folder", SyncTarget::Shaderpacks, warning, info, cx))
-            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child("Mods"))
-            .child(self.create_entry("flashback", "Sync Flashback (flashback) folder", SyncTarget::Flashback, warning, info, cx))
-            .child(self.create_entry("dh", "Sync Distant Horizons (Distant_Horizons_server_data) folder", SyncTarget::DistantHorizons, warning, info, cx))
-            .child(self.create_entry("voxy", "Sync Voxy (.voxy) folder", SyncTarget::Voxy, warning, info, cx))
-            .child(self.create_entry("xaero", "Sync Xaero's Minimap (xaero) folder", SyncTarget::XaerosMinimap, warning, info, cx))
-            .child(self.create_entry("bobby", "Sync Bobby (.bobby) folder", SyncTarget::Bobby, warning, info, cx))
-            .child(self.create_entry("litematic", "Litematic (schematic) folder", SyncTarget::Litematic, warning, info, cx));
+            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("instance.sync.files")))
+            .child(self.create_entry("options", ts!("instance.sync.targets.options"), SyncTarget::Options, warning, info, cx))
+            .child(self.create_entry("servers", ts!("instance.sync.targets.servers"), SyncTarget::Servers, warning, info, cx))
+            .child(self.create_entry("commands", ts!("instance.sync.targets.commands"), SyncTarget::Commands, warning, info, cx))
+            .child(self.create_entry("hotbars", ts!("instance.sync.targets.hotbars"), SyncTarget::Hotbars, warning, info, cx))
+            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("instance.sync.folders")))
+            .child(self.create_entry("saves", ts!("instance.sync.targets.saves"), SyncTarget::Saves, warning, info, cx))
+            .child(self.create_entry("config", ts!("instance.sync.targets.config"), SyncTarget::Config, warning, info, cx))
+            .child(self.create_entry("screenshots", ts!("instance.sync.targets.screenshots"), SyncTarget::Screenshots, warning, info, cx))
+            .child(self.create_entry("resourcepacks", ts!("instance.sync.targets.resourcepacks"), SyncTarget::Resourcepacks, warning, info, cx))
+            .child(self.create_entry("shaderpacks", ts!("instance.sync.targets.shaderpacks"), SyncTarget::Shaderpacks, warning, info, cx))
+            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("instance.sync.mods")))
+            .child(self.create_entry("flashback", ts!("instance.sync.targets.flashback"), SyncTarget::Flashback, warning, info, cx))
+            .child(self.create_entry("dh", ts!("instance.sync.targets.dh"), SyncTarget::DistantHorizons, warning, info, cx))
+            .child(self.create_entry("voxy", ts!("instance.sync.targets.voxy"), SyncTarget::Voxy, warning, info, cx))
+            .child(self.create_entry("xaero", ts!("instance.sync.targets.xaero"), SyncTarget::XaerosMinimap, warning, info, cx))
+            .child(self.create_entry("bobby", ts!("instance.sync.targets.bobby"), SyncTarget::Bobby, warning, info, cx))
+            .child(self.create_entry("litematic", ts!("instance.sync.targets.litematic"), SyncTarget::Litematic, warning, info, cx));
 
-        ui::page(cx, h_flex().gap_8().child("Syncing")).child(content).overflow_y_scrollbar()
+        ui::page(cx, h_flex().gap_8().child(ts!("instance.sync.label"))).child(content).overflow_y_scrollbar()
     }
 }

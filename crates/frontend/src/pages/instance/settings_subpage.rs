@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
 
-use crate::{entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, interface_config::InterfaceConfig, pages::instances_page::VersionList};
+use crate::{entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
 
 #[derive(PartialEq, Eq)]
 enum NewNameChangeState {
@@ -522,12 +522,12 @@ impl InstanceSettingsSubpage {
             .unwrap_or(false)
     }
 
-    pub fn select_file(&mut self, message: &'static str, handle: impl FnOnce(&mut Self, Option<Arc<Path>>) + 'static, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn select_file(&mut self, message: SharedString, handle: impl FnOnce(&mut Self, Option<Arc<Path>>) + 'static, window: &mut Window, cx: &mut Context<Self>) {
         let receiver = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some(SharedString::new_static(message))
+            prompt: Some(message)
         });
 
         let this_entity = cx.entity();
@@ -564,7 +564,7 @@ impl Render for InstanceSettingsSubpage {
             .gap_3()
             .mb_1()
             .ml_1()
-            .child(div().text_lg().child("Settings"));
+            .child(div().text_lg().child(ts!("settings.title")));
 
         let memory_override_enabled = self.memory_override_enabled;
         let jvm_flags_enabled = self.jvm_flags_enabled;
@@ -578,15 +578,15 @@ impl Render for InstanceSettingsSubpage {
             .gap_4()
             .size_full()
             .child(crate::labelled(
-                "Instance Name",
+                ts!("instance.instance_name"),
                 h_flex()
                     .gap_2()
                     .child(Input::new(&self.new_name_input_state))
                     .when(self.new_name_change_state != NewNameChangeState::NoChange, |this| {
                         if self.new_name_change_state == NewNameChangeState::InvalidName {
-                            this.child("Invalid name")
+                            this.child(ts!("instance.invalid_name"))
                         } else {
-                            this.child(Button::new("setname").label("Update").on_click({
+                            this.child(Button::new("setname").label(ts!("common.update")).on_click({
                                 let instance = self.instance.clone();
                                 let backend_handle = self.backend_handle.clone();
                                 let new_name = self.new_name_input_state.read(cx).value();
@@ -614,11 +614,11 @@ impl Render for InstanceSettingsSubpage {
                 version_content = version_content.child(Select::new(&self.version_select_state).w_full());
             },
             TypelessFrontendMetadataResult::Error(ref error) => {
-                version_content = version_content.child(format!("Error loading minecraft versions: {}", error))
+                version_content = version_content.child(format!("{}: {}", ts!("instance.versions_loading.error"), error))
             },
         }
 
-        version_content = version_content.child(Select::new(&self.loader_select_state).title_prefix("Modloader: ").w_full());
+        version_content = version_content.child(Select::new(&self.loader_select_state).title_prefix(format!("{}: ", ts!("instance.modloader"))).w_full());
 
         if self.loader != Loader::Vanilla {
             match self.loader_versions_state {
@@ -627,20 +627,20 @@ impl Render for InstanceSettingsSubpage {
                 },
                 TypelessFrontendMetadataResult::Loaded => {
                     version_content = version_content.child(Select::new(&self.loader_version_select_state).title_prefix(match self.loader {
-                        Loader::Fabric => "Fabric Version: ",
-                        Loader::Forge => "Forge Version: ",
-                        Loader::NeoForge => "NeoForge Version: ",
-                        Loader::Vanilla | Loader::Unknown => "Loader Version: ",
+                        Loader::Fabric => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.fabric"))),
+                        Loader::Forge => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.forge"))),
+                        Loader::NeoForge => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.neoforge"))),
+                        Loader::Vanilla | Loader::Unknown => format!("{}: ", ts!("instance.loader_version", loader = ts!("instance.loader"))),
                     }).w_full())
                 },
                 TypelessFrontendMetadataResult::Error(ref error) => {
-                    version_content = version_content.child(format!("Error loading possible loader versions: {}", error))
+                    version_content = version_content.child(format!("{}: {}", ts!("instance.possible_loader_error"), error))
                 },
             }
         }
 
         basic_content = basic_content.child(crate::labelled(
-            "Version",
+            ts!("instance.version"),
             version_content,
         ));
 
@@ -649,7 +649,7 @@ impl Render for InstanceSettingsSubpage {
             .size_full()
             .child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("memory").label("Set Memory").checked(memory_override_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("memory").label(ts!("instance.memory")).checked(memory_override_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.memory_override_enabled != *value {
                         page.memory_override_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceMemory {
@@ -669,12 +669,12 @@ impl Render for InstanceSettingsSubpage {
                     )
                     .child(v_flex()
                         .gap_1()
-                        .child("Min")
-                        .child("Max"))
+                        .child(ts!("common.min"))
+                        .child(ts!("common.max")))
                 )
             ).child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("jvm_flags").label("Add JVM Flags").checked(jvm_flags_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("jvm_flags").label(ts!("instance.jvm_flags")).checked(jvm_flags_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.jvm_flags_enabled != *value {
                         page.jvm_flags_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceJvmFlags {
@@ -688,7 +688,7 @@ impl Render for InstanceSettingsSubpage {
             )
             .child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("jvm_binary").label("Override JVM Binary").checked(jvm_binary_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("jvm_binary").label(ts!("instance.jvm_binary")).checked(jvm_binary_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.jvm_binary_enabled != *value {
                         page.jvm_binary_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceJvmBinary {
@@ -699,7 +699,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
                 .child(Button::new("select_jvm_binary").success().label(jvm_binary_label).disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
-                    this.select_file("Select Jvm Binary", |this, path| {
+                    this.select_file(ts!("instance.select_jvm_binary"), |this, path| {
                         this.jvm_binary_path = path;
                         this.backend_handle.send(MessageToBackend::SetInstanceJvmBinary {
                             id: this.instance_id,
@@ -710,7 +710,7 @@ impl Render for InstanceSettingsSubpage {
             )
             .child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("system_glfw").label("Use System GLFW").checked(self.override_glfw_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("system_glfw").label(ts!("instance.glfw_lib")).checked(self.override_glfw_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.override_glfw_enabled != *value {
                         page.override_glfw_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
@@ -720,9 +720,9 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
 
                     }
-                })))
+                }))
                 .child(Button::new("select_glfw").success().label(glfw_path_label).disabled(!self.override_glfw_enabled).on_click(cx.listener(|this, _, window, cx| {
-                    this.select_file("Select GLFW Library", |this, path| {
+                    this.select_file(ts!("instance.select_glfw_lib"), |this, path| {
                         this.override_glfw_path = path;
                         this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
                             id: this.instance_id,
@@ -733,7 +733,7 @@ impl Render for InstanceSettingsSubpage {
             )
             .child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("system_openal").label("Use System OpenAL").checked(self.override_openal_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("system_openal").label(ts!("instance.openal_lib")).checked(self.override_openal_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.override_openal_enabled != *value {
                         page.override_openal_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
@@ -745,21 +745,21 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
                 .child(Button::new("select_openal").success().label(openal_path_label).disabled(!self.override_openal_enabled).on_click(cx.listener(|this, _, window, cx| {
-                    this.select_file("Select OpenAL Library", |this, path| {
+                    this.select_file(ts!("instance.select_openal_lib"), |this, path| {
                         this.override_openal_path = path;
                         this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
                             id: this.instance_id,
                             system_libraries: this.get_system_libraries_configuration()
                         });
                     }, window, cx);
-                })))
+                }))))
             );
 
         #[cfg(target_os = "linux")]
         let runtime_content = runtime_content.child(v_flex()
             .gap_1()
-            .child("Linux Performance")
-            .child(Checkbox::new("use_mangohud").label("Use MangoHud").checked(self.use_mangohud).disabled(!self.mangohud_available).on_click(cx.listener(|page, value, _, cx| {
+            .child(ts!("instance.linux.label"))
+            .child(Checkbox::new("use_mangohud").label(ts!("instance.linux.use_mangohud")).checked(self.use_mangohud).disabled(!self.mangohud_available).on_click(cx.listener(|page, value, _, cx| {
                 if page.use_mangohud != *value {
                     page.use_mangohud = *value;
                     page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
@@ -769,7 +769,7 @@ impl Render for InstanceSettingsSubpage {
                     cx.notify();
                 }
             })))
-            .child(Checkbox::new("use_gamemode").label("Use GameMode").checked(self.use_gamemode).disabled(!self.gamemode_available).on_click(cx.listener(|page, value, _, cx| {
+            .child(Checkbox::new("use_gamemode").label(ts!("instance.linux.use_gamemode")).checked(self.use_gamemode).disabled(!self.gamemode_available).on_click(cx.listener(|page, value, _, cx| {
                 if page.use_gamemode != *value {
                     page.use_gamemode = *value;
                     page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
@@ -779,7 +779,7 @@ impl Render for InstanceSettingsSubpage {
                     cx.notify();
                 }
             })))
-            .child(Checkbox::new("use_discrete_gpu").label("Use Discrete GPU").checked(self.use_discrete_gpu).on_click(cx.listener(|page, value, _, cx| {
+            .child(Checkbox::new("use_discrete_gpu").label(ts!("instance.linux.use_discrete_gpu")).checked(self.use_discrete_gpu).on_click(cx.listener(|page, value, _, cx| {
                 if page.use_discrete_gpu != *value {
                     page.use_discrete_gpu = *value;
                     page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
@@ -794,7 +794,7 @@ impl Render for InstanceSettingsSubpage {
         let actions_content = v_flex()
             .gap_4()
             .size_full()
-            .child(Button::new("shortcut").label("Create shortcut").success().on_click({
+            .child(Button::new("shortcut").label(ts!("instance.create_shortcut")).success().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |_: &ClickEvent, _, cx| {
@@ -822,7 +822,7 @@ impl Render for InstanceSettingsSubpage {
                     }).detach();
                 }
             }))
-            .child(Button::new("delete").label("Delete this instance").danger().on_click({
+            .child(Button::new("delete").label(ts!("instance.delete")).danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |click: &ClickEvent, window, cx| {
@@ -871,7 +871,7 @@ fn opt_path_to_string(path: &Option<Arc<Path>>) -> SharedString {
     if let Some(path) = path {
         SharedString::new(path.to_string_lossy())
     } else {
-        SharedString::new_static("<unset>")
+        ts!("common.unset")
     }
 }
 

@@ -5,7 +5,7 @@ use gpui::*;
 use gpui_component::{button::{Button, ButtonVariants}, checkbox::Checkbox, select::{SearchableVec, Select, SelectEvent, SelectState}, sheet::Sheet, spinner::Spinner, tab::{Tab, TabBar, TabVariant}, v_flex, ActiveTheme, IconName, Sizable, ThemeRegistry};
 use schema::backend_config::BackendConfig;
 
-use crate::{entity::DataEntities, interface_config::InterfaceConfig};
+use crate::{entity::DataEntities, interface_config::InterfaceConfig, ts};
 
 struct Settings {
     theme_folder: Arc<Path>,
@@ -61,14 +61,14 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             .prefix(div().w_4())
             .selected_index(0)
             .underline()
-            .child(Tab::new().label("Interface"))
+            .child(Tab::new().label(ts!("settings.interface")))
             // .child(Tab::new().label("Game"))
             .on_click(|index, window, cx| {
                 // todo: switch
             });
 
         sheet
-            .title("Settings")
+            .title(ts!("settings.title"))
             .overlay_top(crate::root::sheet_margin_top(window))
             .p_0()
             .child(v_flex()
@@ -117,30 +117,30 @@ impl Render for Settings {
             .py_3()
             .gap_3()
             .child(crate::labelled(
-                "Theme",
+                ts!("settings.theme.title"),
                 Select::new(&self.theme_select)
             ))
-            .child(Button::new("open-theme-folder").info().icon(IconName::FolderOpen).label("Open theme folder").on_click({
+            .child(Button::new("open-theme-folder").info().icon(IconName::FolderOpen).label(ts!("settings.theme.open_folder")).on_click({
                 let theme_folder = self.theme_folder.clone();
                 move |_, window, cx| {
                     crate::open_folder(&theme_folder, window, cx);
                 }
             }))
-            .child(Button::new("open-theme-repo").info().icon(IconName::Globe).label("Open theme repository").on_click({
+            .child(Button::new("open-theme-repo").info().icon(IconName::Globe).label(ts!("settings.theme.open_repo")).on_click({
                 move |_, _, cx| {
                     cx.open_url("https://github.com/longbridge/gpui-component/tree/main/themes");
                 }
             }))
-            .child(crate::labelled("Deletion",
+            .child(crate::labelled(ts!("settings.delete.title"),
                 v_flex().gap_2()
                     .child(Checkbox::new("confirm-delete-mods")
-                        .label("Shift+Click to skip mod delete confirmation")
+                        .label(ts!("settings.delete.skip_mod_delete_confirmation"))
                         .checked(interface_config.quick_delete_mods)
                         .on_click(|value, _, cx| {
                             InterfaceConfig::get_mut(cx).quick_delete_mods = *value;
                         }))
                     .child(Checkbox::new("confirm-delete-instance")
-                        .label("Shift+Click to skip instance delete confirmation")
+                        .label(ts!("settings.delete.skip_instance_delete_confirmation"))
                         .checked(interface_config.quick_delete_instance).on_click(|value, _, cx| {
                             InterfaceConfig::get_mut(cx).quick_delete_instance = *value;
                         }))
@@ -150,16 +150,16 @@ impl Render for Settings {
         if let Some(backend_config) = &self.backend_config {
             div = div
                 .child(crate::labelled(
-                    "Launching",
+                    ts!("settings.launch.title"),
                     v_flex().gap_2()
                         .child(Checkbox::new("hide-on-launch")
-                            .label("Hide main window on launch")
+                            .label(ts!("settings.launch.hide_main_window"))
                             .checked(interface_config.hide_main_window_on_launch)
                             .on_click(|value, _, cx| {
                                 InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
                             }))
                         .child(Checkbox::new("open-game-output")
-                            .label("Open game output on launch")
+                            .label(ts!("settings.launch.open_game_output"))
                             .checked(!backend_config.dont_open_game_output_when_launching)
                             .on_click(cx.listener({
                                 let backend_handle = self.backend_handle.clone();

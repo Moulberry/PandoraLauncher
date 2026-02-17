@@ -7,7 +7,7 @@ use gpui_component::{
 };
 use schema::{loader::Loader, version_manifest::{MinecraftVersionManifest, MinecraftVersionType}};
 
-use crate::{entity::{instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}}, interface_config::InterfaceConfig, pages::instances_page::VersionList};
+use crate::{entity::{instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}}, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
 
 struct CreateInstanceModalState {
     metadata: Entity<FrontendMetadata>,
@@ -42,7 +42,7 @@ impl CreateInstanceModalState {
 
         let name_input_state = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder(SharedString::new_static("Unnamed Instance"))
+                .placeholder(ts!("instance.unnamed"))
         });
 
         let _name_input_subscription = {
@@ -96,7 +96,7 @@ impl CreateInstanceModalState {
             .read(cx)
             .selected_value()
             .cloned()
-            .unwrap_or(SharedString::new_static("Unnamed Instance"));
+            .unwrap_or(ts!("instance.unnamed"));
 
         if self.original_fallback_name != selected {
             self.original_fallback_name = selected.clone();
@@ -199,13 +199,13 @@ impl CreateInstanceModalState {
         if let Some(error) = self.error_loading_versions.clone() {
             let error_widget = Alert::new("error", format!("{}", error))
                 .icon(IconName::CircleX)
-                .title("Error loading Minecraft versions");
+                .title(ts!("instance.versions_loading.error"));
 
             let metadata = self.metadata.clone();
             let reload_button =
                 Button::new("reload-versions")
                     .primary()
-                    .label("Reload Versions")
+                    .label(ts!("instance.versions_loading.reload"))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.error_loading_versions = None;
                         FrontendMetadata::force_reload(&metadata, bridge::meta::MetadataRequest::MinecraftVersionManifest, cx);
@@ -213,7 +213,7 @@ impl CreateInstanceModalState {
 
             return modal
                 .confirm()
-                .title("Create Instance")
+                .title(ts!("instance.create"))
                 .child(v_flex().gap_3().child(error_widget).child(reload_button));
         }
 
@@ -225,14 +225,14 @@ impl CreateInstanceModalState {
             version_dropdown = Select::new(&self.minecraft_version_dropdown)
                 .w_full()
                 .disabled(true)
-                .placeholder("Loading Minecraft Versions...");
+                .placeholder(ts!("instance.versions_loading.game_versions"));
             show_snapshots_button = Skeleton::new().w_full().min_h_4().max_h_4().rounded_md().into_any_element();
             loader_button_group = Skeleton::new().w_full().min_h_8().max_h_8().rounded_md().into_any_element();
         } else {
-            version_dropdown = Select::new(&self.minecraft_version_dropdown).title_prefix("Minecraft Version: ");
+            version_dropdown = Select::new(&self.minecraft_version_dropdown).title_prefix(format!("{}: ", ts!("instance.mc_version")));
             show_snapshots_button = Checkbox::new("show_snapshots")
                 .checked(InterfaceConfig::get(cx).show_snapshots_in_create_instance)
-                .label("Show Snapshots")
+                .label(ts!("instance.show_snapshots"))
                 .on_click(cx.listener(move |this, show, window, cx| {
                     InterfaceConfig::get_mut(cx).show_snapshots_in_create_instance = *show;
                     this.reload_version_dropdown(window, cx);
@@ -243,22 +243,22 @@ impl CreateInstanceModalState {
                 .h_full()
                 .child(
                     Button::new("loader-vanilla")
-                        .label("Vanilla")
+                        .label(ts!("instance.vanilla"))
                         .selected(self.selected_loader == Loader::Vanilla),
                 )
                 .child(
                     Button::new("loader-fabric")
-                        .label("Fabric")
+                        .label(ts!("modrinth.category.fabric"))
                         .selected(self.selected_loader == Loader::Fabric),
                 )
                 .child(
                     Button::new("loader-forge")
-                        .label("Forge")
+                        .label(ts!("modrinth.category.forge"))
                         .selected(self.selected_loader == Loader::Forge),
                 )
                 .child(
                     Button::new("loader-neoforge")
-                        .label("NeoForge")
+                        .label(ts!("modrinth.category.neoforge"))
                         .selected(self.selected_loader == Loader::NeoForge),
                 )
                 .on_click(cx.listener(move |this, selected: &Vec<usize>, _, _| {
@@ -276,12 +276,12 @@ impl CreateInstanceModalState {
         let content = v_flex()
             .gap_3()
             .child(crate::labelled(
-                "Name",
+                ts!("instance.name"),
                 Input::new(&self.name_input_state).when(self.name_invalid, |this| this.border_color(cx.theme().danger)),
             ))
-            .child(crate::labelled("Version", v_flex().gap_2().child(version_dropdown).child(show_snapshots_button)))
-            .child(crate::labelled("Modloader", loader_button_group))
-            .child(h_flex().child(Button::new("icon").icon(IconName::Plus).label("Select Icon").on_click({
+            .child(crate::labelled(ts!("instance.version"), v_flex().gap_2().child(version_dropdown).child(show_snapshots_button)))
+            .child(crate::labelled(ts!("instance.modloader"), loader_button_group))
+            .child(h_flex().child(Button::new("icon").icon(IconName::Plus).label(ts!("instance.select_icon")).on_click({
                 let entity = cx.entity();
                 move |_, window, cx| {
                     let entity = entity.clone();
@@ -307,7 +307,7 @@ impl CreateInstanceModalState {
                 }
             })
             .overlay_closable(false)
-            .title("Create Instance")
+            .title(ts!("instance.create"))
             .on_ok(move |_, _, cx| {
                 entity.update(cx, |this, cx| {
                     if name_is_invalid {

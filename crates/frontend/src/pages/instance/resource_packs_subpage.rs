@@ -14,7 +14,7 @@ use rustc_hash::FxHashSet;
 use schema::{content::ContentSource, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
-use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, png_render_cache, root, ui::PageType};
+use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, png_render_cache, root, ts, ui::PageType};
 
 use super::instance_page::InstanceSubpageType;
 
@@ -105,15 +105,15 @@ impl Render for InstanceResourcePacksSubpage {
             .gap_3()
             .mb_1()
             .ml_1()
-            .child(div().text_lg().child("Resource Packs"))
-            .child(Button::new("update").label("Check for updates").success().compact().small().on_click({
+            .child(div().text_lg().child(ts!("instance.content.resourcepacks")))
+            .child(Button::new("update").label(ts!("instance.content.update.check.label")).success().compact().small().on_click({
                 let backend_handle = self.backend_handle.clone();
                 let instance_id = self.instance;
                 move |_, window, cx| {
                     crate::root::start_update_check(instance_id, &backend_handle, window, cx);
                 }
             }))
-            .child(Button::new("addmr").label("Add from Modrinth").success().compact().small().on_click({
+            .child(Button::new("addmr").label(ts!("instance.content.install.from_modrinth")).success().compact().small().on_click({
                 let instance = self.instance;
                 move |_, window, cx| {
                     let page = crate::ui::PageType::Modrinth {
@@ -124,13 +124,13 @@ impl Render for InstanceResourcePacksSubpage {
                     root::switch_page(page, path, window, cx);
                 }
             }))
-            .child(Button::new("addfile").label("Add from file").success().compact().small().on_click({
+            .child(Button::new("addfile").label(ts!("instance.content.install.from_file")).success().compact().small().on_click({
                 cx.listener(move |this, _, window, cx| {
                     let receiver = cx.prompt_for_paths(PathPromptOptions {
                         files: true,
                         directories: false,
                         multiple: true,
-                        prompt: Some("Select resource packs to install".into())
+                        prompt: Some(ts!("instance.content.install.select_resourcepacks"))
                     });
 
                     let entity = cx.entity();

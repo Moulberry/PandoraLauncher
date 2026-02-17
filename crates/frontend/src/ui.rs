@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath}, entity::{
         DataEntities, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
-    }, interface_config::InterfaceConfig, modals, pages::{instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, syncing_page::SyncingPage}, png_render_cache, root
+    }, interface_config::InterfaceConfig, modals, pages::{instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, syncing_page::SyncingPage}, png_render_cache, root, ts
 };
 
 pub struct LauncherUI {
@@ -256,20 +256,20 @@ impl Render for LauncherUI {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let page_type = self.page.page_type();
 
-        let library_group = MenuGroup::new("Play")
-            .child(MenuGroupItem::new("Instances")
+        let library_group = MenuGroup::new(ts!("instance.play"))
+            .child(MenuGroupItem::new(ts!("instance.title"))
                 .active(page_type == PageType::Instances)
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Instances, &[], window, cx);
                 })));
 
-        let launcher_group = MenuGroup::new("Content")
-            .child(MenuGroupItem::new("Modrinth")
+        let launcher_group = MenuGroup::new(ts!("instance.content.title"))
+            .child(MenuGroupItem::new(ts!("modrinth.name"))
                 .active(page_type == PageType::Modrinth { installing_for: None, project_type: None })
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Modrinth { installing_for: None, project_type: None }, &[], window, cx);
                 })))
-            .child(MenuGroupItem::new("Syncing")
+            .child(MenuGroupItem::new(ts!("instance.sync.label"))
                 .active(page_type == PageType::Syncing)
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Syncing, &[], window, cx);
@@ -281,7 +281,7 @@ impl Render for LauncherUI {
         let _ = groups.push(launcher_group);
 
         if !self.recent_instances.is_empty() {
-            let mut recent_instances_group = MenuGroup::new("Recent Instances");
+            let mut recent_instances_group = MenuGroup::new(ts!("instance.recent"));
 
             for (id, name) in &self.recent_instances {
                 let name = name.clone();
@@ -315,7 +315,7 @@ impl Render for LauncherUI {
         } else {
             (
                 gpui::img(ImageSource::Resource(Resource::Embedded("images/default_head.png".into()))),
-                "No Account".into(),
+                ts!("account.none"),
             )
         };
 
@@ -393,24 +393,24 @@ impl Render for LauncherUI {
                         });
 
                         sheet
-                            .title("Accounts")
+                            .title(ts!("account.title"))
                             .overlay_top(crate::root::sheet_margin_top(window))
                             .child(v_flex()
                                 .gap_2()
-                                .child(Button::new("add-account").h_10().success().icon(IconName::Plus).label("Add account").on_click({
+                                .child(Button::new("add-account").h_10().success().icon(IconName::Plus).label(ts!("account.add.label")).on_click({
                                     let backend_handle = backend_handle.clone();
                                     move |_, window, cx| {
                                         crate::root::start_new_account_login(&backend_handle, window, cx);
                                     }
                                 }))
-                                .child(Button::new("add-offline").h_10().success().icon(IconName::Plus).label("Add offline account").on_click({
+                                .child(Button::new("add-offline").h_10().success().icon(IconName::Plus).label(ts!("account.add.offline")).on_click({
                                     let backend_handle = backend_handle.clone();
                                     move |_, window, cx| {
                                         let name_input = cx.new(|cx| {
                                             InputState::new(window, cx)
                                         });
                                         let uuid_input = cx.new(|cx| {
-                                            InputState::new(window, cx).placeholder("Random")
+                                            InputState::new(window, cx).placeholder(ts!("account.uuid_random"))
                                         });
                                         let backend_handle = backend_handle.clone();
                                         window.open_dialog(cx, move |dialog, _, cx| {
@@ -423,7 +423,7 @@ impl Render for LauncherUI {
                                             let valid = valid_name && valid_uuid;
 
                                             let backend_handle = backend_handle.clone();
-                                            let mut add_button = Button::new("add").label("Add").disabled(!valid).on_click(move |_, window, cx| {
+                                            let mut add_button = Button::new("add").label(ts!("account.add.submit")).disabled(!valid).on_click(move |_, window, cx| {
                                                 window.close_all_dialogs(cx);
 
                                                 let uuid = if let Ok(uuid) = Uuid::try_parse(&uuid) {
@@ -444,11 +444,11 @@ impl Render for LauncherUI {
                                                 add_button = add_button.success();
                                             }
 
-                                            dialog.title("Add offline account")
+                                            dialog.title(ts!("account.add.offline"))
                                                 .child(v_flex()
                                                     .gap_2()
-                                                    .child(crate::labelled("Name", Input::new(&name_input)))
-                                                    .child(crate::labelled("UUID", Input::new(&uuid_input)))
+                                                    .child(crate::labelled(ts!("account.name"), Input::new(&name_input)))
+                                                    .child(crate::labelled(ts!("account.uuid"), Input::new(&uuid_input)))
                                                     .child(add_button)
                                                 )
                                         });
@@ -488,7 +488,7 @@ impl Render for LauncherUI {
             .justify_center()
             .text_size(rems(0.9375))
             .child(pandora_icon.size_8().min_w_8().min_h_8())
-            .child("Pandora");
+            .child(ts!("common.app_name"));
         let footer = h_flex().pb_3().px_3().flex_wrap().justify_center().w_full().child(settings_button).child(account_button);
         let sidebar = v_flex()
             .w_full()

@@ -6,6 +6,8 @@ use gpui_component::{
     button::{Button, ButtonVariants}, input::{Input, InputEvent, InputState}, v_flex, Disableable, WindowExt
 };
 
+use crate::ts;
+
 pub fn open_delete_instance(
     instance: InstanceID,
     instance_name: SharedString,
@@ -16,9 +18,9 @@ pub fn open_delete_instance(
     let stage = Arc::new(AtomicU8::new(0));
     let correct_name = Arc::new(AtomicBool::new(false));
 
-    let title = SharedString::new(format!("Delete Instance: {}", instance_name));
-    let warning_message = SharedString::new(format!("This will permanently delete the '{}' instance and associated saves, resourcepacks, mods, configuration files, and more. These files will not be recoverable", instance_name));
-    let confirm_message = SharedString::new(format!("To confirm, type '{}' in the box below", instance_name));
+    let title = ts!("instance.delete_dialog.title", name = instance_name);
+    let warning_message = ts!("instance.delete_dialog.warning", name = instance_name);
+    let confirm_message = ts!("instance.delete_dialog.confirm_text", name = instance_name);
 
     let input_state = cx.new(|cx| InputState::new(window, cx));
 
@@ -37,7 +39,7 @@ pub fn open_delete_instance(
         let content = match stage.load(Ordering::Relaxed) {
             0 => {
                 v_flex()
-                    .child(Button::new("delete").label("I want to delete this instance").on_click({
+                    .child(Button::new("delete").label(ts!("instance.delete_dialog.label")).on_click({
                         let stage = stage.clone();
                         move |_, _, _| {
                             stage.store(1, Ordering::Relaxed);
@@ -48,7 +50,7 @@ pub fn open_delete_instance(
                 v_flex()
                     .gap_2()
                     .child(warning_message.clone())
-                    .child(Button::new("confirm").label("I have read and understand these effects").on_click({
+                    .child(Button::new("confirm").label(ts!("instance.delete_dialog.check")).on_click({
                         let stage = stage.clone();
                         let input_state = input_state.clone();
                         move |_, window, cx| {
@@ -68,7 +70,7 @@ pub fn open_delete_instance(
                     .child(div().h_2())
                     .child(Input::new(&input_state).border_color(gpui::red()))
                     .child(div().h_2())
-                    .child(Button::new("confirm").label("Delete this instance").danger().disabled(!correct).on_click({
+                    .child(Button::new("confirm").label(ts!("instance.delete")).danger().disabled(!correct).on_click({
                         let backend_handle = backend_handle.clone();
                         move |_, window, cx| {
                             backend_handle.send(bridge::message::MessageToBackend::DeleteInstance {

@@ -46,7 +46,7 @@ struct InstalledMod {
 
 impl ModrinthSearchPage {
     pub fn new(install_for: Option<InstanceID>, project_type: Option<ModrinthProjectType>, page_path: PagePath, data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder("Search mods...").clean_on_escape());
+        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(ts!("instance.content.search.mod")).clean_on_escape());
 
         let mut can_install_latest = false;
         let mut installed_mods_by_project: FxHashMap<Arc<str>, Vec<InstalledMod>> = FxHashMap::default();
@@ -141,11 +141,11 @@ impl ModrinthSearchPage {
         self.filter_categories.clear();
         self.search_state.update(cx, |state, cx| {
             let placeholder = match project_type {
-                ModrinthProjectType::Mod => "Search mods...",
-                ModrinthProjectType::Modpack => "Search modpacks...",
-                ModrinthProjectType::Resourcepack => "Search resourcepacks...",
-                ModrinthProjectType::Shader => "Search shaders...",
-                ModrinthProjectType::Other => "Search...",
+                ModrinthProjectType::Mod => ts!("instance.content.search.mod"),
+                ModrinthProjectType::Modpack => ts!("instance.content.search.modpack"),
+                ModrinthProjectType::Resourcepack => ts!("instance.content.search.resourcepack"),
+                ModrinthProjectType::Shader => ts!("instance.content.search.shader"),
+                ModrinthProjectType::Other => ts!("instance.content.search.file"),
             };
             state.set_placeholder(placeholder, window, cx)
         });
@@ -315,7 +315,7 @@ impl ModrinthSearchPage {
                         return div()
                             .pl_3()
                             .pt_3()
-                            .child(ErrorAlert::new("search_error", "Error requesting from Modrinth".into(), search_error));
+                            .child(ErrorAlert::new("search_error", ts!("instance.content.requesting_from_modrinth_error"), search_error));
                     } else {
                         should_load_more = true;
                         return div()
@@ -341,14 +341,14 @@ impl ModrinthSearchPage {
                     .as_ref()
                     .map(Arc::clone)
                     .map(SharedString::new)
-                    .unwrap_or(SharedString::new_static("Unnamed"));
-                let author = format!("by {}", hit.author.clone());
+                    .unwrap_or(ts!("instance.content.unnamed"));
+                let author = ts!("instance.content.by", name = hit.author.clone());
                 let description = hit
                     .description
                     .as_ref()
                     .map(Arc::clone)
                     .map(SharedString::new)
-                    .unwrap_or(SharedString::new_static("No Description"));
+                    .unwrap_or(ts!("instance.content.no_description"));
 
                 const GRAY: Hsla = Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 };
                 let author_line = div().text_color(GRAY).text_sm().pb_px().child(author);
@@ -358,24 +358,24 @@ impl ModrinthSearchPage {
 
                 let (env_icon, env_name) = match (client_side, server_side) {
                     (ModrinthSideRequirement::Required, ModrinthSideRequirement::Required) => {
-                        (Icon::empty().path("icons/globe.svg"), ts!("client_and_server"))
+                        (Icon::empty().path("icons/globe.svg"), ts!("modrinth.environment.client_and_server"))
                     },
                     (ModrinthSideRequirement::Required, ModrinthSideRequirement::Unsupported) => {
-                        (Icon::empty().path("icons/computer.svg"), ts!("client_only"))
+                        (Icon::empty().path("icons/computer.svg"), ts!("modrinth.environment.client_only"))
                     },
                     (ModrinthSideRequirement::Required, ModrinthSideRequirement::Optional) => {
-                        (Icon::empty().path("icons/computer.svg"), ts!("client_only_server_optional"))
+                        (Icon::empty().path("icons/computer.svg"), ts!("modrinth.environment.client_only_server_optional"))
                     },
                     (ModrinthSideRequirement::Unsupported, ModrinthSideRequirement::Required) => {
-                        (Icon::empty().path("icons/router.svg"), ts!("server_only"))
+                        (Icon::empty().path("icons/router.svg"), ts!("modrinth.environment.server_only"))
                     },
                     (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Required) => {
-                        (Icon::empty().path("icons/router.svg"), ts!("server_only_client_optional"))
+                        (Icon::empty().path("icons/router.svg"), ts!("modrinth.environment.server_only_client_optional"))
                     },
                     (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Optional) => {
-                        (Icon::empty().path("icons/globe.svg"), ts!("client_or_server"))
+                        (Icon::empty().path("icons/globe.svg"), ts!("modrinth.environment.client_or_server"))
                     },
-                    _ => (Icon::empty().path("icons/cpu.svg"), ts!("unknown_environment")),
+                    _ => (Icon::empty().path("icons/cpu.svg"), ts!("modrinth.environment.unknown_environment")),
                 };
 
                 let environment = h_flex().gap_1().font_bold().child(env_icon).child(env_name);
@@ -384,7 +384,7 @@ impl ModrinthSearchPage {
                     categories.iter().map(|category| {
                         let icon = icon_for(category).unwrap_or("icons/diamond.svg");
                         let icon = Icon::empty().path(icon);
-                        let translated_category = ts!(category.as_str());
+                        let translated_category = ts!(format!("modrinth.category.{}", category));
                         h_flex().gap_0p5().child(icon).child(translated_category)
                     })
                 });
@@ -443,7 +443,7 @@ impl ModrinthSearchPage {
                                                     modal_action: modal_action.clone()
                                                 });
                                                 crate::modals::generic::show_notification(window, cx,
-                                                    "Error checking for updates".into(), modal_action);
+                                                    ts!("instance.content.update.check.error"), modal_action);
                                             },
                                             PrimaryAction::ErrorCheckingForUpdates => {},
                                             PrimaryAction::UpToDate => {},
@@ -456,7 +456,7 @@ impl ModrinthSearchPage {
                                                         modal_action: modal_action.clone()
                                                     });
                                                     crate::modals::generic::show_notification(window, cx,
-                                                        "Error updating mod".into(), modal_action);
+                                                        ts!("instance.content.update.error"), modal_action);
                                                 }
 
                                             },
@@ -465,7 +465,7 @@ impl ModrinthSearchPage {
                                         window.push_notification(
                                             (
                                                 NotificationType::Error,
-                                                "Don't know how to handle this type of content",
+                                                ts!("instance.content.install.unknown_type"),
                                             ),
                                             cx,
                                         );
@@ -475,7 +475,7 @@ impl ModrinthSearchPage {
                     )
                     .child(
                         Button::new(("open", index))
-                            .label("Open Page")
+                            .label(ts!("instance.content.open_page"))
                             .icon(IconName::Globe)
                             .info()
                             .on_click({
@@ -598,15 +598,15 @@ enum PrimaryAction {
 }
 
 impl PrimaryAction {
-    pub fn text(&self) -> &'static str {
+    pub fn text(&self) -> SharedString {
         match self {
-            PrimaryAction::Install => "Install",
-            PrimaryAction::Reinstall => "Reinstall",
-            PrimaryAction::InstallLatest => "Install Latest",
-            PrimaryAction::CheckForUpdates => "Update Check",
-            PrimaryAction::ErrorCheckingForUpdates => "Error",
-            PrimaryAction::UpToDate => "Up-to-date",
-            PrimaryAction::Update(..) => "Update",
+            PrimaryAction::Install => ts!("instance.content.install.label"),
+            PrimaryAction::Reinstall => ts!("instance.content.install.reinstall"),
+            PrimaryAction::InstallLatest => ts!("instance.content.install.latest"),
+            PrimaryAction::CheckForUpdates => ts!("instance.content.update.check.label.short"),
+            PrimaryAction::ErrorCheckingForUpdates => ts!("common.error"),
+            PrimaryAction::UpToDate => ts!("instance.content.update.check.up_to_date"),
+            PrimaryAction::Update(..) => ts!("instance.content.update.label"),
         }
     }
 
@@ -671,12 +671,12 @@ impl Render for ModrinthSearchPage {
 
         if self.can_install_latest {
             let tooltip = |window: &mut Window, cx: &mut App| {
-                Tooltip::new(SharedString::new_static("Always install the latest version. Untick to be able to choose older versions of content to install")).build(window, cx)
+                Tooltip::new(ts!("instance.content.install.always_latest")).build(window, cx)
             };
 
             let install_latest = !InterfaceConfig::get(cx).modrinth_install_normally;
             top_bar = top_bar.child(Checkbox::new("install-latest")
-                .label("Install Latest")
+                .label(ts!("instance.content.install.latest"))
                 .tooltip(tooltip)
                 .checked(install_latest)
                 .on_click({
@@ -697,18 +697,18 @@ impl Render for ModrinthSearchPage {
         let type_button_group = ButtonGroup::new("type")
             .layout(Axis::Vertical)
             .outline()
-            .child(Button::new("mods").label("Mods").selected(self.filter_project_type == ModrinthProjectType::Mod))
+            .child(Button::new("mods").label(ts!("instance.content.mods")).selected(self.filter_project_type == ModrinthProjectType::Mod))
             .child(
                 Button::new("modpacks")
-                    .label("Modpacks")
+                    .label(ts!("instance.content.modpacks"))
                     .selected(self.filter_project_type == ModrinthProjectType::Modpack),
             )
             .child(
                 Button::new("resourcepacks")
-                    .label("Resourcepacks")
+                    .label(ts!("instance.content.resourcepacks"))
                     .selected(self.filter_project_type == ModrinthProjectType::Resourcepack),
             )
-            .child(Button::new("shaders").label("Shaders").selected(self.filter_project_type == ModrinthProjectType::Shader))
+            .child(Button::new("shaders").label(ts!("instance.content.shaders")).selected(self.filter_project_type == ModrinthProjectType::Shader))
             .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| match clicked[0] {
                 0 => page.set_project_type(ModrinthProjectType::Mod, window, cx),
                 1 => page.set_project_type(ModrinthProjectType::Modpack, window, cx),
@@ -722,9 +722,9 @@ impl Render for ModrinthSearchPage {
                 .layout(Axis::Vertical)
                 .outline()
                 .multiple(true)
-                .child(Button::new("fabric").label("Fabric").selected(self.filter_loaders.contains(&Loader::Fabric)))
-                .child(Button::new("forge").label("Forge").selected(self.filter_loaders.contains(&Loader::Forge)))
-                .child(Button::new("neoforge").label("NeoForge").selected(self.filter_loaders.contains(&Loader::NeoForge)))
+                .child(Button::new("fabric").label(ts!("modrinth.category.fabric")).selected(self.filter_loaders.contains(&Loader::Fabric)))
+                .child(Button::new("forge").label(ts!("modrinth.category.forge")).selected(self.filter_loaders.contains(&Loader::Forge)))
+                .child(Button::new("neoforge").label(ts!("modrinth.category.neoforge")).selected(self.filter_loaders.contains(&Loader::NeoForge)))
                 .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
                     page.set_filter_loaders(clicked.iter().filter_map(|index| match index {
                         0 => Some(Loader::Fabric),
@@ -752,7 +752,7 @@ impl Render for ModrinthSearchPage {
             .gap_1()
             .child(
                 Button::new("toggle-categories")
-                    .label("Categories")
+                    .label(ts!("instance.content.categories"))
                     .icon(if is_shown { IconName::ChevronDown } else { IconName::ChevronRight })
                     .when(!is_shown, |this| this.outline())
                     .on_click(move |_, _, _| {
@@ -771,7 +771,7 @@ impl Render for ModrinthSearchPage {
                                 .when_some(icon_for(id), |this, icon| {
                                     this.child(Icon::empty().path(icon))
                                 })
-                                .child(Label::new(ts_short!(id))))
+                                .child(Label::new(ts_short!(format!("modrinth.category.{}", id)))))
                             .selected(self.filter_categories.contains(id))
                     }))
                     .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
@@ -799,15 +799,15 @@ impl Render for ModrinthSearchPage {
     }
 }
 
-fn format_downloads(downloads: usize) -> String {
+fn format_downloads(downloads: usize) -> SharedString {
     if downloads >= 1_000_000_000 {
-        format!("{}B Downloads", (downloads / 10_000_000) as f64 / 100.0)
+        ts!("instance.content.downloads", num = format!("{}B", (downloads / 10_000_000) as f64 / 100.0))
     } else if downloads >= 1_000_000 {
-        format!("{}M Downloads", (downloads / 10_000) as f64 / 100.0)
+        ts!("instance.content.downloads", num = format!("{}M", (downloads / 10_000) as f64 / 100.0))
     } else if downloads >= 10_000 {
-        format!("{}K Downloads", (downloads / 10) as f64 / 100.0)
+        ts!("instance.content.downloads", num = format!("{}K", (downloads / 10) as f64 / 100.0))
     } else {
-        format!("{} Downloads", downloads)
+        ts!("instance.content.downloads", num = downloads)
     }
 }
 

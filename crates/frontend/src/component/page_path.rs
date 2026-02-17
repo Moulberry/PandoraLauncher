@@ -4,7 +4,7 @@ use gpui::SharedString;
 use gpui_component::breadcrumb::{Breadcrumb, BreadcrumbItem};
 use gpui::*;
 
-use crate::{entity::{DataEntities, instance::InstanceEntries}, ui::PageType};
+use crate::{entity::{DataEntities, instance::InstanceEntries}, ts, ui::PageType};
 
 pub struct PagePath {
     pages: Arc<[PageType]>,
@@ -22,18 +22,18 @@ impl PagePath {
 
         for i in 0..pages.len() {
             let title = match pages[i] {
-                PageType::Instances => "Instances".into(),
-                PageType::Syncing => "Syncing".into(),
+                PageType::Instances => ts!("instance.title"),
+                PageType::Syncing => ts!("instance.sync.label"),
                 PageType::Modrinth { installing_for, .. } => {
                     if installing_for.is_some() {
-                        "Add from Modrinth".into()
+                        ts!("instance.content.install.from_modrinth")
                     } else {
-                        "Modrinth".into()
+                        ts!("modrinth.name")
                     }
                 },
                 PageType::InstancePage(instance_id, _) => {
                     InstanceEntries::find_title_by_id(&data.instances, instance_id, cx)
-                        .unwrap_or("<instance name>".into())
+                        .unwrap_or(ts!("instance.name_placeholder"))
                 },
             };
 

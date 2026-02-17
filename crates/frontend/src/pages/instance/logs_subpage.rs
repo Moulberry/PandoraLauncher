@@ -8,7 +8,7 @@ use gpui_component::{
     button::{Button, ButtonVariants}, h_flex, select::{Select, SelectEvent, SelectState}, spinner::Spinner, v_flex, ActiveTheme as _, Sizable
 };
 
-use crate::{component::{named_dropdown::{NamedDropdown, NamedDropdownItem}, readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls}}, entity::instance::InstanceEntry, root};
+use crate::{component::{named_dropdown::{NamedDropdown, NamedDropdownItem}, readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls}}, entity::instance::InstanceEntry, root, ts};
 
 pub struct InstanceLogsSubpage {
     instance: InstanceID,
@@ -113,7 +113,7 @@ impl InstanceLogsSubpage {
                                 ReadonlyTextFieldWithControls::new(text_field, Box::new(move |div| {
                                     let backend_handle = backend_handle.clone();
                                     let selected = selected.clone();
-                                    div.child(Button::new("upload").label("Upload").on_click(move |_, window, cx| {
+                                    div.child(Button::new("upload").label(ts!("instance.logs.upload.label")).on_click(move |_, window, cx| {
                                         root::upload_log_file(selected.clone(), &backend_handle, window, cx);
                                     }))
                                 }), window, cx)
@@ -132,13 +132,13 @@ impl InstanceLogsSubpage {
                     if result.total_gzipped_size > 0 {
                         let bytes = result.total_gzipped_size;
                         let string = if bytes < 1000 {
-                            format!("Cleanup old log files ({} bytes)", bytes)
+                            ts!("instance.logs.cleanup", num = format!("{} bytes", bytes))
                         } else if bytes < 1000*1000 {
-                            format!("Cleanup old log files ({}kB)", bytes/1000)
+                            ts!("instance.logs.cleanup", num = format!("{}kB", bytes/1000))
                         } else if bytes < 1000*1000*1000 {
-                            format!("Cleanup old log files ({}MB)", bytes/1000/1000)
+                            ts!("instance.logs.cleanup", num = format!("{}MB", bytes/1000/1000))
                         } else {
-                            format!("Cleanup old log files ({}GB)", bytes/1000/1000/1000)
+                            ts!("instance.logs.cleanup", num = format!("{}GB", bytes/1000/1000/1000))
                         };
                         page.clean_old_logs_text = Some(string.into());
                     }
@@ -162,7 +162,7 @@ impl Render for InstanceLogsSubpage {
             .gap_3()
             .mb_1()
             .ml_1()
-            .child(div().text_lg().child("Logs"));
+            .child(div().text_lg().child(ts!("instance.logs.title")));
 
         let mut content = div()
             .size_full()
@@ -171,18 +171,18 @@ impl Render for InstanceLogsSubpage {
             .border_color(theme.border);
 
         if self.no_available_logs {
-            content = content.child(h_flex().justify_center().size_full().text_lg().child("No available logs"));
+            content = content.child(h_flex().justify_center().size_full().text_lg().child(ts!("instance.logs.none")));
         } else {
             if let Some(available_logs) = self.available_logs.as_ref() {
-                header = header.child(Select::new(&available_logs).small().mt_0p5().placeholder("Select log file"));
+                header = header.child(Select::new(&available_logs).small().mt_0p5().placeholder(ts!("instance.logs.select_file")));
             } else {
-                content = content.child(h_flex().justify_center().size_full().text_lg().gap_3().child("Loading available logs...").child(Spinner::new()));
+                content = content.child(h_flex().justify_center().size_full().text_lg().gap_3().child(ts!("instance.logs.loading")).child(Spinner::new()));
             }
 
             if let Some(log_content) = self.log_content.clone() {
                 content = content.child(log_content);
             } else if self.available_logs.is_some() {
-                content = content.child(h_flex().justify_center().size_full().text_lg().child("Select log file"));
+                content = content.child(h_flex().justify_center().size_full().text_lg().child(ts!("instance.logs.select_file")));
             }
         }
 

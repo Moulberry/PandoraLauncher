@@ -12,7 +12,7 @@ use gpui_component::{
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 
-use crate::{interface_config::InterfaceConfig, png_render_cache};
+use crate::{interface_config::InterfaceConfig, png_render_cache, ts};
 
 #[derive(Clone)]
 struct ContentEntryChild {
@@ -134,25 +134,25 @@ impl ContentListDelegate {
             bridge::instance::ContentUpdateStatus::Unknown => None,
             bridge::instance::ContentUpdateStatus::ManualInstall => Some(
                 Button::new(("update", element_id)).warning().icon(Icon::default().path("icons/file-question-mark.svg"))
-                    .tooltip("Installed manually - cannot automatically update")
+                    .tooltip(ts!("instance.content.update.installed_manually"))
             ),
             bridge::instance::ContentUpdateStatus::ErrorNotFound => Some(
                 Button::new(("update", element_id)).danger().icon(Icon::default().path("icons/triangle-alert.svg"))
-                    .tooltip("Error while checking updates - 404 not found")
+                    .tooltip(ts!("instance.content.update.check.error_404"))
             ),
             bridge::instance::ContentUpdateStatus::ErrorInvalidHash => Some(
                 Button::new(("update", element_id)).danger().icon(Icon::default().path("icons/triangle-alert.svg"))
-                    .tooltip("Error while checking updates - returned invalid hash")
+                    .tooltip(ts!("instance.content.update.check.invalid_hash_error"))
             ),
             bridge::instance::ContentUpdateStatus::AlreadyUpToDate => Some(
                 Button::new(("update", element_id)).icon(Icon::default().path("icons/check.svg"))
-                    .tooltip("Up-to-date as of last check")
+                    .tooltip(ts!("instance.content.update.check.last_up_to_date"))
             ),
             bridge::instance::ContentUpdateStatus::Modrinth => {
                 let loading = self.updating.lock().contains(&element_id);
                 Some(
                     Button::new(("update", element_id)).success().loading(loading).icon(Icon::default().path("icons/download.svg"))
-                        .tooltip("Download update from Modrinth").on_click({
+                        .tooltip(ts!("instance.content.update.download.from_modrinth")).on_click({
                             let backend_handle = self.backend_handle.clone();
                             let updating = self.updating.clone();
                             cx.listener(move |this, _, window, cx| {

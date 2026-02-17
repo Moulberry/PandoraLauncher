@@ -18,9 +18,9 @@ use uuid::Uuid;
 use crate::{
     component::{error_alert::ErrorAlert, instance_dropdown::InstanceDropdown},
     entity::{
-        instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}, DataEntities
+        DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}
     },
-    root,
+    root, ts,
 };
 
 // struct VersionMatrixLoaders {
@@ -78,7 +78,7 @@ pub fn open(
     );
 
     let key = Uuid::new_v4();
-    let title = SharedString::new(format!("Install {}", name));
+    let title = ts!("instance.content.install.title");
 
     if handle_project_versions(data, title.clone(), key, project_id.clone(), project_type, install_for, &project_versions, window, cx) {
         return;
@@ -100,7 +100,7 @@ pub fn open(
 
             h_flex()
                 .gap_2()
-                .child("Loading project versions from Modrinth...")
+                .child(ts!("instance.content.load.versions_from_modrinth.title"))
                 .child(Spinner::new())
                 .into_any_element()
         })
@@ -177,7 +177,7 @@ fn handle_project_versions(
 
             let highest = highest_release.or(highest_beta).or(highest_alpha);
             let Some(highest) = highest else {
-                push_error(title.clone(), key, "Unable to find matching version of project".into(), window, cx);
+                push_error(title.clone(), key, ts!("instance.content.install.no_matching_versions"), window, cx);
                 return true;
             };
 
@@ -195,13 +195,13 @@ fn handle_project_versions(
                 ModrinthProjectType::Resourcepack => RelativePath::new("resourcepacks").join(&*install_file.filename),
                 ModrinthProjectType::Shader => RelativePath::new("shaderpacks").join(&*install_file.filename),
                 ModrinthProjectType::Other => {
-                    push_error(title.clone(), key, "Unable to install 'other' project type".into(), window, cx);
+                    push_error(title.clone(), key, ts!("instance.content.install.unable_other_type"), window, cx);
                     return true;
                 },
             };
 
             let Some(path) = SafePath::from_relative_path(&path) else {
-                push_error(title.clone(), key, "Invalid/dangerous filename".into(), window, cx);
+                push_error(title.clone(), key, ts!("instance.content.install.invalid_filename"), window, cx);
                 return true;
             };
 
@@ -259,13 +259,13 @@ fn handle_project_versions(
                 modal_action: modal_action.clone(),
             });
 
-            crate::modals::generic::show_notification_with_note(window, cx, "Error installing content".into(), modal_action,
+            crate::modals::generic::show_notification_with_note(window, cx, ts!("instance.content.install.error"), modal_action,
                 Notification::new().id1::<AutoInstallNotificationType>(key));
 
             return true;
         },
         FrontendMetadataResult::Error(error) => {
-            push_error(title.clone(), key, format!("Error loading project versions from Modrinth:\n{error}").into(), window, cx);
+            push_error(title.clone(), key, ts!("instance.content.load.versions_from_modrinth.error", err = format!("\n{}", error)), window, cx);
             return true;
         },
     }

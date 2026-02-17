@@ -12,7 +12,7 @@ use schema::{loader::Loader, version_manifest::{MinecraftVersionManifest, Minecr
 use strum::IntoEnumIterator;
 
 use crate::{
-    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, page_path::PagePath, responsive_grid::ResponsiveGrid}, entity::{instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}, DataEntities}, interface_config::{InstancesViewMode, InterfaceConfig}, ui
+    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, page_path::PagePath, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}}, interface_config::{InstancesViewMode, InterfaceConfig}, ts, ui
 };
 
 pub struct InstancesPage {
@@ -61,12 +61,12 @@ impl Render for InstancesPage {
         let create_instance = Button::new("create_instance")
             .success()
             .icon(IconName::Plus)
-            .label("Create Instance")
+            .label(ts!("instance.create"))
             .on_click(cx.listener(|this, _, window, cx| {
                 crate::modals::create_instance::open_create_instance(this.metadata.clone(), this.instances.clone(),
                     this.backend_handle.clone(), window, cx);
             }));
-        let select_view = Select::new(&self.view_dropdown).title_prefix("View: ");
+        let select_view = Select::new(&self.view_dropdown).title_prefix(format!("{}: ", ts!("instance.view")));
 
         let content = match InterfaceConfig::get(cx).instances_view_mode {
             InstancesViewMode::Cards => {
@@ -89,7 +89,7 @@ impl Render for InstancesPage {
 
         let title_buttons = h_flex().gap_3().child(create_instance).child(select_view);
 
-        ui::page(cx, h_flex().gap_8().child("Instances").child(title_buttons))
+        ui::page(cx, h_flex().gap_8().child(ts!("instance.title")).child(title_buttons))
             .child(content)
     }
 }

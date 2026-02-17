@@ -1,147 +1,680 @@
 _version: 2
 
-# Modrinth categories
-bungeecord:
-  en: BungeeCord
-liteloader:
-  en: LiteLoader
-forge:
-  en: Forge
-neoforge:
-  en: NeoForge
-fabric:
-  en: Fabric
-babric:
-  en: Babric
-quilt:
-  en: Quilt
-cursed:
-  en: Cursed
-technology:
-  en: Technology
-challenging:
-  en: Challenging
-decoration:
-  en: Decoration
-library:
-  en: Library
-adventure:
-  en: Adventure
-path-tracing:
-  en: Path Tracing
-realistic:
-  en: Realistic
-low:
-  en: Low
-medium:
-  en: Medium
-high:
-  en: High
-atmosphere:
-  en: Atmosphere
-fantasy:
-  en: Fantasy
-foliage:
-  en: Foliage
-bloom:
-  en: Bloom
-vanilla-like:
-  en: Vanilla-like
-cartoon:
-  en: Cartoon
-potato:
-  en: Potato
-shadows:
-  en: Shadows
-pbr:
-  en: PBR
-semi-realistic:
-  en: Semi-realistic
-reflections:
-  en: Reflections
-screenshot:
-  en: Screenshot
-colored-lighting:
-  en: Colored Lighting
-economy:
-  en: Economy
-management:
-  en: Management
-optimization:
-  en: Optimization
-mobs:
-  en: Mobs
-transportation:
-  en: Transportation
-kitchen-sink:
-  en: Kitchen sink
-blocks:
-  en: Blocks
-audio:
-  en: Audio
-combat:
-  en: Combat
-modded:
-  en: Modded
-environment:
-  en: Environment
-entities:
-  en: Entities
-game-mechanics:
-  en: Game Mechanics
-utility:
-  en: Utility
-core-shaders:
-  en: Core Shaders
-tweaks:
-  en: Tweaks
-items:
-  en: Items
-models:
-  en: Models
-equipment:
-  en: Equipment
-fonts:
-  en: Fonts
-simplistic:
-  en: Simplistic
-themed:
-  en: Themed
-magic:
-  en: Magic
-storage:
-  en: Storage
-food:
-  en: Food
-gui:
-  en: GUI
-worldgen:
-  en: World Generation
-worldgen-short:
-  en: Worldgen
-multiplayer:
-  en: Multiplayer
-quests:
-  en: Quests
-lightweight:
-  en: Lightweight
-social:
-  en: Social
-minigame:
-  en: Minigame
+modrinth:
+  name:
+    en: Modrinth
+  category:
+    # Loaders
+    # mods
+    fabric:
+      en: Fabric
+    forge:
+      en: Forge
+    neoforge:
+      en: NeoForge
+    quilt:
+      en: Quilt
+    babric:
+      en: Babric
+    bta-babric:
+      en: BTA (Babric)
+    java-agent:
+      en: Java Agent
+    legacy-fabric:
+      en: Legacy Fabric
+    liteloader:
+      en: LiteLoader
+    modloader:
+      en: Risugami's ModLoader
+    nilloader:
+      en: NilLoader
+    ornithe:
+      en: Ornithe
+    rift:
+      en: Rift
+    # resourcepacks
+    minecraft:
+      en: Resource Pack
+    # datapacks
+    datapack:
+      en: Data Pack
+    # shaders
+    iris:
+      en: Iris
+    optifine:
+      en: OptiFine
+    canvas:
+      en: Canvas
+    vanilla:
+      en: Vanilla Shader
+    # plugins
+    bukkit:
+      en: Bukkit
+    folia:
+      en: Folia
+    paper:
+      en: Paper
+    purpur:
+      en: Purpur
+    spigot:
+      en: Spigot
+    sponge:
+      en: Sponge
+    bungeecord:
+      en: BungeeCord
+    geyser:
+      en: Geyser
+    velocity:
+      en: Velocity
+    waterfall:
+      en: Waterfall
 
-# Modrinth environments
-client_and_server:
-  en: Client and server
-client_only:
-  en: Client only
-client_only_server_optional:
-  en: Client (server optional)
-server_only:
-  en: Server only
-server_only_client_optional:
-  en: Server (client optional)
-client_or_server:
-  en: Client or server
-unknown_environment:
-  en: Unknown environment
+    # Categories
+    cursed:
+      en: Cursed
+    technology:
+      en: Technology
+    challenging:
+      en: Challenging
+    decoration:
+      en: Decoration
+    library:
+      en: Library
+    adventure:
+      en: Adventure
+    path-tracing:
+      en: Path Tracing
+    realistic:
+      en: Realistic
+    atmosphere:
+      en: Atmosphere
+    fantasy:
+      en: Fantasy
+    foliage:
+      en: Foliage
+    bloom:
+      en: Bloom
+    vanilla-like:
+      en: Vanilla-like
+    cartoon:
+      en: Cartoon
+    shadows:
+      en: Shadows
+    pbr:
+      en: PBR
+    semi-realistic:
+      en: Semi-realistic
+    reflections:
+      en: Reflections
+    colored-lighting:
+      en: Colored Lighting
+    economy:
+      en: Economy
+    management:
+      en: Management
+    optimization:
+      en: Optimization
+    mobs:
+      en: Mobs
+    transportation:
+      en: Transportation
+    kitchen-sink:
+      en: Kitchen sink
+    blocks:
+      en: Blocks
+    audio:
+      en: Audio
+    combat:
+      en: Combat
+    modded:
+      en: Modded
+    environment:
+      en: Environment
+    entities:
+      en: Entities
+    game-mechanics:
+      en: Game Mechanics
+    utility:
+      en: Utility
+    core-shaders:
+      en: Core Shaders
+    tweaks:
+      en: Tweaks
+    items:
+      en: Items
+    models:
+      en: Models
+    equipment:
+      en: Equipment
+    fonts:
+      en: Fonts
+    simplistic:
+      en: Simplistic
+    themed:
+      en: Themed
+    magic:
+      en: Magic
+    storage:
+      en: Storage
+    food:
+      en: Food
+    gui:
+      en: GUI
+    worldgen:
+      en: World Generation
+    worldgen.short:
+      en: Worldgen
+    multiplayer:
+      en: Multiplayer
+    quests:
+      en: Quests
+    lightweight:
+      en: Lightweight
+    social:
+      en: Social
+    minigame:
+      en: Minigame
+    locale:
+      en: Locale
+    # shaders performance impact
+    potato:
+      en: Potato
+    low:
+      en: Low
+    medium:
+      en: Medium
+    high:
+      en: High
+    screenshot:
+      en: Screenshot
+    # resourcepack resolutions
+    8x-:
+      en: 8x or lower
+    16x:
+      en: 16x
+    32x:
+      en: 32x
+    48x:
+      en: 48x
+    64x:
+      en: 64x
+    128x:
+      en: 128x
+    256x:
+      en: 256x
+    512x+:
+      en: 512x or higher
+
+  environment:
+    client_and_server:
+      en: Client and server
+    client_only:
+      en: Client only
+    client_only_server_optional:
+      en: Client (server optional)
+    server_only:
+      en: Server only
+    server_only_client_optional:
+      en: Server (client optional)
+    client_or_server:
+      en: Client or server
+    unknown_environment:
+      en: Unknown environment
+
+  versions:
+    alpha:
+      en: "%{name} (Alpha)"
+    beta:
+      en: "%{name} (Beta)"
+
+common:
+  app_name:
+    en: Pandora
+  unknown:
+    en: Unknown
+  search:
+    en: Search
+  error:
+    en: Error
+  latest:
+    en: Latest
+  update:
+    en: Update
+  min:
+    en: Min
+  max:
+    en: Max
+  or_upper:
+    en: OR
+  unset:
+    en: <unset>
+  custom:
+    en: Custom
+  nav:
+    top:
+      en: Go to Top
+    bottom:
+      en: Go to Bottom
+  layout:
+    cards:
+      en: Cards
+    list:
+      en: List
+file_system:
+  open_folder:
+    error:
+      en: "Unable to open folder: %{err}"
+    not_a_directory:
+      en: "Unable to open folder: not a directory"
+system:
+  backend_shutdown:
+    en: Backend has abruptly shutdown
+  metadata_error:
+    en: Wrong metadata type! Pandora bug!
+  game_output:
+    en: Minecraft Game Output
+  update:
+    title:
+      en: Update Pandora?
+    current:
+      en: "Current version: %{ver}"
+    new:
+      en: "New version: %{ver}"
+    size:
+      en: "Update size: %{num}"
+    later:
+      en: Later
+    install_error:
+      en: Unable to install update
+account:
+  title:
+    en: Accounts
+  none:
+    en: No Account
+  name:
+    en: Name
+  uuid:
+    en: UUID
+  uuid_random:
+    en: Random
+  add:
+    title:
+      en: Adding new account
+    label:
+      en: Add account
+    submit:
+      en: Add
+    offline:
+      en: Add Offline Account
+    error:
+      en: Error adding account
+instance:
+  title:
+    en: Instances
+  label:
+    en: Instance
+  recent:
+    en: Recent Instances
+  none_selected:
+    en: Select an instance
+  unnamed:
+    en: Unnamed Instance
+  incompatible:
+    en: (%{num} instances were incompatible)
+  new:
+    en: New Instance
+  quickplay:
+    en: Quickplay
+  worlds:
+    en: Worlds
+  servers:
+    en: Servers
+  vanilla:
+    en: Vanilla
+  unable_to_find:
+    en: Unable to find instance
+  start:
+    title:
+      en: Launching %{name}
+    label:
+      en: Start
+    starting:
+      en: Launching...
+    error:
+      en: Error starting instance
+
+  # Actions
+  play:
+    en: Play
+  view:
+    en: View
+  kill:
+    en: Kill Instance
+  delete:
+    en: Delete this instance
+  create_shortcut:
+    en: Create shortcut
+  open_folder:
+    en: Open .minecraft folder
+  create:
+    en: Create Instance
+
+  # Properties & Config
+  name:
+    en: Name
+  name_placeholder:
+    en: <instance name>
+  version:
+    en: Version
+  loader:
+    en: Loader
+  loader_version:
+    en: "%{loader} Version"
+  game_version:
+    en: Game Version
+  mc_version:
+    en: Minecraft Version
+  show_snapshots:
+    en: Show Snapshots
+  modloader:
+    en: Modloader
+  select_icon:
+    en: Select Icon
+  select_png_icon:
+    en: Select PNG Icon
+  instance_name:
+    en: Instance name
+  invalid_name:
+    en: Invalid name
+  versions_loading:
+    game_versions:
+      en: Loading Minecraft Versions...
+    reload:
+      en: Reload Versions
+    possible_loader_error:
+      en: Error loading possible loader versions
+    error:
+      en: Error loading Minecraft versions
+
+  # Advanced Settings
+  memory:
+    en: Set Memory
+  jvm_flags:
+    en: Add JVM Flags
+  jvm_binary:
+    en: Override JVM Binary
+  select_jvm_binary:
+    en: Select JVM Binary
+  glfw_lib:
+    en: Use System GLFW
+  select_glfw_lib:
+    en: Select GLFW Library
+  openal_lib:
+    en: Use System OpenAL
+  select_openal_lib:
+    en: Select OpenAL Library
+
+  # Linux Specific
+  linux:
+    label:
+      en: Linux Performance
+    use_mangohud:
+      en: Use MangoHud
+    use_gamemode:
+      en: Use GameMode
+    use_discrete_gpu:
+      en: Use Discrete GPU
+
+  # Delete Dialog
+  delete_dialog:
+    title:
+      en: "Delete Instance: %{name}"
+    label:
+      en: I want to delete this instance
+    check:
+      en: I have read and understand these effects
+    confirm_text:
+      en: "To confirm, type '%{name}' in the box below"
+    warning:
+      en: "This will permanently delete the '%{name}' instance and associated saves, resourcepacks, mods, configuration files, and more. These files will not be recoverable"
+
+  # Logs
+  logs:
+    title:
+      en: Logs
+    none:
+      en: No available logs
+    loading:
+      en: Loading available logs...
+    cleanup:
+      en: Cleanup old log files (%{num})
+    select_file:
+      en: Select log file
+    upload:
+      label:
+        en: Upload
+      title:
+        en: Uploading log file
+      error:
+        en: Error uploading log file
+
+  # Content Management
+  content:
+    title:
+      en: Content
+    mods:
+      en: Mods
+    modpacks:
+      en: Modpacks
+    resourcepacks:
+      en: Resourcepacks
+    shaders:
+      en: Shaders
+    version:
+      mod:
+        en: "Mod Version"
+      modpack:
+        en: "Modpack Version"
+      resourcepack:
+        en: "Pack Version"
+      shader:
+        en: "Shader Version"
+      file:
+        en: "File Version"
+    search:
+      mod:
+        en: "Search mods..."
+      modpack:
+        en: "Search modpacks..."
+      resourcepack:
+        en: "Search resourcepacks..."
+      shader:
+        en: "Search shaders..."
+      file:
+        en: "Search..."
+    requesting_from_modrinth_error:
+      en: Error requesting from Modrinth
+    unnamed:
+      en: Unnamed
+    open_page:
+      en: Open Page
+    by:
+      en: by %{name}
+    no_description:
+      en: No Description
+    categories:
+      en: Categories
+    downloads:
+      en: "%{num} Downloads"
+    load:
+      versions:
+        title:
+          en: Loading mod versions...
+        not_found:
+          en: No mod versions found
+        not_found_for:
+          en: No mod versions found for %{ver}
+      versions_from_modrinth:
+        title:
+          en: Loading project versions from Modrinth...
+        error:
+          en: "Error loading project versions from Modrinth: %{err}"
+      no_matching_versions:
+        en: Unable to find matching version of project
+    install:
+      label:
+        en: Install
+      title:
+        en: Install %{name}
+      reinstall:
+        en: Reinstall
+      latest:
+        en: Install Latest
+      error:
+        en: Error installing content
+      always_latest:
+        en: Always install the latest version. Untick to be able to choose older versions of content to install
+      from_modrinth:
+        en: Add from Modrinth
+      from_file:
+        en: Add from file
+      unable_other_type:
+        en: Unable to install 'other' project type
+      invalid_filename:
+        en: Invalid/dangerous filename
+      select_mods:
+        en: Select mods to install
+      new_instance_with:
+        mod:
+          en: Create new instance with this mod
+        modpack:
+          en: Create new instance with this modpack
+        resourcepack:
+          en: Create new instance with this resourcepack
+        shader:
+          en: Create new instance with this shader
+        file:
+          en: Create new instance with this file
+      add_to_instance:
+        en: Add to instance
+      install_dependency:
+        en: Install 1 dependency
+      install_dependencies:
+        en: Install %{num} dependencies
+      no_mod_version_selected:
+        en: No mod version selected
+      unable_install_other:
+        en: Unable to install 'other' project type
+      unknown_type:
+        en: Don't know how to handle this type of content
+      select_resourcepacks:
+        en: Select resource packs to install
+    update:
+      label:
+        en: Update
+      check:
+        label:
+          en: Check for updates
+        label.short:
+          en: Update Check
+        title:
+          en: Checking for updates
+        error:
+          en: Error checking for updates
+        error_404:
+          en: Error while checking updates - 404 not found
+        invalid_hash_error:
+          en: Error while checking updates - returned invalid hash
+        last_up_to_date:
+          en: Up-to-date as of last check
+        up_to_date:
+          en: Up-to-date
+      download:
+        error:
+          en: Error downloading update
+        from_modrinth:
+          en: Download update from Modrinth
+      error:
+        en: Error updating mod
+      installed_manually:
+        en: Installed manually - cannot automatically update
+
+  # Sync Feature
+  sync:
+    label:
+      en: Syncing
+    description:
+      en: These options allow for syncing various files/folders across instances
+    open_folder:
+      en: Open synced folders directory
+    already_exists:
+      en: "%{num} instance(s) already contain a '%{name}' folder. Please safely backup and remove the folders to enable syncing"
+    folders_count:
+      en: "(%{num1}/%{num2} folders synced)"
+    unable_count:
+      en: "%{num1}/%{num2} instances are unable to be synced!"
+    files:
+      en: Files
+    folders:
+      en: Folders
+    mods:
+      en: Mods
+
+    targets:
+      options:
+        en: Sync options.txt
+      servers:
+        en: Sync servers.dat
+      commands:
+        en: Sync command_history.txt
+      hotbars:
+        en: Sync hotbar.nbt
+      saves:
+        en: Sync saves folder
+      config:
+        en: Sync config folder
+      screenshots:
+        en: Sync screenshots folder
+      resourcepacks:
+        en: Sync resourcepacks folder
+      shaderpacks:
+        en: Sync shaderpacks folder
+      flashback:
+        en: Sync Flashback (flashback) folder
+      dh:
+        en: Sync Distant Horizons (Distant_Horizons_server_data) folder
+      voxy:
+        en: Sync Voxy (.voxy) folder
+      xaero:
+        en: Sync Xaero's Minimap (xaero) folder
+      bobby:
+        en: Sync Bobby (.bobby) folder
+      litematic:
+        en: Sync Litematic (schematic) folder
+
+settings:
+  title:
+    en: Settings
+  interface:
+    en: Interface
+  theme:
+    title:
+      en: Theme
+    open_folder:
+      en: Open theme folder
+    open_repo:
+      en: Open theme repository
+  delete:
+    title:
+      en: Deletion
+    skip_mod_delete_confirmation:
+      en: Shift+Click to skip mod delete confirmation
+    skip_instance_delete_confirmation:
+      en: Shift+Click to skip instance delete confirmation
+  launch:
+    title:
+      en: Launching
+    hide_main_window:
+      en: Hide main window on launch
+    open_game_output:
+      en: Open game output on launch

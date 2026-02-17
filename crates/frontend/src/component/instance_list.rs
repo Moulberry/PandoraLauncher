@@ -7,7 +7,7 @@ use gpui_component::{
 use crate::{
     entity::{
         instance::{InstanceAddedEvent, InstanceEntry, InstanceModifiedEvent, InstanceRemovedEvent}, DataEntities
-    }, pages::instance::instance_page::InstanceSubpageType, png_render_cache, root, ui
+    }, pages::instance::instance_page::InstanceSubpageType, png_render_cache, ts, root, ui
 };
 
 pub struct InstanceList {
@@ -47,17 +47,17 @@ impl InstanceList {
                         .fixed_left()
                         .movable(false)
                         .resizable(false),
-                    Column::new("name", "Name")
+                    Column::new("name", ts!("instance.name"))
                         .width(150.)
                         .fixed_left()
                         .sortable()
                         .resizable(true),
-                    Column::new("version", "Version")
+                    Column::new("version", ts!("instance.version"))
                         .width(150.)
                         .fixed_left()
                         .sortable()
                         .resizable(true),
-                    Column::new("loader", "Modloader")
+                    Column::new("loader", ts!("instance.modloader"))
                         .width(150.)
                         .fixed_left()
                         .resizable(true),
@@ -112,7 +112,7 @@ impl InstanceList {
                 )
             ).child(h_flex()
                 .gap_2()
-                .child(Button::new(("start", index)).flex_grow().small().success().label("Start").on_click({
+                .child(Button::new(("start", index)).flex_grow().small().success().label(ts!("instance.start.label")).on_click({
                     let name = item.name.clone();
                     let id = item.id;
                     let backend_handle = self.backend_handle.clone();
@@ -120,7 +120,7 @@ impl InstanceList {
                         root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
                     }
                 }))
-                .child(Button::new(("view", index)).flex_grow().small().info().label("View").on_click({
+                .child(Button::new(("view", index)).flex_grow().small().info().label(ts!("instance.view")).on_click({
                     let id = item.id;
                     move |_, window, cx| {
                         root::switch_page(ui::PageType::InstancePage(id, InstanceSubpageType::Quickplay),
@@ -178,14 +178,14 @@ impl TableDelegate for InstanceList {
                         .size_full()
                         .gap_2()
                         .border_r_4()
-                        .child(Button::new("start").w(relative(0.5)).small().success().label("Start").on_click({
+                        .child(Button::new("start").w(relative(0.5)).small().success().label(ts!("instance.start.label")).on_click({
                             let name = item.name.clone();
                             let id = item.id;
                             move |_, window, cx| {
                                 root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
                             }
                         }))
-                        .child(Button::new("view").w(relative(0.5)).small().info().label("View").on_click({
+                        .child(Button::new("view").w(relative(0.5)).small().info().label(ts!("instance.view")).on_click({
                             let id = item.id;
                             move |_, window, cx| {
                                 root::switch_page(ui::PageType::InstancePage(id, InstanceSubpageType::Quickplay),
@@ -195,10 +195,10 @@ impl TableDelegate for InstanceList {
                         .into_any_element()
                 },
                 "loader" => item.configuration.loader.name().into_any_element(),
-                _ => "Unknown".into_any_element(),
+                _ => ts!("common.unknown").into_any_element(),
             }
         } else {
-            "Unknown".into_any_element()
+            ts!("common.unknown").into_any_element()
         }
     }
 }

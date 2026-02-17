@@ -11,7 +11,7 @@ use gpui::{prelude::*, *};
 use gpui_component::{breadcrumb::Breadcrumb, scroll::{ScrollableElement, ScrollbarAxis}, v_flex, Root, StyledExt};
 use parking_lot::RwLock;
 
-use crate::{entity::DataEntities, modals, ui::{LauncherUI, PageType}, CloseWindow, MAIN_FONT};
+use crate::{CloseWindow, MAIN_FONT, entity::DataEntities, modals, ts, ui::{LauncherUI, PageType}};
 
 pub struct LauncherRootGlobal {
     pub root: Entity<LauncherRoot>,
@@ -63,7 +63,7 @@ impl Render for LauncherRoot {
             return v_flex().size_full().bg(gpui::blue()).child(message.clone()).overflow_y_scrollbar().into_any_element();
         }
         if self.backend_handle.is_closed() {
-            return v_flex().size_full().bg(gpui::red()).child("Backend has abruptly shutdown").into_any_element();
+            return v_flex().size_full().bg(gpui::red()).child(ts!("system.backend_shutdown")).into_any_element();
         }
 
         let sheet_layer = Root::render_sheet_layer(window, cx);
@@ -74,7 +74,7 @@ impl Render for LauncherRoot {
             .size_full()
             .font_family(MAIN_FONT)
             .when(has_csd_titlebar(window), |this| {
-                this.child(gpui_component::TitleBar::new().child("Pandora"))
+                this.child(gpui_component::TitleBar::new().child(ts!("common.app_name")))
             })
             .child(self.ui.clone())
             .children(sheet_layer)
@@ -111,8 +111,8 @@ pub fn start_new_account_login(
         modal_action: modal_action.clone(),
     });
 
-    let title = SharedString::new_static("Adding new account");
-    modals::generic::show_modal(window, cx, title, "Error adding account".into(), modal_action);
+    let title = ts!("account.add.title");
+    modals::generic::show_modal(window, cx, title, ts!("account.add.error"), modal_action);
 }
 
 pub fn start_instance(
@@ -131,8 +131,8 @@ pub fn start_instance(
         modal_action: modal_action.clone(),
     });
 
-    let title: SharedString = format!("Launching {}", name).into();
-    modals::generic::show_modal(window, cx, title, "Error starting instance".into(), modal_action);
+    let title: SharedString = ts!("instance.start.title", name = name);
+    modals::generic::show_modal(window, cx, title, ts!("instance.start.error"), modal_action);
 }
 
 pub fn start_install(
@@ -148,7 +148,7 @@ pub fn start_install(
         modal_action: modal_action.clone(),
     });
 
-    modals::generic::show_notification(window, cx, "Error installing content".into(), modal_action);
+    modals::generic::show_notification(window, cx, ts!("instance.content.install.error"), modal_action);
 }
 
 pub fn start_update_check(
@@ -164,8 +164,8 @@ pub fn start_update_check(
         modal_action: modal_action.clone(),
     });
 
-    let title: SharedString = "Checking for updates".into();
-    modals::generic::show_modal(window, cx, title, "Error checking for updates".into(), modal_action);
+    let title: SharedString = ts!("instance.content.update.check.title");
+    modals::generic::show_modal(window, cx, title, ts!("instance.content.update.check.error"), modal_action);
 }
 
 pub fn update_single_mod(
@@ -183,7 +183,7 @@ pub fn update_single_mod(
         modal_action: modal_action.clone(),
     });
 
-    modals::generic::show_notification(window, cx, "Error downloading update".into(), modal_action);
+    modals::generic::show_notification(window, cx, ts!("instance.content.update.download.error"), modal_action);
 }
 
 pub fn upload_log_file(
@@ -199,8 +199,8 @@ pub fn upload_log_file(
         modal_action: modal_action.clone(),
     });
 
-    let title: SharedString = "Uploading log file".into();
-    modals::generic::show_modal(window, cx, title, "Error uploading log file".into(), modal_action);
+    let title: SharedString = ts!("instance.logs.upload.title");
+    modals::generic::show_modal(window, cx, title, ts!("instance.logs.upload.error"), modal_action);
 }
 
 pub fn switch_page(

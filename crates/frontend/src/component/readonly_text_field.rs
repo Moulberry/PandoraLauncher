@@ -8,6 +8,8 @@ use gpui_component::{
 use lru::LruCache;
 use rustc_hash::FxBuildHasher;
 
+use crate::ts;
+
 struct CachedShapedLines {
     item_lines: LruCache<usize, WrappedLines, FxBuildHasher>,
 }
@@ -791,7 +793,7 @@ impl ReadonlyTextFieldWithControls {
     ) -> Self {
         let scroll_state = Rc::clone(&text_field.read(cx).scroll_state);
 
-        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder("Search").clean_on_escape());
+        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(ts!("common.search")).clean_on_escape());
 
         let _search_input_subscription = cx.subscribe_in(&search_state, window, Self::on_search_input_event);
 
@@ -902,12 +904,12 @@ impl Render for ReadonlyTextFieldWithControls {
             .flex_1()
             .gap_4()
             .child(search)
-            .child(Button::new("top").label("Go to Top").on_click(cx.listener(|root, _, _, cx| {
+            .child(Button::new("top").label(ts!("common.nav.top")).on_click(cx.listener(|root, _, _, cx| {
                 let mut state = root.scroll_handler.state.borrow_mut();
                 state.scrolling = GameOutputScrolling::Top { offset: Pixels::ZERO };
                 cx.notify();
             })))
-            .child(Button::new("bottom").label("Go to Bottom").on_click(cx.listener(|root, _, _, cx| {
+            .child(Button::new("bottom").label(ts!("common.nav.bottom")).on_click(cx.listener(|root, _, _, cx| {
                 let mut state = root.scroll_handler.state.borrow_mut();
                 state.scrolling = GameOutputScrolling::Bottom;
                 cx.notify();

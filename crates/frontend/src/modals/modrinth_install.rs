@@ -17,9 +17,9 @@ use schema::{
 use crate::{
     component::{error_alert::ErrorAlert, instance_dropdown::InstanceDropdown},
     entity::{
-        instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}, DataEntities
+        DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}
     },
-    root,
+    root, ts,
 };
 
 struct VersionMatrixLoaders {
@@ -88,7 +88,7 @@ fn open_from_entity(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let title = SharedString::new(format!("Install {}", name));
+    let title = ts!("instance.content.install.title", name = name);
 
     let result: FrontendMetadataResult<ModrinthProjectVersionsResult> = project_versions.read(cx).result();
     match result {
@@ -99,7 +99,7 @@ fn open_from_entity(
             });
             window.open_dialog(cx, move |dialog, _, _| {
                 let _ = &_subscription;
-                dialog.title(title.clone()).child(h_flex().gap_2().child("Loading mod versions...").child(Spinner::new()))
+                dialog.title(title.clone()).child(h_flex().gap_2().child(ts!("instance.content.load.versions.title")).child(Spinner::new()))
             });
         },
         FrontendMetadataResult::Loaded(versions) => {
@@ -148,12 +148,12 @@ fn open_from_entity(
             }
 
             if version_matrix.is_empty() {
-                open_error_dialog(title.clone(), "No mod versions found".into(), window, cx);
+                open_error_dialog(title.clone(), ts!("instance.content.load.versions.not_found"), window, cx);
                 return;
             }
             if let Some(install_for) = install_for {
                 let Some(instance) = data.instances.read(cx).entries.get(&install_for) else {
-                    open_error_dialog(title.clone(), "Unable to find instance".into(), window, cx);
+                    open_error_dialog(title.clone(), ts!("instance.unable_to_find"), window, cx);
                     return;
                 };
 
@@ -163,7 +163,7 @@ fn open_from_entity(
                 let instance_loader = instance.configuration.loader;
 
                 let Some(loaders) = version_matrix.get(minecraft_version) else {
-                    let error_message = SharedString::from(&format!("No mod versions found for {}", minecraft_version));
+                    let error_message = ts!("instance.content.load.versions.not_found_for", ver = minecraft_version);
                     open_error_dialog(title.clone(), error_message, window, cx);
                     return;
                 };
@@ -174,8 +174,7 @@ fn open_from_entity(
                         || loaders.loaders.contains(instance_loader.as_modrinth_loader());
                 }
                 if !valid_loader {
-                    let error_message = SharedString::from(&format!("No mod versions found for {} {}",
-                        instance_loader.name(), minecraft_version));
+                    let error_message = ts!("instance.content.load.versions.not_found_for", ver = format!("{} {}", instance_loader.name(), minecraft_version));
                     open_error_dialog(title.clone(), error_message, window, cx);
                     return;
                 }
@@ -278,7 +277,7 @@ fn open_from_entity(
         },
         FrontendMetadataResult::Error(message) => {
             window.open_dialog(cx, move |modal, _, _| {
-                modal.title(title.clone()).child(ErrorAlert::new("error", "Error requesting from Modrinth".into(), message.clone()))
+                modal.title(title.clone()).child(ErrorAlert::new("error", ts!("instance.content.requesting_from_modrinth_error"), message.clone()))
             });
         },
     }
@@ -303,11 +302,11 @@ impl InstallDialog {
 
         if self.target.is_none() {
             let create_instance_label = match self.project_type {
-                ModrinthProjectType::Mod => "Create new instance with this mod",
-                ModrinthProjectType::Modpack => "Create new instance with this modpack",
-                ModrinthProjectType::Resourcepack => "Create new instance with this resourcepack",
-                ModrinthProjectType::Shader => "Create new instance with this shader",
-                ModrinthProjectType::Other => "Create new instance with this file",
+                ModrinthProjectType::Mod => ts!("instance.content.install.new_instance_with.mod"),
+                ModrinthProjectType::Modpack => ts!("instance.content.install.new_instance_with.modpack"),
+                ModrinthProjectType::Resourcepack => ts!("instance.content.install.new_instance_with.resourcepack"),
+                ModrinthProjectType::Shader => ts!("instance.content.install.new_instance_with.shader"),
+                ModrinthProjectType::Other => ts!("instance.content.install.new_instance_with.file"),
             };
 
             let content = v_flex()
@@ -324,15 +323,15 @@ impl InstallDialog {
                                 .w_full()
                                 .gap_0p5()
                                 .child(
-                                    Select::new(instances).placeholder("Select an instance").title_prefix("Instance: "),
+                                    Select::new(instances).placeholder(ts!("instance.none_selected")).title_prefix(format!("{}: ", ts!("instance.label"))),
                                 )
                                 .when(self.unsupported_instances > 0, |content| {
                                     content
-                                        .child(format!("({} instances were incompatible)", self.unsupported_instances))
+                                        .child(ts!("instance.incompatible", num = self.unsupported_instances))
                                 }),
                         )
                         .when_some(selected_instance, |dialog, instance| {
-                            dialog.child(Button::new("instance").success().h_full().label("Add to instance").on_click(
+                            dialog.child(Button::new("instance").success().h_full().label(ts!("instance.content.install.add_to_instance")).on_click(
                                 cx.listener(move |this, _, _, _| {
                                     this.target = Some(InstallTarget::Instance(instance.id));
                                     this.fixed_minecraft_version = Some(instance.configuration.minecraft_version.as_str());
@@ -346,12 +345,12 @@ impl InstallDialog {
                             ))
                         });
 
-                    content.child(button_and_dropdown).child("— OR —")
+                    content.child(button_and_dropdown).child(format!("— {} —", ts!("common.or_upper")))
                 })
                 .child(Button::new("create").success().label(create_instance_label).on_click(cx.listener(
                     |this, _, _, _| {
                         this.target = Some(InstallTarget::NewInstance {
-                            name: "New Instance".into(),
+                            name: ts!("instance.new").into(),
                         });
                     },
                 )));
@@ -510,8 +509,8 @@ impl InstallDialog {
                         let mut name = SharedString::new(name);
 
                         match version.version_type {
-                            Some(ModrinthVersionType::Beta) => name = format!("{} (Beta)", name).into(),
-                            Some(ModrinthVersionType::Alpha) => name = format!("{} (Alpha)", name).into(),
+                            Some(ModrinthVersionType::Beta) => name = ts!("modrinth.versions.beta", name = name),
+                            Some(ModrinthVersionType::Alpha) => name = ts!("modrinth.versions.alpha", name = name),
                             _ => {},
                         }
 
@@ -568,11 +567,11 @@ impl InstallDialog {
             .cloned();
 
         let mod_version_prefix = match self.project_type {
-            ModrinthProjectType::Mod => "Mod Version: ",
-            ModrinthProjectType::Modpack => "Modpack version: ",
-            ModrinthProjectType::Resourcepack => "Pack version: ",
-            ModrinthProjectType::Shader => "Shader version: ",
-            ModrinthProjectType::Other => "File version: ",
+            ModrinthProjectType::Mod => format!("{}: ", ts!("instance.content.version.mod")),
+            ModrinthProjectType::Modpack => format!("{}: ", ts!("instance.content.version.modpack")),
+            ModrinthProjectType::Resourcepack => format!("{}: ", ts!("instance.content.version.resourcepack")),
+            ModrinthProjectType::Shader => format!("{}: ", ts!("instance.content.version.shader")),
+            ModrinthProjectType::Other => format!("{}: ", ts!("instance.content.version.file")),
         };
 
         let required_dependencies = selected_mod_version.as_ref().and_then(|version| {
@@ -592,29 +591,29 @@ impl InstallDialog {
             .child(
                 Select::new(self.minecraft_version_select_state.as_ref().unwrap())
                     .disabled(self.fixed_minecraft_version.is_some())
-                    .title_prefix("Game Version: "),
+                    .title_prefix(format!("{}: ", ts!("instance.game_version"))),
             )
             .child(
                 Select::new(self.loader_select_state.as_ref().unwrap())
                     .disabled(self.fixed_loader.is_some() || self.skip_loader_check_for_mod_version)
-                    .title_prefix("Loader: "),
+                    .title_prefix(format!("{}: ", ts!("instance.loader"))),
             )
             .when_some(self.mod_version_select_state.as_ref(), |modal, mod_versions| {
                 modal
                     .child(Select::new(mod_versions).title_prefix(mod_version_prefix))
                     .when(!required_dependencies.is_empty(), |modal| {
                         modal.child(Checkbox::new("install_deps").checked(self.install_dependencies).label(if required_dependencies.len() == 1 {
-                            SharedString::new_static("Install 1 dependency")
+                            ts!("instance.content.install.install_dependency")
                         } else {
-                            SharedString::new(format!("Install {} dependencies", required_dependencies.len()))
+                            ts!("instance.content.install.install_dependencies", num = required_dependencies.len())
                         }).on_click(cx.listener(|dialog, value, _, _| {
                             dialog.install_dependencies = *value;
                         })))
                     })
-                    .child(Button::new("install").success().label("Install").on_click(cx.listener(
+                    .child(Button::new("install").success().label(ts!("instance.content.install.label")).on_click(cx.listener(
                         move |this, _, window, cx| {
                             let Some(selected_mod_version) = selected_mod_version.as_ref() else {
-                                window.push_notification((NotificationType::Error, "No mod version selected"), cx);
+                                window.push_notification((NotificationType::Error, ts!("instance.content.no_mod_version_selected")), cx);
                                 return;
                             };
 
@@ -630,13 +629,13 @@ impl InstallDialog {
                                 ModrinthProjectType::Resourcepack => RelativePath::new("resourcepacks").join(&*install_file.filename),
                                 ModrinthProjectType::Shader => RelativePath::new("shaderpacks").join(&*install_file.filename),
                                 ModrinthProjectType::Other => {
-                                    window.push_notification((NotificationType::Error, "Unable to install 'other' project type"), cx);
+                                    window.push_notification((NotificationType::Error, ts!("instance.content.install.unable_install_other")), cx);
                                     return;
                                 },
                             };
 
                             let Some(path) = SafePath::from_relative_path(&path) else {
-                                window.push_notification((NotificationType::Error, "Invalid/dangerous filename"), cx);
+                                window.push_notification((NotificationType::Error, ts!("instance.content.install.invalid_filename")), cx);
                                 return;
                             };
 

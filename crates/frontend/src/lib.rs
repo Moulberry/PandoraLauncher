@@ -34,17 +34,23 @@ pub mod ui;
 rust_i18n::i18n!("locales");
 
 macro_rules! ts {
-    ($($all:tt)*) => {
-        SharedString::new_static(ustr::ustr(&*rust_i18n::t!($($all)*)).as_str())
+    ($key:literal) => {
+        SharedString::new_static(
+            ustr::ustr(&*rust_i18n::t!($key)).as_str()
+        )
+    };
+
+    ($($rest:tt)*) => {
+        SharedString::from(rust_i18n::t!($($rest)*))
     };
 }
 pub(crate) use ts;
 
 macro_rules! ts_short {
     ($id:expr) => {{
-        let short_key = format!("{}-short", $id);
+        let short_key = format!("{}.short", $id);
         let translated = rust_i18n::t!(&short_key);
-        if translated.ends_with("-short") {
+        if translated.ends_with(".short") {
             ts!($id)
         } else {
             SharedString::new_static(ustr::ustr(&*translated).as_str())
@@ -208,7 +214,7 @@ pub fn open_main_window(data: &DataEntities, cx: &mut App) -> AnyWindowHandle {
             app_id: Some("PandoraLauncher".into()),
             window_min_size: Some(size(px(360.0), px(240.0))),
             titlebar: Some(TitlebarOptions {
-                title: Some(SharedString::new_static("Pandora")),
+                title: Some(ts!("common.app_name")),
                 ..Default::default()
             }),
             window_bounds,
@@ -216,7 +222,7 @@ pub fn open_main_window(data: &DataEntities, cx: &mut App) -> AnyWindowHandle {
             ..Default::default()
         },
         |window, cx| {
-            window.set_window_title("Pandora");
+            window.set_window_title(ts!("common.app_name").as_str());
 
             let launcher_root = cx.new(|cx| {
                 cx.observe_window_bounds(window, move |_, window, cx| {
@@ -297,18 +303,18 @@ pub(crate) fn is_single_component_path(path: &str) -> bool {
 }
 
 #[inline]
-pub(crate) fn labelled(label: &'static str, element: impl IntoElement) -> Div {
-    gpui_component::v_flex().gap_0p5().child(div().text_sm().font_medium().child(label)).child(element)
+pub(crate) fn labelled(label: impl Into<SharedString>, element: impl IntoElement) -> Div {
+    gpui_component::v_flex().gap_0p5().child(div().text_sm().font_medium().child(label.into())).child(element)
 }
 
 pub(crate) fn open_folder(path: &Path, window: &mut Window, cx: &mut App) {
     if path.is_dir() {
         if let Err(err) = open::that_detached(path) {
-            let notification: Notification = (NotificationType::Error, SharedString::from(format!("Unable to open folder: {err}"))).into();
+            let notification: Notification = (NotificationType::Error, ts!("file_system.open_folder.error", err = err)).into();
             window.push_notification(notification.autohide(false), cx);
         }
     } else {
-        let notification: Notification = (NotificationType::Error, SharedString::from("Unable to open folder: not a directory")).into();
+        let notification: Notification = (NotificationType::Error, ts!("file_system.open_folder.not_a_directory")).into();
         window.push_notification(notification.autohide(false), cx);
     }
 }

@@ -5,7 +5,7 @@ use rand::RngCore;
 use schema::modrinth::ModrinthProjectType;
 use serde::{Deserialize, Serialize};
 
-use crate::ui::SerializedPageType;
+use crate::{ts, ui::SerializedPageType};
 
 struct InterfaceConfigHolder {
     config: InterfaceConfig,
@@ -79,8 +79,8 @@ pub enum InstancesViewMode {
 impl InstancesViewMode {
     pub fn name(self) -> SharedString {
         match self {
-            InstancesViewMode::Cards => "Cards".into(),
-            InstancesViewMode::List => "List".into(),
+            InstancesViewMode::Cards => ts!("common.layout.cards").into(),
+            InstancesViewMode::List => ts!("common.layout.list").into(),
         }
     }
 }

@@ -6,7 +6,7 @@ use bridge::{
 };
 use futures::TryFutureExt;
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{content::ContentSource, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
+use schema::{auxiliary::AuxiliaryContentMeta, content::ContentSource, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
 use serde::Deserialize;
 use strum::IntoEnumIterator;
 use tokio::{io::AsyncBufReadExt, sync::Semaphore};
@@ -69,8 +69,8 @@ impl BackendState {
             MessageToBackend::RequestLoadResourcePacks { id } => {
                 tokio::task::spawn(self.clone().load_instance_content(id, ContentFolder::ResourcePacks));
             },
-            MessageToBackend::CreateInstance { name, version, loader } => {
-                self.create_instance(&name, &version, loader).await;
+            MessageToBackend::CreateInstance { name, version, loader, icon } => {
+                self.create_instance(&name, &version, loader, icon).await;
             },
             MessageToBackend::DeleteInstance { id } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
@@ -130,6 +130,20 @@ impl BackendState {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.configuration.modify(|configuration| {
                         configuration.sync = Some(sync);
+                    });
+                }
+            },
+            MessageToBackend::SetInstanceLinuxWrapper { id, linux_wrapper } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.linux_wrapper = Some(linux_wrapper);
+                    });
+                }
+            },
+            MessageToBackend::SetInstanceSystemLibraries { id, system_libraries } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.system_libraries = Some(system_libraries);
                     });
                 }
             },
@@ -211,16 +225,23 @@ impl BackendState {
                 let is_err = result.is_err();
                 match result {
                     Ok(mut child) => {
-                        if self.config.write().get().open_game_output_when_launching {
+                        if !self.config.write().get().dont_open_game_output_when_launching {
                             if let Some(stdout) = child.stdout.take() {
                                 log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
                             }
                         }
+
+                        // Close handles if unused
+                        child.stderr.take();
+                        child.stdin.take();
+                        child.stdout.take();
+
                         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                             instance.child = Some(child);
                         }
                     },
                     Err(ref err) => {
+                        log::error!("Failed to launch due to error: {:?}", &err);
                         modal_action.set_error_message(format!("{}", &err).into());
                     },
                 }
@@ -264,23 +285,51 @@ impl BackendState {
 
                 instance_state.reload_immediately.extend(reload);
             },
-            MessageToBackend::SetContentChildEnabled { id, content_id: mod_id, path, enabled } => {
+            MessageToBackend::SetContentChildEnabled { id, content_id: mod_id, child_id, child_name, child_filename, enabled } => {
                 let mut instance_state = self.instance_state.write();
                 if let Some(instance) = instance_state.instances.get_mut(id)
                     && let Some((instance_mod, folder)) = instance.try_get_content(mod_id)
                 {
-                    let Some(child_state_path) = crate::child_state_path(&instance_mod.path) else {
+                    let Some(aux_path) = crate::pandora_aux_path_for_content(instance_mod) else {
                         return;
                     };
 
-                    match set_mod_child_enabled(&child_state_path, &*path, enabled) {
-                        Ok(_) => {
-                            instance_state.reload_immediately.insert((id, folder));
-                        },
-                        Err(error) => {
-                            let error = format!("Error occured while updating child state: {error}");
-                            self.send.send_error(error);
-                        },
+                    let mut aux: AuxiliaryContentMeta = crate::read_json(&aux_path).unwrap_or_default();
+
+                    let mut changed = false;
+
+                    if enabled {
+                        if let Some(child_id) = child_id {
+                            changed |= aux.disabled_children.disabled_ids.remove(&child_id);
+                        }
+                        if let Some(child_name) = child_name {
+                            changed |= aux.disabled_children.disabled_names.remove(&child_name);
+                        }
+                        changed |= aux.disabled_children.disabled_filenames.remove(&child_filename);
+                    } else {
+                        if let Some(child_id) = child_id {
+                            changed |= aux.disabled_children.disabled_ids.insert(child_id);
+                        } else if let Some(child_name) = child_name {
+                            changed |= aux.disabled_children.disabled_names.insert(child_name);
+                        } else {
+                            changed |= aux.disabled_children.disabled_filenames.insert(child_filename);
+                        }
+                    }
+
+                    if changed {
+                        let bytes = match serde_json::to_vec(&aux) {
+                            Ok(bytes) => bytes,
+                            Err(err) => {
+                                log::error!("Unable to serialize AuxiliaryContentMeta: {err:?}");
+                                self.send.send_error("Unable to serialize AuxiliaryContentMeta");
+                                return;
+                            },
+                        };
+                        if let Err(err) = crate::write_safe(&aux_path, &bytes) {
+                            log::error!("Unable to save aux meta: {err:?}");
+                            self.send.send_error("Unable to save aux meta");
+                        }
+                        instance_state.reload_immediately.insert((id, folder));
                     }
                 }
             },
@@ -307,7 +356,12 @@ impl BackendState {
                         return;
                     };
 
-                    let _ = std::fs::remove_file(&instance_mod.path);
+                    _ = std::fs::remove_file(&instance_mod.path);
+
+                    if let Some(aux_path) = crate::pandora_aux_path_for_content(&instance_mod) {
+                        _ = std::fs::remove_file(aux_path);
+                    }
+
                     reload.insert((id, folder));
                 }
 
@@ -411,7 +465,7 @@ impl BackendState {
                                                 params: fabric_mod_params.clone()
                                             }).await
                                         },
-                                        ContentType::Forge => {
+                                        ContentType::Forge | ContentType::LegacyForge => {
                                             meta.fetch(&ModrinthVersionUpdateMetadataItem {
                                                 sha1: hex::encode(summary.content_summary.hash).into(),
                                                 params: forge_mod_params.clone()
@@ -1026,7 +1080,7 @@ impl BackendState {
             },
             MessageToBackend::SetOpenGameOutputAfterLaunching { value } => {
                 self.config.write().modify(|config| {
-                    config.open_game_output_when_launching = value;
+                    config.dont_open_game_output_when_launching = !value;
                 });
             },
             MessageToBackend::CreateInstanceShortcut { id, path } => {
@@ -1042,6 +1096,9 @@ impl BackendState {
                     crate::shortcut::create_shortcut(path, &format!("Launch {}", instance.name), &current_exe, args);
                 }
             },
+            MessageToBackend::InstallUpdate { update, modal_action } => {
+                tokio::task::spawn(crate::update::install_update(self.redirecting_http_client.clone(), self.directories.clone(), self.send.clone(), update, modal_action));
+            }
         }
     }
 

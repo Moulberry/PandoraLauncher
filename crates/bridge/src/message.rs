@@ -1,14 +1,30 @@
-use std::{ffi::OsString, path::{Path, PathBuf}, sync::Arc};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use enumset::{EnumSet, EnumSetType};
-use schema::{backend_config::{BackendConfig, SyncTarget}, instance::{InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration, InstanceSyncConfiguration}, loader::Loader, syncing::SyncEntry};
+use schema::{
+    backend_config::{BackendConfig, SyncTarget}, instance::{
+        InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
+        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSyncConfiguration, InstanceSystemLibrariesConfiguration,
+    }, loader::Loader, pandora_update::{UpdateManifest, UpdateManifestExe, UpdatePrompt}, syncing::SyncEntry,
+};
 use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    account::Account, game_output::GameOutputLogLevel, install::ContentInstall, instance::{
-        InstanceID, InstanceContentID, InstanceContentSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary,
-    }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction
+    account::Account,
+    game_output::GameOutputLogLevel,
+    install::ContentInstall,
+    instance::{
+        InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus,
+        InstanceWorldSummary,
+    },
+    keep_alive::{KeepAlive, KeepAliveHandle},
+    meta::{MetadataRequest, MetadataResult},
+    modal_action::ModalAction,
 };
 
 #[derive(Debug)]
@@ -21,6 +37,7 @@ pub enum MessageToBackend {
         name: Ustr,
         version: Ustr,
         loader: Loader,
+        icon: Option<EmbeddedOrRaw>,
     },
     DeleteInstance {
         id: InstanceID,
@@ -57,6 +74,14 @@ pub enum MessageToBackend {
         id: InstanceID,
         sync: InstanceSyncConfiguration,
     },
+    SetInstanceLinuxWrapper {
+        id: InstanceID,
+        linux_wrapper: InstanceLinuxWrapperConfiguration,
+    },
+    SetInstanceSystemLibraries {
+        id: InstanceID,
+        system_libraries: InstanceSystemLibrariesConfiguration,
+    },
     KillInstance {
         id: InstanceID,
     },
@@ -85,7 +110,9 @@ pub enum MessageToBackend {
     SetContentChildEnabled {
         id: InstanceID,
         content_id: InstanceContentID,
-        path: Arc<str>,
+        child_id: Option<Arc<str>>,
+        child_name: Option<Arc<str>>,
+        child_filename: Arc<str>,
         enabled: bool,
     },
     DeleteContent {
@@ -163,6 +190,10 @@ pub enum MessageToBackend {
         id: InstanceID,
         path: PathBuf
     },
+    InstallUpdate {
+        update: UpdatePrompt,
+        modal_action: ModalAction,
+    }
 }
 
 #[derive(Debug)]
@@ -170,6 +201,7 @@ pub enum MessageToFrontend {
     InstanceAdded {
         id: InstanceID,
         name: Ustr,
+        icon: Option<Arc<[u8]>>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
         worlds_state: Arc<AtomicBridgeDataLoadState>,
@@ -183,6 +215,7 @@ pub enum MessageToFrontend {
     InstanceModified {
         id: InstanceID,
         name: Ustr,
+        icon: Option<Arc<[u8]>>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
         status: InstanceStatus,
@@ -230,6 +263,9 @@ pub enum MessageToFrontend {
         request: MetadataRequest,
         result: Result<MetadataResult, Arc<str>>,
         keep_alive_handle: Option<KeepAliveHandle>,
+    },
+    UpdateAvailable {
+        update: UpdatePrompt,
     },
 }
 
@@ -283,4 +319,10 @@ pub enum QuickPlayLaunch {
     Singleplayer(OsString),
     Multiplayer(OsString),
     Realms(OsString),
+}
+
+#[derive(Debug, Clone)]
+pub enum EmbeddedOrRaw {
+    Embedded(Arc<str>),
+    Raw(Arc<[u8]>),
 }

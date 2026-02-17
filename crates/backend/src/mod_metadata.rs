@@ -9,7 +9,7 @@ use parking_lot::{RwLock, RwLockReadGuard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rc_zip_sync::EntryHandle;
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{content::ContentSource, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, ModsToml}, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta};
+use schema::{content::ContentSource, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DeserializeAs};
 use sha1::{Digest, Sha1};
@@ -119,6 +119,12 @@ impl ModMetadataManager {
         summary
     }
 
+    pub fn get_cached_by_sha1(self: &Arc<Self>, sha1: &str) -> Option<Arc<ContentSummary>> {
+        let mut hash = [0u8; 20];
+        hex::decode_to_slice(sha1, &mut hash).ok()?;
+        self.by_hash.read().get(&hash).cloned().flatten()
+    }
+
     pub fn get_bytes(self: &Arc<Self>, bytes: &[u8]) -> Option<Arc<ContentSummary>> {
         let mut hasher = Sha1::new();
         hasher.write_all(bytes).ok()?;
@@ -150,7 +156,9 @@ impl ModMetadataManager {
     fn load_mod_summary<R: rc_zip_sync::ReadZip>(self: &Arc<Self>, hash: [u8; 20], file: &R, allow_children: bool) -> Option<Arc<ContentSummary>> {
         let archive = file.read_zip().ok()?;
 
-        if let Some(file) = archive.by_name("fabric.mod.json") {
+        if let Some(file) = archive.by_name("mcmod.info") {
+            self.load_legacy_forge_mod(hash, &archive, file)
+        } else if let Some(file) = archive.by_name("fabric.mod.json") {
             self.load_fabric_mod(hash, &archive, file)
         } else if let Some(file) = archive.by_name("META-INF/mods.toml") {
             self.load_forge_mod(hash, &archive, file, ContentType::Forge)
@@ -270,6 +278,56 @@ impl ModMetadataManager {
             png_icon,
             update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra,
+        }))
+    }
+
+    fn load_legacy_forge_mod<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
+        let bytes = file.bytes().ok()?;
+
+        let mc_mod_info: McModInfo = serde_json::from_slice(&bytes).inspect_err(|e| {
+            log::error!("Error parsing mcmod.info: {e}");
+        }).ok()?;
+
+        let Some(first) = mc_mod_info.0.first() else {
+            return None;
+        };
+
+        drop(file);
+
+        let mut png_icon: Option<Arc<[u8]>> = None;
+        if let Some(icon) = &first.logo_file && let Some(icon_file) = archive.by_name(&icon) {
+            png_icon = load_icon(icon_file);
+        }
+
+        let authors = if let Some(authors) = &first.author_list {
+            create_authors_string(authors.as_slice()).unwrap_or_default()
+        } else {
+            "".into()
+        };
+
+        let mut version = format!("v{}", first.version.as_deref().unwrap_or("1"));
+        if version.contains("${file.jarVersion}") {
+            if let Some(manifest) = archive.by_name("META-INF/MANIFEST.MF") {
+                if let Ok(manifest_bytes) = manifest.bytes() {
+                    if let Ok(manifest_str) = str::from_utf8(&manifest_bytes) {
+                        let manifest_map = crate::java_manifest::parse_java_manifest(manifest_str);
+                        if let Some(impl_version) = manifest_map.get("Implementation-Version") {
+                            version = version.replace("${file.jarVersion}", impl_version);
+                        }
+                    }
+                }
+            }
+        }
+
+        Some(Arc::new(ContentSummary {
+            id: Some(first.modid.clone()),
+            hash,
+            name: Some(first.name.clone()),
+            authors: authors.into(),
+            version_str: version.into(),
+            png_icon,
+            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
+            extra: ContentType::LegacyForge,
         }))
     }
 

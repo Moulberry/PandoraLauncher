@@ -20,6 +20,10 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub active_theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub main_window_bounds: WindowBounds,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub sidebar_width: f32,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_page: SerializedPageType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub page_path: Vec<SerializedPageType>,
@@ -33,9 +37,53 @@ pub struct InterfaceConfig {
     pub modrinth_page_project_type: ModrinthProjectType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub show_snapshots_in_create_instance: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instances_view_mode: InstancesViewMode,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WindowBounds {
+    #[default]
+    Inherit,
+    Windowed {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+    },
+    Maximized {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+    },
+    Fullscreen {
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+    },
+}
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, strum::EnumIter)]
+#[serde(rename_all = "lowercase")]
+pub enum InstancesViewMode {
+    #[default]
+    Cards,
+    List,
+}
+
+impl InstancesViewMode {
+    pub fn name(self) -> SharedString {
+        match self {
+            InstancesViewMode::Cards => "Cards".into(),
+            InstancesViewMode::List => "List".into(),
+        }
+    }
+}
 
 impl InterfaceConfig {
     pub fn init(cx: &mut App, path: Arc<Path>) {

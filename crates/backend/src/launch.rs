@@ -2072,6 +2072,40 @@ pub struct LaunchContext {
 
 impl LaunchContext {
     pub fn launch(mut self, version_info: &MinecraftVersion) -> std::io::Result<std::process::Child> {
+        #[cfg(target_os = "linux")]
+        let use_mangohud = self.configuration.linux_wrapper.map(|w| w.use_mangohud).unwrap_or(false);
+        #[cfg(target_os = "linux")]
+        let use_gamemode = self.configuration.linux_wrapper.map(|w| w.use_gamemode).unwrap_or(false);
+
+        #[cfg(target_os = "linux")]
+        let mut command = match (use_mangohud, use_gamemode) {
+            (true, true) => {
+                let mut cmd = std::process::Command::new("mangohud");
+                cmd.arg("gamemoderun");
+                cmd.arg(&*self.java_path);
+                cmd
+            }
+            (true, false) => {
+                let mut cmd = std::process::Command::new("mangohud");
+                cmd.arg(&*self.java_path);
+                cmd
+            }
+            (false, true) => {
+                let mut cmd = std::process::Command::new("gamemoderun");
+                cmd.arg(&*self.java_path);
+                cmd
+            }
+            (false, false) => {
+                std::process::Command::new(&*self.java_path)
+            }
+        };
+
+        #[cfg(target_os = "linux")]
+        if self.configuration.linux_wrapper.map(|w| w.use_discrete_gpu).unwrap_or(true) {
+            command.env("DRI_PRIME", "1");
+        }
+
+        #[cfg(not(target_os = "linux"))]
         let mut command = std::process::Command::new(&*self.java_path);
 
         command.current_dir(&self.game_dir);
@@ -2134,7 +2168,6 @@ impl LaunchContext {
             }
         }
 
-
         if !self.add_mods.is_empty() {
             match self.configuration.loader {
                 Loader::Vanilla => {},
@@ -2151,6 +2184,21 @@ impl LaunchContext {
                         panic!("addMods was used for unsupported loader: {:?}", self.configuration.loader);
                     }
                 }
+            }
+        }
+
+        if let Some(system_libraries) = self.configuration.system_libraries {
+            if let Some(path) = system_libraries.glfw.get_path() {
+                stdin_arguments.push_str("property\n");
+                stdin_arguments.push_str("org.lwjgl.glfw.libname\n");
+                stdin_arguments.push_str(&path.to_string_lossy());
+                stdin_arguments.push('\n');
+            }
+            if let Some(path) = system_libraries.openal.get_path() {
+                stdin_arguments.push_str("property\n");
+                stdin_arguments.push_str("org.lwjgl.openal.libname\n");
+                stdin_arguments.push_str(&path.to_string_lossy());
+                stdin_arguments.push('\n');
             }
         }
 

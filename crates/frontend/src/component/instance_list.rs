@@ -1,16 +1,13 @@
 use bridge::handle::BackendHandle;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    Sizable,
-    button::{Button, ButtonVariants},
-    h_flex,
-    table::{Column, ColumnSort, TableDelegate, TableState},
+    button::{Button, ButtonVariants}, h_flex, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex, ActiveTheme, Icon, IconName, Sizable
 };
 
 use crate::{
     entity::{
         instance::{InstanceAddedEvent, InstanceEntry, InstanceModifiedEvent, InstanceRemovedEvent}, DataEntities
-    }, pages::instance::instance_page::InstanceSubpageType, root, ui
+    }, pages::instance::instance_page::InstanceSubpageType, png_render_cache, root, ui
 };
 
 pub struct InstanceList {
@@ -60,7 +57,7 @@ impl InstanceList {
                         .fixed_left()
                         .sortable()
                         .resizable(true),
-                    Column::new("loader", "Loader")
+                    Column::new("loader", "Modloader")
                         .width(150.)
                         .fixed_left()
                         .resizable(true),
@@ -73,6 +70,64 @@ impl InstanceList {
             };
             TableState::new(instance_list, window, cx)
         })
+    }
+
+    pub fn render_card(&self, index: usize, cx: &mut App) -> Div {
+        let item = &self.items[index];
+        let loader_and_version = format!(
+            "{} {}",
+            item.configuration.loader.name(),
+            item.configuration.minecraft_version.as_str(),
+        );
+
+        let icon = if let Some(icon) = item.icon.clone() {
+            let transform = png_render_cache::ImageTransformation::Resize { width: 64, height: 64 };
+            png_render_cache::render_with_transform(icon, transform, cx)
+                .rounded(cx.theme().radius).size_16().min_w_16().min_h_16().into_any_element()
+        } else {
+            let icon_path = item.configuration.instance_fallback_icon
+                .map(|s| s.as_str())
+                .unwrap_or("icons/box.svg");
+            Icon::default().path(icon_path).size_16().min_w_16().min_h_16().into_any_element()
+        };
+
+        let theme = cx.theme();
+        v_flex()
+            .flex_1()
+            .p_2()
+            .gap_2()
+            .w_full()
+            .min_w_64()
+            .bg(theme.secondary)
+            .rounded(theme.radius_lg)
+            .child(h_flex()
+                .w_full()
+                .gap_2()
+                .child(icon)
+                .child(v_flex()
+                    .truncate()
+                    .w_full()
+                    .child(item.name.clone())
+                    .child(loader_and_version)
+                )
+            ).child(h_flex()
+                .gap_2()
+                .child(Button::new(("start", index)).flex_grow().small().success().label("Start").on_click({
+                    let name = item.name.clone();
+                    let id = item.id;
+                    let backend_handle = self.backend_handle.clone();
+                    move |_, window, cx| {
+                        root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
+                    }
+                }))
+                .child(Button::new(("view", index)).flex_grow().small().info().label("View").on_click({
+                    let id = item.id;
+                    move |_, window, cx| {
+                        root::switch_page(ui::PageType::InstancePage(id, InstanceSubpageType::Quickplay),
+                            &[ui::PageType::Instances], window, cx);
+                    }
+                })))
+
     }
 }
 

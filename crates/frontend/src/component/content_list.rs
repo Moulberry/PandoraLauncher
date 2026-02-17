@@ -17,6 +17,7 @@ use crate::{interface_config::InterfaceConfig, png_render_cache};
 #[derive(Clone)]
 struct ContentEntryChild {
     summary: Arc<ContentSummary>,
+    parent_filename_hash: u64,
     parent: InstanceContentID,
     path: Arc<str>,
     lowercase_search_keys: Arc<[Arc<str>]>,
@@ -349,7 +350,7 @@ impl ContentListDelegate {
             child.path.clone());
 
         let mut hasher = DefaultHasher::new();
-        child.parent.hash(&mut hasher);
+        child.parent_filename_hash.hash(&mut hasher);
         child.path.hash(&mut hasher);
         let element_id = hasher.finish();
 
@@ -365,13 +366,17 @@ impl ContentListDelegate {
                     .on_click({
                         let id = self.id;
                         let content_id = child.parent;
+                        let child_id = child.summary.id.clone();
+                        let child_name = child.summary.name.clone();
                         let path = child.path.clone();
                         let backend_handle = self.backend_handle.clone();
                         move |checked, _, _| {
                             backend_handle.send(MessageToBackend::SetContentChildEnabled {
                                 id,
                                 content_id,
-                                path: path.clone(),
+                                child_id: child_id.clone(),
+                                child_name: child_name.clone(),
+                                child_filename: path.clone(),
                                 enabled: *checked,
                             });
                         }
@@ -415,7 +420,13 @@ impl ContentListDelegate {
 
                     let summary = summaries.get(index).cloned().flatten().unwrap_or(unknown.clone());
 
-                    let enabled = !modification.disabled_children.contains(&*download.path);
+                    let enabled = if let Some(id) = &summary.id && modification.disabled_children.disabled_ids.contains(id) {
+                        false
+                    } else if let Some(name) = &summary.name && modification.disabled_children.disabled_names.contains(name) {
+                        false
+                    } else {
+                        !modification.disabled_children.disabled_filenames.contains(&*download.path)
+                    };
 
                     let lowercase_filename: Arc<str> = download.path.to_lowercase().into();
 
@@ -426,6 +437,7 @@ impl ContentListDelegate {
 
                     inner_children.push(ContentEntryChild {
                         summary,
+                        parent_filename_hash: modification.filename_hash,
                         parent: modification.id,
                         lowercase_search_keys,
                         path: download.path.clone(),

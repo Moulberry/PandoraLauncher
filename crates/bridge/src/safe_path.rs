@@ -35,6 +35,10 @@ impl SafePath {
         self.0.to_path(base)
     }
 
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
     pub fn strip_prefix(&self, prefix: &str) -> Option<Self> {
         Some(Self(Arc::from(self.0.strip_prefix(prefix).ok()?)))
     }

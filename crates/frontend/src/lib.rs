@@ -40,6 +40,19 @@ macro_rules! ts {
 }
 pub(crate) use ts;
 
+macro_rules! ts_short {
+    ($id:expr) => {{
+        let short_key = format!("{}-short", $id);
+        let translated = rust_i18n::t!(&short_key);
+        if translated.ends_with("-short") {
+            ts!($id)
+        } else {
+            SharedString::new_static(ustr::ustr(&*translated).as_str())
+        }
+    }};
+}
+pub(crate) use ts_short;
+
 #[derive(rust_embed::RustEmbed)]
 #[folder = "../../assets"]
 #[include = "icons/**/*.svg"]
@@ -75,14 +88,15 @@ pub fn start(
     panic_message: Arc<RwLock<Option<String>>>,
     deadlock_message: Arc<RwLock<Option<String>>>,
     backend_handle: BackendHandle,
-    recv: FrontendReceiver,
+    mut recv: FrontendReceiver,
 ) {
-    let http_client = std::sync::Arc::new(
-        reqwest_client::ReqwestClient::user_agent(
-            "PandoraLauncher/0.1.0 (https://github.com/Moulberry/PandoraLauncher)",
-        )
-        .unwrap(),
-    );
+    let user_agent = if let Some(version) = option_env!("PANDORA_RELEASE_VERSION") {
+        format!("PandoraLauncher/{version} (https://github.com/Moulberry/PandoraLauncher)")
+    } else {
+        "PandoraLauncher/dev (https://github.com/Moulberry/PandoraLauncher)".to_string()
+    };
+
+    let http_client = Arc::new(reqwest_client::ReqwestClient::user_agent(&user_agent).unwrap());
 
     Application::new().with_http_client(http_client).with_assets(Assets).run(move |cx: &mut App| {
         let _ = cx.text_system().add_fonts(vec![
@@ -156,11 +170,39 @@ pub fn start(
             })
         };
 
-        open_main_window(&data, Some((recv, main_window_hidden)), cx);
+        let mut processor = Processor::new(data.clone(), main_window_hidden);
+
+        while let Some(message) = recv.try_recv() {
+            processor.process(message, cx);
+        }
+
+        let main_window = open_main_window(&data, cx);
+        processor.set_main_window_handle(main_window, cx);
+
+        cx.spawn(async move |cx| {
+            while let Some(message) = recv.recv().await {
+                _ = cx.update(|cx| {
+                    processor.process(message, cx);
+                });
+            }
+        }).detach();
     });
 }
 
-pub fn open_main_window(data: &DataEntities, start_processor: Option<(FrontendReceiver, Arc<AtomicBool>)>, cx: &mut App) -> AnyWindowHandle {
+pub fn open_main_window(data: &DataEntities, cx: &mut App) -> AnyWindowHandle {
+    let window_bounds = match InterfaceConfig::get(cx).main_window_bounds {
+        interface_config::WindowBounds::Inherit => None,
+        interface_config::WindowBounds::Windowed { x, y, w, h } => {
+            Some(WindowBounds::Windowed(Bounds::new(Point::new(px(x), px(y)), Size::new(px(w), px(h)))))
+        },
+        interface_config::WindowBounds::Maximized { x, y, w, h } => {
+            Some(WindowBounds::Maximized(Bounds::new(Point::new(px(x), px(y)), Size::new(px(w), px(h)))))
+        },
+        interface_config::WindowBounds::Fullscreen { x, y, w, h } => {
+            Some(WindowBounds::Fullscreen(Bounds::new(Point::new(px(x), px(y)), Size::new(px(w), px(h)))))
+        },
+    };
+
     let handle = cx.open_window(
         WindowOptions {
             app_id: Some("PandoraLauncher".into()),
@@ -169,29 +211,61 @@ pub fn open_main_window(data: &DataEntities, start_processor: Option<(FrontendRe
                 title: Some(SharedString::new_static("Pandora")),
                 ..Default::default()
             }),
+            window_bounds,
             window_decorations: Some(WindowDecorations::Server),
             ..Default::default()
         },
         |window, cx| {
-            if let Some((mut recv, main_window_hidden)) = start_processor {
-                let mut processor = Processor::new(data.clone(), window.window_handle(), main_window_hidden);
-
-                while let Some(message) = recv.try_recv() {
-                    processor.process(message, cx);
-                }
-
-                cx.spawn(async move |cx| {
-                    while let Some(message) = recv.recv().await {
-                        _ = cx.update(|cx| {
-                            processor.process(message, cx);
-                        });
-                    }
-                }).detach();
-            }
-
             window.set_window_title("Pandora");
 
-            let launcher_root = cx.new(|cx| LauncherRoot::new(&data, window, cx));
+            let launcher_root = cx.new(|cx| {
+                cx.observe_window_bounds(window, move |_, window, cx| {
+                    let origin = window.bounds().origin;
+                    let size = window.viewport_size();
+                    let new_bounds = (
+                        origin.x.to_f64() as f32, origin.y.to_f64() as f32,
+                        size.width.to_f64() as f32, size.height.to_f64() as f32
+                    );
+
+                    let old_window_bounds = InterfaceConfig::get(cx).main_window_bounds.clone();
+                    let old_bounds = match old_window_bounds {
+                        interface_config::WindowBounds::Inherit => new_bounds,
+                        interface_config::WindowBounds::Windowed { x, y, w, h } => (x, y, w, h),
+                        interface_config::WindowBounds::Maximized { x, y, w, h } => (x, y, w, h),
+                        interface_config::WindowBounds::Fullscreen { x, y, w, h } => (x, y, w, h),
+                    };
+
+                    let new_window_bounds = if window.is_fullscreen() {
+                        interface_config::WindowBounds::Fullscreen {
+                            x: old_bounds.0,
+                            y: old_bounds.1,
+                            w: old_bounds.2,
+                            h: old_bounds.3
+                        }
+                    } else if window.is_maximized() {
+                        interface_config::WindowBounds::Maximized {
+                            x: old_bounds.0,
+                            y: old_bounds.1,
+                            w: old_bounds.2,
+                            h: old_bounds.3
+                        }
+                    } else {
+                        interface_config::WindowBounds::Windowed {
+                            x: new_bounds.0,
+                            y: new_bounds.1,
+                            w: new_bounds.2,
+                            h: new_bounds.3
+                        }
+                    };
+
+                    if new_window_bounds != old_window_bounds {
+                        InterfaceConfig::get_mut(cx).main_window_bounds = new_window_bounds;
+                    }
+                }).detach();
+
+                LauncherRoot::new(&data, window, cx)
+            });
+
             cx.set_global(LauncherRootGlobal {
                 root: launcher_root.clone(),
             });

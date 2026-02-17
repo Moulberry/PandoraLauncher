@@ -137,7 +137,7 @@ impl BackendState {
                                 ContentInstallPath::Automatic => {
                                     let base = if let Some(mod_summary) = &mod_summary {
                                         match mod_summary.extra {
-                                            ContentType::Fabric | ContentType::Forge | ContentType::NeoForge | ContentType::JavaModule | ContentType::ModrinthModpack { .. } => {
+                                            ContentType::Fabric | ContentType::Forge | ContentType::LegacyForge | ContentType::NeoForge | ContentType::JavaModule | ContentType::ModrinthModpack { .. } => {
                                                 Path::new("mods")
                                             },
                                             ContentType::ResourcePack => {
@@ -302,7 +302,8 @@ impl BackendState {
                         }
 
                         if let Some(minecraft_version) = minecraft_version {
-                            instance_dir = self.create_instance_sanitized(&name, &minecraft_version, content.loader_hint).await
+                            // todo: use icon of mod/modpack/etc. for icon of instance
+                            instance_dir = self.create_instance_sanitized(&name, &minecraft_version, content.loader_hint, None).await
                                 .map(|v| v.join(".minecraft").into());
                         }
                     },
@@ -325,6 +326,7 @@ impl BackendState {
                         let _ = std::fs::create_dir_all(target_path.parent().unwrap());
 
                         if let Some(replace) = install.replace {
+                            self.replace_aux_path(&replace, &install.mod_summary, &target_path);
                             let _ = std::fs::remove_file(replace);
                         }
                         let _ = std::fs::hard_link(install.from, target_path);
@@ -334,6 +336,32 @@ impl BackendState {
             Err(error) => {
                 modal_action.set_error_message(Arc::from(format!("{}", error).as_str()));
             },
+        }
+    }
+
+    fn replace_aux_path(&self, replace: &Path, new_summary: &Option<Arc<ContentSummary>>, new_path: &Path) {
+        let Some(old_summary) = self.mod_metadata_manager.get_path(&replace) else {
+            return;
+        };
+
+        let Some(new_summary) = new_summary else {
+            return;
+        };
+
+        let Some(old_aux_path) = crate::pandora_aux_path(&old_summary.id, &old_summary.name, &replace) else {
+            return;
+        };
+
+        if !old_aux_path.exists() {
+            return;
+        }
+
+        let Some(new_aux_path) = crate::pandora_aux_path(&new_summary.id, &new_summary.name, new_path) else {
+            return;
+        };
+
+        if old_aux_path != new_aux_path {
+            _ = std::fs::rename(&old_aux_path, &new_aux_path);
         }
     }
 

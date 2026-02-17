@@ -9,14 +9,17 @@ use auth::{
     secret::{PlatformSecretStorage, SecretStorageError},
     serve_redirect::{self, ProcessAuthorizationError},
 };
+use base64::Engine;
 use bridge::{
-    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{InstanceID, InstanceContentSummary, InstanceServerSummary, InstanceWorldSummary, ContentType}, message::MessageToFrontend, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceWorldSummary}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
+use image::ImageFormat;
 use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{backend_config::BackendConfig, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use schema::{auxiliary::AuxiliaryContentMeta, backend_config::BackendConfig, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use serde::Deserialize;
 use sha1::{Digest, Sha1};
 use tokio::sync::{mpsc::Receiver, OnceCell};
 use ustr::Ustr;
@@ -33,18 +36,24 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         .build()
         .expect("Failed to initialize Tokio runtime");
 
+    let user_agent = if let Some(version) = option_env!("PANDORA_RELEASE_VERSION") {
+        format!("PandoraLauncher/{version} (https://github.com/Moulberry/PandoraLauncher)")
+    } else {
+        "PandoraLauncher/dev (https://github.com/Moulberry/PandoraLauncher)".to_string()
+    };
+
     let http_client = reqwest::ClientBuilder::new()
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(15))
         .redirect(Policy::none())
         .use_rustls_tls()
-        .user_agent("PandoraLauncher/0.1.0 (https://github.com/Moulberry/PandoraLauncher)")
+        .user_agent(&user_agent)
         .build()
         .unwrap();
 
     let redirecting_http_client = reqwest::ClientBuilder::new()
         .use_rustls_tls()
-        .user_agent("PandoraLauncher/0.1.0 (https://github.com/Moulberry/PandoraLauncher)")
+        .user_agent(&user_agent)
         .build()
         .unwrap();
 
@@ -174,6 +183,8 @@ impl BackendState {
     async fn start(self, recv: BackendReceiver, watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>) {
         log::info!("Starting backend");
 
+        tokio::task::spawn(crate::update::check_for_updates(self.redirecting_http_client.clone(), self.send.clone()));
+
         // Pre-fetch version manifest
         self.meta.load(&MinecraftVersionManifestMetadataItem).await;
 
@@ -296,6 +307,7 @@ impl BackendState {
             let message = MessageToFrontend::InstanceAdded {
                 id: instance.id,
                 name: instance.name,
+                icon: instance.icon.clone(),
                 dot_minecraft_folder: instance.dot_minecraft_path.clone(),
                 configuration: instance.configuration.get().clone(),
                 worlds_state: Arc::clone(&instance.worlds_state),
@@ -699,6 +711,7 @@ impl BackendState {
 
         struct ModpackInstall {
             hashed_downloads: Vec<HashedDownload>,
+            aux_path: Option<PathBuf>,
             overrides: Arc<[(SafePath, Arc<[u8]>)]>,
         }
 
@@ -735,7 +748,16 @@ impl BackendState {
                         }
                     }
 
-                    !summary.disabled_children.contains(&*dl.path)
+                    if let Some(metadata) = self.mod_metadata_manager.get_cached_by_sha1(&*dl.hashes.sha1) {
+                        if let Some(id) = &metadata.id && summary.disabled_children.disabled_ids.contains(id) {
+                            return false;
+                        }
+                        if let Some(name) = &metadata.name && summary.disabled_children.disabled_names.contains(name) {
+                            return false;
+                        }
+                    }
+
+                    !summary.disabled_children.disabled_filenames.contains(&dl.path)
                 });
 
                 let content_install = ContentInstall {
@@ -766,6 +788,7 @@ impl BackendState {
                             path: download.path.clone(),
                         }
                     }).collect(),
+                    aux_path: crate::pandora_aux_path_for_content(&summary),
                     overrides: overrides.clone(),
                 });
             }
@@ -782,6 +805,41 @@ impl BackendState {
         for modpack_install in modpack_installs {
             let overrides = modpack_install.overrides;
             let content_library_dir = &self.directories.content_library_dir.clone();
+            let mut aux: Option<AuxiliaryContentMeta> = if let Some(aux_path) = &modpack_install.aux_path {
+                crate::read_json(&aux_path).unwrap_or_default()
+            } else {
+                None
+            };
+            let mut aux_changed = false;
+
+            fn should_override_file(path: &str, dest: &Path, new_sha1: [u8; 20], aux: &Option<AuxiliaryContentMeta>) -> bool {
+                let Some(aux) = aux else {
+                    return true;
+                };
+                let Some(old_sha1) = aux.applied_overrides.filename_to_hash.get(path) else {
+                    return true;
+                };
+
+                // Always try to override config/yosbr/ files
+                if path.starts_with("config/yosbr/") {
+                    return !crate::check_sha1_hash(dest, new_sha1).unwrap_or(false);
+                }
+
+                let mut old_hash = [0u8; 20];
+                let Ok(_) = hex::decode_to_slice(&**old_sha1, &mut old_hash) else {
+                    return true;
+                };
+
+                if let Ok(matches) = crate::check_sha1_hash(dest, old_hash) {
+                    // Override the file if the hash on disk matches the old hash, and the override has changed
+                    // This makes it so that if the file wasn't modified, it'll override with the new version
+                    // But if the file was modified by the user, it'll avoid overriding
+                    matches && old_hash != new_sha1
+                } else {
+                    // File doesn't exist, override it
+                    true
+                }
+            }
 
             for file in modpack_install.hashed_downloads {
                 let mut expected_hash = [0u8; 20];
@@ -805,8 +863,15 @@ impl BackendState {
                 } else {
                     let dest_path = dest_path.to_path(&dot_minecraft_path);
 
-                    let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
-                    let _ = std::fs::copy(path, dest_path);
+                    if should_override_file(&file.path, &dest_path, expected_hash, &aux) {
+                        if let Some(aux) = &mut aux {
+                            aux.applied_overrides.filename_to_hash.insert(file.path.clone(), file.sha1.clone());
+                            aux_changed = true;
+                        }
+
+                        let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
+                        let _ = std::fs::copy(path, dest_path);
+                    }
                 }
             }
 
@@ -817,44 +882,49 @@ impl BackendState {
                 tracker.set_total(overrides.len());
                 tracker.notify();
 
-                let tracker = &tracker;
-                let dot_minecraft_path = &dot_minecraft_path;
-                let mod_dir = &mod_dir;
-                let futures = overrides.iter().map(|(dest_path, file)| async move {
-                    let file2 = file.clone();
-                    let expected_hash = tokio::task::spawn_blocking(move || {
-                        let mut hasher = Sha1::new();
-                        hasher.update(&file2);
-                        hasher.finalize().into()
-                    }).await.unwrap();
+                for (rel_path, file) in overrides.iter() {
+                    let mut hasher = Sha1::new();
+                    hasher.update(&file);
+                    let expected_hash = hasher.finalize().into();
 
-                    let path = crate::create_content_library_path(content_library_dir, expected_hash, dest_path.extension());
+                    let path = crate::create_content_library_path(content_library_dir, expected_hash, rel_path.extension());
 
                     if !path.exists() {
                         let _ = std::fs::create_dir_all(path.parent().unwrap());
-                        let _ = tokio::fs::write(&path, file).await;
+                        let _ = std::fs::write(&path, file);
                     }
 
-                    if dest_path.starts_with("mods") && let Some(extension) = dest_path.extension() && extension == "jar" {
+                    if rel_path.starts_with("mods") && let Some(extension) = rel_path.extension() && extension == "jar" {
                         if loader_supports_add_mods {
-                            return Some(path);
-                        } else if let Some(filename) = dest_path.file_name() {
+                            add_mods.push(path);
+                        } else if let Some(filename) = rel_path.file_name() {
                             let filename = format!(".pandora.{filename}");
                             let hidden_dest_path = mod_dir.join(filename);
                             let _ = std::fs::hard_link(path, hidden_dest_path);
                         }
                     } else {
-                        let dest_path = dest_path.to_path(&dot_minecraft_path);
+                        let dest_path = rel_path.to_path(&dot_minecraft_path);
 
-                        let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
-                        let _ = tokio::fs::copy(path, dest_path).await;
+                        if should_override_file(&rel_path.as_str(), &dest_path, expected_hash, &aux) {
+                            if let Some(aux) = &mut aux {
+                                let sha1 = hex::encode(expected_hash);
+                                aux.applied_overrides.filename_to_hash.insert(rel_path.as_str().into(), sha1.into());
+                                aux_changed = true;
+                            }
+
+                            let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
+                            let _ = std::fs::copy(path, dest_path);
+                        }
                     }
                     tracker.add_count(1);
                     tracker.notify();
-                    None
-                });
+                }
 
-                add_mods.extend(futures::future::join_all(futures).await.into_iter().flatten());
+                if let Some(aux_path) = &modpack_install.aux_path && aux_changed {
+                    if let Ok(bytes) = serde_json::to_vec(aux.as_ref().unwrap()) {
+                        _ = crate::write_safe(&aux_path, &bytes);
+                    }
+                }
 
                 tracker.set_finished(ProgressTrackerFinishType::Fast);
             }
@@ -972,7 +1042,7 @@ impl BackendState {
         result.map(|(worlds, _)| worlds)
     }
 
-    pub async fn create_instance_sanitized(&self, name: &str, version: &str, loader: Loader) -> Option<PathBuf> {
+    pub async fn create_instance_sanitized(&self, name: &str, version: &str, loader: Loader, icon: Option<EmbeddedOrRaw>) -> Option<PathBuf> {
         let mut name = sanitize_filename::sanitize_with_options(name, sanitize_filename::Options { windows: true, ..Default::default() });
 
         if self.instance_state.read().instances.iter().any(|i| i.name == name) {
@@ -986,10 +1056,10 @@ impl BackendState {
             }
         }
 
-        return self.create_instance(&name, version, loader).await;
+        return self.create_instance(&name, version, loader, icon).await;
     }
 
-    pub async fn create_instance(&self, name: &str, version: &str, loader: Loader) -> Option<PathBuf> {
+    pub async fn create_instance(&self, name: &str, version: &str, loader: Loader, icon: Option<EmbeddedOrRaw>) -> Option<PathBuf> {
         log::info!("Creating instance {name}");
         if loader == Loader::Unknown {
             self.send.send_warning(format!("Unable to create instance, unknown loader"));
@@ -1014,6 +1084,12 @@ impl BackendState {
 
         let _ = tokio::fs::create_dir_all(&instance_dir).await;
 
+        let instance_fallback_icon = if let Some(EmbeddedOrRaw::Embedded(e)) = &icon {
+            Some(Ustr::from(&**e))
+        } else {
+            None
+        };
+
         let instance_info = InstanceConfiguration {
             minecraft_version: Ustr::from(version),
             loader,
@@ -1022,10 +1098,26 @@ impl BackendState {
             jvm_flags: None,
             jvm_binary: None,
             sync: None,
+            linux_wrapper: None,
+            system_libraries: None,
+            instance_fallback_icon,
         };
 
         let info_path = instance_dir.join("info_v1.json");
         crate::write_safe(&info_path, serde_json::to_string(&instance_info).unwrap().as_bytes()).unwrap();
+
+        if let Some(EmbeddedOrRaw::Raw(image_bytes)) = icon {
+            if let Ok(format) = image::guess_format(&*image_bytes) {
+                if format == ImageFormat::Png {
+                    let icon_path = instance_dir.join("icon.png");
+                    crate::write_safe(&icon_path, &*image_bytes).unwrap();
+                } else {
+                    self.send.send_error("Unable to apply icon: only pngs are supported");
+                }
+            } else {
+                self.send.send_error("Unable to apply icon: unknown format");
+            }
+        }
 
         Some(instance_dir.clone())
     }

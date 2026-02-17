@@ -5,9 +5,11 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Selectable, Sizable, WindowExt, button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, spinner::Spinner, v_flex
+    button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, spinner::Spinner, v_flex, ActiveTheme as _, Disableable, Selectable, Sizable, WindowExt
 };
-use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration}, loader::Loader, version_manifest::MinecraftVersionManifest};
+use once_cell::sync::Lazy;
+use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
+use strum::IntoEnumIterator;
 
 use crate::{entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, interface_config::InterfaceConfig, pages::instances_page::VersionList};
 
@@ -26,6 +28,7 @@ pub struct InstanceSettingsSubpage {
     version_state: TypelessFrontendMetadataResult,
     version_select_state: Entity<SelectState<VersionList>>,
     loader: Loader,
+    loader_select_state: Entity<SelectState<Vec<&'static str>>>,
     loader_versions_state: TypelessFrontendMetadataResult,
     loader_version_select_state: Entity<SelectState<SearchableVec<&'static str>>>,
     memory_override_enabled: bool,
@@ -35,6 +38,22 @@ pub struct InstanceSettingsSubpage {
     jvm_flags_input_state: Entity<InputState>,
     jvm_binary_enabled: bool,
     jvm_binary_path: Option<Arc<Path>>,
+
+    override_glfw_enabled: bool,
+    override_glfw_path: Option<Arc<Path>>,
+    override_openal_enabled: bool,
+    override_openal_path: Option<Arc<Path>>,
+
+    #[cfg(target_os = "linux")]
+    use_mangohud: bool,
+    #[cfg(target_os = "linux")]
+    use_gamemode: bool,
+    #[cfg(target_os = "linux")]
+    use_discrete_gpu: bool,
+    #[cfg(target_os = "linux")]
+    mangohud_available: bool,
+    #[cfg(target_os = "linux")]
+    gamemode_available: bool,
     new_name_change_state: NewNameChangeState,
     backend_handle: BackendHandle,
     _observe_loader_version_subscription: Option<Subscription>,
@@ -57,6 +76,12 @@ impl InstanceSettingsSubpage {
         let memory = entry.configuration.memory.unwrap_or_default();
         let jvm_flags = entry.configuration.jvm_flags.clone().unwrap_or_default();
         let jvm_binary = entry.configuration.jvm_binary.clone().unwrap_or_default();
+        #[cfg(target_os = "linux")]
+        let linux_wrapper = entry.configuration.linux_wrapper.unwrap_or_default();
+        let system_libraries = entry.configuration.system_libraries.clone().unwrap_or_default();
+
+        let glfw_path = system_libraries.glfw.get_or_auto(&*AUTO_LIBRARY_PATH_GLFW);
+        let openal_path = system_libraries.openal.get_or_auto(&*AUTO_LIBRARY_PATH_OPENAL);
 
         let new_name_input_state = cx.new(|cx| InputState::new(window, cx));
         cx.subscribe(&new_name_input_state, Self::on_new_name_input).detach();
@@ -68,6 +93,17 @@ impl InstanceSettingsSubpage {
             page.update_minecraft_versions(versions, window, cx);
         }).detach();
         cx.subscribe(&version_select_state, Self::on_minecraft_version_selected).detach();
+
+        let loader_select_state = cx.new(|cx| {
+            let loaders = Loader::iter()
+                .filter(|l| *l != Loader::Unknown)
+                .map(|l| l.name())
+                .collect();
+            let mut state = SelectState::new(loaders, None, window, cx);
+            state.set_selected_value(&loader.name(), window, cx);
+            state
+        });
+        cx.subscribe_in(&loader_select_state, window, Self::on_loader_selected).detach();
 
         cx.observe_in(instance, window, |page, instance, window, cx| {
             if page.loader_version_select_state.read(cx).selected_index(cx).is_none() {
@@ -109,6 +145,7 @@ impl InstanceSettingsSubpage {
             version_state: TypelessFrontendMetadataResult::Loading,
             version_select_state,
             loader,
+            loader_select_state,
             loader_version_select_state,
             memory_override_enabled: memory.enabled,
             memory_min_input_state,
@@ -117,6 +154,20 @@ impl InstanceSettingsSubpage {
             jvm_flags_input_state,
             jvm_binary_enabled: jvm_binary.enabled,
             jvm_binary_path: jvm_binary.path.clone(),
+            override_glfw_enabled: system_libraries.override_glfw,
+            override_glfw_path: glfw_path,
+            override_openal_enabled: system_libraries.override_openal,
+            override_openal_path: openal_path,
+            #[cfg(target_os = "linux")]
+            use_mangohud: linux_wrapper.use_mangohud,
+            #[cfg(target_os = "linux")]
+            use_gamemode: linux_wrapper.use_gamemode,
+            #[cfg(target_os = "linux")]
+            use_discrete_gpu: linux_wrapper.use_discrete_gpu,
+            #[cfg(target_os = "linux")]
+            mangohud_available: Self::is_command_available("mangohud"),
+            #[cfg(target_os = "linux")]
+            gamemode_available: Self::is_command_available("gamemoderun"),
             new_name_change_state: NewNameChangeState::NoChange,
             backend_handle,
             loader_versions_state: TypelessFrontendMetadataResult::Loading,
@@ -298,6 +349,34 @@ impl InstanceSettingsSubpage {
         });
     }
 
+    pub fn on_loader_selected(
+        &mut self,
+        _state: &Entity<SelectState<Vec<&'static str>>>,
+        event: &SelectEvent<Vec<&'static str>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let SelectEvent::Confirm(value) = event;
+        let Some(value) = value else {
+            return;
+        };
+
+        let loader = Loader::from_name(value);
+        if loader == Loader::Unknown {
+            return;
+        }
+
+        if self.loader != loader {
+            self.loader = loader;
+            self.backend_handle.send(MessageToBackend::SetInstanceLoader {
+                id: self.instance_id,
+                loader: self.loader,
+            });
+            self.update_loader_versions(window, cx);
+            cx.notify();
+        }
+    }
+
     pub fn on_loader_version_selected(
         &mut self,
         _state: Entity<SelectState<SearchableVec<&'static str>>>,
@@ -401,6 +480,80 @@ impl InstanceSettingsSubpage {
             path: self.jvm_binary_path.clone(),
         }
     }
+
+    fn get_system_libraries_configuration(&self) -> InstanceSystemLibrariesConfiguration {
+        InstanceSystemLibrariesConfiguration {
+            override_glfw: self.override_glfw_enabled,
+            glfw: Self::create_lwjgl_library_path(&self.override_glfw_path, &*AUTO_LIBRARY_PATH_GLFW),
+            override_openal: self.override_openal_enabled,
+            openal: Self::create_lwjgl_library_path(&self.override_openal_path, &*AUTO_LIBRARY_PATH_OPENAL),
+
+        }
+    }
+
+    fn create_lwjgl_library_path(path: &Option<Arc<Path>>, auto: &Option<Arc<Path>>) -> LwjglLibraryPath {
+        if let Some(path) = path {
+            if let Some(auto) = auto && path == auto {
+                LwjglLibraryPath::Auto(path.clone())
+            } else {
+                LwjglLibraryPath::Explicit(path.clone())
+            }
+        } else {
+            LwjglLibraryPath::None
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn get_linux_wrapper_configuration(&self) -> InstanceLinuxWrapperConfiguration {
+        InstanceLinuxWrapperConfiguration {
+            use_mangohud: self.use_mangohud,
+            use_gamemode: self.use_gamemode,
+            use_discrete_gpu: self.use_discrete_gpu,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn is_command_available(command: &str) -> bool {
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("command -v {command}"))
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
+    }
+
+    pub fn select_file(&mut self, message: &'static str, handle: impl FnOnce(&mut Self, Option<Arc<Path>>) + 'static, window: &mut Window, cx: &mut Context<Self>) {
+        let receiver = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some(SharedString::new_static(message))
+        });
+
+        let this_entity = cx.entity();
+        self._select_file_task = window.spawn(cx, async move |cx| {
+            let Ok(result) = receiver.await else {
+                return;
+            };
+            _ = cx.update_window_entity(&this_entity, move |this, window, cx| {
+                match result {
+                    Ok(Some(paths)) => {
+                        (handle)(this, paths.first().map(|v| v.as_path().into()));
+                        cx.notify();
+                    },
+                    Ok(None) => {},
+                    Err(error) => {
+                        let error = format!("{}", error);
+                        let notification = Notification::new()
+                            .autohide(false)
+                            .with_type(NotificationType::Error)
+                            .title(error);
+                        window.push_notification(notification, cx);
+                    },
+                }
+            });
+        });
+    }
 }
 
 impl Render for InstanceSettingsSubpage {
@@ -417,18 +570,16 @@ impl Render for InstanceSettingsSubpage {
         let jvm_flags_enabled = self.jvm_flags_enabled;
         let jvm_binary_enabled = self.jvm_binary_enabled;
 
-        let jvm_binary_label = if let Some(path) = &self.jvm_binary_path {
-            SharedString::new(path.to_string_lossy())
-        } else {
-            SharedString::new_static("<unset>")
-        };
+        let jvm_binary_label = opt_path_to_string(&self.jvm_binary_path);
+        let glfw_path_label = opt_path_to_string(&self.override_glfw_path);
+        let openal_path_label = opt_path_to_string(&self.override_openal_path);
 
         let mut basic_content = v_flex()
             .gap_4()
             .size_full()
-            .child(v_flex()
-                .child("Instance name")
-                .child(h_flex()
+            .child(crate::labelled(
+                "Instance Name",
+                h_flex()
                     .gap_2()
                     .child(Input::new(&self.new_name_input_state))
                     .when(self.new_name_change_state != NewNameChangeState::NoChange, |this| {
@@ -453,89 +604,45 @@ impl Render for InstanceSettingsSubpage {
                 )
             );
 
+        let mut version_content = v_flex().gap_2();
+
         match self.version_state {
             TypelessFrontendMetadataResult::Loading => {
-                basic_content = basic_content.child(crate::labelled(
-                    "Version",
-                    Spinner::new()
-                ))
+                version_content = version_content.child(Skeleton::new().w_full().min_h_8().max_h_8().rounded_md());
             },
             TypelessFrontendMetadataResult::Loaded => {
-                basic_content = basic_content.child(crate::labelled(
-                    "Version",
-                    Select::new(&self.version_select_state).w_full()
-                ))
+                version_content = version_content.child(Select::new(&self.version_select_state).w_full());
             },
             TypelessFrontendMetadataResult::Error(ref error) => {
-                basic_content = basic_content.child(format!("Error loading minecraft versions: {}", error))
+                version_content = version_content.child(format!("Error loading minecraft versions: {}", error))
             },
         }
 
-        basic_content = basic_content
-            .child(ButtonGroup::new("loader")
-                .outline()
-                .child(
-                    Button::new("loader-vanilla")
-                        .label("Vanilla")
-                        .selected(self.loader == Loader::Vanilla),
-                )
-                .child(
-                    Button::new("loader-fabric")
-                        .label("Fabric")
-                        .selected(self.loader == Loader::Fabric),
-                )
-                .child(
-                    Button::new("loader-forge")
-                        .label("Forge")
-                        .selected(self.loader == Loader::Forge),
-                )
-                .child(
-                    Button::new("loader-neoforge")
-                        .label("NeoForge")
-                        .selected(self.loader == Loader::NeoForge),
-                )
-                .on_click(cx.listener({
-                    let backend_handle = self.backend_handle.clone();
-                    move |page, selected: &Vec<usize>, window, cx| {
-                        let last_loader = page.loader;
-                        match selected.first() {
-                            Some(0) => page.loader = Loader::Vanilla,
-                            Some(1) => page.loader = Loader::Fabric,
-                            Some(2) => page.loader = Loader::Forge,
-                            Some(3) => page.loader = Loader::NeoForge,
-                            _ => {},
-                        };
-                        if page.loader != last_loader {
-                            backend_handle.send(MessageToBackend::SetInstanceLoader {
-                                id: page.instance_id,
-                                loader: page.loader,
-                            });
-                            page.update_loader_versions(window, cx);
-                            cx.notify();
-                        }
-                    }
-                }))
-            );
+        version_content = version_content.child(Select::new(&self.loader_select_state).title_prefix("Modloader: ").w_full());
 
         if self.loader != Loader::Vanilla {
             match self.loader_versions_state {
                 TypelessFrontendMetadataResult::Loading => {
-                    basic_content = basic_content.child(crate::labelled(
-                        "Loader Version",
-                        Spinner::new()
-                    ))
+                    version_content = version_content.child(Skeleton::new().w_full().min_h_8().max_h_8().rounded_md())
                 },
                 TypelessFrontendMetadataResult::Loaded => {
-                    basic_content = basic_content.child(crate::labelled(
-                        "Loader Version",
-                        Select::new(&self.loader_version_select_state).w_full()
-                    ))
+                    version_content = version_content.child(Select::new(&self.loader_version_select_state).title_prefix(match self.loader {
+                        Loader::Fabric => "Fabric Version: ",
+                        Loader::Forge => "Forge Version: ",
+                        Loader::NeoForge => "NeoForge Version: ",
+                        Loader::Vanilla | Loader::Unknown => "Loader Version: ",
+                    }).w_full())
                 },
                 TypelessFrontendMetadataResult::Error(ref error) => {
-                    basic_content = basic_content.child(format!("Error loading possible loader versions: {}", error))
+                    version_content = version_content.child(format!("Error loading possible loader versions: {}", error))
                 },
             }
         }
+
+        basic_content = basic_content.child(crate::labelled(
+            "Version",
+            version_content,
+        ));
 
         let runtime_content = v_flex()
             .gap_4()
@@ -554,14 +661,18 @@ impl Render for InstanceSettingsSubpage {
                 })))
                 .child(h_flex()
                     .gap_1()
-                    .child(NumberInput::new(&self.memory_min_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
-                    .child("Min"))
-                .child(h_flex()
-                    .gap_1()
-                    .child(NumberInput::new(&self.memory_max_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
-                    .child("Max"))
+                    .child(v_flex()
+                        .w_full()
+                        .gap_1()
+                        .child(NumberInput::new(&self.memory_min_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
+                        .child(NumberInput::new(&self.memory_max_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
+                    )
+                    .child(v_flex()
+                        .gap_1()
+                        .child("Min")
+                        .child("Max"))
                 )
-            .child(v_flex()
+            ).child(v_flex()
                 .gap_1()
                 .child(Checkbox::new("jvm_flags").label("Add JVM Flags").checked(jvm_flags_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.jvm_flags_enabled != *value {
@@ -588,43 +699,97 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
                 .child(Button::new("select_jvm_binary").success().label(jvm_binary_label).disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
-                    let receiver = cx.prompt_for_paths(PathPromptOptions {
-                        files: true,
-                        directories: false,
-                        multiple: false,
-                        prompt: Some("Select JVM binary".into())
-                    });
-
-                    let this_entity = cx.entity();
-                    let add_from_file_task = window.spawn(cx, async move |cx| {
-                        let Ok(result) = receiver.await else {
-                            return;
-                        };
-                        _ = cx.update_window_entity(&this_entity, move |this, window, cx| {
-                            match result {
-                                Ok(Some(paths)) => {
-                                    this.jvm_binary_path = paths.first().map(|v| v.as_path().into());
-                                    this.backend_handle.send(MessageToBackend::SetInstanceJvmBinary {
-                                        id: this.instance_id,
-                                        jvm_binary: this.get_jvm_binary_configuration()
-                                    });
-                                    cx.notify();
-                                },
-                                Ok(None) => {},
-                                Err(error) => {
-                                    let error = format!("{}", error);
-                                    let notification = Notification::new()
-                                        .autohide(false)
-                                        .with_type(NotificationType::Error)
-                                        .title(error);
-                                    window.push_notification(notification, cx);
-                                },
-                            }
+                    this.select_file("Select Jvm Binary", |this, path| {
+                        this.jvm_binary_path = path;
+                        this.backend_handle.send(MessageToBackend::SetInstanceJvmBinary {
+                            id: this.instance_id,
+                            jvm_binary: this.get_jvm_binary_configuration()
                         });
-                    });
-                    this._select_file_task = add_from_file_task;
+                    }, window, cx);
+                })))
+            )
+            .child(v_flex()
+                .gap_1()
+                .child(Checkbox::new("system_glfw").label("Use System GLFW").checked(self.override_glfw_enabled).on_click(cx.listener(|page, value, _, cx| {
+                    if page.override_glfw_enabled != *value {
+                        page.override_glfw_enabled = *value;
+                        page.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
+                            id: page.instance_id,
+                            system_libraries: page.get_system_libraries_configuration()
+                        });
+                        cx.notify();
+
+                    }
+                })))
+                .child(Button::new("select_glfw").success().label(glfw_path_label).disabled(!self.override_glfw_enabled).on_click(cx.listener(|this, _, window, cx| {
+                    this.select_file("Select GLFW Library", |this, path| {
+                        this.override_glfw_path = path;
+                        this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
+                            id: this.instance_id,
+                            system_libraries: this.get_system_libraries_configuration()
+                        });
+                    }, window, cx);
+                })))
+            )
+            .child(v_flex()
+                .gap_1()
+                .child(Checkbox::new("system_openal").label("Use System OpenAL").checked(self.override_openal_enabled).on_click(cx.listener(|page, value, _, cx| {
+                    if page.override_openal_enabled != *value {
+                        page.override_openal_enabled = *value;
+                        page.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
+                            id: page.instance_id,
+                            system_libraries: page.get_system_libraries_configuration()
+                        });
+                        cx.notify();
+
+                    }
+                })))
+                .child(Button::new("select_openal").success().label(openal_path_label).disabled(!self.override_openal_enabled).on_click(cx.listener(|this, _, window, cx| {
+                    this.select_file("Select OpenAL Library", |this, path| {
+                        this.override_openal_path = path;
+                        this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
+                            id: this.instance_id,
+                            system_libraries: this.get_system_libraries_configuration()
+                        });
+                    }, window, cx);
                 })))
             );
+
+        #[cfg(target_os = "linux")]
+        let runtime_content = runtime_content.child(v_flex()
+            .gap_1()
+            .child("Linux Performance")
+            .child(Checkbox::new("use_mangohud").label("Use MangoHud").checked(self.use_mangohud).disabled(!self.mangohud_available).on_click(cx.listener(|page, value, _, cx| {
+                if page.use_mangohud != *value {
+                    page.use_mangohud = *value;
+                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                        id: page.instance_id,
+                        linux_wrapper: page.get_linux_wrapper_configuration()
+                    });
+                    cx.notify();
+                }
+            })))
+            .child(Checkbox::new("use_gamemode").label("Use GameMode").checked(self.use_gamemode).disabled(!self.gamemode_available).on_click(cx.listener(|page, value, _, cx| {
+                if page.use_gamemode != *value {
+                    page.use_gamemode = *value;
+                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                        id: page.instance_id,
+                        linux_wrapper: page.get_linux_wrapper_configuration()
+                    });
+                    cx.notify();
+                }
+            })))
+            .child(Checkbox::new("use_discrete_gpu").label("Use Discrete GPU").checked(self.use_discrete_gpu).on_click(cx.listener(|page, value, _, cx| {
+                if page.use_discrete_gpu != *value {
+                    page.use_discrete_gpu = *value;
+                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                        id: page.instance_id,
+                        linux_wrapper: page.get_linux_wrapper_configuration()
+                    });
+                    cx.notify();
+                }
+            })))
+        );
 
         let actions_content = v_flex()
             .gap_4()
@@ -679,12 +844,13 @@ impl Render for InstanceSettingsSubpage {
         let sections = h_flex()
             .size_full()
             .justify_evenly()
+            .items_start()
             .p_4()
             .gap_4()
             .child(basic_content)
-            .child(div().bg(cx.theme().border).h_full().w_0p5())
+            .child(div().bg(cx.theme().border).h_full().min_w_px().max_w_px().w_px())
             .child(runtime_content)
-            .child(div().bg(cx.theme().border).h_full().w_0p5())
+            .child(div().bg(cx.theme().border).h_full().min_w_px().max_w_px().w_px())
             .child(actions_content);
 
         v_flex()
@@ -699,4 +865,44 @@ impl Render for InstanceSettingsSubpage {
                 .child(sections)
             )
     }
+}
+
+fn opt_path_to_string(path: &Option<Arc<Path>>) -> SharedString {
+    if let Some(path) = path {
+        SharedString::new(path.to_string_lossy())
+    } else {
+        SharedString::new_static("<unset>")
+    }
+}
+
+static AUTO_LIBRARY_PATH_GLFW: Lazy<Option<Arc<Path>>> = Lazy::new(|| get_shared_library_path_for_name("glfw"));
+static AUTO_LIBRARY_PATH_OPENAL: Lazy<Option<Arc<Path>>> = Lazy::new(|| get_shared_library_path_for_name("openal"));
+
+#[cfg(not(unix))]
+fn get_shared_library_path_for_name(name: &str) -> Option<Arc<Path>> {
+    None
+}
+
+#[cfg(unix)]
+fn get_shared_library_path_for_name(name: &str) -> Option<Arc<Path>> {
+    let filename = format!("{}{}{}", std::env::consts::DLL_PREFIX, name, std::env::consts::DLL_SUFFIX);
+
+    let search_paths = &[
+        "/lib/",
+        "/lib64/",
+        "/usr/lib/",
+        "/usr/lib64/",
+        "/usr/local/lib/",
+        #[cfg(target_os = "macos")]
+        "/opt/homebrew/lib/"
+    ];
+
+    for search_path in search_paths {
+        let path = Path::new(search_path).join(&filename);
+        if path.exists() {
+            return Some(path.into());
+        }
+    }
+
+    None
 }

@@ -1,4 +1,4 @@
-use std::{hash::{DefaultHasher, Hash, Hasher}, path::Path, sync::{
+use std::{hash::{DefaultHasher, Hash, Hasher}, path::{Path, PathBuf}, sync::{
     atomic::{AtomicU64, AtomicUsize, Ordering}, Arc
 }};
 
@@ -72,6 +72,23 @@ impl InstanceModsSubpage {
             _add_from_file_task: None,
         }
     }
+
+    fn install_paths(&self, paths: &[PathBuf], window: &mut Window, cx: &mut App) {
+        let content_install = ContentInstall {
+            target: InstallTarget::Instance(self.instance),
+            loader_hint: self.instance_loader,
+            version_hint: Some(self.instance_version.into()),
+            files: paths.into_iter().filter_map(|path| {
+                Some(ContentInstallFile {
+                    replace_old: None,
+                    path: bridge::install::ContentInstallPath::Raw(Path::new("mods").join(path.file_name()?).into()),
+                    download: ContentDownload::File { path: path.clone() },
+                    content_source: ContentSource::Manual,
+                })
+            }).collect(),
+        };
+        crate::root::start_install(content_install, &self.backend_handle, window, cx);
+    }
 }
 
 impl Render for InstanceModsSubpage {
@@ -107,8 +124,6 @@ impl Render for InstanceModsSubpage {
                 }
             }))
             .child(Button::new("addfile").label("Add from file").success().compact().small().on_click({
-                let backend_handle = self.backend_handle.clone();
-                let instance = self.instance;
                 cx.listener(move |this, _, window, cx| {
                     let receiver = cx.prompt_for_paths(PathPromptOptions {
                         files: true,
@@ -117,7 +132,6 @@ impl Render for InstanceModsSubpage {
                         prompt: Some("Select mods to install".into())
                     });
 
-                    let backend_handle = backend_handle.clone();
                     let entity = cx.entity();
                     let add_from_file_task = window.spawn(cx, async move |cx| {
                         let Ok(result) = receiver.await else {
@@ -126,20 +140,7 @@ impl Render for InstanceModsSubpage {
                         _ = cx.update_window_entity(&entity, move |this, window, cx| {
                             match result {
                                 Ok(Some(paths)) => {
-                                    let content_install = ContentInstall {
-                                        target: InstallTarget::Instance(instance),
-                                        loader_hint: this.instance_loader,
-                                        version_hint: Some(this.instance_version.into()),
-                                        files: paths.into_iter().filter_map(|path| {
-                                            Some(ContentInstallFile {
-                                                replace_old: None,
-                                                path: bridge::install::ContentInstallPath::Raw(Path::new("mods").join(path.file_name()?).into()),
-                                                download: ContentDownload::File { path },
-                                                content_source: ContentSource::Manual,
-                                            })
-                                        }).collect(),
-                                    };
-                                    crate::root::start_install(content_install, &backend_handle, window, cx);
+                                    this.install_paths(&paths, window, cx);
                                 },
                                 Ok(None) => {},
                                 Err(error) => {
@@ -157,9 +158,16 @@ impl Render for InstanceModsSubpage {
                 })
             }));
 
-        v_flex().p_4().size_full().child(header).child(
-            div()
+        v_flex().p_4().size_full()
+            .child(header)
+            .child(div()
                 .id("mod-list-area")
+                .drag_over(|style, _: &ExternalPaths, _, cx| {
+                    style.bg(cx.theme().accent)
+                })
+                .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| {
+                    this.install_paths(paths.paths(), window, cx);
+                }))
                 .size_full()
                 .border_1()
                 .rounded(theme.radius)

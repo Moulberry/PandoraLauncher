@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::{collections::HashSet, ffi::OsStr, path::Path, sync::Arc};
 
 use bridge::{instance::InstanceID, message::MessageToFrontend};
 use notify::{
@@ -465,11 +465,22 @@ impl BackendState {
 fn get_simple_event(event: notify::Event) -> Option<FilesystemEvent> {
     match event.kind {
         EventKind::Create(_) => {
+            if event.paths[0].extension() == Some(OsStr::new("new")) {
+                return None;
+            }
             Some(FilesystemEvent::Change(event.paths[0].clone().into()))
         },
         EventKind::Modify(modify_kind) => match modify_kind {
-            ModifyKind::Any => Some(FilesystemEvent::Change(event.paths[0].clone().into())),
+            ModifyKind::Any => {
+                if event.paths[0].extension() == Some(OsStr::new("new")) {
+                    return None;
+                }
+                Some(FilesystemEvent::Change(event.paths[0].clone().into()))
+            },
             ModifyKind::Data(data_change) => {
+                if event.paths[0].extension() == Some(OsStr::new("new")) {
+                    return None;
+                }
                 if data_change == DataChange::Any || data_change == DataChange::Content {
                     Some(FilesystemEvent::Change(event.paths[0].clone().into()))
                 } else {
@@ -479,6 +490,9 @@ fn get_simple_event(event: notify::Event) -> Option<FilesystemEvent> {
             ModifyKind::Metadata(_) => None,
             ModifyKind::Name(rename_mode) => match rename_mode {
                 RenameMode::Any => {
+                    if event.paths[0].extension() == Some(OsStr::new("new")) {
+                        return None;
+                    }
                     let path = event.paths[0].clone().into();
                     if std::fs::exists(&path).unwrap_or(true) {
                         Some(FilesystemEvent::Change(path))
@@ -486,16 +500,33 @@ fn get_simple_event(event: notify::Event) -> Option<FilesystemEvent> {
                         Some(FilesystemEvent::Remove(path))
                     }
                 },
-                RenameMode::To => Some(FilesystemEvent::Change(event.paths[0].clone().into())),
-                RenameMode::From => Some(FilesystemEvent::Remove(event.paths[0].clone().into())),
+                RenameMode::To => {
+                    if event.paths[0].extension() == Some(OsStr::new("new")) {
+                        return None;
+                    }
+                    Some(FilesystemEvent::Change(event.paths[0].clone().into()))
+                },
+                RenameMode::From => {
+                    if event.paths[0].extension() == Some(OsStr::new("new")) {
+                        return None;
+                    }
+                    Some(FilesystemEvent::Remove(event.paths[0].clone().into()))
+                },
                 RenameMode::Both => {
-                    Some(FilesystemEvent::Rename(event.paths[0].clone().into(), event.paths[1].clone().into()))
+                    if event.paths[0].extension() == Some(OsStr::new("new")) {
+                        Some(FilesystemEvent::Change(event.paths[1].clone().into()))
+                    } else {
+                        Some(FilesystemEvent::Rename(event.paths[0].clone().into(), event.paths[1].clone().into()))
+                    }
                 },
                 RenameMode::Other => None,
             },
             ModifyKind::Other => None,
         },
         EventKind::Remove(_) => {
+            if event.paths[0].extension() == Some(OsStr::new("new")) {
+                return None;
+            }
             Some(FilesystemEvent::Remove(event.paths[0].clone().into()))
         },
         EventKind::Any => None,

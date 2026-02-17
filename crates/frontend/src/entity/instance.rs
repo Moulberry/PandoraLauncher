@@ -18,6 +18,7 @@ impl InstanceEntries {
         entity: &Entity<Self>,
         id: InstanceID,
         name: SharedString,
+        icon: Option<Arc<[u8]>>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
         worlds_state: Arc<AtomicBridgeDataLoadState>,
@@ -30,6 +31,7 @@ impl InstanceEntries {
             let mut instance = InstanceEntry {
                 id,
                 name,
+                icon,
                 title: "".into(),
                 dot_minecraft_folder,
                 configuration,
@@ -85,6 +87,7 @@ impl InstanceEntries {
         entity: &Entity<Self>,
         id: InstanceID,
         name: SharedString,
+        icon: Option<Arc<[u8]>>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
         status: InstanceStatus,
@@ -94,6 +97,7 @@ impl InstanceEntries {
             if let Some(instance) = entries.entries.get_mut(&id) {
                 let cloned = instance.update(cx, |instance, cx| {
                     instance.name = name.clone();
+                    instance.icon = icon.clone();
                     instance.dot_minecraft_folder = dot_minecraft_folder.clone();
                     instance.configuration = configuration.clone();
                     instance.status = status;
@@ -187,6 +191,7 @@ impl InstanceEntries {
 pub struct InstanceEntry {
     pub id: InstanceID,
     pub name: SharedString,
+    pub icon: Option<Arc<[u8]>>,
     pub title: SharedString,
     pub dot_minecraft_folder: Arc<Path>,
     pub configuration: InstanceConfiguration,

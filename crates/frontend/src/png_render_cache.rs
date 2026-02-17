@@ -123,7 +123,7 @@ impl PngRenderCache {
                     let old_width = image.width();
                     let old_height = image.height();
                     if old_width != width || old_height != height {
-                        let filter = if width > width || height > height {
+                        let filter = if old_width > width || old_height > height {
                             FilterType::Lanczos3
                         } else {
                             FilterType::Nearest

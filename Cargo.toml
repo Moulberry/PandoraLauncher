@@ -101,7 +101,10 @@ clap = { version = "4.5.54", features = ["derive"] }
 indicatif = "0.18.3"
 open = "5.2.0"
 native-dialog = "0.9.4"
-fern = "0.7.1"
+fern = { version = "0.7.1", features = ["colored"] }
 mslnk = "0.1.8"
 log = "0.4.29"
 humantime = "2.3.0"
+minisign-verify = "0.2.4"
+tar = "0.4.44"
+runas = "1.2.0"

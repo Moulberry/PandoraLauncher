@@ -12,9 +12,6 @@ Work in progress
 - Automatic redaction of sensitive information (i.e. access tokens) in logs
 - Unique approach to modpack management (https://youtu.be/cdRVqd7b2BQ)
 
-## Missing Features (WIP)
-- NeoForge/Forge support
-
 ## FAQ
 
 ### Where can I suggest a feature/report a bug?

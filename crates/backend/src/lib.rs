@@ -1,9 +1,10 @@
 #![deny(unused_must_use)]
 
 mod backend;
-use std::{ffi::OsString, io::Write, path::{Path, PathBuf}};
+use std::{ffi::OsString, io::Write, path::{Path, PathBuf}, sync::Arc};
 
 pub use backend::*;
+use bridge::instance::InstanceContentSummary;
 use rand::RngCore;
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
@@ -27,6 +28,7 @@ mod id_slab;
 mod persistent;
 mod shortcut;
 mod syncing;
+mod update;
 
 pub(crate) fn is_single_component_path(path: &str) -> bool {
     let path = std::path::Path::new(path);
@@ -87,7 +89,19 @@ pub(crate) fn write_safe(path: &Path, content: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
-pub(crate) fn child_state_path(path: &Path) -> Option<PathBuf> {
+pub(crate) fn pandora_aux_path(id: &Option<Arc<str>>, name: &Option<Arc<str>>, path: &Path) -> Option<PathBuf> {
+    let name = id.as_ref().or(name.as_ref());
+
+    if let Some(name) = name {
+        let name = name.trim_ascii();
+        if !name.is_empty() {
+            let mut path = path.parent()?.join(format!(".{name}"));
+            path.add_extension("aux");
+            path.add_extension("json");
+            return Some(path);
+        }
+    }
+
     let mut new_path = path.to_path_buf();
 
     if let Some(extension) = new_path.extension() {
@@ -96,17 +110,19 @@ pub(crate) fn child_state_path(path: &Path) -> Option<PathBuf> {
         }
     }
 
-    let Some(filename) = new_path.file_name() else {
-        return None;
-    };
-
     let mut new_filename = OsString::new();
     new_filename.push(".");
-    new_filename.push(filename);
-    new_filename.push(".pandorachildstate");
+    new_filename.push(new_path.file_name()?);
     new_path.set_file_name(new_filename);
 
+    new_path.add_extension("aux");
+    new_path.add_extension("json");
+
     Some(new_path)
+}
+
+pub(crate) fn pandora_aux_path_for_content(content: &InstanceContentSummary) -> Option<PathBuf> {
+    pandora_aux_path(&content.content_summary.id, &content.content_summary.name, &content.path)
 }
 
 pub(crate) fn create_content_library_path(content_library_dir: &Path, expected_hash: [u8; 20], extension: Option<&str>) -> PathBuf {

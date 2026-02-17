@@ -3,7 +3,7 @@ use std::{ops::Range, sync::{atomic::AtomicBool, Arc}, time::Duration};
 use bridge::{instance::{AtomicContentUpdateStatus, ContentUpdateStatus, InstanceID, InstanceContentID, InstanceContentSummary}, message::MessageToBackend, meta::MetadataRequest, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, IconName, Selectable, StyledExt, WindowExt, breadcrumb::Breadcrumb, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, tooltip::Tooltip, v_flex
+    ActiveTheme, Icon, IconName, Selectable, StyledExt, WindowExt, breadcrumb::Breadcrumb, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, label::Label, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, tooltip::Tooltip, v_flex
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{content::ContentSource, loader::Loader, modrinth::{
@@ -13,7 +13,7 @@ use schema::{content::ContentSource, loader::Loader, modrinth::{
 use crate::{
     component::{error_alert::ErrorAlert, page_path::PagePath}, entity::{
         DataEntities, instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
-    }, interface_config::InterfaceConfig, ts, ui
+    }, interface_config::InterfaceConfig, ts, ts_short, ui
 };
 
 pub struct ModrinthSearchPage {
@@ -745,41 +745,57 @@ impl Render for ModrinthSearchPage {
             ModrinthProjectType::Other => &[],
         };
 
-        let category = if self.show_categories.load(std::sync::atomic::Ordering::Relaxed) {
-            ButtonGroup::new("category_group")
-                .layout(Axis::Vertical)
-                .outline()
-                .multiple(true)
-                .children(categories.iter().map(|id| {
-                    Button::new(*id)
-                        .label(if id == &"worldgen" {
-                            "Worldgen".into()
-                        } else {
-                            ts!(*id)
-                        })
-                        .when_some(icon_for(id), |this, icon| {
-                            this.icon(Icon::empty().path(icon))
-                        })
-                        .selected(self.filter_categories.contains(id)
-                    )
-                }))
-                .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
-                    page.set_filter_categories(clicked.iter().filter_map(|index| categories.get(*index).map(|s| *s)).collect(), window, cx);
-                })).into_any_element()
-        } else {
-            let show_categories = self.show_categories.clone();
-            Button::new("show-categories").icon(IconName::ArrowDown).label("Categories").outline().on_click(move |_, _, _| {
-                show_categories.store(true, std::sync::atomic::Ordering::Relaxed);
-            }).into_any_element()
-        };
+        let is_shown = self.show_categories.load(std::sync::atomic::Ordering::Relaxed);
+        let show_categories = self.show_categories.clone();
 
-        let parameters = v_flex().h_full().gap_3()
-            .child(type_button_group)
-            .when_some(loader_button_group, |this, group| this.child(group))
-            .child(category);
+        let category = v_flex()
+            .gap_1()
+            .child(
+                Button::new("toggle-categories")
+                    .label("Categories")
+                    .icon(if is_shown { IconName::ChevronDown } else { IconName::ChevronRight })
+                    .when(!is_shown, |this| this.outline())
+                    .on_click(move |_, _, _| {
+                        show_categories.store(!is_shown, std::sync::atomic::Ordering::Relaxed);
+                    })
+            )
+            .child(
+                ButtonGroup::new("category_group")
+                    .layout(Axis::Vertical)
+                    .outline()
+                    .multiple(true)
+                    .children(categories.iter().map(|id| {
+                        Button::new(*id)
+                            .child(
+                                h_flex().w_full().justify_start().gap_2()
+                                .when_some(icon_for(id), |this, icon| {
+                                    this.child(Icon::empty().path(icon))
+                                })
+                                .child(Label::new(ts_short!(id))))
+                            .selected(self.filter_categories.contains(id))
+                    }))
+                    .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
+                        page.set_filter_categories(clicked.iter()
+                            .filter_map(|index| categories.get(*index).map(|s| *s))
+                            .collect(), window, cx);
+                    }))
+                    .when(!is_shown, |this| this.invisible().h_0())
+            )
+            .into_any_element();
+
+        let parameters = h_flex()
+            .h_full()
+            .min_h_0()
+            .flex_1()
+            .overflow_y_scrollbar()
+            .child(v_flex().h_full().gap_3()
+                .child(type_button_group)
+                .when_some(loader_button_group, |this, group| this.child(group))
+                .child(category)
+            );
 
         ui::page(cx, self.page_path.create_breadcrumb(&self.data, cx))
-            .child(h_flex().size_full().p_3().gap_3().child(parameters).child(content))
+            .child(h_flex().flex_1().min_h_0().size_full().p_3().gap_3().child(parameters).child(content))
     }
 }
 
@@ -819,7 +835,7 @@ fn icon_for(str: &str) -> Option<&'static str> {
         "technology" => Some("icons/hard-drive.svg"),
         "transportation" => Some("icons/truck.svg"),
         "utility" => Some("icons/briefcase.svg"),
-        "world-generation" | "locale" => Some("icons/globe.svg"),
+        "worldgen" | "locale" => Some("icons/globe.svg"),
         "audio" => Some("icons/headphones.svg"),
         "blocks" | "rift" => Some("icons/box.svg"),
         "core-shaders" => Some("icons/cpu.svg"),
@@ -843,6 +859,10 @@ fn icon_for(str: &str) -> Option<&'static str> {
         "lightweight" | "liteloader" => Some("icons/feather.svg"),
         "multiplayer" => Some("icons/users.svg"),
         "quests" => Some("icons/network.svg"),
+        "modded" => Some("icons/puzzle.svg"),
+        "simplistic" => Some("icons/box.svg"),
+        "themed" => Some("icons/palette.svg"),
+        "tweaks" => Some("icons/sliders-vertical.svg"),
         _ => None,
     }
 }

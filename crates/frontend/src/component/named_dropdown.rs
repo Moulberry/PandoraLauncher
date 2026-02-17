@@ -27,11 +27,15 @@ pub struct NamedDropdown<T: Clone> {
 }
 
 impl<T: Clone> NamedDropdown<T> {
+    pub fn new(items: Vec<NamedDropdownItem<T>>) -> Self {
+        Self {
+            items
+        }
+    }
+
     pub fn create(items: Vec<NamedDropdownItem<T>>, window: &mut Window, cx: &mut App) -> Entity<SelectState<Self>> {
         cx.new(|cx| {
-            let instance_list = Self {
-                items,
-            };
+            let instance_list = Self::new(items);
             SelectState::new(instance_list, None, window, cx)
         })
     }

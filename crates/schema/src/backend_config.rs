@@ -7,10 +7,11 @@ use crate::syncing::SyncEntry;
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct BackendConfig {
+    #[serde(default, skip_serializing_if = "crate::skip_if_default", deserialize_with = "crate::try_deserialize")]
     pub sync_targets: EnumSet<SyncTarget>,
     pub sync_list: HashMap<u64, SyncEntry>,
-    #[serde(default = "default_true", skip_serializing_if = "skip_if_true")]
-    pub open_game_output_when_launching: bool,
+    #[serde(default, skip_serializing_if = "crate::skip_if_default", deserialize_with = "crate::try_deserialize")]
+    pub dont_open_game_output_when_launching: bool,
 }
 
 #[derive(Debug, enum_map::Enum, EnumSetType, strum::EnumIter)]
@@ -52,12 +53,4 @@ impl SyncTarget {
             SyncTarget::Litematic => Some("schematics"),
         }
     }
-}
-
-fn default_true() -> bool {
-    true
-}
-
-fn skip_if_true(value: &bool) -> bool {
-    *value
 }

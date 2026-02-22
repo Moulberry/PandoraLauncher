@@ -34,12 +34,9 @@ pub mod ui;
 rust_i18n::i18n!("locales");
 
 macro_rules! ts {
-    ($key:literal) => {
-        SharedString::new_static(
-            ustr::ustr(&*rust_i18n::t!($key)).as_str()
-        )
+    ($key:expr) => {
+        SharedString::new_static(ustr::ustr(&*rust_i18n::t!($key)).as_str())
     };
-
     ($($rest:tt)*) => {
         SharedString::from(rust_i18n::t!($($rest)*))
     };

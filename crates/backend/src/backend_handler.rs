@@ -112,6 +112,13 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::SetInstanceWrapperCommand { id, wrapper_command } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.wrapper_command = Some(wrapper_command);
+                    });
+                }
+            },
             MessageToBackend::SetInstanceJvmFlags { id, jvm_flags } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.configuration.modify(|configuration| {

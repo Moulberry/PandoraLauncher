@@ -399,6 +399,8 @@ instance:
   # Advanced Settings
   memory:
     en: Set Memory
+  wrapper_command:
+    en: Add Wrapper Command
   jvm_flags:
     en: Add JVM Flags
   jvm_binary:
@@ -424,6 +426,8 @@ instance:
       en: Use GameMode
     use_discrete_gpu:
       en: Use Discrete GPU
+    disable_gl_threaded_optimizations:
+      en: Disable GL Threaded Optimizations
 
   # Delete Dialog
   delete_dialog:

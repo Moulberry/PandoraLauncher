@@ -8,8 +8,8 @@ use enumset::{EnumSet, EnumSetType};
 use schema::{
     backend_config::{BackendConfig, SyncTarget}, instance::{
         InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
-        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration,
-    }, loader::Loader, pandora_update::{UpdateManifest, UpdateManifestExe, UpdatePrompt}
+        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSyncConfiguration, InstanceSystemLibrariesConfiguration,
+    }, loader::Loader, pandora_update::{UpdateManifest, UpdateManifestExe, UpdatePrompt}, syncing::SyncEntry,
 };
 use ustr::Ustr;
 use uuid::Uuid;
@@ -69,6 +69,10 @@ pub enum MessageToBackend {
     SetInstanceJvmBinary {
         id: InstanceID,
         jvm_binary: InstanceJvmBinaryConfiguration,
+    },
+    SetInstanceSync {
+        id: InstanceID,
+        sync: InstanceSyncConfiguration,
     },
     SetInstanceLinuxWrapper {
         id: InstanceID,
@@ -147,6 +151,17 @@ pub enum MessageToBackend {
     SetSyncing {
         target: SyncTarget,
         value: bool,
+    },
+    AddSync {
+        entry: SyncEntry,
+        id_channel: tokio::sync::oneshot::Sender<u64>,
+    },
+    ModifySync {
+        id: u64,
+        new_entry: SyncEntry,
+    },
+    DeleteSync {
+        id: u64,
     },
     CleanupOldLogFiles {
         instance: InstanceID,

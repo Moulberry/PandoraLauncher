@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{collections::HashSet, path::Path, sync::Arc};
 
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -18,6 +18,8 @@ pub struct InstanceConfiguration {
     pub jvm_flags: Option<InstanceJvmFlagsConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_binary_configuration")]
     pub jvm_binary: Option<InstanceJvmBinaryConfiguration>,
+    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_sync_configuration")]
+    pub sync: Option<InstanceSyncConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_linux_wrapper_configuration")]
     pub linux_wrapper: Option<InstanceLinuxWrapperConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_system_libraries_configuration")]
@@ -86,6 +88,20 @@ fn is_default_jvm_binary_configuration(config: &Option<InstanceJvmBinaryConfigur
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct InstanceSyncConfiguration {
+    pub enabled: bool,
+    pub sync_ids: HashSet<u64>,
+}
+
+fn is_default_sync_configuration(config: &Option<InstanceSyncConfiguration>) -> bool {
+    if let Some(config) = config {
+        !config.enabled && config.sync_ids.is_empty()
+    } else {
+        true
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct InstanceLinuxWrapperConfiguration {
     #[serde(default, deserialize_with = "crate::try_deserialize")]
@@ -113,7 +129,6 @@ fn is_default_linux_wrapper_configuration(config: &Option<InstanceLinuxWrapperCo
         true
     }
 }
-
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct InstanceSystemLibrariesConfiguration {

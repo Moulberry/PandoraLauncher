@@ -26,7 +26,7 @@ use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    account::{BackendAccountInfo, MinecraftLoginInfo}, directories::LauncherDirectories, id_slab::IdSlab, instance::{Instance, ContentFolder}, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent
+    account::{BackendAccountInfo, MinecraftLoginInfo}, directories::LauncherDirectories, id_slab::IdSlab, instance::{ContentFolder, Instance}, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent, syncing::Syncer
 };
 
 pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHandle, recv: BackendReceiver) {
@@ -365,6 +365,7 @@ impl BackendState {
                 && !matches!(child.try_wait(), Ok(None))
             {
                 log::debug!("Child process is no longer alive");
+                self.on_instance_death(instance);
                 instance.child = None;
                 self.send.send(instance.create_modify_message());
             }
@@ -644,18 +645,47 @@ impl BackendState {
     }
 
     pub async fn prelaunch(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
-        self.prelaunch_apply_syncing(id);
+        self.link_syncing(id);
         self.prelaunch_apply_modpacks(id, modal_action).await
     }
 
-    pub fn prelaunch_apply_syncing(&self, id: InstanceID) {
-        let path = if let Some(instance) = self.instance_state.read().instances.get(id) {
-            instance.dot_minecraft_path.clone()
-        } else {
-            return;
-        };
+    pub fn on_instance_death(&self, instance: &mut Instance) {
+        self.unlink_syncing(instance);
+    }
 
-        crate::syncing::apply_to_instance(self.config.write().get().sync_targets, &self.directories, path);
+    pub fn unlink_syncing(&self, instance: &mut Instance) {
+        let Some(applied_syncs) = &instance.applied_syncs else { return; };
+
+        for sync in applied_syncs {
+            sync.unlink(&self.directories.synced_dir, &instance.dot_minecraft_path);
+        }
+
+        instance.applied_syncs = None;
+    }
+
+    pub fn link_syncing(&self, id: InstanceID) {
+        let mut instance_state_wg = self.instance_state.write();
+        let Some(instance) = instance_state_wg.instances.get_mut(id) else { return; };
+        let configuration = instance.configuration.get();
+        let Some(sync_config) = &configuration.sync else { return; };
+        if !sync_config.enabled { return; }
+
+        let mut applied_syncs: Vec<Box<dyn Syncer>> = Vec::with_capacity(sync_config.sync_ids.len());
+
+        let mut config_wg = self.config.write();
+        let config = config_wg.get();
+        let sync_list = &config.sync_list;
+
+        for sync_id in &sync_config.sync_ids {
+            if !sync_list.contains_key(&sync_id) { continue; };
+
+            let sync: Box<dyn Syncer> = sync_list.get(&sync_id).unwrap().sync.clone().into();
+
+            sync.link(&self.directories.synced_dir, &instance.dot_minecraft_path);
+            applied_syncs.push(sync);
+        }
+
+        instance.applied_syncs = Some(applied_syncs);
     }
 
     pub async fn prelaunch_apply_modpacks(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
@@ -1067,6 +1097,7 @@ impl BackendState {
             memory: None,
             jvm_flags: None,
             jvm_binary: None,
+            sync: None,
             linux_wrapper: None,
             system_libraries: None,
             instance_fallback_icon,

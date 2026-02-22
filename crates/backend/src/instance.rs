@@ -13,13 +13,13 @@ use bridge::{
 };
 use parking_lot::RwLock;
 use relative_path::RelativePath;
-use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration};
+use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration, syncing::SyncEntry};
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
 use ustr::Ustr;
 
-use crate::{id_slab::{GetId, Id}, mod_metadata::ModMetadataManager, persistent::Persistent, BackendStateInstances, IoOrSerializationError};
+use crate::{id_slab::{GetId, Id}, mod_metadata::ModMetadataManager, persistent::Persistent, BackendStateInstances, IoOrSerializationError, syncing::Syncer};
 
 #[derive(Debug)]
 pub struct Instance {
@@ -33,6 +33,7 @@ pub struct Instance {
     pub configuration: Persistent<InstanceConfiguration>,
 
     pub child: Option<Child>,
+    pub applied_syncs: Option<Vec<Box<dyn Syncer>>>,
 
     pub watching_dot_minecraft: bool,
     pub watching_server_dat: bool,
@@ -667,6 +668,7 @@ impl Instance {
             configuration: instance_info,
 
             child: None,
+            applied_syncs: None,
 
             watching_dot_minecraft: false,
             watching_server_dat: false,

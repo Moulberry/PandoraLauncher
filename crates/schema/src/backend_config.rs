@@ -1,10 +1,15 @@
+use std::collections::HashMap;
+
 use enumset::{EnumSet, EnumSetType};
 use serde::{Deserialize, Serialize};
+
+use crate::syncing::SyncEntry;
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct BackendConfig {
     #[serde(default, skip_serializing_if = "crate::skip_if_default", deserialize_with = "crate::try_deserialize")]
     pub sync_targets: EnumSet<SyncTarget>,
+    pub sync_list: HashMap<u64, SyncEntry>,
     #[serde(default, skip_serializing_if = "crate::skip_if_default", deserialize_with = "crate::try_deserialize")]
     pub dont_open_game_output_when_launching: bool,
 }

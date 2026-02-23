@@ -45,7 +45,6 @@ fn build_http_clients(user_agent: &str, proxy_config: &ProxyConfig, proxy_passwo
 
     if let Some(proxy_url) = &proxy_url {
         if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
-            // Respect NO_PROXY env var
             let proxy = proxy.no_proxy(reqwest::NoProxy::from_env());
             http_builder = http_builder.proxy(proxy.clone());
             redirecting_builder = redirecting_builder.proxy(proxy);
@@ -76,11 +75,8 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
 
     let directories = Arc::new(LauncherDirectories::new(launcher_dir));
 
-    // Load config first to get proxy settings
     let mut config: Persistent<BackendConfig> = Persistent::load(directories.config_json.clone());
     let proxy_config = config.get().proxy.clone();
-
-    // Read proxy password from keyring if auth is enabled
     let proxy_password: Option<String> = if proxy_config.enabled && proxy_config.auth_enabled {
         runtime.block_on(async {
             match PlatformSecretStorage::new().await {

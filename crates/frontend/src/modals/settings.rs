@@ -139,11 +139,9 @@ impl Settings {
         self.get_configuration_task = Some(cx.spawn_in(window, async move |page, cx| {
             let result: BackendConfigWithPassword = recv.await.unwrap_or_default();
             let _ = page.update_in(cx, move |settings, window, cx| {
-                // Update proxy UI state from backend config
                 settings.proxy_enabled = result.config.proxy.enabled;
                 settings.proxy_auth_enabled = result.config.proxy.auth_enabled;
 
-                // Update input fields with loaded values
                 settings.proxy_host_input.update(cx, |input, cx| {
                     input.set_value(&result.config.proxy.host, window, cx);
                 });
@@ -156,7 +154,6 @@ impl Settings {
                 settings.proxy_protocol_select.update(cx, |select, cx| {
                     select.set_selected_value(&result.config.proxy.protocol.name(), window, cx);
                 });
-                // Load password from keyring if available
                 if let Some(ref password) = result.proxy_password {
                     settings.proxy_password_input.update(cx, |input, cx| {
                         input.set_value(password, window, cx);
@@ -383,10 +380,6 @@ impl Settings {
                 .child(ts!("settings.proxy.launcher_only_note")))
     }
 }
-
-
-
-
 impl Render for Settings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let selected_tab = self.selected_tab;

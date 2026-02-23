@@ -19,6 +19,7 @@ native-dialog.workspace = true
 fern.workspace = true
 log.workspace = true
 humantime.workspace = true
+regex.workspace = true
 
 [build-dependencies]
 winresource = "0.1.29"

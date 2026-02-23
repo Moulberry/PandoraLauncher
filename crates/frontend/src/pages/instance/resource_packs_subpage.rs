@@ -1,20 +1,42 @@
-use std::{hash::{DefaultHasher, Hash, Hasher}, path::{Path, PathBuf}, sync::{
-    atomic::{AtomicU64, AtomicUsize, Ordering}, Arc
-}};
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+    },
+};
 
 use bridge::{
-    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{AtomicContentUpdateStatus, InstanceID, InstanceContentID, InstanceContentSummary, ContentType, ContentSummary}, message::{AtomicBridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
+    handle::BackendHandle,
+    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget},
+    instance::{
+        AtomicContentUpdateStatus, ContentSummary, ContentType, InstanceContentID, InstanceContentSummary, InstanceID,
+    },
+    message::{AtomicBridgeDataLoadState, MessageToBackend},
+    serial::AtomicOptionSerial,
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, IndexPath, Sizable, WindowExt, breadcrumb::{Breadcrumb, BreadcrumbItem}, button::{Button, ButtonVariants}, h_flex, input::SelectAll, list::{ListDelegate, ListItem, ListState}, notification::{Notification, NotificationType}, switch::Switch, v_flex
+    ActiveTheme as _, Icon, IconName, IndexPath, Sizable, WindowExt,
+    breadcrumb::{Breadcrumb, BreadcrumbItem},
+    button::{Button, ButtonVariants},
+    h_flex,
+    input::SelectAll,
+    list::{ListDelegate, ListItem, ListState},
+    notification::{Notification, NotificationType},
+    switch::Switch,
+    v_flex,
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use schema::{content::ContentSource, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
-use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, png_render_cache, root, ts, ui::PageType};
+use crate::{
+    component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig,
+    png_render_cache, root, ts, ui::PageType,
+};
 
 use super::instance_page::InstanceSubpageType;
 
@@ -55,9 +77,12 @@ impl InstanceResourcePacksSubpage {
                 let actual_resource_packs = resource_packs.read(cx);
                 list.delegate_mut().set_content(actual_resource_packs);
                 cx.notify();
-            }).detach();
+            })
+            .detach();
 
-            ListState::new(resource_packs_list_delegate, window, cx).selectable(false).searchable(true)
+            ListState::new(resource_packs_list_delegate, window, cx)
+                .selectable(false)
+                .searchable(true)
         });
 
         Self {
@@ -73,20 +98,24 @@ impl InstanceResourcePacksSubpage {
         }
     }
 
-
     fn install_paths(&self, paths: &[PathBuf], window: &mut Window, cx: &mut App) {
         let content_install = ContentInstall {
             target: InstallTarget::Instance(self.instance),
             loader_hint: self.instance_loader,
             version_hint: Some(self.instance_version.into()),
-            files: paths.into_iter().filter_map(|path| {
-                Some(ContentInstallFile {
-                    replace_old: None,
-                    path: bridge::install::ContentInstallPath::Raw(Path::new("resourcepacks").join(path.file_name()?).into()),
-                    download: ContentDownload::File { path: path.clone() },
-                    content_source: ContentSource::Manual,
+            files: paths
+                .into_iter()
+                .filter_map(|path| {
+                    Some(ContentInstallFile {
+                        replace_old: None,
+                        path: bridge::install::ContentInstallPath::Raw(
+                            Path::new("resourcepacks").join(path.file_name()?).into(),
+                        ),
+                        download: ContentDownload::File { path: path.clone() },
+                        content_source: ContentSource::Manual,
+                    })
                 })
-            }).collect(),
+                .collect(),
         };
         crate::root::start_install(content_install, &self.backend_handle, window, cx);
     }
@@ -98,7 +127,8 @@ impl Render for InstanceResourcePacksSubpage {
 
         let state = self.resource_packs_state.load(Ordering::SeqCst);
         if state.should_send_load_request() {
-            self.backend_handle.send_with_serial(MessageToBackend::RequestLoadResourcePacks { id: self.instance }, &self.load_serial);
+            self.backend_handle
+                .send_with_serial(MessageToBackend::RequestLoadResourcePacks { id: self.instance }, &self.load_serial);
         }
 
         let header = h_flex()
@@ -106,66 +136,85 @@ impl Render for InstanceResourcePacksSubpage {
             .mb_1()
             .ml_1()
             .child(div().text_lg().child(ts!("instance.content.resourcepacks")))
-            .child(Button::new("update").label(ts!("instance.content.update.check.label")).success().compact().small().on_click({
-                let backend_handle = self.backend_handle.clone();
-                let instance_id = self.instance;
-                move |_, window, cx| {
-                    crate::root::start_update_check(instance_id, &backend_handle, window, cx);
-                }
-            }))
-            .child(Button::new("addmr").label(ts!("instance.content.install.from_modrinth")).success().compact().small().on_click({
-                let instance = self.instance;
-                move |_, window, cx| {
-                    let page = crate::ui::PageType::Modrinth {
-                        installing_for: Some(instance),
-                        project_type: Some(ModrinthProjectType::Resourcepack)
-                    };
-                    let path = &[PageType::Instances, PageType::InstancePage(instance, InstanceSubpageType::ResourcePacks)];
-                    root::switch_page(page, path, window, cx);
-                }
-            }))
-            .child(Button::new("addfile").label(ts!("instance.content.install.from_file")).success().compact().small().on_click({
-                cx.listener(move |this, _, window, cx| {
-                    let receiver = cx.prompt_for_paths(PathPromptOptions {
-                        files: true,
-                        directories: false,
-                        multiple: true,
-                        prompt: Some(ts!("instance.content.install.select_resourcepacks"))
-                    });
+            .child(
+                Button::new("update")
+                    .label(ts!("instance.content.update.check.label"))
+                    .success()
+                    .compact()
+                    .small()
+                    .on_click({
+                        let backend_handle = self.backend_handle.clone();
+                        let instance_id = self.instance;
+                        move |_, window, cx| {
+                            crate::root::start_update_check(instance_id, &backend_handle, window, cx);
+                        }
+                    }),
+            )
+            .child(
+                Button::new("addmr")
+                    .label(ts!("instance.content.install.from_modrinth"))
+                    .success()
+                    .compact()
+                    .small()
+                    .on_click({
+                        let instance = self.instance;
+                        move |_, window, cx| {
+                            let page = crate::ui::PageType::Modrinth {
+                                installing_for: Some(instance),
+                                project_type: Some(ModrinthProjectType::Resourcepack),
+                            };
+                            let path = &[
+                                PageType::Instances,
+                                PageType::InstancePage(instance, InstanceSubpageType::ResourcePacks),
+                            ];
+                            root::switch_page(page, path, window, cx);
+                        }
+                    }),
+            )
+            .child(
+                Button::new("addfile")
+                    .label(ts!("instance.content.install.from_file"))
+                    .success()
+                    .compact()
+                    .small()
+                    .on_click({
+                        cx.listener(move |this, _, window, cx| {
+                            let receiver = cx.prompt_for_paths(PathPromptOptions {
+                                files: true,
+                                directories: false,
+                                multiple: true,
+                                prompt: Some(ts!("instance.content.install.select_resourcepacks")),
+                            });
 
-                    let entity = cx.entity();
-                    let add_from_file_task = window.spawn(cx, async move |cx| {
-                        let Ok(result) = receiver.await else {
-                            return;
-                        };
-                        _ = cx.update_window_entity(&entity, move |this, window, cx| {
-                            match result {
-                                Ok(Some(paths)) => {
-                                    this.install_paths(&paths, window, cx);
-                                },
-                                Ok(None) => {},
-                                Err(error) => {
-                                    let error = format!("{}", error);
-                                    let notification = Notification::new()
-                                        .autohide(false)
-                                        .with_type(NotificationType::Error)
-                                        .title(error);
-                                    window.push_notification(notification, cx);
-                                },
-                            }
-                        });
-                    });
-                    this._add_from_file_task = Some(add_from_file_task);
-                })
-            }));
+                            let entity = cx.entity();
+                            let add_from_file_task = window.spawn(cx, async move |cx| {
+                                let Ok(result) = receiver.await else {
+                                    return;
+                                };
+                                _ = cx.update_window_entity(&entity, move |this, window, cx| match result {
+                                    Ok(Some(paths)) => {
+                                        this.install_paths(&paths, window, cx);
+                                    },
+                                    Ok(None) => {},
+                                    Err(error) => {
+                                        let error = format!("{}", error);
+                                        let notification = Notification::new()
+                                            .autohide(false)
+                                            .with_type(NotificationType::Error)
+                                            .title(error);
+                                        window.push_notification(notification, cx);
+                                    },
+                                });
+                            });
+                            this._add_from_file_task = Some(add_from_file_task);
+                        })
+                    }),
+            );
 
-        v_flex().p_4().size_full()
-            .child(header)
-            .child(div()
+        v_flex().p_4().size_full().child(header).child(
+            div()
                 .id("pack-list-area")
-                .drag_over(|style, _: &ExternalPaths, _, cx| {
-                    style.bg(cx.theme().accent)
-                })
+                .drag_over(|style, _: &ExternalPaths, _, cx| style.bg(cx.theme().accent))
                 .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| {
                     this.install_paths(paths.paths(), window, cx);
                 }))

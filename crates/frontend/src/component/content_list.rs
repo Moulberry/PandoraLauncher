@@ -6,6 +6,8 @@ use std::{
     },
 };
 
+use regex::Regex;
+
 use bridge::{
     handle::BackendHandle,
     instance::{
@@ -18,6 +20,7 @@ use gpui_component::{
     ActiveTheme as _, Icon, IconName, IndexPath, Sizable,
     button::{Button, ButtonVariants},
     h_flex,
+    label::Label,
     list::{ListDelegate, ListItem, ListState},
     switch::Switch,
     v_flex,
@@ -25,7 +28,7 @@ use gpui_component::{
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 
-use crate::{interface_config::InterfaceConfig, png_render_cache, ts};
+use crate::{component::minecraft_colors::*, interface_config::InterfaceConfig, png_render_cache, ts};
 
 #[derive(Clone)]
 struct ContentEntryChild {
@@ -416,12 +419,7 @@ impl ContentListDelegate {
             gpui::img(ImageSource::Resource(Resource::Embedded("images/default_mod.png".into())))
         };
 
-        let (desc1, desc2) = create_descriptions(
-            &summary.name,
-            &summary.version_str,
-            &summary.authors,
-            &child.path,
-        );
+        let (desc1, desc2) = create_descriptions(&summary.name, &summary.version_str, &summary.authors, &child.path);
 
         let mut hasher = DefaultHasher::new();
         child.parent_filename_hash.hash(&mut hasher);
@@ -693,20 +691,77 @@ impl ListDelegate for ContentListDelegate {
     }
 }
 
+fn get_minecraft_color(code: &str) -> Hsla {
+    match code {
+        "§0" => BLACK,
+        "§1" => DARK_BLUE,
+        "§2" => DARK_GREEN,
+        "§3" => DARK_AQUA,
+        "§4" => DARK_RED,
+        "§5" => DARK_PURPLE,
+        "§6" => GOLD,
+        "§7" => GRAY,
+        "§8" => DARK_GRAY,
+        "§9" => BLUE,
+        "§a" => LIME,
+        "§b" => AQUA,
+        "§c" => RED,
+        "§d" => LIGHT_PURPLE,
+        "§e" => YELLOW,
+        "§f" => WHITE,
+        _ => WHITE, // Includes §r (reset)
+    }
+}
+
+fn parse_minecraft_text_color(text: &str) -> Div {
+    let re = Regex::new(r"(§.)|([^§]+)").unwrap();
+
+    let mut current_color = WHITE;
+    let mut lines: Vec<Vec<Div>> = vec![Vec::new()];
+
+    for mat in re.find_iter(text) {
+        let part = mat.as_str();
+
+        if part.starts_with('§') {
+            current_color = get_minecraft_color(part);
+        } else {
+            for (i, segment) in part.split('\n').enumerate() {
+                if i > 0 {
+                    lines.push(Vec::new());
+                }
+
+                if !segment.is_empty() {
+                    lines.last_mut().unwrap().push(
+                        div().child(Label::new(SharedString::from(segment.to_string())).text_color(current_color)),
+                    );
+                }
+            }
+        }
+    }
+
+    div()
+        .flex()
+        .flex_col()
+        .children(lines.into_iter().map(|line| div().flex().children(line)))
+}
+
 fn create_descriptions(
     name: &Option<Arc<str>>,
     version: &Arc<str>,
     authors: &Arc<str>,
     filename: &Arc<str>,
 ) -> (Div, Option<Div>) {
+    // Creates the text for resource packs.
     if name.is_none() && authors.is_empty() {
         let description1 = v_flex()
             .w_2_5()
             .text_ellipsis()
             .child(SharedString::from(filename))
-            .child(SharedString::from(version));
+            .child(parse_minecraft_text_color(version));
         return (description1, None);
     }
+
+    // Creates the text for everything else
 
     let description1 = v_flex()
         .w_1_5()
@@ -720,7 +775,7 @@ fn create_descriptions(
         l: 0.5,
         a: 1.0,
     };
-    
+
     let mut description2 = v_flex().text_color(GRAY).child(SharedString::from(authors));
 
     if name.is_some() {

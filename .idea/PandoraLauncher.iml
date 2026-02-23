@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/crates/auth/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/backend/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/bridge/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/frontend/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/ftree/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/nbt/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/pandora_launcher/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/reqwest_client/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/schema/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

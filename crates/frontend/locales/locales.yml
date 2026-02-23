@@ -657,6 +657,8 @@ settings:
     en: Settings
   interface:
     en: Interface
+  network:
+    en: Network
   theme:
     title:
       en: Theme
@@ -678,3 +680,24 @@ settings:
       en: Hide main window on launch
     open_game_output:
       en: Open game output on launch
+  proxy:
+    title:
+      en: Proxy Settings
+    enabled:
+      en: Enable Proxy
+    protocol:
+      en: Protocol
+    host:
+      en: Host
+    port:
+      en: Port
+    auth:
+      en: Authentication
+    use_auth:
+      en: Use Authentication
+    username:
+      en: Username
+    password:
+      en: Password
+    launcher_only_note:
+      en: Note - Proxy settings only apply to the launcher, not the game itself

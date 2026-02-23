@@ -18,7 +18,7 @@ use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{auxiliary::AuxiliaryContentMeta, backend_config::BackendConfig, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, ProxyConfig}, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
 use tokio::sync::{mpsc::Receiver, OnceCell};
@@ -28,6 +28,38 @@ use uuid::Uuid;
 use crate::{
     account::{BackendAccountInfo, MinecraftLoginInfo}, directories::LauncherDirectories, id_slab::IdSlab, instance::{Instance, ContentFolder}, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent
 };
+
+fn build_http_clients(user_agent: &str, proxy_config: &ProxyConfig, proxy_password: Option<&str>) -> (reqwest::Client, reqwest::Client) {
+    let proxy_url = proxy_config.to_url(proxy_password);
+
+    let mut http_builder = reqwest::ClientBuilder::new()
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(15))
+        .redirect(Policy::none())
+        .use_rustls_tls()
+        .user_agent(user_agent);
+
+    let mut redirecting_builder = reqwest::ClientBuilder::new()
+        .use_rustls_tls()
+        .user_agent(user_agent);
+
+    if let Some(proxy_url) = &proxy_url {
+        if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
+            // Respect NO_PROXY env var
+            let proxy = proxy.no_proxy(reqwest::NoProxy::from_env());
+            http_builder = http_builder.proxy(proxy.clone());
+            redirecting_builder = redirecting_builder.proxy(proxy);
+            log::info!("Proxy configured: {}://{}:{}", proxy_config.protocol.scheme(), proxy_config.host, proxy_config.port);
+        } else {
+            log::warn!("Failed to parse proxy URL, proceeding without proxy");
+        }
+    }
+
+    let http_client = http_builder.build().expect("Failed to build HTTP client");
+    let redirecting_http_client = redirecting_builder.build().expect("Failed to build redirecting HTTP client");
+
+    (http_client, redirecting_http_client)
+}
 
 pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHandle, recv: BackendReceiver) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -42,22 +74,34 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         "PandoraLauncher/dev (https://github.com/Moulberry/PandoraLauncher)".to_string()
     };
 
-    let http_client = reqwest::ClientBuilder::new()
-        .connect_timeout(Duration::from_secs(15))
-        .read_timeout(Duration::from_secs(15))
-        .redirect(Policy::none())
-        .use_rustls_tls()
-        .user_agent(&user_agent)
-        .build()
-        .unwrap();
-
-    let redirecting_http_client = reqwest::ClientBuilder::new()
-        .use_rustls_tls()
-        .user_agent(&user_agent)
-        .build()
-        .unwrap();
-
     let directories = Arc::new(LauncherDirectories::new(launcher_dir));
+
+    // Load config first to get proxy settings
+    let mut config: Persistent<BackendConfig> = Persistent::load(directories.config_json.clone());
+    let proxy_config = config.get().proxy.clone();
+
+    // Read proxy password from keyring if auth is enabled
+    let proxy_password: Option<String> = if proxy_config.enabled && proxy_config.auth_enabled {
+        runtime.block_on(async {
+            match PlatformSecretStorage::new().await {
+                Ok(storage) => match storage.read_proxy_password().await {
+                    Ok(password) => password,
+                    Err(e) => {
+                        log::warn!("Failed to read proxy password from keyring: {:?}", e);
+                        None
+                    }
+                },
+                Err(e) => {
+                    log::warn!("Failed to initialize secret storage: {:?}", e);
+                    None
+                }
+            }
+        })
+    } else {
+        None
+    };
+
+    let (http_client, redirecting_http_client) = build_http_clients(&user_agent, &proxy_config, proxy_password.as_deref());
 
     let meta = Arc::new(MetadataManager::new(
         http_client.clone(),
@@ -91,9 +135,6 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
 
     // Load accounts
     let account_info = Persistent::load(directories.accounts_json.clone());
-
-    // Load config
-    let config = Persistent::load(directories.config_json.clone());
 
     let mut state = BackendState {
         self_handle,

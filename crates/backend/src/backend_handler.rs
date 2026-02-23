@@ -2,7 +2,7 @@ use std::{io::{BufRead, Read, Seek, SeekFrom, Write}, path::Path, sync::{atomic:
 
 use auth::{credentials::AccountCredentials, models::{MinecraftAccessToken, MinecraftProfileResponse}, secret::PlatformSecretStorage};
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{InstanceStatus, ContentType, ContentSummary}, message::{LogFiles, MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
+    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{InstanceStatus, ContentType, ContentSummary}, message::{BackendConfigWithPassword, LogFiles, MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
 };
 use futures::TryFutureExt;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -843,7 +843,28 @@ impl BackendState {
             },
             MessageToBackend::GetBackendConfiguration { channel } => {
                 let configuration = self.config.write().get().clone();
-                _ = channel.send(configuration);
+                let proxy_password = if configuration.proxy.enabled && configuration.proxy.auth_enabled {
+                    match PlatformSecretStorage::new().await {
+                        Ok(storage) => match storage.read_proxy_password().await {
+                            Ok(password) => password,
+                            Err(e) => {
+                                log::warn!("Failed to read proxy password from keyring: {:?}", e);
+                                None
+                            }
+                        },
+                        Err(e) => {
+                            log::warn!("Failed to create secret storage: {:?}", e);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                _ = channel.send(BackendConfigWithPassword {
+                    config: configuration,
+                    proxy_password,
+                });
             },
             MessageToBackend::CleanupOldLogFiles { instance: id } => {
                 let mut deleted = 0;
@@ -1050,6 +1071,34 @@ impl BackendState {
                 self.config.write().modify(|config| {
                     config.dont_open_game_output_when_launching = !value;
                 });
+            },
+            MessageToBackend::SetProxyConfiguration { config, password } => {
+                self.config.write().modify(|backend_config| {
+                    backend_config.proxy = config;
+                });
+
+                // system keyring (store or delete)
+                if let Some(password) = password {
+                    match self.secret_storage.get_or_init(PlatformSecretStorage::new).await {
+                        Ok(storage) => {
+                            if password.is_empty() {
+                                if let Err(e) = storage.delete_proxy_password().await {
+                                    log::warn!("Failed to delete proxy password from keyring: {:?}", e);
+                                }
+                            } else if let Err(e) = storage.write_proxy_password(&password).await {
+                                log::warn!("Failed to write proxy password to keyring: {:?}", e);
+                                self.send.send_error("Failed to save proxy password to system keyring");
+                            }
+                        },
+                        Err(e) => {
+                            log::warn!("Failed to initialize secret storage: {:?}", e);
+                            self.send.send_error("Failed to access system keyring for proxy password");
+                        }
+                    }
+                }
+
+                // Notify user that restart is required for proxy changes to take effect
+                self.send.send_info("Proxy settings saved. Restart the launcher to apply changes.");
             },
             MessageToBackend::CreateInstanceShortcut { id, path } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {

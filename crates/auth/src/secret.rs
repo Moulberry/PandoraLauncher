@@ -109,6 +109,44 @@ mod inner {
             keyring.delete(&attributes).await?;
             Ok(())
         }
+
+        pub async fn read_proxy_password(&self) -> Result<Option<String>, SecretStorageError> {
+            let keyring = self.keyring.as_ref()?;
+            keyring.unlock().await?;
+
+            let attributes = vec![("service", "pandora-launcher"), ("type", "proxy-password")];
+
+            let items = keyring.search_items(&attributes).await?;
+
+            if items.is_empty() {
+                Ok(None)
+            } else if items.len() > 1 {
+                Err(SecretStorageError::NotUnique)
+            } else {
+                let raw = items[0].secret().await?;
+                Ok(Some(String::from_utf8(raw.to_vec()).map_err(|_| SecretStorageError::SerializationError)?))
+            }
+        }
+
+        pub async fn write_proxy_password(&self, password: &str) -> Result<(), SecretStorageError> {
+            let keyring = self.keyring.as_ref()?;
+            keyring.unlock().await?;
+
+            let attributes = vec![("service", "pandora-launcher"), ("type", "proxy-password")];
+
+            keyring.create_item("Pandora Proxy Password", &attributes, password.as_bytes().to_vec(), true).await?;
+            Ok(())
+        }
+
+        pub async fn delete_proxy_password(&self) -> Result<(), SecretStorageError> {
+            let keyring = self.keyring.as_ref()?;
+            keyring.unlock().await?;
+
+            let attributes = vec![("service", "pandora-launcher"), ("type", "proxy-password")];
+
+            keyring.delete(&attributes).await?;
+            Ok(())
+        }
     }
 }
 
@@ -244,6 +282,84 @@ mod inner {
 
             Ok(())
         }
+
+        pub async fn read_proxy_password(&self) -> Result<Option<String>, SecretStorageError> {
+            fn read_inner(target: String) -> Result<Option<String>, SecretStorageError> {
+                let mut target_name: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
+
+                let mut credentials: *mut CREDENTIALW = std::ptr::null_mut();
+
+                unsafe {
+                    let result = CredReadW(
+                        windows::core::PWSTR::from_raw(target_name.as_mut_ptr()),
+                        CRED_TYPE_GENERIC,
+                        None,
+                        &mut credentials,
+                    );
+
+                    if let Err(error) = result {
+                        const ERROR_NOT_FOUND: windows::core::HRESULT =
+                            windows::core::HRESULT::from_win32(windows::Win32::Foundation::ERROR_NOT_FOUND.0);
+                        if error.code() == ERROR_NOT_FOUND {
+                            return Ok(None);
+                        }
+                        return Err(error.into());
+                    }
+
+                    let Some(credentials) = credentials.as_mut() else {
+                        return Ok(None);
+                    };
+
+                    let raw =
+                        std::slice::from_raw_parts(credentials.CredentialBlob, credentials.CredentialBlobSize as usize);
+                    Ok(Some(String::from_utf8(raw.to_vec()).map_err(|_| SecretStorageError::SerializationError)?))
+                }
+            }
+
+            read_inner("PandoraLauncher_ProxyPassword".to_string())
+        }
+
+        pub async fn write_proxy_password(&self, password: &str) -> Result<(), SecretStorageError> {
+            fn write_inner(target: String, bytes: Vec<u8>) -> Result<(), SecretStorageError> {
+                let mut target_name: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
+                let mut bytes = bytes;
+
+                let credentials = CREDENTIALW {
+                    Flags: CRED_FLAGS(0),
+                    Type: CRED_TYPE_GENERIC,
+                    TargetName: windows::core::PWSTR::from_raw(target_name.as_mut_ptr()),
+                    CredentialBlobSize: bytes.len() as u32,
+                    CredentialBlob: bytes.as_mut_ptr(),
+                    Persist: CRED_PERSIST_LOCAL_MACHINE,
+                    ..CREDENTIALW::default()
+                };
+
+                unsafe { Ok(CredWriteW(&credentials, 0)?) }
+            }
+
+            write_inner("PandoraLauncher_ProxyPassword".to_string(), password.as_bytes().to_vec())
+        }
+
+        pub async fn delete_proxy_password(&self) -> Result<(), SecretStorageError> {
+            let mut target_name: Vec<u16> = "PandoraLauncher_ProxyPassword".encode_utf16().chain(std::iter::once(0)).collect();
+
+            unsafe {
+                let result = CredDeleteW(
+                    windows::core::PWSTR::from_raw(target_name.as_mut_ptr()),
+                    CRED_TYPE_GENERIC,
+                    None,
+                );
+                // Ignore not found errors
+                if let Err(error) = result {
+                    const ERROR_NOT_FOUND: windows::core::HRESULT =
+                        windows::core::HRESULT::from_win32(windows::Win32::Foundation::ERROR_NOT_FOUND.0);
+                    if error.code() != ERROR_NOT_FOUND {
+                        return Err(error.into());
+                    }
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -296,6 +412,40 @@ mod inner {
             let uuid_str = uuid.as_hyphenated().to_string();
 
             let item = match self.keychain.find_generic_password("com.moulberry.pandoralauncher", uuid_str.as_str()) {
+                Ok((_, item)) => item,
+                Err(error) if error.code() == security_framework_sys::base::errSecItemNotFound => {
+                    return Ok(());
+                },
+                Err(error) => {
+                    return Err(error.into());
+                }
+            };
+
+            item.delete();
+            Ok(())
+        }
+
+        pub async fn read_proxy_password(&self) -> Result<Option<String>, SecretStorageError> {
+            let data = match self.keychain.find_generic_password("com.moulberry.pandoralauncher", "proxy-password") {
+                Ok((data, _)) => data,
+                Err(error) if error.code() == security_framework_sys::base::errSecItemNotFound => {
+                    return Ok(None);
+                },
+                Err(error) => {
+                    return Err(error.into());
+                }
+            };
+            let data = data.as_ref();
+            Ok(Some(String::from_utf8(data.to_vec()).map_err(|_| SecretStorageError::SerializationError)?))
+        }
+
+        pub async fn write_proxy_password(&self, password: &str) -> Result<(), SecretStorageError> {
+            self.keychain.set_generic_password("com.moulberry.pandoralauncher", "proxy-password", password.as_bytes())?;
+            Ok(())
+        }
+
+        pub async fn delete_proxy_password(&self) -> Result<(), SecretStorageError> {
+            let item = match self.keychain.find_generic_password("com.moulberry.pandoralauncher", "proxy-password") {
                 Ok((_, item)) => item,
                 Err(error) if error.code() == security_framework_sys::base::errSecItemNotFound => {
                     return Ok(());

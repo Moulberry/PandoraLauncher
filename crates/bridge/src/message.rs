@@ -6,7 +6,7 @@ use std::{
 
 use enumset::{EnumSet, EnumSetType};
 use schema::{
-    backend_config::{BackendConfig, SyncTarget}, instance::{
+    backend_config::{BackendConfig, ProxyConfig, SyncTarget}, instance::{
         InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
         InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration,
     }, loader::Loader, pandora_update::{UpdateManifest, UpdateManifestExe, UpdatePrompt}
@@ -22,6 +22,12 @@ use crate::{
 };
 
 #[derive(Debug)]
+#[derive(Default)]
+pub struct BackendConfigWithPassword {
+    pub config: BackendConfig,
+    pub proxy_password: Option<String>,
+}
+
 pub enum MessageToBackend {
     RequestMetadata {
         request: MetadataRequest,
@@ -139,7 +145,7 @@ pub enum MessageToBackend {
         channel: tokio::sync::oneshot::Sender<SyncState>,
     },
     GetBackendConfiguration {
-        channel: tokio::sync::oneshot::Sender<BackendConfig>,
+        channel: tokio::sync::oneshot::Sender<BackendConfigWithPassword>,
     },
     SetSyncing {
         target: SyncTarget,
@@ -167,6 +173,10 @@ pub enum MessageToBackend {
     },
     SetOpenGameOutputAfterLaunching {
         value: bool,
+    },
+    SetProxyConfiguration {
+        config: ProxyConfig,
+        password: Option<String>,
     },
     CreateInstanceShortcut {
         id: InstanceID,

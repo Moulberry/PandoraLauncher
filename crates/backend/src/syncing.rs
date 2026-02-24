@@ -38,7 +38,7 @@ pub fn apply_to_instance(sync_targets: &SyncTargets, directories: &LauncherDirec
                     continue;
                 };
 
-                if target.starts_with(directories.synced_dir) {
+                if target.starts_with(&directories.synced_dir) {
                     dir_iterator.skip_current_dir();
                     _ = junction::delete(entry.path());
                     continue;

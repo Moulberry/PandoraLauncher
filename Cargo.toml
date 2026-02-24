@@ -38,7 +38,7 @@ directories = "6.0.0"
 flate2 = "1.1.5"
 ftree = { path = "crates/ftree"}
 futures = "0.3.31"
-gpui = { git = "https://github.com/zed-industries/zed" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "1ad5ec6" }
 gpui-component = { git = "https://github.com/longbridge/gpui-component.git", rev = "c3ca1e287b71aa4cf7cb76a341f78ce5d952a7bf" }
 hex = { version = "0.4.3", features = ["serde"] }
 image = "0.25.8"
@@ -111,3 +111,6 @@ runas = "1.2.0"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 fs_extra = "1.3.0"
 walkdir = "2.5.0"
+
+[patch."https://github.com/longbridge/gpui-component.git"]
+gpui-component = { git = "file:///home/pandadev/Developer/App/PandoraLauncher/vendor/gpui-component", rev = "211a490d" }

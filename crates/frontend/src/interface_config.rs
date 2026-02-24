@@ -105,7 +105,7 @@ impl InterfaceConfig {
     pub fn get_mut(cx: &mut App) -> &mut Self {
         if cx.global::<InterfaceConfigHolder>().write_task.is_none() {
             let task = cx.spawn(async |app| {
-                gpui::Timer::after(Duration::from_secs(5)).await;
+                app.background_executor().timer(Duration::from_secs(5)).await;
                 _ = app.update_global::<InterfaceConfigHolder, _>(|holder, _| {
                     holder.write_to_disk();
                 });

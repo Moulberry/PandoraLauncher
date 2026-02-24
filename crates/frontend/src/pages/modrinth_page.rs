@@ -195,7 +195,7 @@ impl ModrinthSearchPage {
         self.loading = None;
 
         self._delayed_clear_task = cx.spawn(async |page, cx| {
-            gpui::Timer::after(Duration::from_millis(300)).await;
+            cx.background_executor().timer(Duration::from_millis(300)).await;
             let _ = page.update(cx, |page, cx| {
                 if page.pending_clear {
                     page.pending_clear = false;

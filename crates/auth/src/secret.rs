@@ -65,6 +65,17 @@ mod inner {
             })
         }
 
+        fn attributes_for_uuid<'a>(uuid: &'a str) -> Vec<(&'a str, &'a str)> {
+            vec![("service", "pandora-launcher"), ("uuid", uuid)]
+        }
+
+        fn map_keyring_error(error: keyring::Error) -> SecretStorageError {
+            match error {
+                keyring::Error::NoStorageAccess(_) => SecretStorageError::AccessDenied,
+                _ => SecretStorageError::UnknownError,
+            }
+        }
+
         // Fallback path for platforms where the primary oo7 Secret Service path fails
         // (seen on some KDE/KWallet setups). Uses the keyring crate to talk to
         // org.freedesktop.secrets via the OS keyring provider.
@@ -72,14 +83,13 @@ mod inner {
             let uuid_str = uuid.as_hyphenated().to_string();
             task::spawn_blocking(move || {
                 let entry = Entry::new("pandora-launcher", &uuid_str).map_err(|_| SecretStorageError::UnknownError)?;
-                match entry.get_password() {
-                    Ok(raw) => {
-                        Ok(Some(serde_json::from_str(&raw).map_err(|_| SecretStorageError::SerializationError)?))
-                    },
+                match entry.get_secret() {
+                    Ok(raw) => Ok(Some(
+                        serde_json::from_slice(&raw).map_err(|_| SecretStorageError::SerializationError)?,
+                    )),
                     Err(error) => match error {
                         keyring::Error::NoEntry => Ok(None),
-                        keyring::Error::NoStorageAccess(_) => Err(SecretStorageError::AccessDenied),
-                        _ => Err(SecretStorageError::UnknownError),
+                        other => Err(Self::map_keyring_error(other)),
                     },
                 }
             })
@@ -89,13 +99,10 @@ mod inner {
 
         async fn fallback_write(uuid: Uuid, credentials: &AccountCredentials) -> Result<(), SecretStorageError> {
             let uuid_str = uuid.as_hyphenated().to_string();
-            let raw = serde_json::to_string(credentials).map_err(|_| SecretStorageError::SerializationError)?;
+            let raw = serde_json::to_vec(credentials).map_err(|_| SecretStorageError::SerializationError)?;
             task::spawn_blocking(move || {
                 let entry = Entry::new("pandora-launcher", &uuid_str).map_err(|_| SecretStorageError::UnknownError)?;
-                entry.set_password(&raw).map_err(|error| match error {
-                    keyring::Error::NoStorageAccess(_) => SecretStorageError::AccessDenied,
-                    _ => SecretStorageError::UnknownError,
-                })
+                entry.set_secret(&raw).map_err(Self::map_keyring_error)
             })
             .await
             .map_err(|_| SecretStorageError::UnknownError)?
@@ -109,8 +116,7 @@ mod inner {
                     Ok(()) => Ok(()),
                     Err(error) => match error {
                         keyring::Error::NoEntry => Ok(()),
-                        keyring::Error::NoStorageAccess(_) => Err(SecretStorageError::AccessDenied),
-                        _ => Err(SecretStorageError::UnknownError),
+                        other => Err(Self::map_keyring_error(other)),
                     },
                 }
             })
@@ -124,7 +130,7 @@ mod inner {
                 keyring.unlock().await?;
 
                 let uuid_str = uuid.as_hyphenated().to_string();
-                let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
+                let attributes = Self::attributes_for_uuid(&uuid_str);
 
                 let items = keyring.search_items(&attributes).await?;
 
@@ -166,11 +172,13 @@ mod inner {
                 keyring.unlock().await?;
 
                 let uuid_str = uuid.as_hyphenated().to_string();
-                let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
+                let attributes = Self::attributes_for_uuid(&uuid_str);
 
                 let bytes = serde_json::to_vec(credentials).map_err(|_| SecretStorageError::SerializationError)?;
 
-                keyring.create_item("Pandora Minecraft Account", &attributes, bytes, true).await?;
+                keyring
+                    .create_item("Pandora Minecraft Account", &attributes, bytes, true)
+                    .await?;
                 Ok(())
             }
             .await;
@@ -194,7 +202,7 @@ mod inner {
                 keyring.unlock().await?;
 
                 let uuid_str = uuid.as_hyphenated().to_string();
-                let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
+                let attributes = Self::attributes_for_uuid(&uuid_str);
 
                 keyring.delete(&attributes).await?;
                 Ok(())

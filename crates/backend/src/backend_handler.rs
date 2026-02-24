@@ -744,7 +744,7 @@ impl BackendState {
                                             let error = format!("Invalid UTF8: {e}");
                                             for line in error.split('\n') {
                                                 let replaced = log_reader::replace(line.trim_ascii_end());
-                                                if send.blocking_send(factory.create(&replaced)).is_err() {
+                                                if send.send(factory.create(&replaced)).await.is_err() {
                                                     return;
                                                 }
                                             }
@@ -757,7 +757,7 @@ impl BackendState {
                                     let error = format!("Error while reading file: {e}");
                                     for line in error.split('\n') {
                                         let replaced = log_reader::replace(line.trim_ascii_end());
-                                        if send.blocking_send(factory.create(&replaced)).is_err() {
+                                        if send.send(factory.create(&replaced)).await.is_err() {
                                             return;
                                         }
                                     }

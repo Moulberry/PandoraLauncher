@@ -1068,6 +1068,7 @@ impl BackendState {
             loader,
             preferred_loader_version: None,
             memory: None,
+            wrapper_command: None,
             jvm_flags: None,
             jvm_binary: None,
             linux_wrapper: None,

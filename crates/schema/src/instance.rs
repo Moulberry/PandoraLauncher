@@ -14,6 +14,8 @@ pub struct InstanceConfiguration {
     pub preferred_loader_version: Option<Ustr>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_memory_configuration")]
     pub memory: Option<InstanceMemoryConfiguration>,
+    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_wrapper_command_configuration")]
+    pub wrapper_command: Option<InstanceWrapperCommandConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_flags_configuration")]
     pub jvm_flags: Option<InstanceJvmFlagsConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_binary_configuration")]
@@ -33,6 +35,7 @@ impl InstanceConfiguration {
             loader,
             preferred_loader_version: None,
             memory: None,
+            wrapper_command: None,
             jvm_flags: None,
             jvm_binary: None,
             linux_wrapper: None,
@@ -75,6 +78,20 @@ fn is_default_memory_configuration(config: &Option<InstanceMemoryConfiguration>)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct InstanceWrapperCommandConfiguration {
+    pub enabled: bool,
+    pub flags: Arc<str>,
+}
+
+fn is_default_wrapper_command_configuration(config: &Option<InstanceWrapperCommandConfiguration>) -> bool {
+    if let Some(config) = config {
+        !config.enabled && config.flags.trim_ascii().is_empty()
+    } else {
+        true
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct InstanceJvmFlagsConfiguration {
     pub enabled: bool,
     pub flags: Arc<str>,
@@ -110,6 +127,8 @@ pub struct InstanceLinuxWrapperConfiguration {
     pub use_gamemode: bool,
     #[serde(default = "crate::default_true", deserialize_with = "crate::try_deserialize")]
     pub use_discrete_gpu: bool,
+    #[serde(default, deserialize_with = "crate::try_deserialize")]
+    pub disable_gl_threaded_optimizations: bool,
 }
 
 impl Default for InstanceLinuxWrapperConfiguration {
@@ -118,13 +137,14 @@ impl Default for InstanceLinuxWrapperConfiguration {
             use_mangohud: false,
             use_gamemode: false,
             use_discrete_gpu: true,
+            disable_gl_threaded_optimizations: false
         }
     }
 }
 
 fn is_default_linux_wrapper_configuration(config: &Option<InstanceLinuxWrapperConfiguration>) -> bool {
     if let Some(config) = config {
-        !config.use_mangohud && !config.use_gamemode && config.use_discrete_gpu
+        !config.use_mangohud && !config.use_gamemode && config.use_discrete_gpu && !config.disable_gl_threaded_optimizations
     } else {
         true
     }

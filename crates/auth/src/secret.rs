@@ -22,6 +22,8 @@ pub enum SecretStorageError {
 
 #[cfg(target_os = "linux")]
 mod inner {
+    use keyring::Entry;
+    use tokio::task;
     use uuid::Uuid;
 
     use crate::{credentials::AccountCredentials, secret::SecretStorageError};
@@ -63,22 +65,94 @@ mod inner {
             })
         }
 
-        pub async fn read_credentials(&self, uuid: Uuid) -> Result<Option<AccountCredentials>, SecretStorageError> {
-            let keyring = self.keyring.as_ref()?;
-            keyring.unlock().await?;
-
+        // Fallback path for platforms where the primary oo7 Secret Service path fails
+        // (seen on some KDE/KWallet setups). Uses the keyring crate to talk to
+        // org.freedesktop.secrets via the OS keyring provider.
+        async fn fallback_read(uuid: Uuid) -> Result<Option<AccountCredentials>, SecretStorageError> {
             let uuid_str = uuid.as_hyphenated().to_string();
-            let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
+            task::spawn_blocking(move || {
+                let entry = Entry::new("pandora-launcher", &uuid_str).map_err(|_| SecretStorageError::UnknownError)?;
+                match entry.get_password() {
+                    Ok(raw) => {
+                        Ok(Some(serde_json::from_str(&raw).map_err(|_| SecretStorageError::SerializationError)?))
+                    },
+                    Err(error) => match error {
+                        keyring::Error::NoEntry => Ok(None),
+                        keyring::Error::NoStorageAccess(_) => Err(SecretStorageError::AccessDenied),
+                        _ => Err(SecretStorageError::UnknownError),
+                    },
+                }
+            })
+            .await
+            .map_err(|_| SecretStorageError::UnknownError)?
+        }
 
-            let items = keyring.search_items(&attributes).await?;
+        async fn fallback_write(uuid: Uuid, credentials: &AccountCredentials) -> Result<(), SecretStorageError> {
+            let uuid_str = uuid.as_hyphenated().to_string();
+            let raw = serde_json::to_string(credentials).map_err(|_| SecretStorageError::SerializationError)?;
+            task::spawn_blocking(move || {
+                let entry = Entry::new("pandora-launcher", &uuid_str).map_err(|_| SecretStorageError::UnknownError)?;
+                entry.set_password(&raw).map_err(|error| match error {
+                    keyring::Error::NoStorageAccess(_) => SecretStorageError::AccessDenied,
+                    _ => SecretStorageError::UnknownError,
+                })
+            })
+            .await
+            .map_err(|_| SecretStorageError::UnknownError)?
+        }
 
-            if items.is_empty() {
-                Ok(None)
-            } else if items.len() > 1 {
-                Err(SecretStorageError::NotUnique)
-            } else {
-                let raw = items[0].secret().await?;
-                Ok(Some(serde_json::from_slice(&raw).map_err(|_| SecretStorageError::SerializationError)?))
+        async fn fallback_delete(uuid: Uuid) -> Result<(), SecretStorageError> {
+            let uuid_str = uuid.as_hyphenated().to_string();
+            task::spawn_blocking(move || {
+                let entry = Entry::new("pandora-launcher", &uuid_str).map_err(|_| SecretStorageError::UnknownError)?;
+                match entry.delete_credential() {
+                    Ok(()) => Ok(()),
+                    Err(error) => match error {
+                        keyring::Error::NoEntry => Ok(()),
+                        keyring::Error::NoStorageAccess(_) => Err(SecretStorageError::AccessDenied),
+                        _ => Err(SecretStorageError::UnknownError),
+                    },
+                }
+            })
+            .await
+            .map_err(|_| SecretStorageError::UnknownError)?
+        }
+
+        pub async fn read_credentials(&self, uuid: Uuid) -> Result<Option<AccountCredentials>, SecretStorageError> {
+            let primary = async {
+                let keyring = self.keyring.as_ref()?;
+                keyring.unlock().await?;
+
+                let uuid_str = uuid.as_hyphenated().to_string();
+                let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
+
+                let items = keyring.search_items(&attributes).await?;
+
+                if items.is_empty() {
+                    Ok(None)
+                } else if items.len() > 1 {
+                    Err(SecretStorageError::NotUnique)
+                } else {
+                    let raw = items[0].secret().await?;
+                    Ok(Some(serde_json::from_slice(&raw).map_err(|_| SecretStorageError::SerializationError)?))
+                }
+            }
+            .await;
+
+            match primary {
+                Ok(value) => Ok(value),
+                Err(
+                    error @ (SecretStorageError::UnknownError
+                    | SecretStorageError::IoError
+                    | SecretStorageError::NotUnique),
+                ) => {
+                    let fallback = Self::fallback_read(uuid).await;
+                    if fallback.is_ok() {
+                        log::debug!("Secret storage fallback used for read (primary error: {error:?})");
+                    }
+                    fallback.or(Err(error))
+                },
+                Err(other) => Err(other),
             }
         }
 
@@ -87,27 +161,57 @@ mod inner {
             uuid: Uuid,
             credentials: &AccountCredentials,
         ) -> Result<(), SecretStorageError> {
-            let keyring = self.keyring.as_ref()?;
-            keyring.unlock().await?;
+            let primary = async {
+                let keyring = self.keyring.as_ref()?;
+                keyring.unlock().await?;
 
-            let uuid_str = uuid.as_hyphenated().to_string();
-            let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
+                let uuid_str = uuid.as_hyphenated().to_string();
+                let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
 
-            let bytes = serde_json::to_vec(credentials).map_err(|_| SecretStorageError::SerializationError)?;
+                let bytes = serde_json::to_vec(credentials).map_err(|_| SecretStorageError::SerializationError)?;
 
-            keyring.create_item("Pandora Minecraft Account", &attributes, bytes, true).await?;
-            Ok(())
+                keyring.create_item("Pandora Minecraft Account", &attributes, bytes, true).await?;
+                Ok(())
+            }
+            .await;
+
+            match primary {
+                Ok(()) => Ok(()),
+                Err(error @ (SecretStorageError::UnknownError | SecretStorageError::IoError)) => {
+                    let fallback = Self::fallback_write(uuid, credentials).await;
+                    if fallback.is_ok() {
+                        log::debug!("Secret storage fallback used for write (primary error: {error:?})");
+                    }
+                    fallback.or(Err(error))
+                },
+                Err(other) => Err(other),
+            }
         }
 
         pub async fn delete_credentials(&self, uuid: Uuid) -> Result<(), SecretStorageError> {
-            let keyring = self.keyring.as_ref()?;
-            keyring.unlock().await?;
+            let primary = async {
+                let keyring = self.keyring.as_ref()?;
+                keyring.unlock().await?;
 
-            let uuid_str = uuid.as_hyphenated().to_string();
-            let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
+                let uuid_str = uuid.as_hyphenated().to_string();
+                let attributes = vec![("service", "pandora-launcher"), ("uuid", uuid_str.as_str())];
 
-            keyring.delete(&attributes).await?;
-            Ok(())
+                keyring.delete(&attributes).await?;
+                Ok(())
+            }
+            .await;
+
+            match primary {
+                Ok(()) => Ok(()),
+                Err(error @ (SecretStorageError::UnknownError | SecretStorageError::IoError)) => {
+                    let fallback = Self::fallback_delete(uuid).await;
+                    if fallback.is_ok() {
+                        log::debug!("Secret storage fallback used for delete (primary error: {error:?})");
+                    }
+                    fallback.or(Err(error))
+                },
+                Err(other) => Err(other),
+            }
         }
     }
 }
@@ -215,7 +319,10 @@ mod inner {
 
             let uuid = uuid.as_hyphenated();
             write(format!("PandoraLauncher_MsaRefresh_{}", uuid), credentials.msa_refresh.as_ref())?;
-            write(format!("PandoraLauncher_MsaRefreshForceClientId_{}", uuid), credentials.msa_refresh_force_client_id.as_ref())?;
+            write(
+                format!("PandoraLauncher_MsaRefreshForceClientId_{}", uuid),
+                credentials.msa_refresh_force_client_id.as_ref(),
+            )?;
             write(format!("PandoraLauncher_MsaAccess_{}", uuid), credentials.msa_access.as_ref())?;
             write(format!("PandoraLauncher_Xbl_{}", uuid), credentials.xbl.as_ref())?;
             write(format!("PandoraLauncher_Xsts_{}", uuid), credentials.xsts.as_ref())?;
@@ -240,7 +347,9 @@ mod inner {
                 delete(format!("PandoraLauncher_Xbl_{}", uuid)),
                 delete(format!("PandoraLauncher_Xsts_{}", uuid)),
                 delete(format!("PandoraLauncher_AccessToken_{}", uuid)),
-            ].into_iter().collect::<Result<(), _>>()?;
+            ]
+            .into_iter()
+            .collect::<Result<(), _>>()?;
 
             Ok(())
         }
@@ -261,7 +370,7 @@ mod inner {
     impl PlatformSecretStorage {
         pub async fn new() -> Result<Self, SecretStorageError> {
             Ok(Self {
-                keychain: SecKeychain::default_for_domain(SecPreferencesDomain::User)?
+                keychain: SecKeychain::default_for_domain(SecPreferencesDomain::User)?,
             })
         }
 
@@ -274,7 +383,7 @@ mod inner {
                 },
                 Err(error) => {
                     return Err(error.into());
-                }
+                },
             };
             let data = data.as_ref();
             Ok(Some(serde_json::from_slice(&data).map_err(|_| SecretStorageError::SerializationError)?))
@@ -288,7 +397,8 @@ mod inner {
             let uuid_str = uuid.as_hyphenated().to_string();
             let bytes = serde_json::to_vec(credentials).map_err(|_| SecretStorageError::SerializationError)?;
 
-            self.keychain.set_generic_password("com.moulberry.pandoralauncher", uuid_str.as_str(), &bytes)?;
+            self.keychain
+                .set_generic_password("com.moulberry.pandoralauncher", uuid_str.as_str(), &bytes)?;
             Ok(())
         }
 
@@ -302,7 +412,7 @@ mod inner {
                 },
                 Err(error) => {
                     return Err(error.into());
-                }
+                },
             };
 
             item.delete();

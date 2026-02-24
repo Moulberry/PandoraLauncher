@@ -1,16 +1,55 @@
+use std::{collections::BTreeSet, sync::Arc};
+
 use enumset::{EnumSet, EnumSetType};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct BackendConfig {
-    #[serde(default, skip_serializing_if = "crate::skip_if_default", deserialize_with = "crate::try_deserialize")]
-    pub sync_targets: EnumSet<SyncTarget>,
+    #[serde(default, skip_serializing_if = "is_default_sync_targets", deserialize_with = "try_deserialize_sync_targets")]
+    pub sync_targets: SyncTargets,
     #[serde(default, skip_serializing_if = "crate::skip_if_default", deserialize_with = "crate::try_deserialize")]
     pub dont_open_game_output_when_launching: bool,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+pub struct SyncTargets {
+    pub files: BTreeSet<Arc<str>>,
+    pub folders: BTreeSet<Arc<str>>,
+}
+
+fn is_default_sync_targets(sync_targets: &SyncTargets) -> bool {
+    sync_targets.files.is_empty() && sync_targets.folders.is_empty()
+}
+
+fn try_deserialize_sync_targets<'de, D>(deserializer: D) -> Result<SyncTargets, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+
+    // Migration from previous bitset
+    if let serde_json::Value::Number(_) = value {
+        let Ok(legacy) = EnumSet::<LegacySyncTarget>::deserialize(value) else {
+            return Ok(SyncTargets::default());
+        };
+
+        let mut targets = SyncTargets::default();
+        for legacy_target in legacy {
+            let (name, file) = legacy_target.get_new_target();
+            if file {
+                targets.files.insert(name.into());
+            } else {
+                targets.folders.insert(name.into());
+            }
+        }
+        return Ok(targets);
+    }
+
+    Ok(SyncTargets::deserialize(value).unwrap_or_default())
+}
+
 #[derive(Debug, enum_map::Enum, EnumSetType, strum::EnumIter)]
-pub enum SyncTarget {
+enum LegacySyncTarget {
     Options = 0,
     Servers = 1,
     Commands = 2,
@@ -28,24 +67,24 @@ pub enum SyncTarget {
     Litematic = 14,
 }
 
-impl SyncTarget {
-    pub fn get_folder(self) -> Option<&'static str> {
+impl LegacySyncTarget {
+    pub fn get_new_target(self) -> (&'static str, bool) {
         match self {
-            SyncTarget::Options => None,
-            SyncTarget::Servers => None,
-            SyncTarget::Commands => None,
-            SyncTarget::Hotbars => None,
-            SyncTarget::Saves => Some("saves"),
-            SyncTarget::Config => Some("config"),
-            SyncTarget::Screenshots => Some("screenshots"),
-            SyncTarget::Resourcepacks => Some("resourcepacks"),
-            SyncTarget::Shaderpacks => Some("shaderpacks"),
-            SyncTarget::Flashback => Some("flashback"),
-            SyncTarget::DistantHorizons => Some("Distant_Horizons_server_data"),
-            SyncTarget::Voxy => Some(".voxy"),
-            SyncTarget::XaerosMinimap => Some("xaero"),
-            SyncTarget::Bobby => Some(".bobby"),
-            SyncTarget::Litematic => Some("schematics"),
+            LegacySyncTarget::Options => ("options.txt", true),
+            LegacySyncTarget::Servers => ("servers.dat", true),
+            LegacySyncTarget::Commands => ("command_history.txt", true),
+            LegacySyncTarget::Hotbars => ("hotbar.nbt", true),
+            LegacySyncTarget::Saves => ("saves", false),
+            LegacySyncTarget::Config => ("config", false),
+            LegacySyncTarget::Screenshots => ("screenshots", false),
+            LegacySyncTarget::Resourcepacks => ("resourcepacks", false),
+            LegacySyncTarget::Shaderpacks => ("shaderpacks", false),
+            LegacySyncTarget::Flashback => ("flashback", false),
+            LegacySyncTarget::DistantHorizons => ("Distant_Horizons_server_data", false),
+            LegacySyncTarget::Voxy => (".voxy", false),
+            LegacySyncTarget::XaerosMinimap => ("xaero", false),
+            LegacySyncTarget::Bobby => (".bobby", false),
+            LegacySyncTarget::Litematic => ("schematics", false),
         }
     }
 }

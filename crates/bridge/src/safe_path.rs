@@ -28,7 +28,11 @@ impl SafePath {
     }
 
     pub fn new(path: &str) -> Option<SafePath> {
-        Self::from_relative_path(RelativePath::new(path))
+        let trimmed = path.trim_ascii();
+        if trimmed.is_empty() {
+            return None;
+        }
+        Self::from_relative_path(RelativePath::new(trimmed))
     }
 
     pub fn to_path(&self, base: &Path) -> PathBuf {

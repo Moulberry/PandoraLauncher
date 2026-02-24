@@ -104,11 +104,26 @@ impl BackendState {
                         configuration.preferred_loader_version = loader_version.map(Ustr::from);
                     });
                 }
-            }
+            },
+            MessageToBackend::SetInstanceDisableFileSyncing { id, disable_file_syncing } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.disable_file_syncing = disable_file_syncing;
+                    });
+                }
+                self.apply_syncing_to_instance(id);
+            },
             MessageToBackend::SetInstanceMemory { id, memory } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.configuration.modify(|configuration| {
                         configuration.memory = Some(memory);
+                    });
+                }
+            },
+            MessageToBackend::SetInstanceWrapperCommand { id, wrapper_command } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.wrapper_command = Some(wrapper_command);
                     });
                 }
             },
@@ -798,7 +813,7 @@ impl BackendState {
                 _ = channel.send(result);
             },
             MessageToBackend::GetSyncState { channel } => {
-                let result = crate::syncing::get_sync_state(self.config.write().get().sync_targets, &self.directories);
+                let result = crate::syncing::get_sync_state(&self.config.write().get().sync_targets, &mut *self.instance_state.write(), &self.directories);
 
                 match result {
                     Ok(state) => {
@@ -809,19 +824,19 @@ impl BackendState {
                     },
                 }
             },
-            MessageToBackend::SetSyncing { target, value } => {
+            MessageToBackend::SetSyncing { target, is_file, value } => {
                 let mut write = self.config.write();
 
                 let result = if value {
-                    crate::syncing::enable_all(target, &self.directories)
+                    crate::syncing::enable_all(&target, is_file, &mut *self.instance_state.write(), &self.directories)
                 } else {
-                    crate::syncing::disable_all(target, &self.directories).map(|_| true)
+                    crate::syncing::disable_all(&target, is_file, &self.directories).map(|_| true)
                 };
 
                 match result {
                     Ok(success) => {
                         if !success {
-                            self.send.send_error("Unable to enable syncing, cannot override existing directories");
+                            self.send.send_error("Unable to enable syncing");
                             return;
                         }
                     },
@@ -831,15 +846,20 @@ impl BackendState {
                     },
                 }
 
-                if value {
-                    write.modify(|config| {
-                        config.sync_targets.insert(target);
-                    });
-                } else {
-                    write.modify(|config| {
-                        config.sync_targets.remove(target);
-                    });
-                }
+                write.modify(|config| {
+                    let (set, other_set) = if is_file {
+                        (&mut config.sync_targets.files, &mut config.sync_targets.folders)
+                    } else {
+                        (&mut config.sync_targets.folders, &mut config.sync_targets.files)
+                    };
+
+                    other_set.remove(&target);
+                    if value {
+                        _ = set.insert(target);
+                    } else {
+                        set.remove(&target);
+                    }
+                });
             },
             MessageToBackend::GetBackendConfiguration { channel } => {
                 let configuration = self.config.write().get().clone();

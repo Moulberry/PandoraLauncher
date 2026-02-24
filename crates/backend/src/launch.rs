@@ -11,7 +11,7 @@ use rc_zip_sync::{ArchiveHandle, ReadZip};
 use regex::Regex;
 use rustc_hash::FxHashMap;
 use schema::{
-    assets_index::AssetsIndex, fabric_launch::FabricLaunch, forge::{ForgeInstallProfile, ForgeInstallProfileLegacy, ForgeSide, VersionFragment}, instance::{InstanceConfiguration, AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL}, java_runtime_component::{JavaRuntimeComponentFile, JavaRuntimeComponentManifest}, loader::Loader, maven::{MavenCoordinate, MavenMetadataXml}, version::{
+    assets_index::AssetsIndex, fabric_launch::FabricLaunch, forge::{ForgeInstallProfile, ForgeInstallProfileLegacy, ForgeSide, VersionFragment}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceConfiguration, InstanceWrapperCommandConfiguration}, java_runtime_component::{JavaRuntimeComponentFile, JavaRuntimeComponentManifest}, loader::Loader, maven::MavenCoordinate, version::{
         GameLibrary, GameLibraryArtifact, GameLibraryDownloads, GameLibraryExtractOptions, GameLogging, LaunchArgument, LaunchArgumentValue, MinecraftVersion, OsArch, OsName, PartialMinecraftVersion, Rule, RuleAction
     }, version_manifest::MinecraftVersionManifest
 };
@@ -2077,36 +2077,49 @@ impl LaunchContext {
         #[cfg(target_os = "linux")]
         let use_gamemode = self.configuration.linux_wrapper.map(|w| w.use_gamemode).unwrap_or(false);
 
+        let mut wrapping_command = Vec::new();
         #[cfg(target_os = "linux")]
-        let mut command = match (use_mangohud, use_gamemode) {
-            (true, true) => {
-                let mut cmd = std::process::Command::new("mangohud");
-                cmd.arg("gamemoderun");
-                cmd.arg(&*self.java_path);
-                cmd
-            }
-            (true, false) => {
-                let mut cmd = std::process::Command::new("mangohud");
-                cmd.arg(&*self.java_path);
-                cmd
-            }
-            (false, true) => {
-                let mut cmd = std::process::Command::new("gamemoderun");
-                cmd.arg(&*self.java_path);
-                cmd
-            }
-            (false, false) => {
-                std::process::Command::new(&*self.java_path)
-            }
-        };
+        {
 
-        #[cfg(target_os = "linux")]
-        if self.configuration.linux_wrapper.map(|w| w.use_discrete_gpu).unwrap_or(true) {
-            command.env("DRI_PRIME", "1");
+
+            if use_mangohud {
+                wrapping_command.push("mangohud".to_string());
+            }
+            if use_gamemode {
+                wrapping_command.push("gamemoderun".to_string());
+            }
         }
 
-        #[cfg(not(target_os = "linux"))]
-        let mut command = std::process::Command::new(&*self.java_path);
+        if let Some(InstanceWrapperCommandConfiguration { enabled: true, ref flags }) = self.configuration.wrapper_command {
+            let split = &mut match shell_words::split(&flags) {
+              Ok(split) => split,
+              Err(_) =>  flags.split_whitespace().map(|f| f.to_string()).collect()
+            };
+            wrapping_command.append(split);
+        }
+
+        let mut iter = wrapping_command.iter();
+
+        let mut command = if let Some(first) = iter.next() {
+            let mut cmd = std::process::Command::new(first);
+            iter.for_each(|arg| {
+                cmd.arg(arg);
+            });
+            cmd.arg(&*self.java_path);
+            cmd
+        } else {
+            std::process::Command::new(&*self.java_path)
+        };
+
+
+        #[cfg(target_os = "linux")] {
+            if self.configuration.linux_wrapper.map(|w| w.use_discrete_gpu).unwrap_or(true) {
+                command.env("DRI_PRIME", "1");
+            }
+            if self.configuration.linux_wrapper.map(|w| w.disable_gl_threaded_optimizations).unwrap_or(false) {
+                command.env("__GL_THREADED_OPTIMIZATIONS", "0");
+            }
+        }
 
         command.current_dir(&self.game_dir);
         command.stdin(Stdio::piped());

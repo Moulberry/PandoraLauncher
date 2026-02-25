@@ -18,7 +18,7 @@ use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, ProxyConfig}, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, SyncTargets, ProxyConfig}, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
 use tokio::sync::{mpsc::Receiver, OnceCell};
@@ -684,18 +684,22 @@ impl BackendState {
     }
 
     pub async fn prelaunch(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
-        self.prelaunch_apply_syncing(id);
+        self.apply_syncing_to_instance(id);
         self.prelaunch_apply_modpacks(id, modal_action).await
     }
 
-    pub fn prelaunch_apply_syncing(&self, id: InstanceID) {
-        let path = if let Some(instance) = self.instance_state.read().instances.get(id) {
-            instance.dot_minecraft_path.clone()
+    pub fn apply_syncing_to_instance(&self, id: InstanceID) {
+        let (disable, path) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+            (instance.configuration.get().disable_file_syncing, instance.dot_minecraft_path.clone())
         } else {
             return;
         };
 
-        crate::syncing::apply_to_instance(self.config.write().get().sync_targets, &self.directories, path);
+        if disable {
+            crate::syncing::apply_to_instance(&SyncTargets::default(), &self.directories, path);
+        } else {
+            crate::syncing::apply_to_instance(&self.config.write().get().sync_targets, &self.directories, path);
+        }
     }
 
     pub async fn prelaunch_apply_modpacks(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
@@ -1092,41 +1096,31 @@ impl BackendState {
 
         let instance_dir = self.directories.instances_dir.join(name);
 
-        let _ = tokio::fs::create_dir_all(&instance_dir).await;
+        _ = std::fs::create_dir_all(&instance_dir);
 
-        let instance_fallback_icon = if let Some(EmbeddedOrRaw::Embedded(e)) = &icon {
-            Some(Ustr::from(&**e))
-        } else {
-            None
-        };
+        let mut instance_info = InstanceConfiguration::new(version.into(), loader);
 
-        let instance_info = InstanceConfiguration {
-            minecraft_version: Ustr::from(version),
-            loader,
-            preferred_loader_version: None,
-            memory: None,
-            jvm_flags: None,
-            jvm_binary: None,
-            linux_wrapper: None,
-            system_libraries: None,
-            instance_fallback_icon,
-        };
+        match icon {
+            Some(EmbeddedOrRaw::Embedded(e)) => {
+                instance_info.instance_fallback_icon = Some(e.into());
+            },
+            Some(EmbeddedOrRaw::Raw(image_bytes)) => {
+                if let Ok(format) = image::guess_format(&*image_bytes) {
+                    if format == ImageFormat::Png {
+                        let icon_path = instance_dir.join("icon.png");
+                        crate::write_safe(&icon_path, &*image_bytes).unwrap();
+                    } else {
+                        self.send.send_error("Unable to apply icon: only pngs are supported");
+                    }
+                } else {
+                    self.send.send_error("Unable to apply icon: unknown format");
+                }
+            },
+            None => todo!(),
+        }
 
         let info_path = instance_dir.join("info_v1.json");
         crate::write_safe(&info_path, serde_json::to_string(&instance_info).unwrap().as_bytes()).unwrap();
-
-        if let Some(EmbeddedOrRaw::Raw(image_bytes)) = icon {
-            if let Ok(format) = image::guess_format(&*image_bytes) {
-                if format == ImageFormat::Png {
-                    let icon_path = instance_dir.join("icon.png");
-                    crate::write_safe(&icon_path, &*image_bytes).unwrap();
-                } else {
-                    self.send.send_error("Unable to apply icon: only pngs are supported");
-                }
-            } else {
-                self.send.send_error("Unable to apply icon: unknown format");
-            }
-        }
 
         Some(instance_dir.clone())
     }

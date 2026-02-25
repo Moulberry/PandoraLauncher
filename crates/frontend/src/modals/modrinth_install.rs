@@ -631,7 +631,7 @@ impl InstallDialog {
                     .child(Button::new("install").success().label(ts!("instance.content.install.label")).on_click(cx.listener(
                         move |this, _, window, cx| {
                             let Some(selected_mod_version) = selected_mod_version.as_ref() else {
-                                window.push_notification((NotificationType::Error, ts!("instance.content.no_mod_version_selected")), cx);
+                                window.push_notification((NotificationType::Error, ts!("instance.content.install.no_mod_version_selected")), cx);
                                 return;
                             };
 

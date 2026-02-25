@@ -673,6 +673,7 @@ dependencies = [
  "toml 0.9.11+spec-1.1.0",
  "ustr",
  "uuid",
+ "walkdir",
  "xmlparser",
 ]
 
@@ -913,6 +914,7 @@ dependencies = [
  "enum-map",
  "enumset",
  "relative-path",
+ "rustc-hash 2.1.1",
  "sanitize-filename",
  "schema",
  "strum 0.27.2",

@@ -1,14 +1,13 @@
 use std::{
-    ffi::OsString,
-    path::{Path, PathBuf},
-    sync::Arc,
+    collections::{BTreeMap, HashMap}, ffi::OsString, path::{Path, PathBuf}, sync::Arc
 };
 
-use enumset::{EnumSet, EnumSetType};
+use enumset::EnumSet;
+use rustc_hash::FxHashMap;
 use schema::{
-    backend_config::{BackendConfig, ProxyConfig, SyncTarget}, instance::{
+    backend_config::{BackendConfig, ProxyConfig, SyncTargets}, instance::{
         InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
-        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration,
+        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration,
     }, loader::Loader, pandora_update::{UpdateManifest, UpdateManifestExe, UpdatePrompt}
 };
 use ustr::Ustr;
@@ -58,9 +57,17 @@ pub enum MessageToBackend {
         id: InstanceID,
         loader_version: Option<&'static str>
     },
+    SetInstanceDisableFileSyncing {
+        id: InstanceID,
+        disable_file_syncing: bool,
+    },
     SetInstanceMemory {
         id: InstanceID,
         memory: InstanceMemoryConfiguration,
+    },
+    SetInstanceWrapperCommand {
+        id: InstanceID,
+        wrapper_command: InstanceWrapperCommandConfiguration,
     },
     SetInstanceJvmFlags {
         id: InstanceID,
@@ -148,7 +155,8 @@ pub enum MessageToBackend {
         channel: tokio::sync::oneshot::Sender<BackendConfigWithPassword>,
     },
     SetSyncing {
-        target: SyncTarget,
+        target: Arc<str>,
+        is_file: bool,
         value: bool,
     },
     CleanupOldLogFiles {
@@ -273,13 +281,19 @@ pub struct LogFiles {
     pub total_gzipped_size: usize,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
+pub struct SyncTargetState {
+    pub enabled: bool,
+    pub is_file: bool,
+    pub sync_count: usize,
+    pub cannot_sync_count: usize,
+}
+
+#[derive(Debug)]
 pub struct SyncState {
-    pub sync_folder: Option<Arc<Path>>,
-    pub want_sync: EnumSet<SyncTarget>,
-    pub total: usize,
-    pub synced: enum_map::EnumMap<SyncTarget, usize>,
-    pub cannot_sync: enum_map::EnumMap<SyncTarget, usize>,
+    pub sync_folder: Arc<Path>,
+    pub targets: BTreeMap<Arc<str>, SyncTargetState>,
+    pub total_count: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

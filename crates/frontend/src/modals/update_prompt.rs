@@ -15,7 +15,7 @@ pub fn open_update_prompt(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let title = ts!("system.update.ask");
+    let title = ts!("system.update.title");
     let old_version = ts!("system.update.current", ver = update.old_version);
     let new_version = ts!("system.update.new", ver = update.new_version);
 

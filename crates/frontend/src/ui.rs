@@ -339,12 +339,12 @@ impl Render for LauncherUI {
 
         let pandora_icon = Icon::empty().path("icons/pandora.svg");
 
-        let account_button = div().flex_grow().id("account-button").child(SidebarFooter::new()
+        let account_button = div().max_w_full().flex_grow().id("account-button").child(SidebarFooter::new()
             .w_full()
             .justify_center()
             .text_size(rems(0.9375))
             .child(account_head.size_8().min_w_8().min_h_8())
-            .child(account_name))
+            .child(v_flex().w_full().child(account_name)))
             .on_click({
                 let accounts = self.data.accounts.clone();
                 let backend_handle = self.data.backend_handle.clone();

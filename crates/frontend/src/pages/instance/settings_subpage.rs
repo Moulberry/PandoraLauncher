@@ -8,7 +8,7 @@ use gpui_component::{
     button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, spinner::Spinner, v_flex, ActiveTheme as _, Disableable, Selectable, Sizable, WindowExt
 };
 use once_cell::sync::Lazy;
-use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, LwjglLibraryPath, AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL}, loader::Loader, version_manifest::MinecraftVersionManifest};
+use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
 
 use crate::{entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
@@ -31,9 +31,13 @@ pub struct InstanceSettingsSubpage {
     loader_select_state: Entity<SelectState<Vec<&'static str>>>,
     loader_versions_state: TypelessFrontendMetadataResult,
     loader_version_select_state: Entity<SelectState<SearchableVec<&'static str>>>,
+    disable_file_syncing: bool,
+
     memory_override_enabled: bool,
     memory_min_input_state: Entity<InputState>,
     memory_max_input_state: Entity<InputState>,
+    wrapper_command_enabled: bool,
+    wrapper_command_input_state: Entity<InputState>,
     jvm_flags_enabled: bool,
     jvm_flags_input_state: Entity<InputState>,
     jvm_binary_enabled: bool,
@@ -50,6 +54,8 @@ pub struct InstanceSettingsSubpage {
     use_gamemode: bool,
     #[cfg(target_os = "linux")]
     use_discrete_gpu: bool,
+    #[cfg(target_os = "linux")]
+    disable_gl_threaded_optimizations: bool,
     #[cfg(target_os = "linux")]
     mangohud_available: bool,
     #[cfg(target_os = "linux")]
@@ -72,8 +78,10 @@ impl InstanceSettingsSubpage {
         let instance_id = entry.id;
         let loader = entry.configuration.loader;
         let preferred_loader_version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+        let disable_file_syncing = entry.configuration.disable_file_syncing;
 
         let memory = entry.configuration.memory.unwrap_or_default();
+        let wrapper_command = entry.configuration.wrapper_command.clone().unwrap_or_default();
         let jvm_flags = entry.configuration.jvm_flags.clone().unwrap_or_default();
         let jvm_binary = entry.configuration.jvm_binary.clone().unwrap_or_default();
         #[cfg(target_os = "linux")]
@@ -132,6 +140,11 @@ impl InstanceSettingsSubpage {
         cx.subscribe_in(&memory_max_input_state, window, Self::on_memory_step).detach();
         cx.subscribe(&memory_max_input_state, Self::on_memory_changed).detach();
 
+        let wrapper_command_input_state = cx.new(|cx| {
+            InputState::new(window, cx).auto_grow(1, 8).default_value(wrapper_command.flags)
+        });
+        cx.subscribe(&wrapper_command_input_state, Self::on_wrapper_command_changed).detach();
+
         let jvm_flags_input_state = cx.new(|cx| {
             InputState::new(window, cx).auto_grow(1, 8).default_value(jvm_flags.flags)
         });
@@ -147,9 +160,12 @@ impl InstanceSettingsSubpage {
             loader,
             loader_select_state,
             loader_version_select_state,
+            disable_file_syncing,
             memory_override_enabled: memory.enabled,
             memory_min_input_state,
             memory_max_input_state,
+            wrapper_command_enabled: wrapper_command.enabled,
+            wrapper_command_input_state,
             jvm_flags_enabled: jvm_flags.enabled,
             jvm_flags_input_state,
             jvm_binary_enabled: jvm_binary.enabled,
@@ -164,6 +180,8 @@ impl InstanceSettingsSubpage {
             use_gamemode: linux_wrapper.use_gamemode,
             #[cfg(target_os = "linux")]
             use_discrete_gpu: linux_wrapper.use_discrete_gpu,
+            #[cfg(target_os = "linux")]
+            disable_gl_threaded_optimizations: linux_wrapper.disable_gl_threaded_optimizations,
             #[cfg(target_os = "linux")]
             mangohud_available: Self::is_command_available("mangohud"),
             #[cfg(target_os = "linux")]
@@ -451,6 +469,29 @@ impl InstanceSettingsSubpage {
         }
     }
 
+    pub fn on_wrapper_command_changed(
+        &mut self,
+        _: Entity<InputState>,
+        event: &InputEvent,
+        cx: &mut Context<Self>,
+    ) {
+        if let InputEvent::Change = event {
+            self.backend_handle.send(MessageToBackend::SetInstanceWrapperCommand {
+                id: self.instance_id,
+                wrapper_command: self.get_wrapper_command_configuration(cx)
+            });
+        }
+    }
+
+    fn get_wrapper_command_configuration(&self, cx: &App) -> InstanceWrapperCommandConfiguration {
+        let flags = self.wrapper_command_input_state.read(cx).value();
+
+        InstanceWrapperCommandConfiguration {
+            enabled: self.wrapper_command_enabled,
+            flags: flags.into(),
+        }
+    }
+
     pub fn on_jvm_flags_changed(
         &mut self,
         _: Entity<InputState>,
@@ -508,6 +549,7 @@ impl InstanceSettingsSubpage {
             use_mangohud: self.use_mangohud,
             use_gamemode: self.use_gamemode,
             use_discrete_gpu: self.use_discrete_gpu,
+            disable_gl_threaded_optimizations: self.disable_gl_threaded_optimizations
         }
     }
 
@@ -566,6 +608,7 @@ impl Render for InstanceSettingsSubpage {
             .child(div().text_lg().child(ts!("settings.title")));
 
         let memory_override_enabled = self.memory_override_enabled;
+        let wrapper_command_enabled = self.wrapper_command_enabled;
         let jvm_flags_enabled = self.jvm_flags_enabled;
         let jvm_binary_enabled = self.jvm_binary_enabled;
 
@@ -633,15 +676,26 @@ impl Render for InstanceSettingsSubpage {
                     }).w_full())
                 },
                 TypelessFrontendMetadataResult::Error(ref error) => {
-                    version_content = version_content.child(format!("{}: {}", ts!("instance.possible_loader_error"), error))
+                    version_content = version_content.child(format!("{}: {}", ts!("instance.versions_loading.possible_loader_error"), error))
                 },
             }
         }
 
-        basic_content = basic_content.child(crate::labelled(
-            ts!("instance.version"),
-            version_content,
-        ));
+        basic_content = basic_content
+            .child(crate::labelled(
+                ts!("instance.version"),
+                version_content,
+            ))
+            .child(crate::labelled(
+                ts!("instance.sync.label"),
+                Checkbox::new("syncing").label(ts!("instance.sync.disable_syncing")).checked(self.disable_file_syncing).on_click(cx.listener(|page, value, _, _| {
+                    page.disable_file_syncing = *value;
+                    page.backend_handle.send(MessageToBackend::SetInstanceDisableFileSyncing {
+                        id: page.instance_id,
+                        disable_file_syncing: *value
+                    });
+                }))
+            ));
 
         let runtime_content = v_flex()
             .gap_4()
@@ -728,8 +782,7 @@ impl Render for InstanceSettingsSubpage {
                         });
                     }, window, cx);
                 })))
-            )
-            .child(v_flex()
+            ).child(v_flex()
                 .gap_1()
                 .child(Checkbox::new("system_openal").label(ts!("instance.openal_lib")).checked(self.override_openal_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.override_openal_enabled != *value {
@@ -751,6 +804,19 @@ impl Render for InstanceSettingsSubpage {
                         });
                     }, window, cx);
                 })))
+            ).child(v_flex()
+                .gap_1()
+                .child(Checkbox::new("wrapper_command").label(ts!("instance.wrapper_command")).checked(wrapper_command_enabled).on_click(cx.listener(|page, value, _, cx| {
+                    if page.wrapper_command_enabled != *value {
+                        page.wrapper_command_enabled = *value;
+                        page.backend_handle.send(MessageToBackend::SetInstanceWrapperCommand {
+                            id: page.instance_id,
+                            wrapper_command: page.get_wrapper_command_configuration(cx)
+                        });
+                        cx.notify();
+                    }
+                })))
+                .child(Input::new(&self.wrapper_command_input_state).disabled(!wrapper_command_enabled))
             );
 
         #[cfg(target_os = "linux")]
@@ -780,6 +846,16 @@ impl Render for InstanceSettingsSubpage {
             .child(Checkbox::new("use_discrete_gpu").label(ts!("instance.linux.use_discrete_gpu")).checked(self.use_discrete_gpu).on_click(cx.listener(|page, value, _, cx| {
                 if page.use_discrete_gpu != *value {
                     page.use_discrete_gpu = *value;
+                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                        id: page.instance_id,
+                        linux_wrapper: page.get_linux_wrapper_configuration()
+                    });
+                    cx.notify();
+                }
+            })))
+            .child(Checkbox::new("disable_gl_threaded_optimizations").label(ts!("instance.linux.disable_gl_threaded_optimizations")).checked(self.disable_gl_threaded_optimizations).on_click(cx.listener(|page, value, _, cx| {
+                if page.disable_gl_threaded_optimizations != *value {
+                    page.disable_gl_threaded_optimizations = *value;
                     page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
                         id: page.instance_id,
                         linux_wrapper: page.get_linux_wrapper_configuration()

@@ -32,9 +32,6 @@ modrinth:
       en: Ornithe
     rift:
       en: Rift
-    # resourcepacks
-    minecraft:
-      en: Resource Pack
     # datapacks
     datapack:
       en: Data Pack
@@ -399,6 +396,8 @@ instance:
   # Advanced Settings
   memory:
     en: Set Memory
+  wrapper_command:
+    en: Add Wrapper Command
   jvm_flags:
     en: Add JVM Flags
   jvm_binary:
@@ -424,6 +423,8 @@ instance:
       en: Use GameMode
     use_discrete_gpu:
       en: Use Discrete GPU
+    disable_gl_threaded_optimizations:
+      en: Disable GL Threaded Optimizations
 
   # Delete Dialog
   delete_dialog:
@@ -519,8 +520,6 @@ instance:
           en: Loading project versions from Modrinth...
         error:
           en: "Error loading project versions from Modrinth: %{err}"
-      no_matching_versions:
-        en: Unable to find matching version of project
     install:
       label:
         en: Install
@@ -565,6 +564,8 @@ instance:
         en: No mod version selected
       unable_install_other:
         en: Unable to install 'other' project type
+      no_matching_versions:
+        en: Unable to find matching version of project
       unknown_type:
         en: Don't know how to handle this type of content
       select_resourcepacks:
@@ -619,6 +620,18 @@ instance:
       en: Folders
     mods:
       en: Mods
+    custom:
+      en: Custom
+    sync_name_file:
+      en: Sync %{name} file
+    sync_name_folder:
+      en: Sync %{name} folder
+    sync_file:
+      en: Sync file
+    sync_folder:
+      en: Sync folder
+    disable_syncing:
+      en: Disable Instance File Syncing
 
     targets:
       options:

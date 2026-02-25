@@ -34,6 +34,8 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub modrinth_install_normally: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub modrinth_filter_version: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub modrinth_page_project_type: ModrinthProjectType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,

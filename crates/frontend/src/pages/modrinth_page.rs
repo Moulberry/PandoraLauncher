@@ -9,6 +9,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{content::ContentSource, loader::Loader, modrinth::{
     ModrinthHit, ModrinthProjectType, ModrinthSearchRequest, ModrinthSearchResult, ModrinthSideRequirement
 }};
+use ustr::Ustr;
 
 use crate::{
     component::{error_alert::ErrorAlert, page_path::PagePath}, entity::{
@@ -21,6 +22,7 @@ pub struct ModrinthSearchPage {
     hits: Vec<ModrinthHit>,
     page_path: PagePath,
     install_for: Option<InstanceID>,
+    filter_version: Option<Ustr>,
     loading: Option<Subscription>,
     pending_clear: bool,
     total_hits: usize,
@@ -51,12 +53,14 @@ impl ModrinthSearchPage {
 
         let mut can_install_latest = false;
         let mut installed_mods_by_project: FxHashMap<Arc<str>, Vec<InstalledMod>> = FxHashMap::default();
+        let mut filter_version = None;
 
         let mut mods_load_state = None;
         if let Some(install_for) = install_for {
             if let Some(entry) = data.instances.read(cx).entries.get(&install_for) {
                 let instance = entry.read(cx);
                 can_install_latest = instance.configuration.loader != Loader::Vanilla;
+                filter_version = Some(instance.configuration.minecraft_version);
 
                 let mods = instance.mods.read(cx);
                 for summary in mods.iter() {
@@ -109,6 +113,7 @@ impl ModrinthSearchPage {
             hits: Vec::new(),
             page_path,
             install_for,
+            filter_version,
             loading: None,
             pending_clear: false,
             total_hits: 1,
@@ -233,6 +238,12 @@ impl ModrinthSearchPage {
         let mut facets = format!("[[\"project_type={}\"]", project_type);
 
         let is_mod = self.filter_project_type == ModrinthProjectType::Mod || self.filter_project_type == ModrinthProjectType::Modpack;
+        if is_mod && let Some(filter_version) = self.filter_version && InterfaceConfig::get(cx).modrinth_filter_version {
+            facets.push_str(",[\"versions=");
+            facets.push_str(&filter_version);
+            facets.push_str("\"]");
+        }
+
         if !self.filter_loaders.is_empty() && is_mod {
             facets.push_str(",[");
 
@@ -403,11 +414,15 @@ impl ModrinthSearchPage {
                 let environment = h_flex().gap_1().font_bold().child(env_icon).child(env_name);
 
                 let categories = hit.display_categories.iter().flat_map(|categories| {
-                    categories.iter().map(|category| {
+                    categories.iter().filter_map(|category| {
+                        if category == "minecraft" {
+                            return None;
+                        }
+
                         let icon = icon_for(category).unwrap_or("icons/diamond.svg");
                         let icon = Icon::empty().path(icon);
                         let translated_category = ts!(format!("modrinth.category.{}", category));
-                        h_flex().gap_0p5().child(icon).child(translated_category)
+                        Some(h_flex().gap_0p5().child(icon).child(translated_category))
                     })
                 });
 
@@ -814,14 +829,30 @@ impl Render for ModrinthSearchPage {
             )
             .into_any_element();
 
+        let is_mod = self.filter_project_type == ModrinthProjectType::Mod || self.filter_project_type == ModrinthProjectType::Modpack;
+        let filter_version_toggle = if is_mod && let Some(filter_version) = self.filter_version {
+            let title = format!("{}: {}", ts!("instance.version"), filter_version);
+            Some(Button::new("filter_version").label(title)
+                .outline()
+                .selected(InterfaceConfig::get(cx).modrinth_filter_version)
+                .on_click(cx.listener(|page, _, _, cx| {
+                    let cfg = InterfaceConfig::get_mut(cx);
+                    cfg.modrinth_filter_version = !cfg.modrinth_filter_version;
+                    page.reload(cx);
+                })))
+        } else {
+            None
+        };
+
         let parameters = h_flex()
             .h_full()
             .min_h_0()
             .flex_1()
             .overflow_y_scrollbar()
-            .child(v_flex().h_full().gap_3()
+            .child(v_flex().h_full().min_w(px(170.0)).gap_3()
                 .child(type_button_group)
                 .when_some(loader_button_group, |this, group| this.child(group))
+                .when_some(filter_version_toggle, |this, button| this.child(button))
                 .child(category)
             );
 

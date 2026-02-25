@@ -54,7 +54,7 @@ os_info = "3.12.0"
 paste = "1.0.15"
 quick-xml = "0.38.3"
 rand = "0.8.5"
-regex = "1.12.2"
+regex = "1.12.3"
 reqwest = { version = "0.12.24", features = ["json", "rustls-tls", "stream"] }
 rust-embed = "8.7.2"
 rustc-hash = "2.1.1"

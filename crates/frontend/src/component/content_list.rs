@@ -7,7 +7,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, switch::Switch, v_flex, ActiveTheme as _, Icon, IconName, IndexPath, Sizable
+    ActiveTheme, Icon, IconName, IndexPath, Sizable, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, switch::Switch, v_flex
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -70,11 +70,9 @@ impl ContentListDelegate {
             gpui::img(ImageSource::Resource(Resource::Embedded("images/default_mod.png".into())))
         };
 
-        const GRAY: Hsla = Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0};
-
         let (desc1, desc2) = create_descriptions(summary.content_summary.name.clone(),
             summary.content_summary.version_str.clone(), summary.content_summary.authors.clone(),
-            summary.filename.clone());
+            summary.filename.clone(), cx.theme().muted_foreground);
 
         let id = self.id;
         let content_id = summary.id;
@@ -346,7 +344,7 @@ impl ContentListDelegate {
 
         let (desc1, desc2) = create_descriptions(summary.name.clone(),
             summary.version_str.clone(), summary.authors.clone(),
-            child.path.clone());
+            child.path.clone(), cx.theme().muted_foreground);
 
         let mut hasher = DefaultHasher::new();
         child.parent_filename_hash.hash(&mut hasher);
@@ -594,7 +592,7 @@ impl ListDelegate for ContentListDelegate {
     }
 }
 
-fn create_descriptions(name: Option<Arc<str>>, version: Arc<str>, authors: Arc<str>, filename: Arc<str>) -> (Div, Option<Div>) {
+fn create_descriptions(name: Option<Arc<str>>, version: Arc<str>, authors: Arc<str>, filename: Arc<str>, secondary: Hsla) -> (Div, Option<Div>) {
     if name.is_none() && authors.is_empty() {
         let description1 = v_flex()
             .w_2_5()
@@ -610,9 +608,8 @@ fn create_descriptions(name: Option<Arc<str>>, version: Arc<str>, authors: Arc<s
         .child(SharedString::from(name.clone().unwrap_or(filename.clone())))
         .child(SharedString::from(version));
 
-    const GRAY: Hsla = Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0};
     let mut description2 = v_flex()
-        .text_color(GRAY)
+        .text_color(secondary)
         .child(SharedString::from(authors));
 
     if name.is_some() {

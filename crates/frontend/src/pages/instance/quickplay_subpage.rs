@@ -246,7 +246,7 @@ impl ListDelegate for ServersListDelegate {
 
         let description = v_flex()
             .child(SharedString::from(summary.name.clone()))
-            .child(div().text_color(Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0}).child(SharedString::from(summary.ip.clone())));
+            .child(div().text_color(cx.theme().muted_foreground).child(SharedString::from(summary.ip.clone())));
 
         let id = self.id;
         let name = self.name.clone();

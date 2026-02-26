@@ -57,13 +57,13 @@ impl Render for LauncherRoot {
                 l: 0.25,
                 a: 1.,
             };
-            return v_flex().size_full().bg(purple).child(message.clone()).overflow_y_scrollbar().into_any_element();
+            return v_flex().size_full().text_color(gpui::white()).bg(purple).child(message.clone()).overflow_y_scrollbar().into_any_element();
         }
         if let Some(message) = &*self.panic_message.read() {
-            return v_flex().size_full().bg(gpui::blue()).child(message.clone()).overflow_y_scrollbar().into_any_element();
+            return v_flex().size_full().text_color(gpui::white()).bg(gpui::blue()).child(message.clone()).overflow_y_scrollbar().into_any_element();
         }
         if self.backend_handle.is_closed() {
-            return v_flex().size_full().bg(gpui::red()).child(ts!("system.backend_shutdown")).into_any_element();
+            return v_flex().size_full().text_color(gpui::white()).bg(gpui::red()).child(ts!("system.backend_shutdown")).into_any_element();
         }
 
         let has_csd_titlebar = matches!(window.window_decorations(), Decorations::Client { .. });

@@ -383,8 +383,7 @@ impl ModrinthSearchPage {
                     .map(SharedString::new)
                     .unwrap_or(ts!("instance.content.no_description"));
 
-                const GRAY: Hsla = Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 };
-                let author_line = div().text_color(GRAY).text_sm().pb_px().child(author);
+                let author_line = div().text_color(cx.theme().muted_foreground).text_sm().pb_px().child(author);
 
                 let client_side = hit.client_side.unwrap_or(ModrinthSideRequirement::Unknown);
                 let server_side = hit.server_side.unwrap_or(ModrinthSideRequirement::Unknown);

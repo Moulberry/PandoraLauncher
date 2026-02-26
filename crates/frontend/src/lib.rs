@@ -101,7 +101,7 @@ pub fn start(
 
     let http_client = Arc::new(reqwest_client::ReqwestClient::user_agent(&user_agent).unwrap());
 
-    Application::new().with_http_client(http_client).with_assets(Assets).run(move |cx: &mut App| {
+    gpui_platform::application().with_http_client(http_client).with_assets(Assets).run(move |cx: &mut App| {
         let _ = cx.text_system().add_fonts(vec![
             Assets.load("fonts/inter/Inter-Regular.ttf").unwrap().unwrap(),
             Assets.load("fonts/roboto-mono/RobotoMono-Regular.ttf").unwrap().unwrap(),

@@ -8,6 +8,7 @@ backtrace.workspace = true
 chrono.workspace = true
 ftree.workspace = true
 gpui.workspace = true
+gpui_platform.workspace = true
 gpui-component.workspace = true
 image.workspace = true
 lexical-sort.workspace = true

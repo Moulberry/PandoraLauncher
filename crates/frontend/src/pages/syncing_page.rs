@@ -9,7 +9,7 @@ use gpui_component::{
 use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 
-use crate::{entity::DataEntities, ts, ui};
+use crate::{component::page::Page, entity::DataEntities, ts, ui};
 
 pub struct SyncingPage {
     backend_handle: BackendHandle,
@@ -131,7 +131,10 @@ impl Render for SyncingPage {
             let content = v_flex().size_full().p_3().gap_3()
                 .child(ts!("instance.sync.description"))
                 .child(Spinner::new().with_size(gpui_component::Size::Large));
-            return ui::page(cx, h_flex().gap_8().child(ts!("instance.sync.label"))).child(content).overflow_y_scrollbar();
+
+            return Page::new(ts!("instance.sync.label"))
+                .scrollable()
+                .child(content);
         };
 
         let sync_folder = sync_state.sync_folder.clone();
@@ -215,7 +218,9 @@ impl Render for SyncingPage {
                     }
                 }))));
 
-        ui::page(cx, h_flex().gap_8().child(ts!("instance.sync.label"))).child(content).overflow_y_scrollbar()
+        Page::new(ts!("instance.sync.label"))
+            .scrollable()
+            .child(content)
     }
 }
 

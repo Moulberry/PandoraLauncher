@@ -12,7 +12,7 @@ use schema::{content::ContentSource, loader::Loader, modrinth::{
 use ustr::Ustr;
 
 use crate::{
-    component::{error_alert::ErrorAlert, page_path::PagePath}, entity::{
+    component::{error_alert::ErrorAlert, page::Page, page_path::PagePath}, entity::{
         DataEntities, instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
     }, interface_config::InterfaceConfig, ts, ts_short, ui
 };
@@ -200,7 +200,7 @@ impl ModrinthSearchPage {
         self.loading = None;
 
         self._delayed_clear_task = cx.spawn(async |page, cx| {
-            gpui::Timer::after(Duration::from_millis(300)).await;
+            cx.background_executor().timer(Duration::from_millis(300)).await;
             let _ = page.update(cx, |page, cx| {
                 if page.pending_clear {
                     page.pending_clear = false;
@@ -737,6 +737,8 @@ impl Render for ModrinthSearchPage {
         let content = v_flex()
             .size_full()
             .gap_3()
+            .p_3()
+            .pl_0()
             .child(top_bar)
             .child(div().size_full().rounded_lg().border_1().border_color(theme.border).child(list));
 
@@ -844,20 +846,20 @@ impl Render for ModrinthSearchPage {
             None
         };
 
-        let parameters = h_flex()
+        let parameters = v_flex()
             .h_full()
-            .min_h_0()
-            .flex_1()
             .overflow_y_scrollbar()
-            .child(v_flex().h_full().min_w(px(170.0)).gap_3()
-                .child(type_button_group)
-                .when_some(loader_button_group, |this, group| this.child(group))
-                .when_some(filter_version_toggle, |this, button| this.child(button))
-                .child(category)
-            );
+            .w_auto()
+            .min_w(px(170.0))
+            .p_3()
+            .gap_3()
+            .child(type_button_group)
+            .when_some(loader_button_group, |this, group| this.child(group))
+            .when_some(filter_version_toggle, |this, button| this.child(button))
+            .child(category);
 
-        ui::page(cx, self.page_path.create_breadcrumb(&self.data, cx))
-            .child(h_flex().flex_1().min_h_0().size_full().p_3().gap_3().child(parameters).child(content))
+        Page::new(self.page_path.create_breadcrumb(&self.data, cx))
+            .child(h_flex().flex_1().min_h_0().size_full().child(parameters).child(content))
     }
 }
 

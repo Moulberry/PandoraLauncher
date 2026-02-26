@@ -247,6 +247,10 @@ common:
     en: <unset>
   custom:
     en: Custom
+  cancel:
+    en: Cancel
+  ok:
+    en: OK
   nav:
     top:
       en: Go to Top

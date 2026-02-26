@@ -3,13 +3,13 @@ use std::sync::Arc;
 use bridge::modal_action::{ModalAction, ProgressTrackerFinishType};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, dialog::DialogButtonProps, notification::Notification, v_flex, IconName, WindowExt
+    IconName, WindowExt, button::{Button, ButtonVariant, ButtonVariants}, dialog::DialogButtonProps, notification::Notification, v_flex
 };
 
-use crate::component::{
+use crate::{component::{
     error_alert::ErrorAlert,
     progress_bar::{ProgressBar, ProgressBarColor},
-};
+}, ts};
 
 pub fn show_notification(
     window: &mut Window,
@@ -106,7 +106,8 @@ pub fn show_modal(
         if let Some(error) = &*modal_action.error.read().unwrap() {
             let error_widget = ErrorAlert::new("error", error_title.clone(), error.clone().into());
 
-            return modal.confirm().title(title.clone()).child(v_flex().gap_3().child(error_widget));
+            return modal.title(title.clone()).child(v_flex().gap_3().child(error_widget))
+                .footer(Button::new("ok").label(ts!("common.ok")).on_click(|_, window, cx| window.close_dialog(cx)));
         }
 
         if modal_action.refcnt() <= 1 {
@@ -191,17 +192,13 @@ pub fn show_modal(
         let modal = modal.title(title.clone()).close_button(false).child(progress).opacity(modal_opacity);
         if is_finishing {
             modal
-                .button_props(DialogButtonProps::default().ok_variant(gpui_component::button::ButtonVariant::Secondary))
-                .footer(|ok, _, window, cx| vec![(ok)(window, cx)])
+                .footer(Button::new("ok").with_variant(ButtonVariant::Secondary).label(ts!("common.ok"))
+                    .on_click(|_, window, cx| window.close_dialog(cx)))
         } else {
             modal
-                .footer(|_, cancel, window, cx| vec![(cancel)(window, cx)])
                 .overlay_closable(false)
                 .keyboard(false)
-                .on_cancel(move |_, _, _| {
-                    request_cancel.cancel();
-                    false
-                })
+                .footer(Button::new("cancel").label(ts!("common.cancel")).on_click(move |_, _, _| request_cancel.cancel()))
         }
     });
 }

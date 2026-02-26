@@ -10,7 +10,7 @@ use gpui_component::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::page_path::PagePath, entity::{DataEntities, instance::InstanceEntry}, pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, root, ts, ui
+    component::{page::Page, page_path::PagePath}, entity::{DataEntities, instance::InstanceEntry}, pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, root, ts, ui
 };
 
 pub struct InstancePage {
@@ -93,7 +93,8 @@ impl Render for InstancePage {
         });
 
         let breadcrumb = self.page_path.create_breadcrumb(&self.data, cx);
-        ui::page(cx, h_flex().gap_8().child(breadcrumb).child(h_flex().gap_3().child(button).child(open_dot_minecraft_button)))
+
+        Page::new(h_flex().gap_8().child(breadcrumb).child(h_flex().gap_3().child(button).child(open_dot_minecraft_button)))
             .child(
                 TabBar::new("bar")
                     .prefix(div().w_4())

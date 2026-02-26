@@ -117,7 +117,6 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
     move |sheet, window, cx| {
         sheet
             .title(ts!("settings.title"))
-            .overlay_top(crate::root::sheet_margin_top(window))
             .size(px(420.))
             .p_0()
             .child(v_flex()

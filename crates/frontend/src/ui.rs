@@ -412,7 +412,6 @@ impl Render for LauncherUI {
 
                         sheet
                             .title(ts!("account.title"))
-                            .overlay_top(crate::root::sheet_margin_top(window))
                             .child(v_flex()
                                 .gap_2()
                                 .child(Button::new("add-account").h_10().success().icon(IconName::Plus).label(ts!("account.add.label")).on_click({
@@ -527,15 +526,4 @@ impl Render for LauncherUI {
             .child(resizable_panel().size(px(self.default_sidebar_width)).size_range(px(130.)..px(200.)).child(sidebar))
             .child(self.page.clone().into_any_element())
     }
-}
-
-pub fn page(cx: &App, title: impl IntoElement) -> gpui::Div {
-    v_flex().size_full().child(
-        h_flex()
-            .p_4()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .text_xl()
-            .child(div().left_4().child(title)),
-    )
 }

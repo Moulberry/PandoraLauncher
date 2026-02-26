@@ -1,18 +1,12 @@
-use std::sync::{
-    Arc, Mutex, RwLock,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
-};
-
-use bridge::{handle::BackendHandle, message::MessageToBackend};
+use bridge::handle::BackendHandle;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    alert::Alert, button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, select::{Select, SelectDelegate, SelectEvent, SelectItem, SelectState}, skeleton::Skeleton, table::{Table, TableDelegate, TableState}, v_flex, ActiveTheme as _, IconName, IndexPath, Selectable, Sizable, WindowExt
+    IconName, IndexPath, button::{Button, ButtonVariants}, h_flex, scroll::ScrollableElement, select::{Select, SelectDelegate, SelectEvent, SelectItem, SelectState}, table::{DataTable, TableDelegate, TableState}
 };
-use schema::{loader::Loader, version_manifest::{MinecraftVersionManifest, MinecraftVersionType}};
 use strum::IntoEnumIterator;
 
 use crate::{
-    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, page_path::PagePath, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}}, interface_config::{InstancesViewMode, InterfaceConfig}, ts, ui
+    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, page::Page, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::FrontendMetadata}, interface_config::{InstancesViewMode, InterfaceConfig}, ts
 };
 
 pub struct InstancesPage {
@@ -83,13 +77,14 @@ impl Render for InstancesPage {
                 div().p_4().child(ResponsiveGrid::new(size).size_full().gap_4().children(cards)).into_any_element()
             },
             InstancesViewMode::List => {
-                Table::new(&self.instance_table).bordered(false).into_any_element()
+                DataTable::new(&self.instance_table).bordered(false).into_any_element()
             },
         };
 
         let title_buttons = h_flex().gap_3().child(create_instance).child(select_view);
 
-        ui::page(cx, h_flex().gap_8().child(ts!("instance.title")).child(title_buttons))
+        Page::new(h_flex().gap_8().child(ts!("instance.title")).child(title_buttons))
+            .scrollable()
             .child(content)
     }
 }

@@ -5,7 +5,7 @@ use gpui_component::{
     button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, tooltip::Tooltip, v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable
 };
 
-use crate::{component::responsive_grid::ResponsiveGrid, entity::DataEntities, ui};
+use crate::{component::{page::Page, responsive_grid::ResponsiveGrid}, entity::DataEntities, ui};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
@@ -53,7 +53,10 @@ impl Render for ImportPage {
         let Some(imports) = &self.import_from_other_launchers else {
             let content = v_flex().size_full().p_3().gap_3()
                 .child(Spinner::new().with_size(gpui_component::Size::Large));
-            return ui::page(cx, h_flex().gap_8().child("Import")).child(content).overflow_y_scrollbar();
+
+            return Page::new("Import")
+                .scrollable()
+                .child(content);
         };
 
         let mut content = v_flex().size_full().p_3().gap_3()
@@ -100,11 +103,19 @@ impl Render for ImportPage {
                     .on_click(cx.listener(|page, checked, _, _| {
                     page.import_instances = *checked;
                 })))
-                .when(self.import_instances, |div| div.child(v_flex().w_full().border_1().p_2().rounded(cx.theme().radius).border_color(cx.theme().border).max_h_64().children(
-                    import.paths.iter().map(|path| {
-                        SharedString::new(path.to_string_lossy())
-                    })
-                ).overflow_y_scrollbar()))
+                .when(self.import_instances, |d| d.child(div()
+                    .w_full()
+                    .border_1()
+                    .p_2()
+                    .rounded(cx.theme().radius)
+                    .border_color(cx.theme().border)
+                    .max_h_64()
+                    .child(v_flex().overflow_y_scrollbar().children(
+                        import.paths.iter().map(|path| {
+                            SharedString::new(path.to_string_lossy())
+                        })
+                    )))
+                )
                 .child(Button::new("doimport").disabled(!import_accounts && !self.import_instances).success().label(label).on_click(cx.listener(move |page, _, window, cx| {
                     let modal_action = ModalAction::default();
 
@@ -121,6 +132,8 @@ impl Render for ImportPage {
             )
         }
 
-        ui::page(cx, h_flex().gap_8().child("Import")).child(content).overflow_y_scrollbar()
+        Page::new("Import")
+            .scrollable()
+            .child(content)
     }
 }

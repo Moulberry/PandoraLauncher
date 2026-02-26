@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{handle::BackendHandle, message::{EmbeddedOrRaw, MessageToBackend}};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    alert::Alert, button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, dialog::Dialog, h_flex, input::{Input, InputEvent, InputState}, select::{Select, SelectState}, skeleton::Skeleton, v_flex, ActiveTheme, IconName, Selectable, WindowExt
+    ActiveTheme, IconName, Selectable, WindowExt, alert::Alert, button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, dialog::{Dialog, DialogFooter}, h_flex, input::{Input, InputEvent, InputState}, select::{Select, SelectState}, skeleton::Skeleton, v_flex
 };
 use schema::{loader::Loader, version_manifest::{MinecraftVersionManifest, MinecraftVersionType}};
 
@@ -212,9 +212,9 @@ impl CreateInstanceModalState {
                     }));
 
             return modal
-                .confirm()
                 .title(ts!("instance.create"))
-                .child(v_flex().gap_3().child(error_widget).child(reload_button));
+                .child(v_flex().gap_3().child(error_widget).child(reload_button))
+                .footer(Button::new("ok").label(ts!("common.ok")).on_click(|_, window, cx| window.close_dialog(cx)));
         }
 
         let version_dropdown;
@@ -296,43 +296,42 @@ impl CreateInstanceModalState {
         let name_is_invalid = self.name_invalid;
         let entity = cx.entity();
         modal
-            .footer(move |ok, cancel, window, cx| {
-                if name_is_invalid {
-                    vec![
-                        cancel(window, cx),
-                        div().child(ok(window, cx)).opacity(0.5).into_any_element(),
-                    ]
-                } else {
-                    vec![cancel(window, cx), ok(window, cx)]
-                }
-            })
             .overlay_closable(false)
             .title(ts!("instance.create"))
-            .on_ok(move |_, _, cx| {
-                entity.update(cx, |this, cx| {
-                    if name_is_invalid {
-                        return false;
-                    }
-                    let Some(selected_version) = this.minecraft_version_dropdown.read(cx).selected_value().cloned() else {
-                        return false;
-                    };
-
-                    let mut name = this.name_input_state.read(cx).value().clone();
-                    if name.is_empty() {
-                        name = this.unique_fallback_name.clone();
-                    }
-
-                    this.backend_handle.send(MessageToBackend::CreateInstance {
-                        name: name.as_str().into(),
-                        version: selected_version.as_str().into(),
-                        loader: this.selected_loader,
-                        icon: this.icon.clone(),
-                    });
-
-                    true
-                })
-            })
             .child(content)
+            .when(name_is_invalid, |modal| {
+                modal.footer(h_flex().gap_2().w_full()
+                    .child(Button::new("cancel").flex_1().label(ts!("common.cancel"))
+                        .on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(Button::new("ok").flex_1().opacity(0.5).label(ts!("common.ok"))))
+            })
+            .when(!name_is_invalid, |modal| {
+                modal.footer(h_flex().gap_2().w_full()
+                    .child(Button::new("cancel").flex_1().label(ts!("common.cancel"))
+                        .on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(Button::new("ok").flex_1().label(ts!("common.ok"))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if name_is_invalid {
+                                return;
+                            }
+                            let Some(selected_version) = this.minecraft_version_dropdown.read(cx).selected_value().cloned() else {
+                                return;
+                            };
+
+                            let mut name = this.name_input_state.read(cx).value().clone();
+                            if name.is_empty() {
+                                name = this.unique_fallback_name.clone();
+                            }
+
+                            this.backend_handle.send(MessageToBackend::CreateInstance {
+                                name: name.as_str().into(),
+                                version: selected_version.as_str().into(),
+                                loader: this.selected_loader,
+                                icon: this.icon.clone(),
+                            });
+                            window.close_dialog(cx);
+                        }))))
+            })
     }
 }
 

@@ -4,7 +4,7 @@ use std::{
 
 use reqwest::RequestBuilder;
 use schema::{
-    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::{FABRIC_LOADER_MANIFEST_URL, FabricLoaderManifest}, forge::{ForgeMavenManifest, NeoforgeMavenManifest, VersionFragment}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::{JAVA_RUNTIMES_URL, JavaRuntimes}, maven::MavenMetadataXml, modrinth::{MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::{MOJANG_VERSION_MANIFEST_URL, MinecraftVersionLink, MinecraftVersionManifest}
+    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::{FABRIC_LOADER_MANIFEST_URL, FabricLoaderManifest}, forge::{ForgeMavenManifest, NeoforgeMavenManifest, VersionFragment}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::{JAVA_RUNTIMES_URL, JavaRuntimes}, maven::MavenMetadataXml, modrinth::{MODRINTH_PROJECT_URL, MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::{MOJANG_VERSION_MANIFEST_URL, MinecraftVersionLink, MinecraftVersionManifest}
 };
 use serde::Serialize;
 use ustr::Ustr;
@@ -477,5 +477,29 @@ impl MetadataItem for ForgeInstallerMavenMetadataItem {
         });
 
         Ok(ForgeMavenManifest(versions.into_iter().rev().collect()))
+    }
+}
+
+#[derive(Debug)]
+pub struct ModrinthProjectMetadataItem<'a>(pub &'a ModrinthProjectRequest);
+
+impl<'a> MetadataItem for ModrinthProjectMetadataItem<'a> {
+    type T = ModrinthProjectResult;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        let url = format!("{}/{}", MODRINTH_PROJECT_URL, self.0.project_id);
+        client.get(url)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.modrinth_project.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
     }
 }

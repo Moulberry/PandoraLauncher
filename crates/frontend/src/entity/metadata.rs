@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::ts;
 use bridge::{handle::BackendHandle, keep_alive::KeepAliveHandle, message::MessageToBackend, meta::{MetadataRequest, MetadataResult}};
 use gpui::{prelude::*, *};
-use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, maven::MavenMetadataXml, modrinth::{ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
+use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, maven::MavenMetadataXml, modrinth::{ModrinthProjectResult, ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
 
 #[derive(Debug)]
 pub enum FrontendMetadataState {
@@ -138,3 +138,4 @@ define_as_metadata_result!(ModrinthProjectVersionsResult);
 define_as_metadata_result!(FabricLoaderManifest);
 define_as_metadata_result!(ForgeMavenManifest);
 define_as_metadata_result!(NeoforgeMavenManifest);
+define_as_metadata_result!(ModrinthProjectResult);

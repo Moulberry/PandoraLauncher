@@ -5,7 +5,7 @@ use std::{
 use bridge::keep_alive::{KeepAlive, KeepAliveHandle};
 use reqwest::StatusCode;
 use schema::{
-    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, maven::MavenMetadataXml, modrinth::{ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
+    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, maven::MavenMetadataXml, modrinth::{ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
 };
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
@@ -31,6 +31,7 @@ pub struct MetadataManagerStates {
     pub(super) java_runtime_manifests: HashMap<Ustr, MetaLoadStateWrapper<JavaRuntimeComponentManifest>>,
     pub(super) modrinth_search: HashMap<ModrinthSearchRequest, MetaLoadStateWrapper<ModrinthSearchResult>>,
     pub(super) modrinth_project_versions: HashMap<ModrinthProjectVersionsRequest, MetaLoadStateWrapper<ModrinthProjectVersionsResult>>,
+    pub(super) modrinth_project: HashMap<ModrinthProjectRequest, MetaLoadStateWrapper<ModrinthProjectResult>>,
     pub(super) modrinth_versions: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthProjectVersion>>,
     pub(super) modrinth_version_updates: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
 }

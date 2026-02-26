@@ -241,3 +241,52 @@ pub struct ModrinthHashes {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModrinthVersionFileUpdateResult(pub ModrinthProjectVersion);
+
+pub const MODRINTH_PROJECT_URL: &str = "https://api.modrinth.com/v2/project";
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ModrinthProjectRequest {
+    pub project_id: Arc<str>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModrinthProjectResult {
+    pub id: Arc<str>,
+    pub slug: Option<Arc<str>>,
+    pub title: Option<Arc<str>>,
+    pub description: Option<Arc<str>>,
+    pub body: Option<Arc<str>>,
+    pub project_type: ModrinthProjectType,
+    pub downloads: usize,
+    pub followers: usize,
+    pub icon_url: Option<Arc<str>>,
+    pub client_side: Option<ModrinthSideRequirement>,
+    pub server_side: Option<ModrinthSideRequirement>,
+    pub categories: Option<Arc<[ustr::Ustr]>>,
+    pub additional_categories: Option<Arc<[ustr::Ustr]>>,
+    pub game_versions: Option<Arc<[Arc<str>]>>,
+    pub loaders: Option<Arc<[ModrinthLoader]>>,
+    pub license: Option<ModrinthLicense>,
+    pub source_url: Option<Arc<str>>,
+    pub issues_url: Option<Arc<str>>,
+    pub wiki_url: Option<Arc<str>>,
+    pub discord_url: Option<Arc<str>>,
+    pub gallery: Option<Arc<[ModrinthGalleryImage]>>,
+    pub published: Option<Arc<str>>,
+    pub updated: Option<Arc<str>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModrinthLicense {
+    pub id: Arc<str>,
+    pub name: Arc<str>,
+    pub url: Option<Arc<str>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModrinthGalleryImage {
+    pub url: Arc<str>,
+    pub featured: bool,
+    pub title: Option<Arc<str>>,
+    pub description: Option<Arc<str>>,
+}

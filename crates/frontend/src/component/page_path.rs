@@ -6,6 +6,7 @@ use gpui::*;
 
 use crate::{entity::{DataEntities, instance::InstanceEntries}, ts, ui::PageType};
 
+#[derive(Clone)]
 pub struct PagePath {
     pages: Arc<[PageType]>,
 }
@@ -15,13 +16,17 @@ impl PagePath {
         Self { pages }
     }
 
+    pub fn as_slice(&self) -> &[PageType] {
+        &self.pages
+    }
+
     pub fn create_breadcrumb(&self, data: &DataEntities, cx: &App) -> Breadcrumb {
         let mut breadcrumb = Breadcrumb::new().text_xl();
 
         let pages = self.pages.clone();
 
         for i in 0..pages.len() {
-            let title = match pages[i] {
+            let title = match &pages[i] {
                 PageType::Instances => ts!("instance.title"),
                 PageType::Modrinth { installing_for, .. } => {
                     if installing_for.is_some() {
@@ -32,8 +37,11 @@ impl PagePath {
                 },
                 PageType::Import => "Import".into(),
                 PageType::Syncing => ts!("instance.sync.label"),
+                PageType::ModrinthProject { project_title, .. } => {
+                    project_title.clone()
+                },
                 PageType::InstancePage(instance_id, _) => {
-                    InstanceEntries::find_title_by_id(&data.instances, instance_id, cx)
+                    InstanceEntries::find_title_by_id(&data.instances, *instance_id, cx)
                         .unwrap_or(ts!("instance.name_placeholder"))
                 },
             };
@@ -43,9 +51,9 @@ impl PagePath {
             if i < pages.len()-1 {
                 let pages = pages.clone();
                 item = item.on_click(move |_, window, cx| {
-                    let page = pages[i];
+                    let page = pages[i].clone();
                     let rest = &pages[0..i];
-                    crate::root::switch_page(page, rest.into(), window, cx);
+                    crate::root::switch_page(page, rest, window, cx);
                 });
             }
 

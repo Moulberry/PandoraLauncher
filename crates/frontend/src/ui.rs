@@ -12,8 +12,8 @@ use uuid::Uuid;
 
 use crate::{
     component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath}, entity::{
-        instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}, DataEntities
-    }, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, syncing_page::SyncingPage}, png_render_cache, root, ts
+        DataEntities, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
+    }, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, syncing_page::SyncingPage}, png_render_cache, root, ts
 };
 
 pub struct LauncherUI {
@@ -28,7 +28,7 @@ pub struct LauncherUI {
     _instance_moved_to_top_subscription: Subscription,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum PageType {
     Instances,
     Modrinth {
@@ -37,6 +37,11 @@ pub enum PageType {
     },
     Import,
     Syncing,
+    ModrinthProject {
+        project_id: SharedString,
+        project_title: SharedString,
+        install_for: Option<InstanceID>,
+    },
     InstancePage(InstanceID, InstanceSubpageType),
 }
 
@@ -44,6 +49,7 @@ impl PageType {
     fn to_serialized(&self, data: &DataEntities, cx: &App) -> SerializedPageType {
         match self {
             PageType::Instances => SerializedPageType::Instances,
+            PageType::ModrinthProject { .. } => SerializedPageType::Instances,
             PageType::Modrinth { installing_for, .. } => {
                 if let Some(installing_for) = installing_for {
                     if let Some(name) = InstanceEntries::find_name_by_id(&data.instances, *installing_for, cx) {
@@ -110,6 +116,12 @@ pub enum LauncherPage {
     },
     Import(Entity<ImportPage>),
     Syncing(Entity<SyncingPage>),
+    ModrinthProject {
+        project_id: SharedString,
+        project_title: SharedString,
+        install_for: Option<InstanceID>,
+        page: Entity<ModrinthProjectPage>,
+    },
     InstancePage(InstanceID, InstanceSubpageType, Entity<InstancePage>),
 }
 
@@ -120,6 +132,7 @@ impl LauncherPage {
             LauncherPage::Modrinth { page, .. } => page.into_any_element(),
             LauncherPage::Import(entity) => entity.into_any_element(),
             LauncherPage::Syncing(entity) => entity.into_any_element(),
+            LauncherPage::ModrinthProject { page, .. } => page.into_any_element(),
             LauncherPage::InstancePage(_, _, entity) => entity.into_any_element(),
         }
     }
@@ -130,6 +143,11 @@ impl LauncherPage {
             LauncherPage::Modrinth { installing_for, .. } => PageType::Modrinth { installing_for: *installing_for, project_type: None },
             LauncherPage::Import(_) => PageType::Import,
             LauncherPage::Syncing(_) => PageType::Syncing,
+            LauncherPage::ModrinthProject { project_id, project_title, install_for, .. } => PageType::ModrinthProject {
+                project_id: project_id.clone(),
+                project_title: project_title.clone(),
+                install_for: *install_for,
+            },
             LauncherPage::InstancePage(id, subpage, _) => PageType::InstancePage(*id, *subpage),
         }
     }
@@ -218,7 +236,7 @@ impl LauncherUI {
     }
 
     fn create_page(data: &DataEntities, page: PageType, path: &[PageType], window: &mut Window, cx: &mut Context<Self>) -> LauncherPage {
-        let path = PagePath::new(path.iter().cloned().chain(std::iter::once(page)).collect());
+        let path = PagePath::new(path.iter().cloned().chain(std::iter::once(page.clone())).collect());
         match page {
             PageType::Instances => {
                 LauncherPage::Instances(cx.new(|cx| InstancesPage::new(data, window, cx)))
@@ -237,6 +255,23 @@ impl LauncherUI {
             },
             PageType::Syncing => {
                 LauncherPage::Syncing(cx.new(|cx| SyncingPage::new(data, window, cx)))
+            },
+            PageType::ModrinthProject { project_id, project_title, install_for } => {
+                LauncherPage::ModrinthProject {
+                    project_id: project_id.clone(),
+                    project_title: project_title.clone(),
+                    install_for,
+                    page: cx.new(|cx| {
+                        ModrinthProjectPage::new(
+                            project_id.clone(),
+                            install_for,
+                            path,
+                            data,
+                            window,
+                            cx,
+                        )
+                    }),
+                }
             },
             PageType::InstancePage(id, subpage) => {
                 LauncherPage::InstancePage(id, subpage, cx.new(|cx| {
@@ -275,7 +310,7 @@ impl Render for LauncherUI {
 
         let content_group = MenuGroup::new(ts!("instance.content.title"))
             .child(MenuGroupItem::new(ts!("modrinth.name"))
-                .active(page_type == PageType::Modrinth { installing_for: None, project_type: None })
+                .active(matches!(page_type, PageType::Modrinth { installing_for: None, project_type: None } | PageType::ModrinthProject { .. }))
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Modrinth { installing_for: None, project_type: None }, &[], window, cx);
                 })));

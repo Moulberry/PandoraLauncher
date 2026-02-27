@@ -348,6 +348,7 @@ impl BackendState {
                 id: instance.id,
                 name: instance.name,
                 icon: instance.icon.clone(),
+                root_path: instance.resolve_real_root_path(),
                 dot_minecraft_folder: instance.dot_minecraft_path.clone(),
                 configuration: instance.configuration.get().clone(),
                 worlds_state: Arc::clone(&instance.worlds_state),

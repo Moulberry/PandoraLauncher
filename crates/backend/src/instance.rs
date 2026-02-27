@@ -746,11 +746,25 @@ impl Instance {
         self.create_modify_message_with_status(self.status())
     }
 
+    pub fn resolve_real_root_path(&self) -> Arc<Path> {
+        #[cfg(windows)]
+        if let Ok(target) = junction::get_target(&self.root_path) {
+            return target.into();
+        };
+
+        if let Ok(target) = std::fs::read_link(&self.root_path) {
+            target.into()
+        } else {
+            self.root_path.clone()
+        }
+    }
+
     pub fn create_modify_message_with_status(&mut self, status: InstanceStatus) -> MessageToFrontend {
         MessageToFrontend::InstanceModified {
             id: self.id,
             name: self.name,
             icon: self.icon.clone(),
+            root_path: self.resolve_real_root_path(),
             dot_minecraft_folder: self.dot_minecraft_path.clone(),
             configuration: self.configuration.get().clone(),
             status,

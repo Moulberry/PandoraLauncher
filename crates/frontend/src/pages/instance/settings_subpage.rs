@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
 
-use crate::{component::{horizontal_sections::HorizontalSections, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
+use crate::{component::{horizontal_sections::HorizontalSections, path_label::PathLabel, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
 
 #[derive(PartialEq, Eq)]
 enum NewNameChangeState {
@@ -41,12 +41,14 @@ pub struct InstanceSettingsSubpage {
     jvm_flags_enabled: bool,
     jvm_flags_input_state: Entity<InputState>,
     jvm_binary_enabled: bool,
-    jvm_binary_path: Option<Arc<Path>>,
+    jvm_binary_path: Option<PathLabel>,
+
+    instance_root_label: PathLabel,
 
     override_glfw_enabled: bool,
-    override_glfw_path: Option<Arc<Path>>,
+    override_glfw_path: Option<PathLabel>,
     override_openal_enabled: bool,
-    override_openal_path: Option<Arc<Path>>,
+    override_openal_path: Option<PathLabel>,
 
     #[cfg(target_os = "linux")]
     use_mangohud: bool,
@@ -88,6 +90,8 @@ impl InstanceSettingsSubpage {
         let linux_wrapper = entry.configuration.linux_wrapper.unwrap_or_default();
         let system_libraries = entry.configuration.system_libraries.clone().unwrap_or_default();
 
+        let instance_root_label = PathLabel::new(entry.root_path.clone(), true);
+
         let glfw_path = system_libraries.glfw.get_or_auto(&*AUTO_LIBRARY_PATH_GLFW);
         let openal_path = system_libraries.openal.get_or_auto(&*AUTO_LIBRARY_PATH_OPENAL);
 
@@ -114,8 +118,10 @@ impl InstanceSettingsSubpage {
         cx.subscribe_in(&loader_select_state, window, Self::on_loader_selected).detach();
 
         cx.observe_in(instance, window, |page, instance, window, cx| {
+            let entry = instance.read(cx);
+            page.instance_root_label = PathLabel::new(entry.root_path.clone(), true);
             if page.loader_version_select_state.read(cx).selected_index(cx).is_none() {
-                let version = instance.read(cx).configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+                let version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
                 page.loader_version_select_state.update(cx, |select_state, cx| {
                     select_state.set_selected_value(&version, window, cx);
                 });
@@ -169,11 +175,12 @@ impl InstanceSettingsSubpage {
             jvm_flags_enabled: jvm_flags.enabled,
             jvm_flags_input_state,
             jvm_binary_enabled: jvm_binary.enabled,
-            jvm_binary_path: jvm_binary.path.clone(),
+            jvm_binary_path: jvm_binary.path.clone().map(|path| PathLabel::new(path, false)),
             override_glfw_enabled: system_libraries.override_glfw,
-            override_glfw_path: glfw_path,
+            override_glfw_path: glfw_path.map(|path| PathLabel::new(path, false)),
             override_openal_enabled: system_libraries.override_openal,
-            override_openal_path: openal_path,
+            override_openal_path: openal_path.map(|path| PathLabel::new(path, false)),
+            instance_root_label,
             #[cfg(target_os = "linux")]
             use_mangohud: linux_wrapper.use_mangohud,
             #[cfg(target_os = "linux")]
@@ -518,16 +525,16 @@ impl InstanceSettingsSubpage {
     fn get_jvm_binary_configuration(&self) -> InstanceJvmBinaryConfiguration {
         InstanceJvmBinaryConfiguration {
             enabled: self.jvm_binary_enabled,
-            path: self.jvm_binary_path.clone(),
+            path: self.jvm_binary_path.as_ref().map(PathLabel::path),
         }
     }
 
     fn get_system_libraries_configuration(&self) -> InstanceSystemLibrariesConfiguration {
         InstanceSystemLibrariesConfiguration {
             override_glfw: self.override_glfw_enabled,
-            glfw: Self::create_lwjgl_library_path(&self.override_glfw_path, &*AUTO_LIBRARY_PATH_GLFW),
+            glfw: Self::create_lwjgl_library_path(&self.override_glfw_path.as_ref().map(PathLabel::path), &*AUTO_LIBRARY_PATH_GLFW),
             override_openal: self.override_openal_enabled,
-            openal: Self::create_lwjgl_library_path(&self.override_openal_path, &*AUTO_LIBRARY_PATH_OPENAL),
+            openal: Self::create_lwjgl_library_path(&self.override_openal_path.as_ref().map(PathLabel::path), &*AUTO_LIBRARY_PATH_OPENAL),
         }
     }
 
@@ -611,10 +618,6 @@ impl Render for InstanceSettingsSubpage {
         let wrapper_command_enabled = self.wrapper_command_enabled;
         let jvm_flags_enabled = self.jvm_flags_enabled;
         let jvm_binary_enabled = self.jvm_binary_enabled;
-
-        let jvm_binary_label = opt_path_to_string(&self.jvm_binary_path);
-        let glfw_path_label = opt_path_to_string(&self.override_glfw_path);
-        let openal_path_label = opt_path_to_string(&self.override_openal_path);
 
         let mut basic_content = v_flex()
             .gap_4()
@@ -751,9 +754,9 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(Button::new("select_jvm_binary").success().label(jvm_binary_label).disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
+                .child(PathLabel::button_opt(&self.jvm_binary_path, "select_jvm_binary").disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
                     this.select_file(ts!("instance.select_jvm_binary"), |this, path| {
-                        this.jvm_binary_path = path;
+                        this.jvm_binary_path = path.map(|path| PathLabel::new(path, false));
                         this.backend_handle.send(MessageToBackend::SetInstanceJvmBinary {
                             id: this.instance_id,
                             jvm_binary: this.get_jvm_binary_configuration()
@@ -773,9 +776,9 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(Button::new("select_glfw").success().label(glfw_path_label).disabled(!self.override_glfw_enabled).on_click(cx.listener(|this, _, window, cx| {
+                .child(PathLabel::button_opt(&self.override_glfw_path, "select_glfw").disabled(!self.override_glfw_enabled).on_click(cx.listener(|this, _, window, cx| {
                     this.select_file(ts!("instance.select_glfw_lib"), |this, path| {
-                        this.override_glfw_path = path;
+                        this.override_glfw_path = path.map(|path| PathLabel::new(path, false));
                         this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
                             id: this.instance_id,
                             system_libraries: this.get_system_libraries_configuration()
@@ -795,9 +798,9 @@ impl Render for InstanceSettingsSubpage {
 
                     }
                 })))
-                .child(Button::new("select_openal").success().label(openal_path_label).disabled(!self.override_openal_enabled).on_click(cx.listener(|this, _, window, cx| {
+                .child(PathLabel::button_opt(&self.override_openal_path, "select_openal").disabled(!self.override_openal_enabled).on_click(cx.listener(|this, _, window, cx| {
                     this.select_file(ts!("instance.select_openal_lib"), |this, path| {
-                        this.override_openal_path = path;
+                        this.override_openal_path = path.map(|path| PathLabel::new(path, false));
                         this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
                             id: this.instance_id,
                             system_libraries: this.get_system_libraries_configuration()
@@ -868,6 +871,30 @@ impl Render for InstanceSettingsSubpage {
         let actions_content = v_flex()
             .gap_4()
             .size_full()
+            .child(crate::labelled(
+                "Instance Folder",
+                Button::new("relocate").icon(PandoraIcon::Folder).child(self.instance_root_label.clone()).success().on_click({
+                    let instance = self.instance.clone();
+                    let backend_handle = self.backend_handle.clone();
+                    move |_: &ClickEvent, _, cx| {
+                        let user_dirs = directories::UserDirs::new();
+                        let directory = user_dirs.as_ref()
+                            .and_then(directories::UserDirs::desktop_dir).unwrap_or(Path::new("."));
+
+                        let instance = instance.read(cx);
+                        let id = instance.id;
+
+                        let receiver = cx.prompt_for_new_path(directory, Some(instance.name.as_str()));
+                        let backend_handle = backend_handle.clone();
+                        cx.spawn(async move |_| {
+                            let Ok(Ok(Some(path))) = receiver.await else {
+                                return;
+                            };
+                            backend_handle.send(MessageToBackend::RelocateInstance { id, path });
+                        }).detach();
+                    }
+                })
+            ))
             .child(Button::new("shortcut").label(ts!("instance.create_shortcut")).success().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
@@ -893,27 +920,6 @@ impl Render for InstanceSettingsSubpage {
                             return;
                         };
                         backend_handle.send(MessageToBackend::CreateInstanceShortcut { id, path });
-                    }).detach();
-                }
-            }))
-            .child(Button::new("relocate").label("Relocate to custom folder").success().on_click({
-                let instance = self.instance.clone();
-                let backend_handle = self.backend_handle.clone();
-                move |_: &ClickEvent, _, cx| {
-                    let user_dirs = directories::UserDirs::new();
-                    let directory = user_dirs.as_ref()
-                        .and_then(directories::UserDirs::desktop_dir).unwrap_or(Path::new("."));
-
-                    let instance = instance.read(cx);
-                    let id = instance.id;
-
-                    let receiver = cx.prompt_for_new_path(directory, Some(instance.name.as_str()));
-                    let backend_handle = backend_handle.clone();
-                    cx.spawn(async move |_| {
-                        let Ok(Ok(Some(path))) = receiver.await else {
-                            return;
-                        };
-                        backend_handle.send(MessageToBackend::RelocateInstance { id, path });
                     }).detach();
                 }
             }))
@@ -955,13 +961,5 @@ impl Render for InstanceSettingsSubpage {
                 .border_color(theme.border)
                 .child(sections)
             )
-    }
-}
-
-fn opt_path_to_string(path: &Option<Arc<Path>>) -> SharedString {
-    if let Some(path) = path {
-        SharedString::new(path.to_string_lossy())
-    } else {
-        ts!("common.unset")
     }
 }

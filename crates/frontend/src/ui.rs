@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{instance::InstanceID, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, IconName, IconNamed, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, v_flex
+    ActiveTheme as _, Disableable, Icon, IconName, IconNamed, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, tooltip::Tooltip, v_flex
 };
 use rand::Rng;
 use schema::modrinth::ModrinthProjectType;
@@ -476,7 +476,6 @@ impl Render for LauncherUI {
 
         let settings_button = div()
             .id("settings-button")
-            .gap_2()
             .p_2()
             .rounded(cx.theme().radius)
             .hover(|this| {
@@ -491,6 +490,23 @@ impl Render for LauncherUI {
                     window.open_sheet_at(gpui_component::Placement::Left, cx, build);
                 }
             });
+        let bug_report_button = div()
+            .id("bug-report-button")
+            .p_2()
+            .rounded(cx.theme().radius)
+            .hover(|this| {
+                this.bg(cx.theme().sidebar_accent)
+                    .text_color(cx.theme().sidebar_accent_foreground)
+            })
+            .child(PandoraIcon::Bug)
+            .tooltip(move |window, cx| {
+                Tooltip::new("Report a bug").build(window, cx)
+            })
+            .on_click({
+                move |_, window, cx| {
+                    open_bug_report_url(window, cx);
+                }
+            });
 
         let header = h_flex()
             .pt_5()
@@ -502,7 +518,7 @@ impl Render for LauncherUI {
             .text_size(rems(0.9375))
             .child(Icon::new(PandoraIcon::Pandora).size_8().min_w_8().min_h_8())
             .child(ts!("common.app_name"));
-        let footer_buttons = h_flex().child(settings_button).child(PandoraIcon::Bug);
+        let footer_buttons = h_flex().child(settings_button).child(bug_report_button);
         let footer = v_flex().pb_3().px_3().items_center().w_full().child(footer_buttons).child(account_button);
         let sidebar = v_flex()
             .w_full()
@@ -523,4 +539,57 @@ impl Render for LauncherUI {
             .child(resizable_panel().size(px(self.default_sidebar_width)).size_range(px(130.)..px(200.)).child(sidebar))
             .child(self.page.clone().into_any_element())
     }
+}
+
+fn open_bug_report_url(window: &mut Window, cx: &mut App) {
+    let mut body = String::from(r#"## Description of bug
+(Write here)
+
+## Steps to reproduce
+(Write here)
+
+## This issue is unique
+- [ ] I've searched the other issues and didn't see an issue describing the same bug
+
+## Environment
+"#);
+
+    use std::fmt::Write;
+    _ = writeln!(&mut body, "Version: {:?}", option_env!("PANDORA_RELEASE_VERSION"));
+    _ = writeln!(&mut body, "Distributor: {:?}", option_env!("PANDORA_DISTRIBUTION"));
+    _ = writeln!(&mut body, "OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
+
+    if cfg!(target_os = "linux") {
+        if let Ok(os_release) = std::fs::read_to_string("/etc/os-release") {
+            for line in os_release.lines() {
+                let line = line.trim_ascii();
+                if let Some(name) = line.strip_prefix("NAME=") {
+                    _ = writeln!(&mut body, "OS Name: {}", name);
+                } else if let Some(version) = line.strip_prefix("VERSION=") {
+                    _ = writeln!(&mut body, "OS Version: {}", version);
+                }
+            }
+        }
+
+        _ = writeln!(&mut body, "Desktop: {:?}", std::env::var_os("XDG_CURRENT_DESKTOP"));
+
+        if let Some(snap_name) = std::env::var_os("SNAP_NAME") {
+            _ = writeln!(&mut body, "Snap: {:?}", snap_name);
+        }
+        if let Some(snap_name) = std::env::var_os("FLATPAK_ID") {
+            _ = writeln!(&mut body, "Flatpak ID: {:?}", snap_name);
+        }
+        if std::env::var_os("APPIMAGE").is_some() {
+            body.push_str("AppImage: true\n");
+        }
+    }
+
+    let Some(github) = option_env!("GITHUB_REPOSITORY_URL") else {
+        let mut notification: Notification = (NotificationType::Error, SharedString::from("Unable to report bug, GITHUB_REPOSITORY_URL was not set at compile time")).into();
+        notification = notification.autohide(false);
+        window.push_notification(notification, cx);
+        return;
+    };
+
+    cx.open_url(&format!("{}/issues/new?body={}", github, urlencoding::encode(&body)));
 }

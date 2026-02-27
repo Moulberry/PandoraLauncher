@@ -113,7 +113,6 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
 
     let state_instances = BackendStateInstances {
         instances: IdSlab::default(),
-        instance_by_path: HashMap::new(),
         instances_generation: 0,
         reload_immediately: Default::default(),
     };
@@ -176,7 +175,6 @@ pub enum WatchTarget {
 
 pub struct BackendStateInstances {
     pub instances: IdSlab<Instance>,
-    pub instance_by_path: HashMap<PathBuf, InstanceID>,
     pub instances_generation: usize,
     pub reload_immediately: FxHashSet<(InstanceID, ContentFolder)>,
 }
@@ -296,12 +294,15 @@ impl BackendState {
             let instance_state = &mut *instance_state_guard;
 
             let Ok(mut instance) = instance else {
-                if let Some(existing) = instance_state.instance_by_path.get(path)
-                    && let Some(existing_instance) = instance_state.instances.remove(*existing)
-                {
-                    self.send.send(MessageToFrontend::InstanceRemoved { id: existing_instance.id});
-                    show_errors = true;
-                }
+                instance_state.instances.retain_mut(|existing| {
+                    if &*existing.root_path == path {
+                        self.send.send(MessageToFrontend::InstanceRemoved { id: existing.id});
+                        show_errors = true;
+                        false
+                    } else {
+                        true
+                    }
+                });
 
                 if show_errors {
                     let error = instance.unwrap_err();
@@ -312,15 +313,17 @@ impl BackendState {
                 return false;
             };
 
-            if let Some(existing) = instance_state.instance_by_path.get(path)
-                && let Some(existing_instance) = instance_state.instances.get_mut(*existing)
-            {
-                existing_instance.copy_basic_attributes_from(instance);
+            for existing in instance_state.instances.iter_mut() {
+                if &*existing.root_path != path {
+                    continue;
+                }
 
-                let _ = self.send.send(existing_instance.create_modify_message());
+                existing.copy_basic_attributes_from(instance);
+
+                let _ = self.send.send(existing.create_modify_message());
 
                 if show_success {
-                    self.send.send_info(format!("Instance '{}' updated", existing_instance.name));
+                    self.send.send_info(format!("Instance '{}' updated", existing.name));
                 }
 
                 return true;
@@ -353,8 +356,6 @@ impl BackendState {
                 resource_packs_state: Arc::clone(&instance.content_state[ContentFolder::ResourcePacks].load_state),
             };
             self.send.send(message);
-
-            instance_state.instance_by_path.insert(path.to_owned(), instance.id);
 
             instance.id
         };
@@ -1079,7 +1080,7 @@ impl BackendState {
             self.send.send_warning(format!("Unable to create instance, unknown loader"));
             return None;
         }
-        if !crate::is_single_component_path(&name) {
+        if !crate::is_single_component_path_str(&name) {
             self.send.send_warning(format!("Unable to create instance, name must not be a path: {}", name));
             return None;
         }
@@ -1126,7 +1127,7 @@ impl BackendState {
     }
 
     pub async fn rename_instance(&self, id: InstanceID, name: &str) {
-        if !crate::is_single_component_path(&name) {
+        if !crate::is_single_component_path_str(&name) {
             self.send.send_warning(format!("Unable to rename instance, name must not be a path: {}", name));
             return;
         }

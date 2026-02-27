@@ -190,6 +190,10 @@ pub enum MessageToBackend {
         id: InstanceID,
         path: PathBuf
     },
+    RelocateInstance {
+        id: InstanceID,
+        path: PathBuf
+    },
     InstallUpdate {
         update: UpdatePrompt,
         modal_action: ModalAction,

@@ -102,7 +102,7 @@ impl<'v> MetadataItem for MinecraftVersionMetadataItem<'v> {
     }
 
     fn cache_file(&self, metadata_manager: &MetadataManager) -> Option<impl AsRef<Path> + Send + Sync + 'static> {
-        if !crate::is_single_component_path(&self.0.sha1) {
+        if !crate::is_single_component_path_str(&self.0.sha1) {
             panic!("Invalid sha1 {}, possible directory traversal attack?", self.0.sha1);
         }
         let mut path = metadata_manager.metadata_cache.join("version_info");

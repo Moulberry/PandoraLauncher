@@ -959,10 +959,10 @@ impl Launcher {
         };
         let runtime_component = runtime_components.first().ok_or(LoadJavaRuntimeError::UnknownComponentForPlatform)?;
 
-        if !crate::is_single_component_path(jre_component.as_str()) {
+        if !crate::is_single_component_path_str(jre_component.as_str()) {
             return Err(LoadJavaRuntimeError::InvalidComponentPath);
         }
-        if !crate::is_single_component_path(&platform) {
+        if !crate::is_single_component_path_str(&platform) {
             return Err(LoadJavaRuntimeError::InvalidComponentPath);
         }
 

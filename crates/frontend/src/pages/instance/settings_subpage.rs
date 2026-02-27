@@ -896,6 +896,27 @@ impl Render for InstanceSettingsSubpage {
                     }).detach();
                 }
             }))
+            .child(Button::new("relocate").label("Relocate to custom folder").success().on_click({
+                let instance = self.instance.clone();
+                let backend_handle = self.backend_handle.clone();
+                move |_: &ClickEvent, _, cx| {
+                    let user_dirs = directories::UserDirs::new();
+                    let directory = user_dirs.as_ref()
+                        .and_then(directories::UserDirs::desktop_dir).unwrap_or(Path::new("."));
+
+                    let instance = instance.read(cx);
+                    let id = instance.id;
+
+                    let receiver = cx.prompt_for_new_path(directory, Some(instance.name.as_str()));
+                    let backend_handle = backend_handle.clone();
+                    cx.spawn(async move |_| {
+                        let Ok(Ok(Some(path))) = receiver.await else {
+                            return;
+                        };
+                        backend_handle.send(MessageToBackend::RelocateInstance { id, path });
+                    }).detach();
+                }
+            }))
             .child(Button::new("delete").label(ts!("instance.delete")).danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();

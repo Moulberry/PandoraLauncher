@@ -197,7 +197,6 @@ impl BackendState {
                     self.send.send(MessageToFrontend::InstanceRemoved { id: instance.id });
                 }
 
-                instance_state.instance_by_path.clear();
                 instance_state.reload_immediately.clear();
 
                 true

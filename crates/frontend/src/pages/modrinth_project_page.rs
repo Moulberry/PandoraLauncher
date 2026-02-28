@@ -3,15 +3,10 @@ use std::sync::Arc;
 use bridge::{instance::InstanceID, meta::MetadataRequest};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, IconName, StyledExt, WindowExt,
-    button::{Button, ButtonVariants},
-    h_flex, label::Label,
-    scroll::ScrollableElement,
-    skeleton::Skeleton,
-    v_flex,
+    ActiveTheme, Icon, IconName, StyledExt, button::{Button, ButtonVariants}, h_flex, scroll::ScrollableElement, skeleton::Skeleton, tab::{Tab, TabBar}, v_flex
 };
 use schema::modrinth::{
-    ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectType,
+    ModrinthProjectRequest, ModrinthProjectResult,
     ModrinthSideRequirement,
 };
 
@@ -30,6 +25,7 @@ pub struct ModrinthProjectPage {
     loading: Option<Subscription>,
     project: Option<Arc<ModrinthProjectResult>>,
     error: Option<SharedString>,
+    active_tab: usize,
 }
 
 impl ModrinthProjectPage {
@@ -49,6 +45,7 @@ impl ModrinthProjectPage {
             loading: None,
             project: None,
             error: None,
+            active_tab: 0,
         };
         page.fetch_project(cx);
         page
@@ -519,52 +516,70 @@ impl Render for ModrinthProjectPage {
                 })
                 .unwrap_or_else(|| div().into_any_element());
 
-            /*let gallery_el: AnyElement = project.gallery.as_deref()
-                .filter(|g| !g.is_empty())
-                .map(|images| {
-                    div().border_2().border_color(green())
-                        .id("project_gallery_scroll")
-                        .h_48()
-                        .child(
-                            h_flex().border_2().border_color(red())
+            let info_el: AnyElement = v_flex().child(license_el).child(loaders_el).child(versions_el).into_any_element();
+
+            let active_tab = self.active_tab;
+            let tabs_el: AnyElement = TabBar::new("content_tabs").underline()
+                .selected_index(active_tab)
+                .on_click(cx.listener(|this, selected_index: &usize, _window, cx| {
+                    this.active_tab = *selected_index;
+                    cx.notify();
+                }))
+                .child(Tab::new().label("Description"))
+                .child(Tab::new().label("Gallery"))
+                .into_any_element();
+
+            let body_el: AnyElement = match active_tab {
+                0 => {
+                    if let Some(body) = &project.body && !body.is_empty() {
+                        v_flex()
+                            .mt_2().pt_2()
+                            .child(render_markdown(body, &theme))
+                            .into_any_element()
+                    } else {
+                        v_flex()
+                            .mt_2().pt_2()
+                            .child(div().text_sm().text_color(Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 }).child("No description available."))
+                            .into_any_element()
+                    }
+                }
+                1 => {
+                    let gallery = project.gallery.as_deref().filter(|g| !g.is_empty());
+                    v_flex()
+                        .mt_2().pt_2()
+                        .child(if let Some(images) = gallery {
+                            h_flex()
                                 .id("project_gallery")
-                                .overflow_x_scroll()
-                                .h_full()
+                                .flex_wrap()
                                 .gap_3()
                                 .children(images.iter().enumerate().map(|(idx, img)| {
-                                    gpui::img(SharedUri::from(&img.url))
-                                        .size_full()
-                                        .rounded_lg()
-                                        .bg(theme.border)
-                                        .object_fit(gpui::ObjectFit::Contain)
-                                        .cursor_pointer()
-                                        .id(("gallery_img", idx))
-                                        .on_click({
-                                            let url = img.url.to_string();
-                                            move |_, _, cx| { cx.open_url(&url); }
-                                        })
-                                }))
-                            )
+                                    v_flex().rounded_lg().h_80()
+                                        .child(gpui::img(SharedUri::from(&img.url))
+                                            .w_full()
+                                            .h_72()
+                                            .cursor_pointer()
+                                            .rounded_t_lg()
+                                            .id(("gallery_img", idx))
+                                            .on_click({
+                                                let url = img.url.to_string();
+                                                move |_, _, cx| { cx.open_url(&url); }
+                                            }))
+                                        .child(v_flex().p_1().max_w_full().min_w_0()
+                                            .child(div().text_sm().font_bold().child(img.title.as_deref().unwrap_or("").to_string()))
+                                            //.child(div().text_xs().truncate().text_color(gray).child(img.description.as_deref().unwrap_or("").to_string()))
+                                        )
+                                })).into_any_element()
+                        } else {
+                            div().text_sm().text_color(Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 }).child("No gallery images.").into_any_element()
+                        })
                         .into_any_element()
-                })
-                .unwrap_or_else(|| div().into_any_element());*/
-
-            let body_el: AnyElement = if let Some(body) = &project.body && !body.is_empty() {
-                v_flex()
-                    .mt_2().pt_4()
-                    .border_t_1()
-                    .border_color(theme.border)
-                    .child(render_markdown(body, &theme))
-                    .into_any_element()
-            } else {
-                div().into_any_element()
+                }
+                _ => div().into_any_element(),
             };
 
             v_flex()
                 .p_4()
                 .gap_3()
-                .id("modrinth_project_page")
-                .overflow_y_scroll()
                 .child(
                     h_flex().gap_4().items_start()
                         .child(icon.rounded_lg().size_20().min_w_20().min_h_20())
@@ -578,9 +593,8 @@ impl Render for ModrinthProjectPage {
                         )
                 )
                 .child(link_row)
-                .child(license_el)
-                .child(loaders_el)
-                .child(versions_el)
+                .child(info_el)
+                .child(tabs_el)
                 .child(body_el)
                 .into_any_element()
         } else {
@@ -597,6 +611,6 @@ impl Render for ModrinthProjectPage {
                 .into_any_element()
         };
 
-        ui::page(cx, breadcrumb).child(content)
+        ui::page(cx, breadcrumb).child(content).overflow_y_scrollbar()
     }
 }

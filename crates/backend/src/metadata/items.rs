@@ -328,13 +328,13 @@ impl MetadataItem for ModrinthVersionMetadataItem {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Hash, PartialEq, Eq)]
 pub struct VersionUpdateParameters {
     pub loaders: Arc<[ModrinthLoader]>,
     pub game_versions: Arc<[Ustr]>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ModrinthVersionUpdateMetadataItem {
     pub sha1: Arc<str>,
     pub params: VersionUpdateParameters,
@@ -353,7 +353,7 @@ impl MetadataItem for ModrinthVersionUpdateMetadataItem {
     }
 
     fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
-        states.modrinth_version_updates.entry(self.sha1.clone()).or_default().clone()
+        states.modrinth_version_v2_updates.entry(self.clone()).or_default().clone()
     }
 
     fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
@@ -361,19 +361,19 @@ impl MetadataItem for ModrinthVersionUpdateMetadataItem {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Hash, PartialEq, Eq)]
 pub struct VersionV3UpdateParameters {
     pub loaders: Arc<[Arc<str>]>,
     pub loader_fields: VersionV3LoaderFields,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Hash, PartialEq, Eq)]
 pub struct VersionV3LoaderFields {
     pub mrpack_loaders: Arc<[ModrinthLoader]>,
     pub game_versions: Arc<[Ustr]>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ModrinthV3VersionUpdateMetadataItem {
     pub sha1: Arc<str>,
     pub params: VersionV3UpdateParameters,
@@ -392,7 +392,7 @@ impl MetadataItem for ModrinthV3VersionUpdateMetadataItem {
     }
 
     fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
-        states.modrinth_version_updates.entry(self.sha1.clone()).or_default().clone()
+        states.modrinth_version_v3_updates.entry(self.clone()).or_default().clone()
     }
 
     fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {

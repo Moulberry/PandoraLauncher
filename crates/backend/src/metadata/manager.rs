@@ -12,7 +12,7 @@ use sha1::{Digest, Sha1};
 use tokio::task::JoinHandle;
 use ustr::Ustr;
 
-use crate::metadata::items::MetadataItem;
+use crate::metadata::items::{MetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem};
 
 const DATA_TTL: Duration = Duration::from_secs(5 * 60);
 
@@ -32,7 +32,8 @@ pub struct MetadataManagerStates {
     pub(super) modrinth_search: HashMap<ModrinthSearchRequest, MetaLoadStateWrapper<ModrinthSearchResult>>,
     pub(super) modrinth_project_versions: HashMap<ModrinthProjectVersionsRequest, MetaLoadStateWrapper<ModrinthProjectVersionsResult>>,
     pub(super) modrinth_versions: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthProjectVersion>>,
-    pub(super) modrinth_version_updates: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
+    pub(super) modrinth_version_v2_updates: HashMap<ModrinthVersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
+    pub(super) modrinth_version_v3_updates: HashMap<ModrinthV3VersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
 }
 
 pub struct MetadataManager {

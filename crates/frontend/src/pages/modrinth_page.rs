@@ -1,6 +1,6 @@
 use std::{ops::Range, sync::{atomic::AtomicBool, Arc}, time::Duration};
 
-use bridge::{instance::{AtomicContentUpdateStatus, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID}, message::{AtomicBridgeDataLoadState, MessageToBackend}, meta::MetadataRequest, modal_action::ModalAction, serial::AtomicOptionSerial};
+use bridge::{instance::{ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID}, message::{AtomicBridgeDataLoadState, MessageToBackend}, meta::MetadataRequest, modal_action::ModalAction, serial::AtomicOptionSerial};
 use gpui::{prelude::*, *};
 use gpui_component::{
     ActiveTheme, Icon, IconName, Selectable, StyledExt, WindowExt, breadcrumb::Breadcrumb, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, label::Label, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, tooltip::Tooltip, v_flex
@@ -44,7 +44,7 @@ pub struct ModrinthSearchPage {
 
 struct InstalledMod {
     mod_id: InstanceContentID,
-    status: Arc<AtomicContentUpdateStatus>,
+    status: ContentUpdateStatus
 }
 
 impl ModrinthSearchPage {
@@ -59,8 +59,10 @@ impl ModrinthSearchPage {
         if let Some(install_for) = install_for {
             if let Some(entry) = data.instances.read(cx).entries.get(&install_for) {
                 let instance = entry.read(cx);
-                can_install_latest = instance.configuration.loader != Loader::Vanilla;
-                filter_version = Some(instance.configuration.minecraft_version);
+                let loader = instance.configuration.loader;
+                let minecraft_version = instance.configuration.minecraft_version;
+                can_install_latest = loader != Loader::Vanilla;
+                filter_version = Some(minecraft_version);
 
                 let mods = instance.mods.read(cx);
                 for summary in mods.iter() {
@@ -71,14 +73,14 @@ impl ModrinthSearchPage {
                     let installed = installed_mods_by_project.entry(project.clone()).or_default();
                     installed.push(InstalledMod {
                         mod_id: summary.id,
-                        status: summary.content_summary.update_status.clone(),
+                        status: summary.update.status_if_matches(loader, minecraft_version),
                     })
                 }
 
                 mods_load_state = Some((instance.mods_state.clone(), AtomicOptionSerial::default()));
 
                 let mods = instance.mods.clone();
-                cx.observe(&mods, |page, entity, cx| {
+                cx.observe(&mods, move |page, entity, cx| {
                     page.installed_mods_by_project.clear();
                     let mods = entity.read(cx);
                     for summary in mods.iter() {
@@ -89,7 +91,7 @@ impl ModrinthSearchPage {
                         let installed = page.installed_mods_by_project.entry(project.clone()).or_default();
                         installed.push(InstalledMod {
                             mod_id: summary.id,
-                            status: summary.content_summary.update_status.clone(),
+                            status: summary.update.status_if_matches(loader, minecraft_version),
                         })
                     }
                 }).detach();
@@ -589,7 +591,7 @@ impl ModrinthSearchPage {
 
             let mut action = PrimaryAction::CheckForUpdates;
             for installed_mod in installed {
-                match installed_mod.status.load(std::sync::atomic::Ordering::Relaxed) {
+                match installed_mod.status {
                     ContentUpdateStatus::Unknown => {},
                     ContentUpdateStatus::AlreadyUpToDate => {
                         if !matches!(action, PrimaryAction::Update(..)) {

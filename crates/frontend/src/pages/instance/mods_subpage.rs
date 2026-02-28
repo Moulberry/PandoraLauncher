@@ -3,7 +3,7 @@ use std::{hash::{DefaultHasher, Hash, Hasher}, path::{Path, PathBuf}, sync::{
 }};
 
 use bridge::{
-    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{AtomicContentUpdateStatus, InstanceID, InstanceContentID, InstanceContentSummary, ContentType, ContentSummary}, message::{AtomicBridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
+    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{InstanceID, InstanceContentID, InstanceContentSummary, ContentType, ContentSummary}, message::{AtomicBridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -45,7 +45,7 @@ impl InstanceModsSubpage {
 
         let mods_state = Arc::clone(&instance.mods_state);
 
-        let mut mods_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone());
+        let mut mods_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone(), instance_loader, instance_version);
         mods_list_delegate.set_content(instance.mods.read(cx));
 
         let mods = instance.mods.clone();

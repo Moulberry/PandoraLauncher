@@ -13,7 +13,7 @@ use tokio::{io::AsyncBufReadExt, sync::Semaphore};
 use ustr::Ustr;
 
 use crate::{
-    BackendState, LoginError, account::{BackendAccount, MinecraftLoginInfo}, arcfactory::ArcStrFactory, instance::ContentFolder, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::ModUpdateAction
+    BackendState, LoginError, account::{BackendAccount, MinecraftLoginInfo}, arcfactory::ArcStrFactory, instance::ContentFolder, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::{ContentUpdateAction, ContentUpdateKey}
 };
 
 impl BackendState {
@@ -447,7 +447,7 @@ impl BackendState {
 
                 struct UpdateResult {
                     mod_summary: Arc<ContentSummary>,
-                    action: ModUpdateAction,
+                    action: ContentUpdateAction,
                 }
 
                 { // Scope is needed so await doesn't complain about the non-send RwLockReadGuard
@@ -462,7 +462,7 @@ impl BackendState {
                                 ContentSource::Manual => {
                                     tracker.add_count(1);
                                     tracker.notify();
-                                    Ok(ModUpdateAction::ManualInstall)
+                                    Ok(ContentUpdateAction::ManualInstall)
                                 },
                                 ContentSource::ModrinthUnknown | ContentSource::ModrinthProject { .. } => {
                                     let permit = semaphore.acquire().await.unwrap();
@@ -510,7 +510,7 @@ impl BackendState {
                                     tracker.notify();
 
                                     if let Err(MetaLoadError::NonOK(404)) = result {
-                                        return Ok(ModUpdateAction::ErrorNotFound);
+                                        return Ok(ContentUpdateAction::ErrorNotFound);
                                     }
 
                                     let result = result?;
@@ -519,7 +519,7 @@ impl BackendState {
                                         if &result.0.project_id != project {
                                             log::error!("Refusing to update {:?}, mismatched project ids: expected {}, got {}",
                                                 summary.content_summary.hash, &result.0.project_id, &project);
-                                            return Ok(ModUpdateAction::ErrorNotFound);
+                                            return Ok(ContentUpdateAction::ErrorNotFound);
                                         }
                                     }
 
@@ -532,13 +532,13 @@ impl BackendState {
 
                                     let mut latest_hash = [0u8; 20];
                                     let Ok(_) = hex::decode_to_slice(&*install_file.hashes.sha1, &mut latest_hash) else {
-                                        return Ok(ModUpdateAction::ErrorInvalidHash);
+                                        return Ok(ContentUpdateAction::ErrorInvalidHash);
                                     };
 
                                     if latest_hash == summary.content_summary.hash {
-                                        Ok(ModUpdateAction::AlreadyUpToDate)
+                                        Ok(ContentUpdateAction::AlreadyUpToDate)
                                     } else {
-                                        Ok(ModUpdateAction::Modrinth {
+                                        Ok(ContentUpdateAction::Modrinth {
                                             file: install_file.clone(),
                                             project_id: result.0.project_id.clone(),
                                         })
@@ -559,8 +559,19 @@ impl BackendState {
                         let mut meta_updates = self.mod_metadata_manager.updates.write();
 
                         for update in updates {
-                            update.mod_summary.update_status.store(update.action.to_status(), Ordering::Relaxed);
-                            meta_updates.insert(update.mod_summary.hash, update.action);
+                            meta_updates.insert(ContentUpdateKey {
+                                hash: update.mod_summary.hash,
+                                loader,
+                                version,
+                            }, update.action);
+                        }
+
+                        drop(meta_updates);
+
+                        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                            for (_, state) in &mut instance.content_state {
+                                state.mark_dirty(None);
+                            }
                         }
                     },
                     Err(error) => {
@@ -584,34 +595,38 @@ impl BackendState {
                         return;
                     };
 
-                    let Some(update_info) = self.mod_metadata_manager.updates.read().get(&mod_summary.content_summary.hash).cloned() else {
+                    let Some(update_info) = self.mod_metadata_manager.updates.read().get(&ContentUpdateKey {
+                        hash: mod_summary.content_summary.hash,
+                        loader: loader,
+                        version: minecraft_version
+                    }).cloned() else {
                         self.send.send_error("Can't update mod in instance, missing update action");
                         modal_action.set_finished();
                         return;
                     };
 
                     match update_info {
-                        ModUpdateAction::ErrorNotFound => {
+                        ContentUpdateAction::ErrorNotFound => {
                             self.send.send_error("Can't update mod in instance, 404 not found");
                             modal_action.set_finished();
                             return;
                         },
-                        ModUpdateAction::ErrorInvalidHash => {
+                        ContentUpdateAction::ErrorInvalidHash => {
                             self.send.send_error("Can't update mod in instance, returned invalid hash");
                             modal_action.set_finished();
                             return;
                         },
-                        ModUpdateAction::AlreadyUpToDate => {
+                        ContentUpdateAction::AlreadyUpToDate => {
                             self.send.send_error("Can't update mod in instance, already up-to-date");
                             modal_action.set_finished();
                             return;
                         },
-                        ModUpdateAction::ManualInstall => {
+                        ContentUpdateAction::ManualInstall => {
                             self.send.send_error("Can't update mod in instance, mod was manually installed");
                             modal_action.set_finished();
                             return;
                         },
-                        ModUpdateAction::Modrinth { file, project_id } => {
+                        ContentUpdateAction::Modrinth { file, project_id } => {
                             let mut path = mod_summary.path.with_file_name(&*file.filename);
                             if !mod_summary.enabled {
                                 path.add_extension("disabled");

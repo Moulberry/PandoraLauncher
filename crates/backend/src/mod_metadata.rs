@@ -2,20 +2,21 @@ use std::{
     io::{BufRead, Cursor, Read, Write}, path::{Path, PathBuf}, sync::Arc
 };
 
-use bridge::{instance::{AtomicContentUpdateStatus, ContentUpdateStatus, ContentType, ContentSummary}, safe_path::SafePath};
+use bridge::{instance::{ContentUpdateStatus, ContentType, ContentSummary}, safe_path::SafePath};
 use image::{DynamicImage, GenericImageView, imageops::FilterType};
 use indexmap::IndexMap;
 use parking_lot::{RwLock, RwLockReadGuard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rc_zip_sync::EntryHandle;
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{content::ContentSource, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta};
+use schema::{content::ContentSource, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, loader::Loader, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DeserializeAs};
 use sha1::{Digest, Sha1};
+use ustr::Ustr;
 
 #[derive(Clone)]
-pub enum ModUpdateAction {
+pub enum ContentUpdateAction {
     ErrorNotFound,
     ErrorInvalidHash,
     AlreadyUpToDate,
@@ -26,16 +27,23 @@ pub enum ModUpdateAction {
     },
 }
 
-impl ModUpdateAction {
+impl ContentUpdateAction {
     pub fn to_status(&self) -> ContentUpdateStatus {
         match self {
-            ModUpdateAction::ErrorNotFound => ContentUpdateStatus::ErrorNotFound,
-            ModUpdateAction::ErrorInvalidHash => ContentUpdateStatus::ErrorInvalidHash,
-            ModUpdateAction::AlreadyUpToDate => ContentUpdateStatus::AlreadyUpToDate,
-            ModUpdateAction::ManualInstall => ContentUpdateStatus::ManualInstall,
-            ModUpdateAction::Modrinth { .. } => ContentUpdateStatus::Modrinth,
+            ContentUpdateAction::ErrorNotFound => ContentUpdateStatus::ErrorNotFound,
+            ContentUpdateAction::ErrorInvalidHash => ContentUpdateStatus::ErrorInvalidHash,
+            ContentUpdateAction::AlreadyUpToDate => ContentUpdateStatus::AlreadyUpToDate,
+            ContentUpdateAction::ManualInstall => ContentUpdateStatus::ManualInstall,
+            ContentUpdateAction::Modrinth { .. } => ContentUpdateStatus::Modrinth,
         }
     }
+}
+
+#[derive(Eq, Hash, PartialEq)]
+pub struct ContentUpdateKey {
+    pub hash: [u8; 20],
+    pub loader: Loader,
+    pub version: Ustr,
 }
 
 pub struct ModMetadataManager {
@@ -44,7 +52,7 @@ pub struct ModMetadataManager {
     by_hash: RwLock<FxHashMap<[u8; 20], Option<Arc<ContentSummary>>>>,
     content_sources: RwLock<ContentSources>,
     parents_by_missing_child: RwLock<FxHashMap<[u8; 20], Vec<[u8; 20]>>>,
-    pub updates: RwLock<FxHashMap<[u8; 20], ModUpdateAction>>,
+    pub updates: RwLock<FxHashMap<ContentUpdateKey, ContentUpdateAction>>,
 }
 
 impl ModMetadataManager {
@@ -224,7 +232,6 @@ impl ModMetadataManager {
             authors,
             version_str: format!("v{}", fabric_mod_json.version).into(),
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::Fabric
         }))
     }
@@ -276,7 +283,6 @@ impl ModMetadataManager {
             authors,
             version_str: version.into(),
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra,
         }))
     }
@@ -326,7 +332,6 @@ impl ModMetadataManager {
             authors: authors.into(),
             version_str: version.into(),
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::LegacyForge,
         }))
     }
@@ -424,7 +429,6 @@ impl ModMetadataManager {
             authors,
             version_str: format!("v{}", modrinth_index_json.version_id).into(),
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::ModrinthModpack {
                 downloads: modrinth_index_json.files,
                 summaries: summaries.into(),
@@ -498,7 +502,6 @@ impl ModMetadataManager {
             authors: author.unwrap_or_default(),
             version_str: version.unwrap_or_default(),
             png_icon: None,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::JavaModule
         }))
     }
@@ -524,7 +527,6 @@ impl ModMetadataManager {
             authors: "".into(),
             version_str: pack_mcmeta.pack.description,
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::ResourcePack
         }))
     }

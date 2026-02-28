@@ -8,18 +8,18 @@ use anyhow::Context;
 use base64::Engine;
 use bridge::{
     instance::{
-        ContentSummary, InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
+        ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
     }, message::{AtomicBridgeDataLoadState, BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle}
 };
 use parking_lot::RwLock;
 use relative_path::RelativePath;
-use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration};
+use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration, loader::Loader};
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
 use ustr::Ustr;
 
-use crate::{id_slab::{GetId, Id}, launcher_import, mod_metadata::ModMetadataManager, persistent::Persistent, BackendStateInstances, IoOrSerializationError};
+use crate::{BackendStateInstances, IoOrSerializationError, id_slab::{GetId, Id}, launcher_import, mod_metadata::{ContentUpdateAction, ContentUpdateKey, ModMetadataManager}, persistent::Persistent};
 
 #[derive(Debug)]
 pub struct Instance {
@@ -457,8 +457,11 @@ impl Instance {
                     let dirty_paths = std::mem::take(&mut state.dirty_paths);
                     let mod_metadata_manager = mod_metadata_manager.clone();
                     let last = last.clone();
+                    let config = this.configuration.get();
+                    let for_loader = config.loader;
+                    let for_version = config.minecraft_version;
                     tokio::task::spawn_blocking(move || {
-                        Self::load_content_dirty(dirty_paths, mod_metadata_manager, last)
+                        Self::load_content_dirty(dirty_paths, mod_metadata_manager, last, for_loader, for_version)
                     })
                 } else {
                     return Some((last.clone(), false));
@@ -466,8 +469,11 @@ impl Instance {
             } else {
                 let path = state.path.clone();
                 let mod_metadata_manager = mod_metadata_manager.clone();
+                let config = this.configuration.get();
+                let for_loader = config.loader;
+                let for_version = config.minecraft_version;
                 tokio::task::spawn_blocking(move || {
-                    Self::load_content_all(&path, mod_metadata_manager)
+                    Self::load_content_all(&path, mod_metadata_manager, for_loader, for_version)
                 })
             };
 
@@ -509,7 +515,12 @@ impl Instance {
         Some((result, true))
     }
 
-    fn load_content_all(path: &Path, mod_metadata_manager: Arc<ModMetadataManager>) -> Vec<InstanceContentSummary> {
+    fn load_content_all(
+        path: &Path,
+        mod_metadata_manager: Arc<ModMetadataManager>,
+        for_loader: Loader,
+        for_version: Ustr
+    ) -> Vec<InstanceContentSummary> {
         log::info!("Loading all content from {:?}", path);
 
         let Ok(directory) = std::fs::read_dir(&path) else {
@@ -526,7 +537,7 @@ impl Instance {
                 continue;
             };
 
-            if let Some(summary) = create_instance_content_summary(&entry.path(), &mod_metadata_manager) {
+            if let Some(summary) = create_instance_content_summary(&entry.path(), &mod_metadata_manager, for_loader, for_version) {
                 summaries.push(summary);
             }
         }
@@ -543,6 +554,8 @@ impl Instance {
         dirty: HashSet<Arc<Path>>,
         mod_metadata_manager: Arc<ModMetadataManager>,
         last: Arc<[InstanceContentSummary]>,
+        for_loader: Loader,
+        for_version: Ustr,
     ) -> Vec<InstanceContentSummary> {
         log::debug!("Loading changed content");
         log::trace!("Changed content: {:?}", dirty);
@@ -561,10 +574,10 @@ impl Instance {
 
             let check_alternative = !dirty.contains(&*alternate_path);
 
-            if let Some(summary) = create_instance_content_summary(&path, &mod_metadata_manager) {
+            if let Some(summary) = create_instance_content_summary(&path, &mod_metadata_manager, for_loader, for_version) {
                 summaries.push(summary);
             } else if check_alternative {
-                if let Some(summary) = create_instance_content_summary(&alternate_path, &mod_metadata_manager) {
+                if let Some(summary) = create_instance_content_summary(&alternate_path, &mod_metadata_manager, for_loader, for_version) {
                     summaries.push(summary);
                 }
             }
@@ -615,6 +628,7 @@ impl Instance {
                             path: alternate_path.into(),
                             enabled,
                             content_source: old_summary.content_source.clone(),
+                            update: old_summary.update.clone(),
                             disabled_children: old_summary.disabled_children.clone(),
                         });
                     }
@@ -772,7 +786,7 @@ impl Instance {
     }
 }
 
-fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMetadataManager>) -> Option<InstanceContentSummary> {
+fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMetadataManager>, for_loader: Loader, for_version: Ustr) -> Option<InstanceContentSummary> {
     if !path.is_file() {
         return None;
     }
@@ -825,6 +839,12 @@ fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMe
 
     let disabled_children = read_disabled_children_for(&summary, path).unwrap_or_default();
 
+    let update_status = mod_metadata_manager.updates.read().get(&ContentUpdateKey {
+        hash: summary.hash,
+        loader: for_loader,
+        version: for_version,
+    }).map(ContentUpdateAction::to_status).unwrap_or(ContentUpdateStatus::Unknown);
+
     Some(InstanceContentSummary {
         content_summary: summary,
         id: InstanceContentID::dangling(),
@@ -834,6 +854,7 @@ fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMe
         path: path.into(),
         enabled,
         content_source,
+        update: ContentUpdateContext::new(update_status, for_loader, for_version),
         disabled_children: Arc::new(disabled_children),
     })
 }

@@ -3,7 +3,7 @@ use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{
 }};
 
 use bridge::{
-    handle::BackendHandle, instance::{AtomicContentUpdateStatus, InstanceID, InstanceContentID, InstanceContentSummary, ContentType, ContentSummary}, message::MessageToBackend
+    handle::BackendHandle, instance::{InstanceID, InstanceContentID, InstanceContentSummary, ContentType, ContentSummary}, message::MessageToBackend
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -11,6 +11,8 @@ use gpui_component::{
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
+use schema::loader::Loader;
+use ustr::Ustr;
 
 use crate::{icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, ts};
 
@@ -32,6 +34,8 @@ enum SummaryOrChild {
 
 pub struct ContentListDelegate {
     id: InstanceID,
+    for_loader: Loader,
+    for_version: Ustr,
     backend_handle: BackendHandle,
     content: Vec<InstanceContentSummary>,
     searched: Option<Vec<SummaryOrChild>>,
@@ -46,9 +50,11 @@ pub struct ContentListDelegate {
 }
 
 impl ContentListDelegate {
-    pub fn new(id: InstanceID, backend_handle: BackendHandle) -> Self {
+    pub fn new(id: InstanceID, backend_handle: BackendHandle, for_loader: Loader, for_version: Ustr) -> Self {
         Self {
             id,
+            for_loader,
+            for_version,
             backend_handle,
             content: Vec::new(),
             searched: None,
@@ -127,7 +133,7 @@ impl ContentListDelegate {
             }))
         };
 
-        let update_button = match summary.content_summary.update_status.load(Ordering::Relaxed) {
+        let update_button = match summary.update.status_if_matches(self.for_loader, self.for_version) {
             bridge::instance::ContentUpdateStatus::Unknown => None,
             bridge::instance::ContentUpdateStatus::ManualInstall => Some(
                 Button::new(("update", element_id)).warning().icon(PandoraIcon::FileQuestionMark)
@@ -159,7 +165,7 @@ impl ContentListDelegate {
                                 let delegate = this.delegate_mut();
                                 if delegate.is_selected(element_id) {
                                     for summary in &delegate.content {
-                                        if delegate.is_selected(summary.filename_hash) && summary.content_summary.update_status.load(Ordering::Relaxed).can_update() {
+                                        if delegate.is_selected(summary.filename_hash) && summary.update.can_update(delegate.for_loader, delegate.for_version) {
                                             updating.insert(summary.filename_hash);
                                             crate::root::update_single_mod(id, summary.id, &backend_handle, window, cx);
                                         }
@@ -401,7 +407,6 @@ impl ContentListDelegate {
             version_str: "unknown".into(),
             authors: "".into(),
             png_icon: None,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(bridge::instance::ContentUpdateStatus::Unknown)),
             extra: ContentType::Fabric,
         });
 

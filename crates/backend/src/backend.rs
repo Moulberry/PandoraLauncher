@@ -822,7 +822,7 @@ impl BackendState {
             let overrides = modpack_install.overrides;
             let content_library_dir = &self.directories.content_library_dir.clone();
             let mut aux: Option<AuxiliaryContentMeta> = if let Some(aux_path) = &modpack_install.aux_path {
-                crate::read_json(&aux_path).unwrap_or_default()
+                Some(crate::read_json(&aux_path).unwrap_or_default())
             } else {
                 None
             };

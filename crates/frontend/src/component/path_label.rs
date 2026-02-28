@@ -224,9 +224,11 @@ impl Element for PathLabel {
         {
             let mut state = self.state.borrow_mut();
             if state.last_text_style.as_ref().map(|style| style != &text_style).unwrap_or(true) {
-                let shaped_divider = window.text_system().shape_line(SharedString::new_static("/"), font_size, &[text_style.to_run(1)], None);
+                let shaped_divider = window.text_system().shape_line(SharedString::new_static("/"), font_size,
+                    &[text_style.to_run(1)], None);
 
-                let shaped_ellipsis = window.text_system().shape_line(SharedString::new_static("…"), font_size, &[text_style.to_run(1)], None);
+                let shaped_ellipsis = window.text_system().shape_line(SharedString::new_static("…"), font_size,
+                    &[text_style.to_run("…".len())], None);
 
                 let mut full_width = 0.0;
                 for fragment in state.fragments.iter_mut() {

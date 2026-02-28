@@ -3,7 +3,7 @@ use std::{
 };
 
 use bridge::{instance::{AtomicContentUpdateStatus, ContentUpdateStatus, ContentType, ContentSummary}, safe_path::SafePath};
-use image::imageops::FilterType;
+use image::{DynamicImage, GenericImageView, imageops::FilterType};
 use indexmap::IndexMap;
 use parking_lot::{RwLock, RwLockReadGuard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -539,6 +539,8 @@ fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) 
         return None;
     };
 
+    let image = crop_to_content(image);
+
     let width = image.width();
     let height = image.height();
     if width != 64 || height != 64 {
@@ -547,7 +549,7 @@ fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) 
         } else {
             FilterType::Nearest
         };
-        let resized = image.resize_exact(64, 64, filter);
+        let resized = image.resize(64, 64, filter);
 
         icon_bytes.clear();
         let mut cursor = Cursor::new(&mut icon_bytes);
@@ -557,6 +559,66 @@ fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) 
     }
 
     Some(icon_bytes.into())
+}
+
+fn crop_to_content(image: DynamicImage) -> DynamicImage {
+    let width = image.width();
+    let height = image.height();
+    let mut min_x = 0;
+    let mut max_x = width;
+    let mut min_y = 0;
+    let mut max_y = height;
+
+    'crop_min_x: loop {
+        if min_x >= max_x {
+            return image;
+        }
+        for y in min_y..max_y {
+            if image.get_pixel(min_x, y).0[3] != 0 {
+                break 'crop_min_x;
+            }
+        }
+        min_x += 1;
+    }
+    'crop_max_x: loop {
+        if max_x <= min_x {
+            return image;
+        }
+        for y in min_y..max_y {
+            if image.get_pixel(max_x-1, y).0[3] != 0 {
+                break 'crop_max_x;
+            }
+        }
+        max_x -= 1;
+    }
+    'crop_min_y: loop {
+        if min_y >= max_y {
+            return image;
+        }
+        for x in min_x..max_x {
+            if image.get_pixel(x, min_y).0[3] != 0 {
+                break 'crop_min_y;
+            }
+        }
+        min_y += 1;
+    }
+    'crop_max_y: loop {
+        if max_y <= min_y {
+            return image;
+        }
+        for x in min_x..max_x {
+            if image.get_pixel(x, max_y-1).0[3] != 0 {
+                break 'crop_max_y;
+            }
+        }
+        max_y -= 1;
+    }
+
+    if min_x != 0 || max_x != width || min_y != 0 || max_y != height {
+        image.crop_imm(min_x, min_y, max_x - min_x, max_y - min_y)
+    } else {
+        image
+    }
 }
 
 fn create_authors_string(authors: &[Person]) -> Option<String> {

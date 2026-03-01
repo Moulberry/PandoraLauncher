@@ -19,7 +19,7 @@ use thiserror::Error;
 
 use ustr::Ustr;
 
-use crate::{BackendStateInstances, IoOrSerializationError, id_slab::{GetId, Id}, launcher_import, mod_metadata::{ContentUpdateAction, ContentUpdateKey, ModMetadataManager}, persistent::Persistent};
+use crate::{BackendStateFileWatching, BackendStateInstances, IoOrSerializationError, WatchTarget, id_slab::{GetId, Id}, launcher_import, mod_metadata::{ContentUpdateAction, ContentUpdateKey, ModMetadataManager}, persistent::Persistent};
 
 #[derive(Debug)]
 pub struct Instance {
@@ -33,10 +33,6 @@ pub struct Instance {
     pub configuration: Persistent<InstanceConfiguration>,
 
     pub child: Option<Child>,
-
-    pub watching_dot_minecraft: bool,
-    pub watching_server_dat: bool,
-    pub watching_saves_dir: bool,
 
     pub worlds_state: Arc<AtomicBridgeDataLoadState>,
     dirty_worlds: HashSet<Arc<Path>>,
@@ -57,7 +53,6 @@ pub struct Instance {
 #[derive(Debug)]
 pub struct ContentFolderState {
     pub path: Arc<Path>,
-    pub watching_path: bool,
     pub load_state: Arc<AtomicBridgeDataLoadState>,
     dirty_paths: HashSet<Arc<Path>>,
     all_dirty: bool,
@@ -85,7 +80,6 @@ impl ContentFolderState {
     pub fn new(path: Arc<Path>) -> Self {
         Self {
             path,
-            watching_path: false,
             load_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
             dirty_paths: HashSet::new(),
             all_dirty: true,
@@ -185,12 +179,49 @@ impl Instance {
         dot_minecraft_path.push(".minecraft");
 
         for content_folder in ContentFolder::iter() {
+            self.content_state[content_folder].mark_dirty(None);
             self.content_state[content_folder].path = content_folder.path().to_path(&dot_minecraft_path).into();
         }
 
         self.server_dat_path = dot_minecraft_path.join("servers.dat").into();
+        self.mark_servers_dirty();
+
         self.saves_path = dot_minecraft_path.join("saves").into();
+        self.mark_world_dirty(None);
+
         self.dot_minecraft_path = dot_minecraft_path.into();
+    }
+
+    pub fn rewatch_directories(&mut self, file_watching: &mut BackendStateFileWatching) {
+        let mut watch_dot_minecraft = false;
+
+        if self.servers_state.load(Ordering::SeqCst).is_not_unloaded() {
+            watch_dot_minecraft = true;
+        }
+
+        if self.worlds_state.load(Ordering::SeqCst).is_not_unloaded() {
+            file_watching.watch_filesystem(self.saves_path.clone(), WatchTarget::InstanceSavesDir { id: self.id });
+            watch_dot_minecraft = true;
+        }
+
+        for folder in ContentFolder::iter() {
+            if self.content_state[folder].load_state.load(Ordering::SeqCst).is_not_unloaded() {
+                file_watching.watch_filesystem(self.content_state[folder].path.clone(), WatchTarget::InstanceContentDir { id: self.id, folder });
+                watch_dot_minecraft = true;
+            }
+        }
+
+        if watch_dot_minecraft {
+            file_watching.watch_filesystem(self.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir { id: self.id });
+        }
+    }
+
+    pub fn mark_all_dirty(&mut self) {
+        for content_folder in ContentFolder::iter() {
+            self.content_state[content_folder].mark_dirty(None);
+        }
+        self.mark_servers_dirty();
+        self.mark_world_dirty(None);
     }
 
     pub fn try_get_content(&self, id: InstanceContentID) -> Option<(&InstanceContentSummary, ContentFolder)> {
@@ -221,10 +252,6 @@ impl Instance {
             if let Some(pending) = &this.pending_worlds_load && !pending.is_notified() {
                 await_pending = Some(pending.clone());
                 continue;
-            }
-
-            if cfg!(debug_assertions) && (!this.watching_dot_minecraft || !this.watching_saves_dir) {
-                panic!("Must be watching .minecraft and .minecraft/saves");
             }
 
             let future = if let Some(last) = &this.worlds && !this.all_worlds_dirty {
@@ -372,10 +399,6 @@ impl Instance {
             if let Some(pending) = &this.pending_servers_load && !pending.is_notified() {
                 await_pending = Some(pending.clone());
                 continue;
-            }
-
-            if cfg!(debug_assertions) && (!this.watching_dot_minecraft || !this.watching_server_dat) {
-                panic!("Must be watching .minecraft and .minecraft/servers.dat");
             }
 
             let future = if let Some(last) = &this.servers && !this.dirty_servers {
@@ -685,10 +708,6 @@ impl Instance {
             configuration: instance_info,
 
             child: None,
-
-            watching_dot_minecraft: false,
-            watching_server_dat: false,
-            watching_saves_dir: false,
 
             worlds_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
             dirty_worlds: HashSet::new(),

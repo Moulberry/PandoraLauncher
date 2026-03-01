@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, path::Path, sync::Arc};
+use std::{ffi::OsStr, path::Path, sync::{Arc, atomic::Ordering}};
 
 use bridge::{instance::InstanceID, message::MessageToFrontend};
 use notify::{
@@ -162,19 +162,11 @@ impl BackendState {
 
     async fn filesystem_handle_change(
         &mut self,
-        target: WatchTarget,
+        _target: WatchTarget,
         _path: &Arc<Path>,
         _after_debounce_effects: &mut AfterDebounceEffects,
     ) -> bool {
-        match target {
-            WatchTarget::ServersDat { id } => {
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    instance.mark_servers_dirty();
-                }
-                true
-            },
-            _ => false,
-        }
+        false
     }
 
     async fn filesystem_handle_removed(
@@ -220,15 +212,6 @@ impl BackendState {
                 }
                 true
             },
-            WatchTarget::ServersDat { id } => {
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    instance.mark_servers_dirty();
-                }
-                // Minecraft moves the servers.dat to servers.dat_old and then back,
-                // so lets just re-listen immediately
-                self.file_watching.write().watch_filesystem(path.clone(), target);
-                true
-            },
             WatchTarget::InstanceContentDir { id, folder } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.content_state[folder].mark_dirty(None);
@@ -262,26 +245,11 @@ impl BackendState {
                 {
                     let old_name = instance.name;
                     instance.on_root_renamed(to);
+                    instance.rewatch_directories(&mut *self.file_watching.write());
 
                     self.send.send_info(format!("Instance '{}' renamed to '{}'", old_name, instance.name));
                     self.send.send(instance.create_modify_message());
 
-                    let mut file_watching = self.file_watching.write();
-                    file_watching.watch_filesystem(to.clone(), WatchTarget::InstanceDir { id });
-                    if instance.watching_dot_minecraft {
-                        file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir { id });
-                    }
-                    if instance.watching_saves_dir {
-                        file_watching.watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir { id });
-                    }
-                    if instance.watching_server_dat {
-                        file_watching.watch_filesystem(instance.server_dat_path.clone(), WatchTarget::ServersDat { id });
-                    }
-                    for folder in ContentFolder::iter() {
-                        if instance.content_state[folder].watching_path {
-                            file_watching.watch_filesystem(instance.content_state[folder].path.clone(), WatchTarget::InstanceContentDir { id, folder });
-                        }
-                    }
                     true
                 } else {
                     false
@@ -335,30 +303,10 @@ impl BackendState {
                 } else if file_name == ".minecraft"
                     && let Some(instance) = self.instance_state.write().instances.get_mut(id)
                 {
-                    instance.mark_world_dirty(None);
-                    instance.mark_servers_dirty();
-                    for folder in ContentFolder::iter() {
-                        instance.content_state[folder].mark_dirty(None);
-                    }
-
-                    let mut file_watching = self.file_watching.write();
-                    if instance.watching_dot_minecraft {
-                        file_watching.watch_filesystem(path.clone(), WatchTarget::InstanceDotMinecraftDir { id });
-                    }
-                    if instance.watching_saves_dir {
-                        file_watching.watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir { id });
-                    }
-                    if instance.watching_server_dat {
-                        file_watching.watch_filesystem(instance.server_dat_path.clone(), WatchTarget::ServersDat { id });
-                    }
-                    for folder in ContentFolder::iter() {
-                        if instance.content_state[folder].watching_path {
-                            file_watching.watch_filesystem(instance.content_state[folder].path.clone(), WatchTarget::InstanceContentDir { id, folder });
-                        }
-                    }
+                    instance.mark_all_dirty();
+                    instance.rewatch_directories(&mut *self.file_watching.write());
                 }
             },
-            WatchTarget::ServersDat { .. } => {},
             WatchTarget::InstanceDotMinecraftDir { id } => {
                 let Some(file_name) = path.file_name() else {
                     return;
@@ -367,24 +315,28 @@ impl BackendState {
                     let Some(name) = file_name.to_str() else {
                         return;
                     };
-
-                    for folder in ContentFolder::iter() {
-                        if name == folder.path().as_str() && instance.content_state[folder].watching_path {
-                            instance.content_state[folder].mark_dirty(None);
-                            self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::InstanceContentDir { id, folder });
-                            return;
-                        }
-                    }
                     match name {
-                        "saves" if instance.watching_saves_dir => {
+                        "saves" => {
                             instance.mark_world_dirty(None);
-                            self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::InstanceSavesDir { id });
+                            if instance.worlds_state.load(Ordering::SeqCst).is_not_unloaded() {
+                                self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::InstanceSavesDir { id });
+                            }
+                            return;
                         },
-                        "servers.dat" if instance.watching_server_dat => {
+                        "servers.dat" => {
                             instance.mark_servers_dirty();
-                            self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::ServersDat { id });
+                            return;
                         },
                         _ => {},
+                    }
+                    for folder in ContentFolder::iter() {
+                        if name == folder.path().as_str() {
+                            instance.content_state[folder].mark_dirty(None);
+                            if instance.content_state[folder].load_state.load(Ordering::SeqCst).is_not_unloaded() {
+                                self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::InstanceContentDir { id, folder });
+                            }
+                            return;
+                        }
                     }
                 }
             },
@@ -437,6 +389,16 @@ impl BackendState {
                     self.file_watching.write().watch_filesystem(parent_path.into(), WatchTarget::InvalidInstanceDir);
                 }
             },
+            WatchTarget::InstanceDotMinecraftDir { id } => {
+                let Some(file_name) = path.file_name() else {
+                    return;
+                };
+                if file_name == "servers.dat" {
+                    if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                        instance.mark_servers_dirty();
+                    }
+                }
+            }
             WatchTarget::InstanceWorldDir { id } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.mark_world_dirty(Some(parent_path.into()));

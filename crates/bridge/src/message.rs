@@ -328,6 +328,10 @@ impl BridgeDataLoadState {
             BridgeDataLoadState::Loaded => false,
         }
     }
+
+    pub fn is_not_unloaded(self) -> bool {
+        self != Self::Unloaded
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

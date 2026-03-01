@@ -19,6 +19,7 @@ use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, SyncTargets, ProxyConfig}, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
 use sha1::{Digest, Sha1};
+use strum::IntoEnumIterator;
 use tokio::sync::{mpsc::Receiver, OnceCell};
 use uuid::Uuid;
 
@@ -117,6 +118,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     let mut state_file_watching = BackendStateFileWatching {
         watcher,
         watching: HashMap::new(),
+        watch_target_to_path: HashMap::new(),
         symlink_src_to_links: Default::default(),
         symlink_link_to_src: Default::default(),
     };
@@ -157,7 +159,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     std::mem::forget(runtime);
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum WatchTarget {
     RootDir,
     InstancesDir,
@@ -166,7 +168,6 @@ pub enum WatchTarget {
     InstanceDotMinecraftDir { id: InstanceID },
     InstanceWorldDir { id: InstanceID },
     InstanceSavesDir { id: InstanceID },
-    ServersDat { id: InstanceID },
     InstanceContentDir { id: InstanceID, folder: ContentFolder },
 }
 
@@ -179,6 +180,7 @@ pub struct BackendStateInstances {
 pub struct BackendStateFileWatching {
     watcher: notify_debouncer_full::Debouncer<notify::RecommendedWatcher, notify_debouncer_full::RecommendedCache>,
     watching: HashMap<Arc<Path>, WatchTarget>,
+    watch_target_to_path: HashMap<WatchTarget, Arc<Path>>,
     symlink_src_to_links: HashMap<Arc<Path>, IndexSet<Arc<Path>>>,
     symlink_link_to_src: HashMap<Arc<Path>, Arc<Path>>,
 }
@@ -951,18 +953,9 @@ impl BackendState {
     pub async fn load_instance_servers(self, id: InstanceID) -> Option<Arc<[InstanceServerSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
-            if !instance.watching_dot_minecraft {
-                instance.watching_dot_minecraft = true;
-                file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                    id: instance.id,
-                });
-            }
-            if !instance.watching_server_dat {
-                instance.watching_server_dat = true;
-                file_watching.watch_filesystem(instance.server_dat_path.clone(), WatchTarget::ServersDat {
-                    id: instance.id,
-                });
-            }
+            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                id: instance.id,
+            });
         }
 
         let result = Instance::load_servers(self.instance_state.clone(), id).await;
@@ -981,20 +974,14 @@ impl BackendState {
     pub async fn load_instance_content(self, id: InstanceID, folder: ContentFolder) -> Option<Arc<[InstanceContentSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
-            if !instance.watching_dot_minecraft {
-                instance.watching_dot_minecraft = true;
-                file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                    id: instance.id,
-                });
-            }
+            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                id: instance.id,
+            });
             let content_state = &mut instance.content_state[folder];
-            if !content_state.watching_path {
-                content_state.watching_path = true;
-                file_watching.watch_filesystem(content_state.path.clone(), WatchTarget::InstanceContentDir {
-                    id: instance.id,
-                    folder
-                });
-            }
+            file_watching.watch_filesystem(content_state.path.clone(), WatchTarget::InstanceContentDir {
+                id: instance.id,
+                folder
+            });
         }
 
         let result = Instance::load_content(self.instance_state.clone(), id, &self.mod_metadata_manager, folder).await;
@@ -1022,18 +1009,12 @@ impl BackendState {
     pub async fn load_instance_worlds(self, id: InstanceID) -> Option<Arc<[InstanceWorldSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
-            if !instance.watching_dot_minecraft {
-                instance.watching_dot_minecraft = true;
-                file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                    id: instance.id,
-                });
-            }
-            if !instance.watching_saves_dir {
-                instance.watching_saves_dir = true;
-                file_watching.watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir {
-                    id: instance.id,
-                });
-            }
+            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                id: instance.id,
+            });
+            file_watching.watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir {
+                id: instance.id,
+            });
         }
 
         let result = Instance::load_worlds(self.instance_state.clone(), id).await;
@@ -1138,14 +1119,18 @@ impl BackendState {
             return;
         }
 
-        let new_instance_dir = self.directories.instances_dir.join(name);
-
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let result = std::fs::rename(&instance.root_path, new_instance_dir);
-            if let Err(err) = result {
+            if cfg!(windows) {
+                self.file_watching.write().unwatch_subdirectories_of_instance(id);
+                instance.mark_all_dirty();
+            }
+
+            let new_instance_dir = self.directories.instances_dir.join(name);
+            if let Err(err) = std::fs::rename(&instance.root_path, new_instance_dir) {
                 self.send.send_error(format!("Unable to rename instance folder: {}", err));
             }
         }
+
     }
 
     pub async fn get_login_info(&self, modal_action: &ModalAction) -> Option<MinecraftLoginInfo> {
@@ -1186,6 +1171,9 @@ impl BackendState {
 
 impl BackendStateFileWatching {
     pub fn watch_filesystem(&mut self, path: Arc<Path>, target: WatchTarget) {
+        if let Some(old_path) = self.watch_target_to_path.get(&target) && old_path == &path {
+            return;
+        }
         let Ok(canonical) = path.canonicalize() else {
             log::error!("Unable to watch {:?} because it could not be canonicalized", path);
             return;
@@ -1202,7 +1190,13 @@ impl BackendStateFileWatching {
             log::error!("Unable to watch filesystem: {:?}", err);
             return;
         }
+
+        if let Some(old_path) = self.watch_target_to_path.get(&target) {
+            self.remove(&old_path.clone());
+        }
+
         self.watching.insert(path.clone(), target);
+        self.watch_target_to_path.insert(target, path.clone());
 
         if canonical != path {
             self.symlink_src_to_links.entry(canonical.clone()).or_default().insert(path.clone());
@@ -1223,7 +1217,29 @@ impl BackendStateFileWatching {
                 }
             }
         }
-        self.watching.remove(path)
+        if let Some(target) = self.watching.remove(path) {
+            self.watch_target_to_path.remove(&target);
+            Some(target)
+        } else {
+            None
+        }
+    }
+
+    pub fn unwatch_subdirectories_of_instance(&mut self, id: InstanceID) {
+        let targets = [
+            WatchTarget::InstanceDotMinecraftDir { id },
+            WatchTarget::InstanceWorldDir { id },
+            WatchTarget::InstanceSavesDir { id },
+        ];
+        let content_folder_targets = ContentFolder::iter().map(|folder| {
+            WatchTarget::InstanceContentDir { id, folder }
+        });
+        for target in targets.into_iter().chain(content_folder_targets) {
+            if let Some(path) = self.watch_target_to_path.remove(&target) {
+                self.remove(&path);
+                _ = self.watcher.unwatch(&path);
+            };
+        }
     }
 
     pub fn all_paths(&self, path: Arc<Path>) -> Vec<Arc<Path>> {

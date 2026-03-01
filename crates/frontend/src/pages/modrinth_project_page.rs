@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{instance::InstanceID, meta::MetadataRequest};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, IconName, StyledExt, button::{Button, ButtonVariants}, h_flex, scroll::ScrollableElement, skeleton::Skeleton, tab::{Tab, TabBar}, v_flex
+    ActiveTheme, Icon, IconName, StyledExt, button::{Button, ButtonVariants}, h_flex, scroll::ScrollableElement, skeleton::Skeleton, tab::{Tab, TabBar}, text::{TextView}, v_flex
 };
 use schema::modrinth::{
     ModrinthProjectRequest, ModrinthProjectResult,
@@ -90,237 +90,6 @@ impl ModrinthProjectPage {
     }
 }
 
-fn render_markdown(body: &str, theme: &gpui_component::Theme) -> impl IntoElement {
-    let mut elements: Vec<AnyElement> = Vec::new();
-
-    let gray = Hsla { h: 0.0, s: 0.0, l: 0.55, a: 1.0 };
-    let code_bg = Hsla { h: 0.0, s: 0.0, l: 0.12, a: 1.0 };
-
-    let mut in_code_block = false;
-    let mut code_lang = String::new();
-    let mut code_lines: Vec<String> = Vec::new();
-    let mut paragraph_lines: Vec<String> = Vec::new();
-
-    let flush_paragraph = |lines: &mut Vec<String>, elements: &mut Vec<AnyElement>| {
-        if lines.is_empty() { return; }
-        let text = lines.join(" ");
-        lines.clear();
-        elements.push(
-            div()
-                .text_sm()
-                .line_height(px(22.0))
-                .mb_2()
-                .child(text)
-                .into_any_element()
-        );
-    };
-
-    let flush_code = |lang: &mut String, lines: &mut Vec<String>, elements: &mut Vec<AnyElement>, code_bg: Hsla| {
-        if lines.is_empty() { return; }
-        let code_text = lines.join("\n");
-        lines.clear();
-        let label = if lang.is_empty() { "code".to_string() } else { lang.clone() };
-        lang.clear();
-        elements.push(
-            v_flex()
-                .mb_3()
-                .rounded_md()
-                .bg(code_bg)
-                .p_3()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 })
-                        .mb_1()
-                        .child(label)
-                )
-                .child(
-                    div()
-                        .font_family("monospace")
-                        .text_sm()
-                        .child(code_text)
-                )
-                .into_any_element()
-        );
-    };
-
-    for raw_line in body.lines() {
-        if raw_line.starts_with("```") {
-            if in_code_block {
-                in_code_block = false;
-                flush_code(&mut code_lang, &mut code_lines, &mut elements, code_bg);
-            } else {
-                flush_paragraph(&mut paragraph_lines, &mut elements);
-                in_code_block = true;
-                code_lang = raw_line.trim_start_matches('`').trim().to_string();
-            }
-            continue;
-        }
-
-        if in_code_block {
-            code_lines.push(raw_line.to_string());
-            continue;
-        }
-
-        if raw_line.trim().is_empty() {
-            flush_paragraph(&mut paragraph_lines, &mut elements);
-            continue;
-        }
-
-        if raw_line.starts_with("#### ") {
-            flush_paragraph(&mut paragraph_lines, &mut elements);
-            let text = raw_line.trim_start_matches('#').trim().to_string();
-            elements.push(div().text_sm().font_bold().mt_3().mb_1().child(text).into_any_element());
-            continue;
-        }
-        if raw_line.starts_with("### ") {
-            flush_paragraph(&mut paragraph_lines, &mut elements);
-            let text = raw_line.trim_start_matches('#').trim().to_string();
-            elements.push(div().text_base().font_bold().mt_3().mb_1().child(text).into_any_element());
-            continue;
-        }
-        if raw_line.starts_with("## ") {
-            flush_paragraph(&mut paragraph_lines, &mut elements);
-            let text = raw_line.trim_start_matches('#').trim().to_string();
-            elements.push(div().text_lg().font_bold().mt_4().mb_1().child(text).into_any_element());
-            continue;
-        }
-        if raw_line.starts_with("# ") {
-            flush_paragraph(&mut paragraph_lines, &mut elements);
-            let text = raw_line.trim_start_matches('#').trim().to_string();
-            elements.push(div().text_xl().font_bold().mt_4().mb_2().child(text).into_any_element());
-            continue;
-        }
-
-        if raw_line.trim() == "---" || raw_line.trim() == "***" || raw_line.trim() == "___" {
-            flush_paragraph(&mut paragraph_lines, &mut elements);
-            elements.push(
-                div().h_px().w_full().bg(Hsla { h: 0.0, s: 0.0, l: 0.2, a: 1.0 }).my_3().into_any_element()
-            );
-            continue;
-        }
-
-        if raw_line.starts_with("- ") || raw_line.starts_with("* ") {
-            flush_paragraph(&mut paragraph_lines, &mut elements);
-            let text = strip_inline_markdown(&raw_line[2..]);
-            elements.push(
-                h_flex().gap_2().mb_1().items_start()
-                    .child(div().mt_1().text_color(gray).child("•"))
-                    .child(div().text_sm().line_height(px(22.0)).child(text))
-                    .into_any_element()
-            );
-            continue;
-        }
-        if let Some(rest) = parse_ordered_list(raw_line) {
-            flush_paragraph(&mut paragraph_lines, &mut elements);
-            elements.push(
-                h_flex().gap_2().mb_1().items_start()
-                    .child(div().text_color(gray).text_sm().child(rest.0))
-                    .child(div().text_sm().line_height(px(22.0)).child(strip_inline_markdown(&rest.1)))
-                    .into_any_element()
-            );
-            continue;
-        }
-
-        let trimmed = raw_line.trim();
-        if trimmed.starts_with('<') && trimmed.ends_with('>') {
-            if trimmed.to_lowercase().starts_with("<summary>") && trimmed.to_lowercase().ends_with("</summary>") {
-                let inner = &trimmed[9..trimmed.len()-10];
-                elements.push(
-                    div().text_sm().font_bold().mt_2().text_color(gray).child(inner.to_string()).into_any_element()
-                );
-            }
-            continue;
-        }
-
-        paragraph_lines.push(strip_inline_markdown(raw_line));
-    }
-
-    flush_paragraph(&mut paragraph_lines, &mut elements);
-    if in_code_block {
-        flush_code(&mut code_lang, &mut code_lines, &mut elements, code_bg);
-    }
-
-    v_flex()
-        .gap_0()
-        .children(elements)
-}
-
-fn strip_inline_markdown(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let chars: Vec<char> = s.chars().collect();
-    let mut i = 0;
-
-    while i < chars.len() {
-        if chars[i] == '!' && i + 1 < chars.len() && chars[i+1] == '[' {
-            if let Some(end) = find_closing_paren(&chars, i+1) {
-                i = end + 1;
-                continue;
-            }
-        }
-        if chars[i] == '[' {
-            if let Some(bracket_end) = chars[i+1..].iter().position(|&c| c == ']') {
-                let text_start = i + 1;
-                let text_end = i + 1 + bracket_end;
-                let text: String = chars[text_start..text_end].iter().collect();
-                if text_end + 1 < chars.len() && chars[text_end + 1] == '(' {
-                    if let Some(paren_end) = chars[text_end+2..].iter().position(|&c| c == ')') {
-                        out.push_str(&text);
-                        i = text_end + 2 + paren_end + 1;
-                        continue;
-                    }
-                }
-            }
-        }
-        if i + 1 < chars.len() && ((chars[i] == '*' && chars[i+1] == '*') || (chars[i] == '_' && chars[i+1] == '_')) {
-            i += 2;
-            continue;
-        }
-        if chars[i] == '*' || chars[i] == '_' {
-            i += 1;
-            continue;
-        }
-        if chars[i] == '`' {
-            i += 1;
-            continue;
-        }
-        if i + 1 < chars.len() && chars[i] == '~' && chars[i+1] == '~' {
-            i += 2;
-            continue;
-        }
-        out.push(chars[i]);
-        i += 1;
-    }
-
-    out
-}
-
-fn find_closing_paren(chars: &[char], start: usize) -> Option<usize> {
-    let mut depth = 0;
-    for (i, &c) in chars[start..].iter().enumerate() {
-        match c {
-            '(' => depth += 1,
-            ')' => {
-                depth -= 1;
-                if depth == 0 { return Some(start + i); }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn parse_ordered_list(line: &str) -> Option<(String, String)> {
-    let trimmed = line.trim_start();
-    let dot_pos = trimmed.find(". ")?;
-    let prefix = &trimmed[..dot_pos];
-    if prefix.chars().all(|c| c.is_ascii_digit()) && !prefix.is_empty() {
-        Some((format!("{}.", prefix), trimmed[dot_pos+2..].to_string()))
-    } else {
-        None
-    }
-}
-
 fn format_downloads(downloads: usize) -> SharedString {
     if downloads >= 1_000_000_000 {
         ts!("instance.content.downloads", num = format!("{}B", (downloads / 10_000_000) as f64 / 100.0))
@@ -334,7 +103,7 @@ fn format_downloads(downloads: usize) -> SharedString {
 }
 
 impl Render for ModrinthProjectPage {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let breadcrumb = self.page_path.create_breadcrumb(&self.data, cx);
         let theme = cx.theme().clone();
 
@@ -534,7 +303,7 @@ impl Render for ModrinthProjectPage {
                     if let Some(body) = &project.body && !body.is_empty() {
                         v_flex()
                             .mt_2().pt_2()
-                            .child(render_markdown(body, &theme))
+                            .child(TextView::markdown("project_description", body.to_string()))
                             .into_any_element()
                     } else {
                         v_flex()

@@ -40,9 +40,9 @@ pub struct ModrinthSearchPage {
     mods_load_state: Option<(Arc<AtomicBridgeDataLoadState>, AtomicOptionSerial)>
 }
 
-struct InstalledMod {
-    mod_id: InstanceContentID,
-    status: Arc<AtomicContentUpdateStatus>,
+pub struct InstalledMod {
+    pub mod_id: InstanceContentID,
+    pub status: Arc<AtomicContentUpdateStatus>,
 }
 
 impl ModrinthSearchPage {
@@ -573,7 +573,7 @@ impl ModrinthSearchPage {
         items
     }
 
-    fn get_primary_action(&self, project_id: &str, cx: &App) -> PrimaryAction {
+    pub fn get_primary_action(&self, project_id: &str, cx: &App) -> PrimaryAction {
         let install_latest = self.can_install_latest && !InterfaceConfig::get(cx).modrinth_install_normally;
 
         let installed = self.installed_mods_by_project.get(project_id);
@@ -618,7 +618,7 @@ impl ModrinthSearchPage {
 }
 
 #[derive(PartialEq, Eq)]
-enum PrimaryAction {
+pub enum PrimaryAction {
     Install,
     Reinstall,
     InstallLatest,

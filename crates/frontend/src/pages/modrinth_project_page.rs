@@ -255,28 +255,27 @@ impl Render for ModrinthProjectPage {
                     .child(env_icon)
                     .child(env_name));
 
-            let categories_row: AnyElement = {
-                let cats = project.categories.iter()
-                    .flat_map(|c| c.iter())
-                    .chain(project.additional_categories.iter().flat_map(|c| c.iter()));
-
+            let loaders_row: AnyElement = project.loaders.as_deref()
+                .filter(|l| !l.is_empty())
+                .map(|loaders| {
                     h_flex().gap_4().pl_4().border_l_1().border_color(theme.border)
-                        .children(cats.map(|category_id| {
+                        .children(loaders.iter().map(|loader| {
                             h_flex().gap_1()
-                                .when_some(icon_for(category_id), |this, icon| {
+                                .when_some(icon_for(loader.id()), |this, icon| {
                                     this.child(Icon::empty().path(icon))
                                 })
-                                .child(ts!(format!("modrinth.category.{}", category_id.as_str())))
+                                .child(loader.pretty_name())
                         }))
                         .into_any_element()
-            };
+                })
+                .unwrap_or_else(|| div().into_any_element());
 
             let info_bar = h_flex()
                 .gap_4()
                 .items_center()
                 .text_sm()
                 .child(stats)
-                .child(categories_row);
+                .child(loaders_row);
 
             let mut link_row = h_flex().gap_1().flex_wrap();
 
@@ -354,16 +353,22 @@ impl Render for ModrinthProjectPage {
                 div().into_any_element()
             };
 
-            let loaders_el: AnyElement = project.loaders.as_deref()
-                .filter(|l| !l.is_empty())
-                .map(|l| {
-                    let text = l.iter().map(|x| x.pretty_name()).collect::<Vec<_>>().join(", ");
+            let categories_el: AnyElement = {
+                let cats: Vec<_> = project.categories.iter()
+                    .flat_map(|c| c.iter())
+                    .chain(project.additional_categories.iter().flat_map(|c| c.iter()))
+                    .collect();
+
+                if cats.is_empty() {
+                    div().into_any_element()
+                } else {
+                    let text = cats.iter().map(|c| ts!(format!("modrinth.category.{}", c))).collect::<Vec<_>>().join(", ");
                     h_flex().gap_2().text_sm()
-                        .child(Icon::empty().path("icons/puzzle.svg"))
+                        .child(Icon::empty().path("icons/tags.svg"))
                         .child(text)
                         .into_any_element()
-                })
-                .unwrap_or_else(|| div().into_any_element());
+                }
+            };
 
             let versions_el: AnyElement = project.game_versions.as_deref()
                 .filter(|v| !v.is_empty())
@@ -383,7 +388,7 @@ impl Render for ModrinthProjectPage {
                 })
                 .unwrap_or_else(|| div().into_any_element());
 
-            let info_el: AnyElement = v_flex().child(license_el).child(loaders_el).child(versions_el).into_any_element();
+            let info_el: AnyElement = v_flex().child(license_el).child(categories_el).child(versions_el).into_any_element();
 
             let active_tab = self.active_tab;
             let tabs_el: AnyElement = TabBar::new("content_tabs").underline()

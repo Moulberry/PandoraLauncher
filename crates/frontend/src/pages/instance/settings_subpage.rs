@@ -1,17 +1,16 @@
-use std::{borrow::Cow, cmp::Ordering, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use bridge::{
     handle::BackendHandle, instance::InstanceID, message::MessageToBackend, meta::MetadataRequest
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonGroup, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, spinner::Spinner, v_flex, ActiveTheme as _, Disableable, Selectable, Sizable, WindowExt
+    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex, ActiveTheme as _, Disableable, Sizable, WindowExt
 };
-use once_cell::sync::Lazy;
-use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, LwjglLibraryPath, AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL}, loader::Loader, version_manifest::MinecraftVersionManifest};
+use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
 
-use crate::{entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
+use crate::{component::{horizontal_sections::HorizontalSections, path_label::PathLabel}, entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
 
 #[derive(PartialEq, Eq)]
 enum NewNameChangeState {
@@ -31,18 +30,24 @@ pub struct InstanceSettingsSubpage {
     loader_select_state: Entity<SelectState<Vec<&'static str>>>,
     loader_versions_state: TypelessFrontendMetadataResult,
     loader_version_select_state: Entity<SelectState<SearchableVec<&'static str>>>,
+    disable_file_syncing: bool,
+
     memory_override_enabled: bool,
     memory_min_input_state: Entity<InputState>,
     memory_max_input_state: Entity<InputState>,
+    wrapper_command_enabled: bool,
+    wrapper_command_input_state: Entity<InputState>,
     jvm_flags_enabled: bool,
     jvm_flags_input_state: Entity<InputState>,
     jvm_binary_enabled: bool,
-    jvm_binary_path: Option<Arc<Path>>,
+    jvm_binary_path: Option<PathLabel>,
+
+    instance_root_label: PathLabel,
 
     override_glfw_enabled: bool,
-    override_glfw_path: Option<Arc<Path>>,
+    override_glfw_path: Option<PathLabel>,
     override_openal_enabled: bool,
-    override_openal_path: Option<Arc<Path>>,
+    override_openal_path: Option<PathLabel>,
 
     #[cfg(target_os = "linux")]
     use_mangohud: bool,
@@ -50,6 +55,8 @@ pub struct InstanceSettingsSubpage {
     use_gamemode: bool,
     #[cfg(target_os = "linux")]
     use_discrete_gpu: bool,
+    #[cfg(target_os = "linux")]
+    disable_gl_threaded_optimizations: bool,
     #[cfg(target_os = "linux")]
     mangohud_available: bool,
     #[cfg(target_os = "linux")]
@@ -72,13 +79,17 @@ impl InstanceSettingsSubpage {
         let instance_id = entry.id;
         let loader = entry.configuration.loader;
         let preferred_loader_version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+        let disable_file_syncing = entry.configuration.disable_file_syncing;
 
         let memory = entry.configuration.memory.unwrap_or_default();
+        let wrapper_command = entry.configuration.wrapper_command.clone().unwrap_or_default();
         let jvm_flags = entry.configuration.jvm_flags.clone().unwrap_or_default();
         let jvm_binary = entry.configuration.jvm_binary.clone().unwrap_or_default();
         #[cfg(target_os = "linux")]
         let linux_wrapper = entry.configuration.linux_wrapper.unwrap_or_default();
         let system_libraries = entry.configuration.system_libraries.clone().unwrap_or_default();
+
+        let instance_root_label = PathLabel::new(entry.root_path.clone(), true);
 
         let glfw_path = system_libraries.glfw.get_or_auto(&*AUTO_LIBRARY_PATH_GLFW);
         let openal_path = system_libraries.openal.get_or_auto(&*AUTO_LIBRARY_PATH_OPENAL);
@@ -106,8 +117,10 @@ impl InstanceSettingsSubpage {
         cx.subscribe_in(&loader_select_state, window, Self::on_loader_selected).detach();
 
         cx.observe_in(instance, window, |page, instance, window, cx| {
+            let entry = instance.read(cx);
+            page.instance_root_label = PathLabel::new(entry.root_path.clone(), true);
             if page.loader_version_select_state.read(cx).selected_index(cx).is_none() {
-                let version = instance.read(cx).configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+                let version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
                 page.loader_version_select_state.update(cx, |select_state, cx| {
                     select_state.set_selected_value(&version, window, cx);
                 });
@@ -132,6 +145,11 @@ impl InstanceSettingsSubpage {
         cx.subscribe_in(&memory_max_input_state, window, Self::on_memory_step).detach();
         cx.subscribe(&memory_max_input_state, Self::on_memory_changed).detach();
 
+        let wrapper_command_input_state = cx.new(|cx| {
+            InputState::new(window, cx).auto_grow(1, 8).default_value(wrapper_command.flags)
+        });
+        cx.subscribe(&wrapper_command_input_state, Self::on_wrapper_command_changed).detach();
+
         let jvm_flags_input_state = cx.new(|cx| {
             InputState::new(window, cx).auto_grow(1, 8).default_value(jvm_flags.flags)
         });
@@ -147,23 +165,29 @@ impl InstanceSettingsSubpage {
             loader,
             loader_select_state,
             loader_version_select_state,
+            disable_file_syncing,
             memory_override_enabled: memory.enabled,
             memory_min_input_state,
             memory_max_input_state,
+            wrapper_command_enabled: wrapper_command.enabled,
+            wrapper_command_input_state,
             jvm_flags_enabled: jvm_flags.enabled,
             jvm_flags_input_state,
             jvm_binary_enabled: jvm_binary.enabled,
-            jvm_binary_path: jvm_binary.path.clone(),
+            jvm_binary_path: jvm_binary.path.clone().map(|path| PathLabel::new(path, false)),
             override_glfw_enabled: system_libraries.override_glfw,
-            override_glfw_path: glfw_path,
+            override_glfw_path: glfw_path.map(|path| PathLabel::new(path, false)),
             override_openal_enabled: system_libraries.override_openal,
-            override_openal_path: openal_path,
+            override_openal_path: openal_path.map(|path| PathLabel::new(path, false)),
+            instance_root_label,
             #[cfg(target_os = "linux")]
             use_mangohud: linux_wrapper.use_mangohud,
             #[cfg(target_os = "linux")]
             use_gamemode: linux_wrapper.use_gamemode,
             #[cfg(target_os = "linux")]
             use_discrete_gpu: linux_wrapper.use_discrete_gpu,
+            #[cfg(target_os = "linux")]
+            disable_gl_threaded_optimizations: linux_wrapper.disable_gl_threaded_optimizations,
             #[cfg(target_os = "linux")]
             mangohud_available: Self::is_command_available("mangohud"),
             #[cfg(target_os = "linux")]
@@ -451,6 +475,29 @@ impl InstanceSettingsSubpage {
         }
     }
 
+    pub fn on_wrapper_command_changed(
+        &mut self,
+        _: Entity<InputState>,
+        event: &InputEvent,
+        cx: &mut Context<Self>,
+    ) {
+        if let InputEvent::Change = event {
+            self.backend_handle.send(MessageToBackend::SetInstanceWrapperCommand {
+                id: self.instance_id,
+                wrapper_command: self.get_wrapper_command_configuration(cx)
+            });
+        }
+    }
+
+    fn get_wrapper_command_configuration(&self, cx: &App) -> InstanceWrapperCommandConfiguration {
+        let flags = self.wrapper_command_input_state.read(cx).value();
+
+        InstanceWrapperCommandConfiguration {
+            enabled: self.wrapper_command_enabled,
+            flags: flags.into(),
+        }
+    }
+
     pub fn on_jvm_flags_changed(
         &mut self,
         _: Entity<InputState>,
@@ -477,16 +524,16 @@ impl InstanceSettingsSubpage {
     fn get_jvm_binary_configuration(&self) -> InstanceJvmBinaryConfiguration {
         InstanceJvmBinaryConfiguration {
             enabled: self.jvm_binary_enabled,
-            path: self.jvm_binary_path.clone(),
+            path: self.jvm_binary_path.as_ref().map(PathLabel::path),
         }
     }
 
     fn get_system_libraries_configuration(&self) -> InstanceSystemLibrariesConfiguration {
         InstanceSystemLibrariesConfiguration {
             override_glfw: self.override_glfw_enabled,
-            glfw: Self::create_lwjgl_library_path(&self.override_glfw_path, &*AUTO_LIBRARY_PATH_GLFW),
+            glfw: Self::create_lwjgl_library_path(&self.override_glfw_path.as_ref().map(PathLabel::path), &*AUTO_LIBRARY_PATH_GLFW),
             override_openal: self.override_openal_enabled,
-            openal: Self::create_lwjgl_library_path(&self.override_openal_path, &*AUTO_LIBRARY_PATH_OPENAL),
+            openal: Self::create_lwjgl_library_path(&self.override_openal_path.as_ref().map(PathLabel::path), &*AUTO_LIBRARY_PATH_OPENAL),
         }
     }
 
@@ -508,6 +555,7 @@ impl InstanceSettingsSubpage {
             use_mangohud: self.use_mangohud,
             use_gamemode: self.use_gamemode,
             use_discrete_gpu: self.use_discrete_gpu,
+            disable_gl_threaded_optimizations: self.disable_gl_threaded_optimizations
         }
     }
 
@@ -566,12 +614,9 @@ impl Render for InstanceSettingsSubpage {
             .child(div().text_lg().child(ts!("settings.title")));
 
         let memory_override_enabled = self.memory_override_enabled;
+        let wrapper_command_enabled = self.wrapper_command_enabled;
         let jvm_flags_enabled = self.jvm_flags_enabled;
         let jvm_binary_enabled = self.jvm_binary_enabled;
-
-        let jvm_binary_label = opt_path_to_string(&self.jvm_binary_path);
-        let glfw_path_label = opt_path_to_string(&self.override_glfw_path);
-        let openal_path_label = opt_path_to_string(&self.override_openal_path);
 
         let mut basic_content = v_flex()
             .gap_4()
@@ -633,15 +678,26 @@ impl Render for InstanceSettingsSubpage {
                     }).w_full())
                 },
                 TypelessFrontendMetadataResult::Error(ref error) => {
-                    version_content = version_content.child(format!("{}: {}", ts!("instance.possible_loader_error"), error))
+                    version_content = version_content.child(format!("{}: {}", ts!("instance.versions_loading.possible_loader_error"), error))
                 },
             }
         }
 
-        basic_content = basic_content.child(crate::labelled(
-            ts!("instance.version"),
-            version_content,
-        ));
+        basic_content = basic_content
+            .child(crate::labelled(
+                ts!("instance.version"),
+                version_content,
+            ))
+            .child(crate::labelled(
+                ts!("instance.sync.label"),
+                Checkbox::new("syncing").label(ts!("instance.sync.disable_syncing")).checked(self.disable_file_syncing).on_click(cx.listener(|page, value, _, _| {
+                    page.disable_file_syncing = *value;
+                    page.backend_handle.send(MessageToBackend::SetInstanceDisableFileSyncing {
+                        id: page.instance_id,
+                        disable_file_syncing: *value
+                    });
+                }))
+            ));
 
         let runtime_content = v_flex()
             .gap_4()
@@ -697,9 +753,9 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(Button::new("select_jvm_binary").success().label(jvm_binary_label).disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
+                .child(PathLabel::button_opt(&self.jvm_binary_path, "select_jvm_binary").disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
                     this.select_file(ts!("instance.select_jvm_binary"), |this, path| {
-                        this.jvm_binary_path = path;
+                        this.jvm_binary_path = path.map(|path| PathLabel::new(path, false));
                         this.backend_handle.send(MessageToBackend::SetInstanceJvmBinary {
                             id: this.instance_id,
                             jvm_binary: this.get_jvm_binary_configuration()
@@ -719,17 +775,16 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(Button::new("select_glfw").success().label(glfw_path_label).disabled(!self.override_glfw_enabled).on_click(cx.listener(|this, _, window, cx| {
+                .child(PathLabel::button_opt(&self.override_glfw_path, "select_glfw").disabled(!self.override_glfw_enabled).on_click(cx.listener(|this, _, window, cx| {
                     this.select_file(ts!("instance.select_glfw_lib"), |this, path| {
-                        this.override_glfw_path = path;
+                        this.override_glfw_path = path.map(|path| PathLabel::new(path, false));
                         this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
                             id: this.instance_id,
                             system_libraries: this.get_system_libraries_configuration()
                         });
                     }, window, cx);
                 })))
-            )
-            .child(v_flex()
+            ).child(v_flex()
                 .gap_1()
                 .child(Checkbox::new("system_openal").label(ts!("instance.openal_lib")).checked(self.override_openal_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.override_openal_enabled != *value {
@@ -742,15 +797,28 @@ impl Render for InstanceSettingsSubpage {
 
                     }
                 })))
-                .child(Button::new("select_openal").success().label(openal_path_label).disabled(!self.override_openal_enabled).on_click(cx.listener(|this, _, window, cx| {
+                .child(PathLabel::button_opt(&self.override_openal_path, "select_openal").disabled(!self.override_openal_enabled).on_click(cx.listener(|this, _, window, cx| {
                     this.select_file(ts!("instance.select_openal_lib"), |this, path| {
-                        this.override_openal_path = path;
+                        this.override_openal_path = path.map(|path| PathLabel::new(path, false));
                         this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
                             id: this.instance_id,
                             system_libraries: this.get_system_libraries_configuration()
                         });
                     }, window, cx);
                 })))
+            ).child(v_flex()
+                .gap_1()
+                .child(Checkbox::new("wrapper_command").label(ts!("instance.wrapper_command")).checked(wrapper_command_enabled).on_click(cx.listener(|page, value, _, cx| {
+                    if page.wrapper_command_enabled != *value {
+                        page.wrapper_command_enabled = *value;
+                        page.backend_handle.send(MessageToBackend::SetInstanceWrapperCommand {
+                            id: page.instance_id,
+                            wrapper_command: page.get_wrapper_command_configuration(cx)
+                        });
+                        cx.notify();
+                    }
+                })))
+                .child(Input::new(&self.wrapper_command_input_state).disabled(!wrapper_command_enabled))
             );
 
         #[cfg(target_os = "linux")]
@@ -787,11 +855,45 @@ impl Render for InstanceSettingsSubpage {
                     cx.notify();
                 }
             })))
+            .child(Checkbox::new("disable_gl_threaded_optimizations").label(ts!("instance.linux.disable_gl_threaded_optimizations")).checked(self.disable_gl_threaded_optimizations).on_click(cx.listener(|page, value, _, cx| {
+                if page.disable_gl_threaded_optimizations != *value {
+                    page.disable_gl_threaded_optimizations = *value;
+                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                        id: page.instance_id,
+                        linux_wrapper: page.get_linux_wrapper_configuration()
+                    });
+                    cx.notify();
+                }
+            })))
         );
 
         let actions_content = v_flex()
             .gap_4()
             .size_full()
+            .child(crate::labelled(
+                "Instance Folder",
+                Button::new("relocate").icon(PandoraIcon::Folder).child(self.instance_root_label.clone()).success().on_click({
+                    let instance = self.instance.clone();
+                    let backend_handle = self.backend_handle.clone();
+                    move |_: &ClickEvent, _, cx| {
+                        let user_dirs = directories::UserDirs::new();
+                        let directory = user_dirs.as_ref()
+                            .and_then(directories::UserDirs::desktop_dir).unwrap_or(Path::new("."));
+
+                        let instance = instance.read(cx);
+                        let id = instance.id;
+
+                        let receiver = cx.prompt_for_new_path(directory, Some(instance.name.as_str()));
+                        let backend_handle = backend_handle.clone();
+                        cx.spawn(async move |_| {
+                            let Ok(Ok(Some(path))) = receiver.await else {
+                                return;
+                            };
+                            backend_handle.send(MessageToBackend::RelocateInstance { id, path });
+                        }).detach();
+                    }
+                })
+            ))
             .child(Button::new("shortcut").label(ts!("instance.create_shortcut")).success().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
@@ -839,16 +941,12 @@ impl Render for InstanceSettingsSubpage {
                 }
             }));
 
-        let sections = h_flex()
+        let sections = HorizontalSections::new()
             .size_full()
-            .justify_evenly()
-            .items_start()
             .p_4()
-            .gap_4()
+            .gap_8()
             .child(basic_content)
-            .child(div().bg(cx.theme().border).h_full().min_w_px().max_w_px().w_px())
             .child(runtime_content)
-            .child(div().bg(cx.theme().border).h_full().min_w_px().max_w_px().w_px())
             .child(actions_content);
 
         v_flex()
@@ -862,13 +960,5 @@ impl Render for InstanceSettingsSubpage {
                 .border_color(theme.border)
                 .child(sections)
             )
-    }
-}
-
-fn opt_path_to_string(path: &Option<Arc<Path>>) -> SharedString {
-    if let Some(path) = path {
-        SharedString::new(path.to_string_lossy())
-    } else {
-        ts!("common.unset")
     }
 }

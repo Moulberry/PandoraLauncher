@@ -1,6 +1,8 @@
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
-use schema::{auxiliary::AuxDisabledChildren, content::ContentSource, modification::ModrinthModpackFileDownload};
+use indexmap::IndexMap;
+use schema::{auxiliary::AuxDisabledChildren, content::ContentSource, loader::Loader, modification::ModrinthModpackFileDownload};
+use ustr::Ustr;
 
 use crate::safe_path::SafePath;
 
@@ -67,6 +69,7 @@ pub struct InstanceContentSummary {
     pub path: Arc<Path>,
     pub enabled: bool,
     pub content_source: ContentSource,
+    pub update: ContentUpdateContext,
     pub disabled_children: Arc<AuxDisabledChildren>,
 }
 
@@ -78,7 +81,6 @@ pub struct ContentSummary {
     pub version_str: Arc<str>,
     pub authors: Arc<str>,
     pub png_icon: Option<Arc<[u8]>>,
-    pub update_status: Arc<AtomicContentUpdateStatus>,
     pub extra: ContentType,
 }
 
@@ -93,13 +95,12 @@ pub enum ContentType {
         downloads: Arc<[ModrinthModpackFileDownload]>,
         summaries: Arc<[Option<Arc<ContentSummary>>]>,
         overrides: Arc<[(SafePath, Arc<[u8]>)]>,
+        dependencies: IndexMap<Arc<str>, Arc<str>>,
     },
     ResourcePack,
 }
 
-
-#[atomic_enum::atomic_enum]
-#[derive(PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContentUpdateStatus {
     Unknown,
     ManualInstall,
@@ -115,5 +116,30 @@ impl ContentUpdateStatus {
             ContentUpdateStatus::Modrinth => true,
             _ => false,
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ContentUpdateContext {
+    status: ContentUpdateStatus,
+    for_loader: Loader,
+    for_version: Ustr,
+}
+
+impl ContentUpdateContext {
+    pub fn new(status: ContentUpdateStatus, for_loader: Loader, for_version: Ustr) -> Self {
+        Self { status, for_loader, for_version }
+    }
+
+    pub fn status_if_matches(&self, loader: Loader, version: Ustr) -> ContentUpdateStatus {
+        if loader == self.for_loader && version == self.for_version {
+            self.status
+        } else {
+            ContentUpdateStatus::Unknown
+        }
+    }
+
+    pub fn can_update(&self, loader: Loader, version: Ustr) -> bool {
+        self.for_loader == loader && self.for_version == version && self.status.can_update()
     }
 }

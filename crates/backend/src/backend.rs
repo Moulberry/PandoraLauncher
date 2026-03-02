@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet}, io::Cursor, path::{Path, PathBuf}, sync::Arc, time::{Duration, SystemTime}
+    collections::HashMap, io::Cursor, path::{Path, PathBuf}, sync::Arc, time::{Duration, SystemTime}
 };
 
 use auth::{
@@ -9,7 +9,6 @@ use auth::{
     secret::{PlatformSecretStorage, SecretStorageError},
     serve_redirect::{self, ProcessAuthorizationError},
 };
-use base64::Engine;
 use bridge::{
     handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceWorldSummary}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
@@ -18,16 +17,46 @@ use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{auxiliary::AuxiliaryContentMeta, backend_config::BackendConfig, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
-use serde::Deserialize;
+use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, SyncTargets, ProxyConfig}, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
 use sha1::{Digest, Sha1};
+use strum::IntoEnumIterator;
 use tokio::sync::{mpsc::Receiver, OnceCell};
-use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
     account::{BackendAccountInfo, MinecraftLoginInfo}, directories::LauncherDirectories, id_slab::IdSlab, instance::{Instance, ContentFolder}, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent
 };
+
+fn build_http_clients(user_agent: &str, proxy_config: &ProxyConfig, proxy_password: Option<&str>) -> (reqwest::Client, reqwest::Client) {
+    let proxy_url = proxy_config.to_url(proxy_password);
+
+    let mut http_builder = reqwest::ClientBuilder::new()
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(15))
+        .redirect(Policy::none())
+        .use_rustls_tls()
+        .user_agent(user_agent);
+
+    let mut redirecting_builder = reqwest::ClientBuilder::new()
+        .use_rustls_tls()
+        .user_agent(user_agent);
+
+    if let Some(proxy_url) = &proxy_url {
+        if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
+            let proxy = proxy.no_proxy(reqwest::NoProxy::from_env());
+            http_builder = http_builder.proxy(proxy.clone());
+            redirecting_builder = redirecting_builder.proxy(proxy);
+            log::info!("Proxy configured: {}://{}:{}", proxy_config.protocol.scheme(), proxy_config.host, proxy_config.port);
+        } else {
+            log::warn!("Failed to parse proxy URL, proceeding without proxy");
+        }
+    }
+
+    let http_client = http_builder.build().expect("Failed to build HTTP client");
+    let redirecting_http_client = redirecting_builder.build().expect("Failed to build redirecting HTTP client");
+
+    (http_client, redirecting_http_client)
+}
 
 pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHandle, recv: BackendReceiver) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -42,22 +71,31 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         "PandoraLauncher/dev (https://github.com/Moulberry/PandoraLauncher)".to_string()
     };
 
-    let http_client = reqwest::ClientBuilder::new()
-        .connect_timeout(Duration::from_secs(15))
-        .read_timeout(Duration::from_secs(15))
-        .redirect(Policy::none())
-        .use_rustls_tls()
-        .user_agent(&user_agent)
-        .build()
-        .unwrap();
-
-    let redirecting_http_client = reqwest::ClientBuilder::new()
-        .use_rustls_tls()
-        .user_agent(&user_agent)
-        .build()
-        .unwrap();
-
     let directories = Arc::new(LauncherDirectories::new(launcher_dir));
+
+    let mut config: Persistent<BackendConfig> = Persistent::load(directories.config_json.clone());
+    let proxy_config = config.get().proxy.clone();
+    let proxy_password: Option<String> = if proxy_config.enabled && proxy_config.auth_enabled {
+        runtime.block_on(async {
+            match PlatformSecretStorage::new().await {
+                Ok(storage) => match storage.read_proxy_password().await {
+                    Ok(password) => password,
+                    Err(e) => {
+                        log::warn!("Failed to read proxy password from keyring: {:?}", e);
+                        None
+                    }
+                },
+                Err(e) => {
+                    log::warn!("Failed to initialize secret storage: {:?}", e);
+                    None
+                }
+            }
+        })
+    } else {
+        None
+    };
+
+    let (http_client, redirecting_http_client) = build_http_clients(&user_agent, &proxy_config, proxy_password.as_deref());
 
     let meta = Arc::new(MetadataManager::new(
         http_client.clone(),
@@ -73,7 +111,6 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
 
     let state_instances = BackendStateInstances {
         instances: IdSlab::default(),
-        instance_by_path: HashMap::new(),
         instances_generation: 0,
         reload_immediately: Default::default(),
     };
@@ -81,6 +118,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     let mut state_file_watching = BackendStateFileWatching {
         watcher,
         watching: HashMap::new(),
+        watch_target_to_path: HashMap::new(),
         symlink_src_to_links: Default::default(),
         symlink_link_to_src: Default::default(),
     };
@@ -91,9 +129,6 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
 
     // Load accounts
     let account_info = Persistent::load(directories.accounts_json.clone());
-
-    // Load config
-    let config = Persistent::load(directories.config_json.clone());
 
     let mut state = BackendState {
         self_handle,
@@ -124,7 +159,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     std::mem::forget(runtime);
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum WatchTarget {
     RootDir,
     InstancesDir,
@@ -133,13 +168,11 @@ pub enum WatchTarget {
     InstanceDotMinecraftDir { id: InstanceID },
     InstanceWorldDir { id: InstanceID },
     InstanceSavesDir { id: InstanceID },
-    ServersDat { id: InstanceID },
     InstanceContentDir { id: InstanceID, folder: ContentFolder },
 }
 
 pub struct BackendStateInstances {
     pub instances: IdSlab<Instance>,
-    pub instance_by_path: HashMap<PathBuf, InstanceID>,
     pub instances_generation: usize,
     pub reload_immediately: FxHashSet<(InstanceID, ContentFolder)>,
 }
@@ -147,6 +180,7 @@ pub struct BackendStateInstances {
 pub struct BackendStateFileWatching {
     watcher: notify_debouncer_full::Debouncer<notify::RecommendedWatcher, notify_debouncer_full::RecommendedCache>,
     watching: HashMap<Arc<Path>, WatchTarget>,
+    watch_target_to_path: HashMap<WatchTarget, Arc<Path>>,
     symlink_src_to_links: HashMap<Arc<Path>, IndexSet<Arc<Path>>>,
     symlink_link_to_src: HashMap<Arc<Path>, Arc<Path>>,
 }
@@ -259,12 +293,15 @@ impl BackendState {
             let instance_state = &mut *instance_state_guard;
 
             let Ok(mut instance) = instance else {
-                if let Some(existing) = instance_state.instance_by_path.get(path)
-                    && let Some(existing_instance) = instance_state.instances.remove(*existing)
-                {
-                    self.send.send(MessageToFrontend::InstanceRemoved { id: existing_instance.id});
-                    show_errors = true;
-                }
+                instance_state.instances.retain_mut(|existing| {
+                    if &*existing.root_path == path {
+                        self.send.send(MessageToFrontend::InstanceRemoved { id: existing.id});
+                        show_errors = true;
+                        false
+                    } else {
+                        true
+                    }
+                });
 
                 if show_errors {
                     let error = instance.unwrap_err();
@@ -275,15 +312,17 @@ impl BackendState {
                 return false;
             };
 
-            if let Some(existing) = instance_state.instance_by_path.get(path)
-                && let Some(existing_instance) = instance_state.instances.get_mut(*existing)
-            {
-                existing_instance.copy_basic_attributes_from(instance);
+            for existing in instance_state.instances.iter_mut() {
+                if &*existing.root_path != path {
+                    continue;
+                }
 
-                let _ = self.send.send(existing_instance.create_modify_message());
+                existing.copy_basic_attributes_from(instance);
+
+                let _ = self.send.send(existing.create_modify_message());
 
                 if show_success {
-                    self.send.send_info(format!("Instance '{}' updated", existing_instance.name));
+                    self.send.send_info(format!("Instance '{}' updated", existing.name));
                 }
 
                 return true;
@@ -308,6 +347,7 @@ impl BackendState {
                 id: instance.id,
                 name: instance.name,
                 icon: instance.icon.clone(),
+                root_path: instance.resolve_real_root_path(),
                 dot_minecraft_folder: instance.dot_minecraft_path.clone(),
                 configuration: instance.configuration.get().clone(),
                 worlds_state: Arc::clone(&instance.worlds_state),
@@ -316,8 +356,6 @@ impl BackendState {
                 resource_packs_state: Arc::clone(&instance.content_state[ContentFolder::ResourcePacks].load_state),
             };
             self.send.send(message);
-
-            instance_state.instance_by_path.insert(path.to_owned(), instance.id);
 
             instance.id
         };
@@ -647,18 +685,22 @@ impl BackendState {
     }
 
     pub async fn prelaunch(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
-        self.prelaunch_apply_syncing(id);
+        self.apply_syncing_to_instance(id);
         self.prelaunch_apply_modpacks(id, modal_action).await
     }
 
-    pub fn prelaunch_apply_syncing(&self, id: InstanceID) {
-        let path = if let Some(instance) = self.instance_state.read().instances.get(id) {
-            instance.dot_minecraft_path.clone()
+    pub fn apply_syncing_to_instance(&self, id: InstanceID) {
+        let (disable, path) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+            (instance.configuration.get().disable_file_syncing, instance.dot_minecraft_path.clone())
         } else {
             return;
         };
 
-        crate::syncing::apply_to_instance(self.config.write().get().sync_targets, &self.directories, path);
+        if disable {
+            crate::syncing::apply_to_instance(&SyncTargets::default(), &self.directories, path);
+        } else {
+            crate::syncing::apply_to_instance(&self.config.write().get().sync_targets, &self.directories, path);
+        }
     }
 
     pub async fn prelaunch_apply_modpacks(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
@@ -779,7 +821,7 @@ impl BackendState {
             let overrides = modpack_install.overrides;
             let content_library_dir = &self.directories.content_library_dir.clone();
             let mut aux: Option<AuxiliaryContentMeta> = if let Some(aux_path) = &modpack_install.aux_path {
-                crate::read_json(&aux_path).unwrap_or_default()
+                Some(crate::read_json(&aux_path).unwrap_or_default())
             } else {
                 None
             };
@@ -911,18 +953,9 @@ impl BackendState {
     pub async fn load_instance_servers(self, id: InstanceID) -> Option<Arc<[InstanceServerSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
-            if !instance.watching_dot_minecraft {
-                instance.watching_dot_minecraft = true;
-                file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                    id: instance.id,
-                });
-            }
-            if !instance.watching_server_dat {
-                instance.watching_server_dat = true;
-                file_watching.watch_filesystem(instance.server_dat_path.clone(), WatchTarget::ServersDat {
-                    id: instance.id,
-                });
-            }
+            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                id: instance.id,
+            });
         }
 
         let result = Instance::load_servers(self.instance_state.clone(), id).await;
@@ -941,20 +974,14 @@ impl BackendState {
     pub async fn load_instance_content(self, id: InstanceID, folder: ContentFolder) -> Option<Arc<[InstanceContentSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
-            if !instance.watching_dot_minecraft {
-                instance.watching_dot_minecraft = true;
-                file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                    id: instance.id,
-                });
-            }
+            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                id: instance.id,
+            });
             let content_state = &mut instance.content_state[folder];
-            if !content_state.watching_path {
-                content_state.watching_path = true;
-                file_watching.watch_filesystem(content_state.path.clone(), WatchTarget::InstanceContentDir {
-                    id: instance.id,
-                    folder
-                });
-            }
+            file_watching.watch_filesystem(content_state.path.clone(), WatchTarget::InstanceContentDir {
+                id: instance.id,
+                folder
+            });
         }
 
         let result = Instance::load_content(self.instance_state.clone(), id, &self.mod_metadata_manager, folder).await;
@@ -982,18 +1009,12 @@ impl BackendState {
     pub async fn load_instance_worlds(self, id: InstanceID) -> Option<Arc<[InstanceWorldSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
-            if !instance.watching_dot_minecraft {
-                instance.watching_dot_minecraft = true;
-                file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                    id: instance.id,
-                });
-            }
-            if !instance.watching_saves_dir {
-                instance.watching_saves_dir = true;
-                file_watching.watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir {
-                    id: instance.id,
-                });
-            }
+            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                id: instance.id,
+            });
+            file_watching.watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir {
+                id: instance.id,
+            });
         }
 
         let result = Instance::load_worlds(self.instance_state.clone(), id).await;
@@ -1038,7 +1059,7 @@ impl BackendState {
             self.send.send_warning(format!("Unable to create instance, unknown loader"));
             return None;
         }
-        if !crate::is_single_component_path(&name) {
+        if !crate::is_single_component_path_str(&name) {
             self.send.send_warning(format!("Unable to create instance, name must not be a path: {}", name));
             return None;
         }
@@ -1055,47 +1076,37 @@ impl BackendState {
 
         let instance_dir = self.directories.instances_dir.join(name);
 
-        let _ = tokio::fs::create_dir_all(&instance_dir).await;
+        _ = std::fs::create_dir_all(&instance_dir);
 
-        let instance_fallback_icon = if let Some(EmbeddedOrRaw::Embedded(e)) = &icon {
-            Some(Ustr::from(&**e))
-        } else {
-            None
-        };
+        let mut instance_info = InstanceConfiguration::new(version.into(), loader);
 
-        let instance_info = InstanceConfiguration {
-            minecraft_version: Ustr::from(version),
-            loader,
-            preferred_loader_version: None,
-            memory: None,
-            jvm_flags: None,
-            jvm_binary: None,
-            linux_wrapper: None,
-            system_libraries: None,
-            instance_fallback_icon,
-        };
+        match icon {
+            Some(EmbeddedOrRaw::Embedded(e)) => {
+                instance_info.instance_fallback_icon = Some(e.into());
+            },
+            Some(EmbeddedOrRaw::Raw(image_bytes)) => {
+                if let Ok(format) = image::guess_format(&*image_bytes) {
+                    if format == ImageFormat::Png {
+                        let icon_path = instance_dir.join("icon.png");
+                        crate::write_safe(&icon_path, &*image_bytes).unwrap();
+                    } else {
+                        self.send.send_error("Unable to apply icon: only pngs are supported");
+                    }
+                } else {
+                    self.send.send_error("Unable to apply icon: unknown format");
+                }
+            },
+            None => {},
+        }
 
         let info_path = instance_dir.join("info_v1.json");
         crate::write_safe(&info_path, serde_json::to_string(&instance_info).unwrap().as_bytes()).unwrap();
-
-        if let Some(EmbeddedOrRaw::Raw(image_bytes)) = icon {
-            if let Ok(format) = image::guess_format(&*image_bytes) {
-                if format == ImageFormat::Png {
-                    let icon_path = instance_dir.join("icon.png");
-                    crate::write_safe(&icon_path, &*image_bytes).unwrap();
-                } else {
-                    self.send.send_error("Unable to apply icon: only pngs are supported");
-                }
-            } else {
-                self.send.send_error("Unable to apply icon: unknown format");
-            }
-        }
 
         Some(instance_dir.clone())
     }
 
     pub async fn rename_instance(&self, id: InstanceID, name: &str) {
-        if !crate::is_single_component_path(&name) {
+        if !crate::is_single_component_path_str(&name) {
             self.send.send_warning(format!("Unable to rename instance, name must not be a path: {}", name));
             return;
         }
@@ -1108,14 +1119,18 @@ impl BackendState {
             return;
         }
 
-        let new_instance_dir = self.directories.instances_dir.join(name);
-
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let result = std::fs::rename(&instance.root_path, new_instance_dir);
-            if let Err(err) = result {
+            if cfg!(windows) {
+                self.file_watching.write().unwatch_subdirectories_of_instance(id);
+                instance.mark_all_dirty();
+            }
+
+            let new_instance_dir = self.directories.instances_dir.join(name);
+            if let Err(err) = std::fs::rename(&instance.root_path, new_instance_dir) {
                 self.send.send_error(format!("Unable to rename instance folder: {}", err));
             }
         }
+
     }
 
     pub async fn get_login_info(&self, modal_action: &ModalAction) -> Option<MinecraftLoginInfo> {
@@ -1156,6 +1171,9 @@ impl BackendState {
 
 impl BackendStateFileWatching {
     pub fn watch_filesystem(&mut self, path: Arc<Path>, target: WatchTarget) {
+        if let Some(old_path) = self.watch_target_to_path.get(&target) && old_path == &path {
+            return;
+        }
         let Ok(canonical) = path.canonicalize() else {
             log::error!("Unable to watch {:?} because it could not be canonicalized", path);
             return;
@@ -1172,7 +1190,13 @@ impl BackendStateFileWatching {
             log::error!("Unable to watch filesystem: {:?}", err);
             return;
         }
+
+        if let Some(old_path) = self.watch_target_to_path.get(&target) {
+            self.remove(&old_path.clone());
+        }
+
         self.watching.insert(path.clone(), target);
+        self.watch_target_to_path.insert(target, path.clone());
 
         if canonical != path {
             self.symlink_src_to_links.entry(canonical.clone()).or_default().insert(path.clone());
@@ -1193,7 +1217,29 @@ impl BackendStateFileWatching {
                 }
             }
         }
-        self.watching.remove(path)
+        if let Some(target) = self.watching.remove(path) {
+            self.watch_target_to_path.remove(&target);
+            Some(target)
+        } else {
+            None
+        }
+    }
+
+    pub fn unwatch_subdirectories_of_instance(&mut self, id: InstanceID) {
+        let targets = [
+            WatchTarget::InstanceDotMinecraftDir { id },
+            WatchTarget::InstanceWorldDir { id },
+            WatchTarget::InstanceSavesDir { id },
+        ];
+        let content_folder_targets = ContentFolder::iter().map(|folder| {
+            WatchTarget::InstanceContentDir { id, folder }
+        });
+        for target in targets.into_iter().chain(content_folder_targets) {
+            if let Some(path) = self.watch_target_to_path.remove(&target) {
+                self.remove(&path);
+                _ = self.watcher.unwatch(&path);
+            };
+        }
     }
 
     pub fn all_paths(&self, path: Arc<Path>) -> Vec<Arc<Path>> {

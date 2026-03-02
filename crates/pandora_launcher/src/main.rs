@@ -8,7 +8,7 @@ use std::fmt::Write;
 use std::time::SystemTime;
 
 use bridge::message::MessageToFrontend;
-use bridge::modal_action::{ModalAction, ProgressTrackerFinishType};
+use bridge::modal_action::ModalAction;
 use clap::Parser;
 use fern::colors::ColoredLevelConfig;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};

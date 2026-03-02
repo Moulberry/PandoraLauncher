@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{instance::InstanceID, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, IconName, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, v_flex
+    ActiveTheme as _, Disableable, Icon, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, tooltip::Tooltip, v_flex
 };
 use rand::Rng;
 use schema::modrinth::ModrinthProjectType;
@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath}, entity::{
         DataEntities, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
-    }, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, syncing_page::SyncingPage}, png_render_cache, root, ts
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, syncing_page::SyncingPage}, png_render_cache, ts
 };
 
 pub struct LauncherUI {
@@ -382,14 +382,12 @@ impl Render for LauncherUI {
             )
         };
 
-        let pandora_icon = Icon::empty().path("icons/pandora.svg");
-
-        let account_button = div().flex_grow().id("account-button").child(SidebarFooter::new()
+        let account_button = div().max_w_full().flex_grow().id("account-button").child(SidebarFooter::new()
             .w_full()
             .justify_center()
             .text_size(rems(0.9375))
             .child(account_head.size_8().min_w_8().min_h_8())
-            .child(account_name))
+            .child(v_flex().w_full().child(account_name)))
             .on_click({
                 let accounts = self.data.accounts.clone();
                 let backend_handle = self.data.backend_handle.clone();
@@ -401,13 +399,11 @@ impl Render for LauncherUI {
 
                     let accounts = accounts.clone();
                     let backend_handle = backend_handle.clone();
-                    window.open_sheet_at(gpui_component::Placement::Left, cx, move |sheet, window, cx| {
+                    window.open_sheet_at(gpui_component::Placement::Left, cx, move |sheet, _, cx| {
                         let (accounts, selected_account) = {
                             let accounts = accounts.read(cx);
                             (accounts.accounts.clone(), accounts.selected_account_uuid)
                         };
-
-                        let trash_icon = Icon::default().path("icons/trash-2.svg");
 
                         let items = accounts.iter().map(|account| {
                             let head = if let Some(head) = &account.head {
@@ -441,7 +437,7 @@ impl Render for LauncherUI {
                                         })
                                     }))
                                 .child(Button::new((account_name.clone(), 1))
-                                    .icon(trash_icon.clone())
+                                    .icon(PandoraIcon::Trash2)
                                     .h_10()
                                     .w_10()
                                     .danger()
@@ -457,16 +453,15 @@ impl Render for LauncherUI {
 
                         sheet
                             .title(ts!("account.title"))
-                            .overlay_top(crate::root::sheet_margin_top(window))
                             .child(v_flex()
                                 .gap_2()
-                                .child(Button::new("add-account").h_10().success().icon(IconName::Plus).label(ts!("account.add.label")).on_click({
+                                .child(Button::new("add-account").h_10().success().icon(PandoraIcon::Plus).label(ts!("account.add.label")).on_click({
                                     let backend_handle = backend_handle.clone();
                                     move |_, window, cx| {
                                         crate::root::start_new_account_login(&backend_handle, window, cx);
                                     }
                                 }))
-                                .child(Button::new("add-offline").h_10().success().icon(IconName::Plus).label(ts!("account.add.offline")).on_click({
+                                .child(Button::new("add-offline").h_10().success().icon(PandoraIcon::Plus).label(ts!("account.add.offline")).on_click({
                                     let backend_handle = backend_handle.clone();
                                     move |_, window, cx| {
                                         let name_input = cx.new(|cx| {
@@ -526,19 +521,35 @@ impl Render for LauncherUI {
 
         let settings_button = div()
             .id("settings-button")
-            .gap_2()
             .p_2()
             .rounded(cx.theme().radius)
             .hover(|this| {
                 this.bg(cx.theme().sidebar_accent)
                     .text_color(cx.theme().sidebar_accent_foreground)
             })
-            .child(IconName::Settings)
+            .child(PandoraIcon::Settings)
             .on_click({
                 let data = self.data.clone();
                 move |_, window, cx| {
                     let build = modals::settings::build_settings_sheet(&data, window, cx);
                     window.open_sheet_at(gpui_component::Placement::Left, cx, build);
+                }
+            });
+        let bug_report_button = div()
+            .id("bug-report-button")
+            .p_2()
+            .rounded(cx.theme().radius)
+            .hover(|this| {
+                this.bg(cx.theme().sidebar_accent)
+                    .text_color(cx.theme().sidebar_accent_foreground)
+            })
+            .child(PandoraIcon::Bug)
+            .tooltip(move |window, cx| {
+                Tooltip::new("Report a bug").build(window, cx)
+            })
+            .on_click({
+                move |_, window, cx| {
+                    open_bug_report_url(window, cx);
                 }
             });
 
@@ -550,9 +561,10 @@ impl Render for LauncherUI {
             .w_full()
             .justify_center()
             .text_size(rems(0.9375))
-            .child(pandora_icon.size_8().min_w_8().min_h_8())
+            .child(Icon::new(PandoraIcon::Pandora).size_8().min_w_8().min_h_8())
             .child(ts!("common.app_name"));
-        let footer = h_flex().pb_3().px_3().flex_wrap().justify_center().w_full().child(settings_button).child(account_button);
+        let footer_buttons = h_flex().child(settings_button).child(bug_report_button);
+        let footer = v_flex().pb_3().px_3().items_center().w_full().child(footer_buttons).child(account_button);
         let sidebar = v_flex()
             .w_full()
             .bg(cx.theme().sidebar)
@@ -574,13 +586,55 @@ impl Render for LauncherUI {
     }
 }
 
-pub fn page(cx: &App, title: impl IntoElement) -> gpui::Div {
-    v_flex().size_full().child(
-        h_flex()
-            .p_4()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .text_xl()
-            .child(div().left_4().child(title)),
-    )
+fn open_bug_report_url(window: &mut Window, cx: &mut App) {
+    let mut body = String::from(r#"## Description of bug
+(Write here)
+
+## Steps to reproduce
+(Write here)
+
+## This issue is unique
+- [ ] I've searched the other issues and didn't see an issue describing the same bug
+
+## Environment
+"#);
+
+    use std::fmt::Write;
+    _ = writeln!(&mut body, "Version: {:?}", option_env!("PANDORA_RELEASE_VERSION"));
+    _ = writeln!(&mut body, "Distributor: {:?}", option_env!("PANDORA_DISTRIBUTION"));
+    _ = writeln!(&mut body, "OS: {} ({})", std::env::consts::OS, std::env::consts::ARCH);
+
+    if cfg!(target_os = "linux") {
+        if let Ok(os_release) = std::fs::read_to_string("/etc/os-release") {
+            for line in os_release.lines() {
+                let line = line.trim_ascii();
+                if let Some(name) = line.strip_prefix("NAME=") {
+                    _ = writeln!(&mut body, "OS Name: {}", name);
+                } else if let Some(version) = line.strip_prefix("VERSION=") {
+                    _ = writeln!(&mut body, "OS Version: {}", version);
+                }
+            }
+        }
+
+        _ = writeln!(&mut body, "Desktop: {:?}", std::env::var_os("XDG_CURRENT_DESKTOP"));
+
+        if let Some(snap_name) = std::env::var_os("SNAP_NAME") {
+            _ = writeln!(&mut body, "Snap: {:?}", snap_name);
+        }
+        if let Some(snap_name) = std::env::var_os("FLATPAK_ID") {
+            _ = writeln!(&mut body, "Flatpak ID: {:?}", snap_name);
+        }
+        if std::env::var_os("APPIMAGE").is_some() {
+            body.push_str("AppImage: true\n");
+        }
+    }
+
+    let Some(github) = option_env!("GITHUB_REPOSITORY_URL") else {
+        let mut notification: Notification = (NotificationType::Error, SharedString::from("Unable to report bug, GITHUB_REPOSITORY_URL was not set at compile time")).into();
+        notification = notification.autohide(false);
+        window.push_notification(notification, cx);
+        return;
+    };
+
+    cx.open_url(&format!("{}/issues/new?body={}", github, urlencoding::encode(&body)));
 }

@@ -8,7 +8,7 @@ use bridge::{
     modal_action::ModalAction,
 };
 use gpui::{prelude::*, *};
-use gpui_component::{breadcrumb::Breadcrumb, scroll::{ScrollableElement, ScrollbarAxis}, v_flex, Root, StyledExt};
+use gpui_component::{Root, Theme, scroll::ScrollableElement, v_flex};
 use parking_lot::RwLock;
 
 use crate::{CloseWindow, MAIN_FONT, entity::DataEntities, modals, ts, ui::{LauncherUI, PageType}};
@@ -57,14 +57,21 @@ impl Render for LauncherRoot {
                 l: 0.25,
                 a: 1.,
             };
-            return v_flex().size_full().bg(purple).child(message.clone()).overflow_y_scrollbar().into_any_element();
+            return v_flex().size_full().text_color(gpui::white()).bg(purple).child(message.clone()).overflow_y_scrollbar().into_any_element();
         }
         if let Some(message) = &*self.panic_message.read() {
-            return v_flex().size_full().bg(gpui::blue()).child(message.clone()).overflow_y_scrollbar().into_any_element();
+            return v_flex().size_full().text_color(gpui::white()).bg(gpui::blue()).child(message.clone()).overflow_y_scrollbar().into_any_element();
         }
         if self.backend_handle.is_closed() {
-            return v_flex().size_full().bg(gpui::red()).child(ts!("system.backend_shutdown")).into_any_element();
+            return v_flex().size_full().text_color(gpui::white()).bg(gpui::red()).child(ts!("system.backend_shutdown")).into_any_element();
         }
+
+        let has_csd_titlebar = matches!(window.window_decorations(), Decorations::Client { .. });
+        Theme::global_mut(cx).sheet.margin_top = if has_csd_titlebar {
+            gpui_component::TITLE_BAR_HEIGHT
+        } else {
+            Pixels::ZERO
+        };
 
         let sheet_layer = Root::render_sheet_layer(window, cx);
         let dialog_layer = Root::render_dialog_layer(window, cx);
@@ -73,7 +80,7 @@ impl Render for LauncherRoot {
         v_flex()
             .size_full()
             .font_family(MAIN_FONT)
-            .when(has_csd_titlebar(window), |this| {
+            .when(has_csd_titlebar, |this| {
                 this.child(gpui_component::TitleBar::new().child(ts!("common.app_name")))
             })
             .child(self.ui.clone())
@@ -85,18 +92,6 @@ impl Render for LauncherRoot {
                 window.remove_window();
             })
             .into_any_element()
-    }
-}
-
-pub fn has_csd_titlebar(window: &Window) -> bool {
-    matches!(window.window_decorations(), Decorations::Client { .. })
-}
-
-pub fn sheet_margin_top(window: &Window) -> Pixels {
-    if has_csd_titlebar(window) {
-        gpui_component::TITLE_BAR_HEIGHT
-    } else {
-        Pixels::ZERO
     }
 }
 

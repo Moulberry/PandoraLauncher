@@ -17,7 +17,7 @@ strip target/x86_64-apple-darwin/release/pandora_launcher
 
 mkdir -p dist
 
-lipo -create -output dist/PandoraLauncher-macOS target/x86_64-apple-darwin/release/pandora_launcher target/aarch64-apple-darwin/release/pandora_launcher
+lipo -create -output dist/PandoraLauncher-macOS-Universal target/x86_64-apple-darwin/release/pandora_launcher target/aarch64-apple-darwin/release/pandora_launcher
 
 cargo install cargo-packager
 env -u CARGO_PACKAGER_SIGN_PRIVATE_KEY cargo packager --config '{'\
@@ -28,18 +28,19 @@ env -u CARGO_PACKAGER_SIGN_PRIVATE_KEY cargo packager --config '{'\
 '  "version": "'"$version"'",'\
 '  "identifier": "com.moulberry.pandoralauncher",'\
 '  "resources": [],'\
-'  "binaries": [{ "path": "PandoraLauncher-macOS", "main": true }],'\
+'  "authors": ["Moulberry"],'\
+'  "binaries": [{ "path": "PandoraLauncher-macOS-Universal", "main": true }],'\
 '  "icons": ["package/mac.icns"]'\
 '}'
 
-mv -f dist/PandoraLauncher-macOS dist/PandoraLauncher-macOS-$version-Universal-Portable
-mv -f dist/PandoraLauncher*.dmg dist/PandoraLauncher-$version.dmg
+mv -f dist/PandoraLauncher-macOS-Universal dist/PandoraLauncher-macOS-Universal-Portable
+mv -f dist/PandoraLauncher*.dmg dist/PandoraLauncher.dmg
 tar -czf dist/PandoraLauncher.app.tar.gz dist/PandoraLauncher.app
 rm -r dist/PandoraLauncher.app
 
 if [[ -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY" ]]; then
-    cargo packager signer sign dist/PandoraLauncher-macOS-$version-Universal-Portable
-    cargo packager signer sign dist/PandoraLauncher-$version.dmg
+    cargo packager signer sign dist/PandoraLauncher-macOS-Universal-Portable
+    cargo packager signer sign dist/PandoraLauncher.dmg
     cargo packager signer sign dist/PandoraLauncher.app.tar.gz
 
     echo "{
@@ -47,10 +48,10 @@ if [[ -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY" ]]; then
     \"downloads\": {
         \"universal\": {
             \"executable\": {
-                \"download\": \"https://github.com/Moulberry/PandoraLauncher/releases/download/v$version/PandoraLauncher-macOS-$version-Universal-Portable\",
-                \"size\": $(wc -c < dist/PandoraLauncher-macOS-$version-Universal-Portable),
-                \"sha1\": \"$(sha1sum dist/PandoraLauncher-macOS-$version-Universal-Portable | cut -d ' ' -f 1)\",
-                \"sig\": \"$(cat dist/PandoraLauncher-macOS-$version-Universal-Portable.sig)\"
+                \"download\": \"https://github.com/Moulberry/PandoraLauncher/releases/download/v$version/PandoraLauncher-macOS-Universal-Portable\",
+                \"size\": $(wc -c < dist/PandoraLauncher-macOS-Universal-Portable),
+                \"sha1\": \"$(sha1sum dist/PandoraLauncher-macOS-Universal-Portable | cut -d ' ' -f 1)\",
+                \"sig\": \"$(cat dist/PandoraLauncher-macOS-Universal-Portable.sig)\"
             },
             \"app\": {
                 \"download\": \"https://github.com/Moulberry/PandoraLauncher/releases/download/v$version/PandoraLauncher.app.tar.gz\",

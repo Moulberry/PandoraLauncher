@@ -53,7 +53,7 @@ impl Lockfile {
         })
     }
 
-
+    #[allow(dead_code)]
     pub fn try_create(path: Arc<Path>) -> std::io::Result<Option<Self>> {
         let semaphore = get_path_semaphore(path.clone());
 

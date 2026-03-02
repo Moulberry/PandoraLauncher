@@ -1,80 +1,111 @@
-use std::{path::{Path, PathBuf}, sync::Arc, time::SystemTime};
+use std::{collections::BTreeMap, path::{Path, PathBuf}, sync::Arc, time::SystemTime};
 
-use bridge::message::SyncState;
-use enum_map::EnumMap;
-use enumset::EnumSet;
+use bridge::{message::{SyncState, SyncTargetState}, safe_path::SafePath};
+use once_cell::sync::Lazy;
+use relative_path::PathExt;
 use rustc_hash::FxHashMap;
-use schema::backend_config::SyncTarget;
-use strum::IntoEnumIterator;
+use schema::backend_config::SyncTargets;
 
-use crate::directories::LauncherDirectories;
+use crate::{directories::LauncherDirectories, BackendStateInstances};
 
-pub fn apply_to_instance(sync_targets: EnumSet<SyncTarget>, directories: &LauncherDirectories, dot_minecraft: Arc<Path>) {
+pub fn apply_to_instance(sync_targets: &SyncTargets, directories: &LauncherDirectories, dot_minecraft: Arc<Path>) {
     _ = std::fs::create_dir_all(&dot_minecraft);
 
-    for target in SyncTarget::iter() {
-        let want = sync_targets.contains(target);
+    let mut dir_iterator = walkdir::WalkDir::new(&dot_minecraft).into_iter();
+    while let Some(Ok(entry)) = dir_iterator.next() {
+        if entry.file_type().is_dir() {
+            let Ok(relative) = entry.path().relative_to(&dot_minecraft) else {
+                dir_iterator.skip_current_dir();
+                continue;
+            };
+            if sync_targets.folders.contains(relative.as_str()) {
+                dir_iterator.skip_current_dir();
+                continue;
+            }
+            let Some(safe_relative) = SafePath::from_relative_path(&relative) else {
+                dir_iterator.skip_current_dir();
+                continue;
+            };
+            let target_dir = safe_relative.to_path(&directories.synced_dir);
+            if !target_dir.is_dir() {
+                dir_iterator.skip_current_dir();
+                continue;
+            }
 
-        if let Some(sync_folder) = target.get_folder() {
-            let non_hidden_sync_folder = if sync_folder.starts_with(".") {
-                &sync_folder[1..]
-            } else {
-                sync_folder
+            #[cfg(windows)]
+            {
+                let Ok(target) = junction::get_target(entry.path()) else {
+                    continue;
+                };
+
+                if target.starts_with(&directories.synced_dir) {
+                    dir_iterator.skip_current_dir();
+                    _ = junction::delete(entry.path());
+                    continue;
+                }
+            }
+        }
+
+        #[cfg(unix)]
+        if entry.file_type().is_symlink() {
+            let Ok(relative) = entry.path().relative_to(&dot_minecraft) else {
+                continue;
+            };
+            if sync_targets.folders.contains(relative.as_str()) {
+                continue;
+            }
+            let Ok(target) = std::fs::read_link(entry.path()) else {
+                continue;
             };
 
-            let target_dir = directories.synced_dir.join(non_hidden_sync_folder);
-
-            let path = dot_minecraft.join(sync_folder);
-
-            if want {
-                if !path.exists() {
-                    _ = linking::link_dir(&target_dir, &path);
-                }
-            } else {
-                _ = linking::unlink_dir_if_targeting(&target_dir, &path);
+            if target.starts_with(&directories.synced_dir) {
+                _ = std::fs::remove_file(entry.path());
             }
-        } else if want {
-            match target {
-                SyncTarget::Options => {
-                    let fallback = &directories.synced_dir.join("fallback_options.txt");
-                    let target = dot_minecraft.join("options.txt");
-                    let combined = create_combined_options_txt(fallback, &target, directories);
-                    _ = crate::write_safe(&fallback, combined.as_bytes());
-                    _ = crate::write_safe(&target, combined.as_bytes());
-                },
-                SyncTarget::Servers => {
-                    if let Some(latest) = find_latest("servers.dat", directories) {
-                        let target = dot_minecraft.join("servers.dat");
-                        if latest != target {
-                            _ = std::fs::copy(latest, target);
-                        }
+        }
+    }
+
+    for file_target in sync_targets.files.iter() {
+        if &**file_target == "options.txt" {
+            let fallback = &directories.synced_dir.join("fallback_options.txt");
+            let target = dot_minecraft.join("options.txt");
+            let combined = create_combined_options_txt(fallback, &target, directories);
+            _ = crate::write_safe(&fallback, combined.as_bytes());
+            _ = crate::write_safe(&target, combined.as_bytes());
+        } else if let Some(path) = SafePath::new(file_target) {
+            if let Some(latest) = find_latest(&path, directories) {
+                let target = path.to_path(&dot_minecraft);
+                if latest != target {
+                    if let Some(parent) = target.parent() {
+                        _ = std::fs::create_dir_all(parent);
                     }
-                },
-                SyncTarget::Commands => {
-                    if let Some(latest) = find_latest("command_history.txt", directories) {
-                        let target = dot_minecraft.join("command_history.txt");
-                        if latest != target {
-                            _ = std::fs::copy(latest, target);
-                        }
-                    }
-                },
-                SyncTarget::Hotbars => {
-                    if let Some(latest) = find_latest("hotbar.nbt", directories) {
-                        let target = dot_minecraft.join("hotbar.nbt");
-                        if latest != target {
-                            _ = std::fs::copy(latest, target);
-                        }
-                    }
-                },
-                _ => {
-                    log::error!("Don't know how to sync {target:?}")
+                    _ = std::fs::copy(latest, target);
                 }
             }
+        } else {
+            log::warn!("Skipping file sync target because it is not a safe path: {}", file_target);
+        }
+    }
+
+    for folder_target in sync_targets.folders.iter() {
+        let Some(path) = SafePath::new(folder_target) else {
+            log::warn!("Skipping folder sync target because it is not a safe path: {}", folder_target);
+            continue;
+        };
+
+        let target_dir = path.to_path(&directories.synced_dir);
+        let path = path.to_path(&dot_minecraft);
+
+        if !path.exists() {
+            _ = std::fs::create_dir_all(&target_dir);
+            if let Some(parent) = path.parent() {
+                _ = std::fs::create_dir_all(parent);
+            }
+            _ = linking::link_dir(&target_dir, &path);
         }
     }
 }
 
-fn find_latest(filename: &'static str, directories: &LauncherDirectories) -> Option<PathBuf> {
+fn find_latest(filename: &SafePath, directories: &LauncherDirectories) -> Option<PathBuf> {
     let mut latest_time = SystemTime::UNIX_EPOCH;
     let mut latest_path = None;
 
@@ -85,9 +116,7 @@ fn find_latest(filename: &'static str, directories: &LauncherDirectories) -> Opt
             continue;
         };
 
-        let mut path = entry.path();
-        path.push(".minecraft");
-        path.push(filename);
+        let path = filename.to_path(&entry.path().join(".minecraft"));
 
         if let Ok(metadata) = std::fs::metadata(&path) {
             let mut time = SystemTime::UNIX_EPOCH;
@@ -187,86 +216,130 @@ fn read_options_txt(path: &Path) -> FxHashMap<String, String> {
     values
 }
 
-pub fn get_sync_state(want_sync: EnumSet<SyncTarget>, directories: &LauncherDirectories) -> std::io::Result<SyncState> {
-    let mut paths = Vec::new();
+pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateInstances, directories: &LauncherDirectories) -> std::io::Result<SyncState> {
+    let mut dot_minecraft_paths = Vec::new();
 
-    let read_dir = std::fs::read_dir(&directories.instances_dir)?;
-    for entry in read_dir {
-        let mut path = entry?.path();
-        path.push(".minecraft");
-        paths.push(path);
+    for instance in instances.instances.iter_mut() {
+        if !instance.configuration.get().disable_file_syncing {
+            dot_minecraft_paths.push(instance.dot_minecraft_path.clone());
+        }
     }
 
-    let total = paths.len();
-    let mut synced = EnumMap::default();
-    let mut cannot_sync = EnumMap::default();
+    let total = dot_minecraft_paths.len();
+    let mut entries = BTreeMap::default();
 
-    for target in SyncTarget::iter() {
-        let want = want_sync.contains(target);
+    for file_target in sync_targets.files.iter() {
+        if let Some(safe_file_target) = SafePath::new(file_target) {
+            let mut cannot_sync_count = 0;
 
-        let Some(sync_folder) = target.get_folder() else {
-            if want {
-                synced[target] = total;
+            for dot_minecraft in &dot_minecraft_paths {
+                let target = safe_file_target.to_path(dot_minecraft);
+                if target.is_dir() {
+                    cannot_sync_count += 1;
+                }
             }
+
+            entries.insert(file_target.clone(), SyncTargetState {
+                enabled: true,
+                is_file: true,
+                sync_count: total.saturating_sub(cannot_sync_count),
+                cannot_sync_count,
+            });
+        } else {
+            entries.insert(file_target.clone(), SyncTargetState {
+                enabled: true,
+                is_file: true,
+                sync_count: 0,
+                cannot_sync_count: total,
+            });
+        }
+    }
+
+    let mut disabled = Vec::new();
+    for default_folder in DEFAULT_FOLDERS.iter() {
+        if !sync_targets.folders.contains(default_folder) {
+            disabled.push(default_folder.clone());
+        }
+    }
+
+    let enabled_iter = sync_targets.folders.iter().map(|f| (f, true));
+    let disabled_iter = disabled.iter().map(|f| (f, false));
+
+    for (folder_target, enabled) in enabled_iter.chain(disabled_iter) {
+        let Some(safe_path) = SafePath::new(folder_target) else {
+            entries.insert(folder_target.clone(), SyncTargetState {
+                enabled,
+                is_file: false,
+                sync_count: 0,
+                cannot_sync_count: total,
+            });
             continue;
         };
 
-        let non_hidden_sync_folder = if sync_folder.starts_with(".") {
-            &sync_folder[1..]
-        } else {
-            sync_folder
-        };
+        let target_dir = safe_path.to_path(&directories.synced_dir);
 
-        let target_dir = directories.synced_dir.join(non_hidden_sync_folder);
-
-        let mut synced_count = 0;
+        let mut sync_count = 0;
         let mut cannot_sync_count = 0;
 
-        for path in &paths {
-            let path = path.join(sync_folder);
+        for dot_minecraft in &dot_minecraft_paths {
+            let path = safe_path.to_path(dot_minecraft);
 
             if linking::is_targeting(&target_dir, &path) {
-                synced_count += 1;
+                sync_count += 1;
             } else if path.exists() {
                 cannot_sync_count += 1;
             }
         }
 
-        synced[target] = synced_count;
-        cannot_sync[target] = cannot_sync_count;
+        entries.insert(folder_target.clone(), SyncTargetState {
+            enabled,
+            is_file: false,
+            sync_count,
+            cannot_sync_count,
+        });
     }
 
     Ok(SyncState {
-        sync_folder: Some(directories.synced_dir.clone()),
-        want_sync,
-        total,
-        synced,
-        cannot_sync
+        sync_folder: directories.synced_dir.clone(),
+        targets: entries,
+        total_count: total,
     })
 }
 
-pub fn enable_all(target: SyncTarget, directories: &LauncherDirectories) -> std::io::Result<bool> {
-    let Some(sync_folder) = target.get_folder() else {
+static DEFAULT_FOLDERS: Lazy<Vec<Arc<str>>> = Lazy::new(|| {
+    [
+        "saves",
+        "config",
+        "screenshots",
+        "resourcepacks",
+        "shaderpacks",
+        "flashback",
+        "Distant_Horizons_server_data",
+        ".voxy",
+        "xaero",
+        ".bobby",
+        "schematics",
+    ].into_iter().map(Arc::from).collect()
+});
+
+pub fn enable_all(name: &str, is_file: bool, instances: &mut BackendStateInstances, directories: &LauncherDirectories) -> std::io::Result<bool> {
+    if is_file {
         return Ok(true);
+    }
+
+    let Some(safe_path) = SafePath::new(name) else {
+        log::warn!("Skipping folder sync because it is not a safe path: {}", name);
+        return Ok(false);
     };
 
     let mut paths = Vec::new();
-
-    let read_dir = std::fs::read_dir(&directories.instances_dir)?;
-    for entry in read_dir {
-        let mut path = entry?.path();
-        path.push(".minecraft");
-        path.push(sync_folder);
-        paths.push(path);
+    for instance in instances.instances.iter_mut() {
+        if !instance.configuration.get().disable_file_syncing {
+            paths.push(safe_path.to_path(&instance.dot_minecraft_path));
+        }
     }
 
-    let non_hidden_sync_folder = if sync_folder.starts_with(".") {
-        &sync_folder[1..]
-    } else {
-        sync_folder
-    };
-
-    let target_dir = directories.synced_dir.join(non_hidden_sync_folder);
+    let target_dir = safe_path.to_path(&directories.synced_dir);
 
     // Exclude links that already point to target_dir
     paths.retain(|path| {
@@ -290,28 +363,23 @@ pub fn enable_all(target: SyncTarget, directories: &LauncherDirectories) -> std:
     Ok(true)
 }
 
-pub fn disable_all(target: SyncTarget, directories: &LauncherDirectories) -> std::io::Result<()> {
-    let Some(sync_folder) = target.get_folder() else {
+pub fn disable_all(name: &str, is_file: bool, directories: &LauncherDirectories) -> std::io::Result<()> {
+    if is_file {
+        return Ok(());
+    }
+
+    let Some(safe_path) = SafePath::new(name) else {
+        log::warn!("Skipping folder sync because it is not a safe path: {}", name);
         return Ok(());
     };
 
     let mut paths = Vec::new();
-
     let read_dir = std::fs::read_dir(&directories.instances_dir)?;
     for entry in read_dir {
-        let mut path = entry?.path();
-        path.push(".minecraft");
-        path.push(sync_folder);
-        paths.push(path);
+        paths.push(safe_path.to_path(&entry?.path().join(".minecraft")));
     }
 
-    let non_hidden_sync_folder = if sync_folder.starts_with(".") {
-        &sync_folder[1..]
-    } else {
-        sync_folder
-    };
-
-    let target_dir = directories.synced_dir.join(non_hidden_sync_folder);
+    let target_dir = safe_path.to_path(&directories.synced_dir);
 
     for path in &paths {
         linking::unlink_dir_if_targeting(&target_dir, path)?;

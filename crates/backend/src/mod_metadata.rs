@@ -2,20 +2,21 @@ use std::{
     io::{BufRead, Cursor, Read, Write}, path::{Path, PathBuf}, sync::Arc
 };
 
-use bridge::{instance::{AtomicContentUpdateStatus, ContentUpdateStatus, ContentType, ContentSummary}, safe_path::SafePath};
-use image::imageops::FilterType;
+use bridge::{instance::{ContentUpdateStatus, ContentType, ContentSummary}, safe_path::SafePath};
+use image::{DynamicImage, GenericImageView, imageops::FilterType};
 use indexmap::IndexMap;
 use parking_lot::{RwLock, RwLockReadGuard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rc_zip_sync::EntryHandle;
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{content::ContentSource, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta};
+use schema::{content::ContentSource, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, loader::Loader, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DeserializeAs};
 use sha1::{Digest, Sha1};
+use ustr::Ustr;
 
 #[derive(Clone)]
-pub enum ModUpdateAction {
+pub enum ContentUpdateAction {
     ErrorNotFound,
     ErrorInvalidHash,
     AlreadyUpToDate,
@@ -26,16 +27,23 @@ pub enum ModUpdateAction {
     },
 }
 
-impl ModUpdateAction {
+impl ContentUpdateAction {
     pub fn to_status(&self) -> ContentUpdateStatus {
         match self {
-            ModUpdateAction::ErrorNotFound => ContentUpdateStatus::ErrorNotFound,
-            ModUpdateAction::ErrorInvalidHash => ContentUpdateStatus::ErrorInvalidHash,
-            ModUpdateAction::AlreadyUpToDate => ContentUpdateStatus::AlreadyUpToDate,
-            ModUpdateAction::ManualInstall => ContentUpdateStatus::ManualInstall,
-            ModUpdateAction::Modrinth { .. } => ContentUpdateStatus::Modrinth,
+            ContentUpdateAction::ErrorNotFound => ContentUpdateStatus::ErrorNotFound,
+            ContentUpdateAction::ErrorInvalidHash => ContentUpdateStatus::ErrorInvalidHash,
+            ContentUpdateAction::AlreadyUpToDate => ContentUpdateStatus::AlreadyUpToDate,
+            ContentUpdateAction::ManualInstall => ContentUpdateStatus::ManualInstall,
+            ContentUpdateAction::Modrinth { .. } => ContentUpdateStatus::Modrinth,
         }
     }
+}
+
+#[derive(Eq, Hash, PartialEq)]
+pub struct ContentUpdateKey {
+    pub hash: [u8; 20],
+    pub loader: Loader,
+    pub version: Ustr,
 }
 
 pub struct ModMetadataManager {
@@ -44,7 +52,7 @@ pub struct ModMetadataManager {
     by_hash: RwLock<FxHashMap<[u8; 20], Option<Arc<ContentSummary>>>>,
     content_sources: RwLock<ContentSources>,
     parents_by_missing_child: RwLock<FxHashMap<[u8; 20], Vec<[u8; 20]>>>,
-    pub updates: RwLock<FxHashMap<[u8; 20], ModUpdateAction>>,
+    pub updates: RwLock<FxHashMap<ContentUpdateKey, ContentUpdateAction>>,
 }
 
 impl ModMetadataManager {
@@ -224,7 +232,6 @@ impl ModMetadataManager {
             authors,
             version_str: format!("v{}", fabric_mod_json.version).into(),
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::Fabric
         }))
     }
@@ -276,7 +283,6 @@ impl ModMetadataManager {
             authors,
             version_str: version.into(),
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra,
         }))
     }
@@ -326,7 +332,6 @@ impl ModMetadataManager {
             authors: authors.into(),
             version_str: version.into(),
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::LegacyForge,
         }))
     }
@@ -424,16 +429,16 @@ impl ModMetadataManager {
             authors,
             version_str: format!("v{}", modrinth_index_json.version_id).into(),
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::ModrinthModpack {
                 downloads: modrinth_index_json.files,
                 summaries: summaries.into(),
                 overrides: overrides.into_iter().collect(),
+                dependencies: modrinth_index_json.dependencies,
             }
         }))
     }
 
-    fn load_jarjar<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
+    fn load_jarjar<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, _hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
         let bytes = file.bytes().ok()?;
 
         let metadata_json: JarJarMetadata = serde_json::from_slice(&bytes).inspect_err(|e| {
@@ -457,7 +462,7 @@ impl ModMetadataManager {
         None
     }
 
-    fn load_from_java_manifest<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
+    fn load_from_java_manifest<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], _archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
         let bytes = file.bytes().ok()?;
 
         let manifest_str = str::from_utf8(&bytes).ok()?;
@@ -497,7 +502,6 @@ impl ModMetadataManager {
             authors: author.unwrap_or_default(),
             version_str: version.unwrap_or_default(),
             png_icon: None,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::JavaModule
         }))
     }
@@ -506,7 +510,7 @@ impl ModMetadataManager {
         let bytes = file.bytes().ok()?;
 
         let pack_mcmeta: PackMcmeta = serde_json::from_slice(&bytes).inspect_err(|e| {
-            log::error!("Error parsing jarjar/metadata.json: {e}");
+            log::error!("Error parsing pack.mcmeta: {e}");
         }).ok()?;
 
         drop(file);
@@ -523,7 +527,6 @@ impl ModMetadataManager {
             authors: "".into(),
             version_str: pack_mcmeta.pack.description,
             png_icon,
-            update_status: Arc::new(AtomicContentUpdateStatus::new(ContentUpdateStatus::Unknown)),
             extra: ContentType::ResourcePack
         }))
     }
@@ -538,6 +541,8 @@ fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) 
         return None;
     };
 
+    let image = crop_to_content(image);
+
     let width = image.width();
     let height = image.height();
     if width != 64 || height != 64 {
@@ -546,7 +551,7 @@ fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) 
         } else {
             FilterType::Nearest
         };
-        let resized = image.resize_exact(64, 64, filter);
+        let resized = image.resize(64, 64, filter);
 
         icon_bytes.clear();
         let mut cursor = Cursor::new(&mut icon_bytes);
@@ -556,6 +561,66 @@ fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) 
     }
 
     Some(icon_bytes.into())
+}
+
+fn crop_to_content(image: DynamicImage) -> DynamicImage {
+    let width = image.width();
+    let height = image.height();
+    let mut min_x = 0;
+    let mut max_x = width;
+    let mut min_y = 0;
+    let mut max_y = height;
+
+    'crop_min_x: loop {
+        if min_x >= max_x {
+            return image;
+        }
+        for y in min_y..max_y {
+            if image.get_pixel(min_x, y).0[3] != 0 {
+                break 'crop_min_x;
+            }
+        }
+        min_x += 1;
+    }
+    'crop_max_x: loop {
+        if max_x <= min_x {
+            return image;
+        }
+        for y in min_y..max_y {
+            if image.get_pixel(max_x-1, y).0[3] != 0 {
+                break 'crop_max_x;
+            }
+        }
+        max_x -= 1;
+    }
+    'crop_min_y: loop {
+        if min_y >= max_y {
+            return image;
+        }
+        for x in min_x..max_x {
+            if image.get_pixel(x, min_y).0[3] != 0 {
+                break 'crop_min_y;
+            }
+        }
+        min_y += 1;
+    }
+    'crop_max_y: loop {
+        if max_y <= min_y {
+            return image;
+        }
+        for x in min_x..max_x {
+            if image.get_pixel(x, max_y-1).0[3] != 0 {
+                break 'crop_max_y;
+            }
+        }
+        max_y -= 1;
+    }
+
+    if min_x != 0 || max_x != width || min_y != 0 || max_y != height {
+        image.crop_imm(min_x, min_y, max_x - min_x, max_y - min_y)
+    } else {
+        image
+    }
 }
 
 fn create_authors_string(authors: &[Person]) -> Option<String> {

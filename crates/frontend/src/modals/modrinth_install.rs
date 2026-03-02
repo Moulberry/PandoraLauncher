@@ -10,7 +10,7 @@ use relative_path::RelativePath;
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{
     content::ContentSource, loader::Loader, modrinth::{
-        ModrinthDependency, ModrinthDependencyType, ModrinthLoader, ModrinthProjectType, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthVersionStatus, ModrinthVersionType
+        ModrinthDependencyType, ModrinthLoader, ModrinthProjectType, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthVersionStatus, ModrinthVersionType
     }
 };
 
@@ -350,7 +350,7 @@ impl InstallDialog {
                 .child(Button::new("create").success().label(create_instance_label).on_click(cx.listener(
                     |this, _, _, _| {
                         this.target = Some(InstallTarget::NewInstance {
-                            name: ts!("instance.new").into(),
+                            name: None,
                         });
                     },
                 )));
@@ -631,7 +631,7 @@ impl InstallDialog {
                     .child(Button::new("install").success().label(ts!("instance.content.install.label")).on_click(cx.listener(
                         move |this, _, window, cx| {
                             let Some(selected_mod_version) = selected_mod_version.as_ref() else {
-                                window.push_notification((NotificationType::Error, ts!("instance.content.no_mod_version_selected")), cx);
+                                window.push_notification((NotificationType::Error, ts!("instance.content.install.no_mod_version_selected")), cx);
                                 return;
                             };
 
@@ -676,7 +676,7 @@ impl InstallDialog {
                             }
 
                             if let InstallTarget::NewInstance { name } = &mut target {
-                                *name = this.name.as_str().into();
+                                *name = Some(this.name.as_str().into());
                             }
 
                             let mut files = Vec::new();

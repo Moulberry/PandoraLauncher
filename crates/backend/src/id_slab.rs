@@ -58,6 +58,13 @@ impl<T: GetId> IdSlab<T> {
         self.slab.iter_mut().map(|(_, v)| v)
     }
 
+    pub fn retain_mut<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut T) -> bool,
+    {
+        self.slab.retain(|_, t| (f)(t));
+    }
+
     pub fn insert(&mut self, f: impl FnOnce(usize) -> T) -> &mut T {
         let vacant = self.slab.vacant_entry();
         let v = (f)(vacant.key());

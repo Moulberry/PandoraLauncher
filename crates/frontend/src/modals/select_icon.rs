@@ -1,13 +1,13 @@
-use std::sync::{atomic::{AtomicBool, AtomicU8, Ordering}, Arc};
+use std::sync::Arc;
 
-use bridge::{handle::BackendHandle, instance::InstanceID, message::EmbeddedOrRaw, modal_action::ModalAction};
+use bridge::message::EmbeddedOrRaw;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, h_flex, input::{Input, InputEvent, InputState}, scroll::ScrollableElement, v_flex, Disableable, Icon, IconName, Sizable, StyleSized, WindowExt
+    button::{Button, ButtonVariants}, v_flex, Icon, Sizable, WindowExt
 };
 use parking_lot::RwLock;
 
-use crate::ts;
+use crate::{icon::PandoraIcon, ts};
 
 pub fn open_select_icon(
     selected: Box<dyn FnOnce(EmbeddedOrRaw, &mut App)>,
@@ -41,7 +41,7 @@ pub fn open_select_icon(
         let content = v_flex()
             .size_full()
             .gap_2()
-            .child(Button::new("custom").success().label(ts!("common.custom")).icon(IconName::File).on_click({
+            .child(Button::new("custom").success().label(ts!("common.custom")).icon(PandoraIcon::File).on_click({
                 let selected = selected.clone();
                 let select_file_task = select_file_task.clone();
                 move |_, window, cx| {

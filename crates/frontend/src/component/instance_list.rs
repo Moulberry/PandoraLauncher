@@ -1,7 +1,7 @@
 use bridge::handle::BackendHandle;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, h_flex, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex, ActiveTheme, Icon, IconName, Sizable
+    button::{Button, ButtonVariants}, h_flex, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex, ActiveTheme, Icon, Sizable
 };
 
 use crate::{

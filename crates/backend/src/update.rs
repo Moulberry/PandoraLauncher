@@ -219,7 +219,9 @@ async fn install_update_inner(http_client: reqwest::Client, dirs: &LauncherDirec
                 return Err("Appimage path has no filename".into());
             };
 
-            let new_filename = replace_os_str(filename, &update.old_version, &update.new_version);
+            // This is temporary to address pre-3.3.0 including the version inside the filename
+            // This should be removed at some point in the near future
+            let new_filename = replace_os_str(filename, &format!("-{}", &update.old_version), "");
             let new_appimage = appimage.with_file_name(new_filename);
 
             write_new_exe(appimage, new_appimage, &bytes, dirs)?;
@@ -233,7 +235,9 @@ async fn install_update_inner(http_client: reqwest::Client, dirs: &LauncherDirec
                 return Err("Current exe path has no filename".into());
             };
 
-            let new_filename = replace_os_str(filename, &update.old_version, &update.new_version);
+            // This is temporary to address pre-3.3.0 including the version inside the filename
+            // This should be removed at some point in the near future
+            let new_filename = replace_os_str(filename, &format!("-{}", &update.old_version), "");
             let new_exe = current_exe.with_file_name(new_filename);
 
             write_new_exe(current_exe, new_exe, &bytes, dirs)?;

@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet}, ffi::OsStr, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::{Path, PathBuf}, process::Child, sync::{
+    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::{
         Arc, atomic::Ordering
     }
 };
@@ -8,18 +8,18 @@ use anyhow::Context;
 use base64::Engine;
 use bridge::{
     instance::{
-        ContentSummary, InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
+        ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
     }, message::{AtomicBridgeDataLoadState, BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle}
 };
 use parking_lot::RwLock;
 use relative_path::RelativePath;
-use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration};
+use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration, loader::Loader};
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
 use ustr::Ustr;
 
-use crate::{id_slab::{GetId, Id}, launcher_import, mod_metadata::ModMetadataManager, persistent::Persistent, BackendStateInstances, IoOrSerializationError};
+use crate::{BackendStateFileWatching, BackendStateInstances, IoOrSerializationError, WatchTarget, id_slab::{GetId, Id}, launcher_import, mod_metadata::{ContentUpdateAction, ContentUpdateKey, ModMetadataManager}, persistent::Persistent};
 
 #[derive(Debug)]
 pub struct Instance {
@@ -33,10 +33,6 @@ pub struct Instance {
     pub configuration: Persistent<InstanceConfiguration>,
 
     pub child: Option<Child>,
-
-    pub watching_dot_minecraft: bool,
-    pub watching_server_dat: bool,
-    pub watching_saves_dir: bool,
 
     pub worlds_state: Arc<AtomicBridgeDataLoadState>,
     dirty_worlds: HashSet<Arc<Path>>,
@@ -57,7 +53,6 @@ pub struct Instance {
 #[derive(Debug)]
 pub struct ContentFolderState {
     pub path: Arc<Path>,
-    pub watching_path: bool,
     pub load_state: Arc<AtomicBridgeDataLoadState>,
     dirty_paths: HashSet<Arc<Path>>,
     all_dirty: bool,
@@ -85,7 +80,6 @@ impl ContentFolderState {
     pub fn new(path: Arc<Path>) -> Self {
         Self {
             path,
-            watching_path: false,
             load_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
             dirty_paths: HashSet::new(),
             all_dirty: true,
@@ -185,12 +179,49 @@ impl Instance {
         dot_minecraft_path.push(".minecraft");
 
         for content_folder in ContentFolder::iter() {
+            self.content_state[content_folder].mark_dirty(None);
             self.content_state[content_folder].path = content_folder.path().to_path(&dot_minecraft_path).into();
         }
 
         self.server_dat_path = dot_minecraft_path.join("servers.dat").into();
+        self.mark_servers_dirty();
+
         self.saves_path = dot_minecraft_path.join("saves").into();
+        self.mark_world_dirty(None);
+
         self.dot_minecraft_path = dot_minecraft_path.into();
+    }
+
+    pub fn rewatch_directories(&mut self, file_watching: &mut BackendStateFileWatching) {
+        let mut watch_dot_minecraft = false;
+
+        if self.servers_state.load(Ordering::SeqCst).is_not_unloaded() {
+            watch_dot_minecraft = true;
+        }
+
+        if self.worlds_state.load(Ordering::SeqCst).is_not_unloaded() {
+            file_watching.watch_filesystem(self.saves_path.clone(), WatchTarget::InstanceSavesDir { id: self.id });
+            watch_dot_minecraft = true;
+        }
+
+        for folder in ContentFolder::iter() {
+            if self.content_state[folder].load_state.load(Ordering::SeqCst).is_not_unloaded() {
+                file_watching.watch_filesystem(self.content_state[folder].path.clone(), WatchTarget::InstanceContentDir { id: self.id, folder });
+                watch_dot_minecraft = true;
+            }
+        }
+
+        if watch_dot_minecraft {
+            file_watching.watch_filesystem(self.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir { id: self.id });
+        }
+    }
+
+    pub fn mark_all_dirty(&mut self) {
+        for content_folder in ContentFolder::iter() {
+            self.content_state[content_folder].mark_dirty(None);
+        }
+        self.mark_servers_dirty();
+        self.mark_world_dirty(None);
     }
 
     pub fn try_get_content(&self, id: InstanceContentID) -> Option<(&InstanceContentSummary, ContentFolder)> {
@@ -221,10 +252,6 @@ impl Instance {
             if let Some(pending) = &this.pending_worlds_load && !pending.is_notified() {
                 await_pending = Some(pending.clone());
                 continue;
-            }
-
-            if cfg!(debug_assertions) && (!this.watching_dot_minecraft || !this.watching_saves_dir) {
-                panic!("Must be watching .minecraft and .minecraft/saves");
             }
 
             let future = if let Some(last) = &this.worlds && !this.all_worlds_dirty {
@@ -374,10 +401,6 @@ impl Instance {
                 continue;
             }
 
-            if cfg!(debug_assertions) && (!this.watching_dot_minecraft || !this.watching_server_dat) {
-                panic!("Must be watching .minecraft and .minecraft/servers.dat");
-            }
-
             let future = if let Some(last) = &this.servers && !this.dirty_servers {
                 return Some((last.clone(), false));
             } else {
@@ -457,8 +480,11 @@ impl Instance {
                     let dirty_paths = std::mem::take(&mut state.dirty_paths);
                     let mod_metadata_manager = mod_metadata_manager.clone();
                     let last = last.clone();
+                    let config = this.configuration.get();
+                    let for_loader = config.loader;
+                    let for_version = config.minecraft_version;
                     tokio::task::spawn_blocking(move || {
-                        Self::load_content_dirty(dirty_paths, mod_metadata_manager, last)
+                        Self::load_content_dirty(dirty_paths, mod_metadata_manager, last, for_loader, for_version)
                     })
                 } else {
                     return Some((last.clone(), false));
@@ -466,8 +492,11 @@ impl Instance {
             } else {
                 let path = state.path.clone();
                 let mod_metadata_manager = mod_metadata_manager.clone();
+                let config = this.configuration.get();
+                let for_loader = config.loader;
+                let for_version = config.minecraft_version;
                 tokio::task::spawn_blocking(move || {
-                    Self::load_content_all(&path, mod_metadata_manager)
+                    Self::load_content_all(&path, mod_metadata_manager, for_loader, for_version)
                 })
             };
 
@@ -509,7 +538,12 @@ impl Instance {
         Some((result, true))
     }
 
-    fn load_content_all(path: &Path, mod_metadata_manager: Arc<ModMetadataManager>) -> Vec<InstanceContentSummary> {
+    fn load_content_all(
+        path: &Path,
+        mod_metadata_manager: Arc<ModMetadataManager>,
+        for_loader: Loader,
+        for_version: Ustr
+    ) -> Vec<InstanceContentSummary> {
         log::info!("Loading all content from {:?}", path);
 
         let Ok(directory) = std::fs::read_dir(&path) else {
@@ -526,7 +560,7 @@ impl Instance {
                 continue;
             };
 
-            if let Some(summary) = create_instance_content_summary(&entry.path(), &mod_metadata_manager) {
+            if let Some(summary) = create_instance_content_summary(&entry.path(), &mod_metadata_manager, for_loader, for_version) {
                 summaries.push(summary);
             }
         }
@@ -543,6 +577,8 @@ impl Instance {
         dirty: HashSet<Arc<Path>>,
         mod_metadata_manager: Arc<ModMetadataManager>,
         last: Arc<[InstanceContentSummary]>,
+        for_loader: Loader,
+        for_version: Ustr,
     ) -> Vec<InstanceContentSummary> {
         log::debug!("Loading changed content");
         log::trace!("Changed content: {:?}", dirty);
@@ -561,10 +597,10 @@ impl Instance {
 
             let check_alternative = !dirty.contains(&*alternate_path);
 
-            if let Some(summary) = create_instance_content_summary(&path, &mod_metadata_manager) {
+            if let Some(summary) = create_instance_content_summary(&path, &mod_metadata_manager, for_loader, for_version) {
                 summaries.push(summary);
             } else if check_alternative {
-                if let Some(summary) = create_instance_content_summary(&alternate_path, &mod_metadata_manager) {
+                if let Some(summary) = create_instance_content_summary(&alternate_path, &mod_metadata_manager, for_loader, for_version) {
                     summaries.push(summary);
                 }
             }
@@ -615,6 +651,7 @@ impl Instance {
                             path: alternate_path.into(),
                             enabled,
                             content_source: old_summary.content_source.clone(),
+                            update: old_summary.update.clone(),
                             disabled_children: old_summary.disabled_children.clone(),
                         });
                     }
@@ -671,10 +708,6 @@ impl Instance {
             configuration: instance_info,
 
             child: None,
-
-            watching_dot_minecraft: false,
-            watching_server_dat: false,
-            watching_saves_dir: false,
 
             worlds_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
             dirty_worlds: HashSet::new(),
@@ -746,11 +779,25 @@ impl Instance {
         self.create_modify_message_with_status(self.status())
     }
 
+    pub fn resolve_real_root_path(&self) -> Arc<Path> {
+        #[cfg(windows)]
+        if let Ok(target) = junction::get_target(&self.root_path) {
+            return target.into();
+        };
+
+        if let Ok(target) = std::fs::read_link(&self.root_path) {
+            target.into()
+        } else {
+            self.root_path.clone()
+        }
+    }
+
     pub fn create_modify_message_with_status(&mut self, status: InstanceStatus) -> MessageToFrontend {
         MessageToFrontend::InstanceModified {
             id: self.id,
             name: self.name,
             icon: self.icon.clone(),
+            root_path: self.resolve_real_root_path(),
             dot_minecraft_folder: self.dot_minecraft_path.clone(),
             configuration: self.configuration.get().clone(),
             status,
@@ -758,7 +805,7 @@ impl Instance {
     }
 }
 
-fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMetadataManager>) -> Option<InstanceContentSummary> {
+fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMetadataManager>, for_loader: Loader, for_version: Ustr) -> Option<InstanceContentSummary> {
     if !path.is_file() {
         return None;
     }
@@ -811,6 +858,12 @@ fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMe
 
     let disabled_children = read_disabled_children_for(&summary, path).unwrap_or_default();
 
+    let update_status = mod_metadata_manager.updates.read().get(&ContentUpdateKey {
+        hash: summary.hash,
+        loader: for_loader,
+        version: for_version,
+    }).map(ContentUpdateAction::to_status).unwrap_or(ContentUpdateStatus::Unknown);
+
     Some(InstanceContentSummary {
         content_summary: summary,
         id: InstanceContentID::dangling(),
@@ -820,6 +873,7 @@ fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMe
         path: path.into(),
         enabled,
         content_source,
+        update: ContentUpdateContext::new(update_status, for_loader, for_version),
         disabled_children: Arc::new(disabled_children),
     })
 }

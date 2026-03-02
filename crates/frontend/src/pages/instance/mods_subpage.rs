@@ -1,26 +1,23 @@
-use std::{hash::{DefaultHasher, Hash, Hasher}, path::{Path, PathBuf}, sync::{
-    atomic::{AtomicU64, AtomicUsize, Ordering}, Arc
+use std::{path::{Path, PathBuf}, sync::{
+    atomic::Ordering, Arc
 }};
 
 use bridge::{
-    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{AtomicContentUpdateStatus, InstanceID, InstanceContentID, InstanceContentSummary, ContentType, ContentSummary}, message::{AtomicBridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
+    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::InstanceID, message::{AtomicBridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, IndexPath, Sizable, WindowExt, breadcrumb::{Breadcrumb, BreadcrumbItem}, button::{Button, ButtonVariants}, h_flex, input::SelectAll, list::{ListDelegate, ListItem, ListState}, notification::{Notification, NotificationType}, switch::Switch, v_flex
+    ActiveTheme as _, Sizable, WindowExt, button::{Button, ButtonVariants}, h_flex, input::SelectAll, list::ListState, notification::{Notification, NotificationType}, v_flex
 };
-use parking_lot::Mutex;
-use rustc_hash::FxHashSet;
 use schema::{content::ContentSource, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
-use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, png_render_cache, root, ts, ui::PageType};
+use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, root, ts, ui::PageType};
 
 use super::instance_page::InstanceSubpageType;
 
 pub struct InstanceModsSubpage {
     instance: InstanceID,
-    instance_title: SharedString,
     instance_loader: Loader,
     instance_version: Ustr,
     backend_handle: BackendHandle,
@@ -38,14 +35,13 @@ impl InstanceModsSubpage {
         cx: &mut gpui::Context<Self>,
     ) -> Self {
         let instance = instance.read(cx);
-        let instance_title = instance.title().into();
         let instance_loader = instance.configuration.loader;
         let instance_version = instance.configuration.minecraft_version;
         let instance_id = instance.id;
 
         let mods_state = Arc::clone(&instance.mods_state);
 
-        let mut mods_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone());
+        let mut mods_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone(), instance_loader, instance_version);
         mods_list_delegate.set_content(instance.mods.read(cx));
 
         let mods = instance.mods.clone();
@@ -62,7 +58,6 @@ impl InstanceModsSubpage {
 
         Self {
             instance: instance_id,
-            instance_title,
             instance_loader,
             instance_version,
             backend_handle,

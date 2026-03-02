@@ -34,6 +34,8 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub modrinth_install_normally: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub modrinth_filter_version: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub modrinth_page_project_type: ModrinthProjectType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
@@ -105,7 +107,7 @@ impl InterfaceConfig {
     pub fn get_mut(cx: &mut App) -> &mut Self {
         if cx.global::<InterfaceConfigHolder>().write_task.is_none() {
             let task = cx.spawn(async |app| {
-                gpui::Timer::after(Duration::from_secs(5)).await;
+                app.background_executor().timer(Duration::from_secs(5)).await;
                 _ = app.update_global::<InterfaceConfigHolder, _>(|holder, _| {
                     holder.write_to_disk();
                 });

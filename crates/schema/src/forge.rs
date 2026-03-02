@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use serde::Deserialize;
 use ustr::Ustr;
 
-use crate::{maven::{MavenCoordinate, MavenMetadataXml}, version::{GameLibrary, GameLibraryArtifact, GameLibraryDownloads, PartialMinecraftVersion}, version_manifest::MinecraftVersionType};
+use crate::{maven::MavenCoordinate, version::{GameLibrary, GameLibraryArtifact, GameLibraryDownloads, PartialMinecraftVersion}, version_manifest::MinecraftVersionType};
 
 pub const NEOFORGE_INSTALLER_MAVEN_URL: &str = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
 

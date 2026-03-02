@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
-use bridge::{instance::{AtomicContentUpdateStatus, ContentUpdateStatus, InstanceContentID, InstanceID}, message::{AtomicBridgeDataLoadState, MessageToBackend}, meta::MetadataRequest, modal_action::ModalAction, serial::AtomicOptionSerial};
+use bridge::{instance::{ContentUpdateStatus, InstanceContentID, InstanceID}, message::{AtomicBridgeDataLoadState, MessageToBackend}, meta::MetadataRequest, modal_action::ModalAction, serial::AtomicOptionSerial};
 use gpui::{prelude::*, *};
 use gpui_component::{
     ActiveTheme, Icon, IconName, StyledExt, WindowExt, button::{Button, ButtonVariants}, h_flex, notification::NotificationType, scroll::ScrollableElement, skeleton::Skeleton, tab::{Tab, TabBar}, text::TextView, v_flex
@@ -12,7 +12,7 @@ use schema::{content::ContentSource, loader::Loader, modrinth::{
 }};
 
 use crate::{
-    component::{error_alert::ErrorAlert, page_path::PagePath}, entity::{
+    component::{error_alert::ErrorAlert, page::Page, page_path::PagePath}, entity::{
         DataEntities,
         metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult},
     }, interface_config::InterfaceConfig, pages::modrinth_page::{InstalledMod, PrimaryAction, icon_for}, ts, ui
@@ -56,26 +56,41 @@ impl ModrinthProjectPage {
                         continue;
                     };
                     let installed = installed_mods_by_project.entry(project.clone()).or_default();
+                    
+                    let status = summary.update.status_if_matches(
+                        instance.configuration.loader, 
+                        instance.configuration.minecraft_version.as_str().into() // Konwersja na Ustr
+                    );
+                    
                     installed.push(InstalledMod {
                         mod_id: summary.id,
-                        status: summary.content_summary.update_status.clone(),
+                        status,
                     });
                 }
 
                 mods_load_state = Some((instance.mods_state.clone(), AtomicOptionSerial::default()));
 
                 let mods = instance.mods.clone();
-                cx.observe(&mods, |page, entity, cx| {
+                let instance_id = install_for;
+                cx.observe(&mods, move |page, entity, cx| {
                     page.installed_mods_by_project.clear();
+                    let instances = page.data.instances.read(cx);
+                    let Some(instance_entry) = instances.entries.get(&instance_id) else { return };
+                    let instance = instance_entry.read(cx);
+
                     let mods = entity.read(cx);
                     for summary in mods.iter() {
                         let ContentSource::ModrinthProject { project } = &summary.content_source else {
                             continue;
                         };
+                        let status = summary.update.status_if_matches(
+                            instance.configuration.loader, 
+                            instance.configuration.minecraft_version.as_str().into()
+                        );
                         let installed = page.installed_mods_by_project.entry(project.clone()).or_default();
                         installed.push(InstalledMod {
                             mod_id: summary.id,
-                            status: summary.content_summary.update_status.clone(),
+                            status,
                         });
                     }
                 }).detach();
@@ -111,7 +126,7 @@ impl ModrinthProjectPage {
 
             let mut action = PrimaryAction::CheckForUpdates;
             for installed_mod in installed {
-                match installed_mod.status.load(std::sync::atomic::Ordering::Relaxed) {
+                match installed_mod.status {
                     ContentUpdateStatus::Unknown => {},
                     ContentUpdateStatus::AlreadyUpToDate => {
                         if !matches!(action, PrimaryAction::Update(..)) {
@@ -573,6 +588,6 @@ impl Render for ModrinthProjectPage {
                 .into_any_element()
         };
 
-        ui::page(cx, breadcrumb).child(content).overflow_y_scrollbar()
+        Page::new(breadcrumb).child(content).scrollable()
     }
 }

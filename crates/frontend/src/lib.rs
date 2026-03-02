@@ -25,6 +25,7 @@ pub mod entity;
 pub mod game_output;
 pub mod modals;
 pub mod pages;
+pub mod icon;
 pub mod interface_config;
 pub mod png_render_cache;
 pub mod processor;
@@ -101,7 +102,7 @@ pub fn start(
 
     let http_client = Arc::new(reqwest_client::ReqwestClient::user_agent(&user_agent).unwrap());
 
-    Application::new().with_http_client(http_client).with_assets(Assets).run(move |cx: &mut App| {
+    gpui_platform::application().with_http_client(http_client).with_assets(Assets).run(move |cx: &mut App| {
         let _ = cx.text_system().add_fonts(vec![
             Assets.load("fonts/inter/Inter-Regular.ttf").unwrap().unwrap(),
             Assets.load("fonts/roboto-mono/RobotoMono-Regular.ttf").unwrap().unwrap(),

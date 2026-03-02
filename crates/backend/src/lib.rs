@@ -31,8 +31,11 @@ mod shortcut;
 mod syncing;
 mod update;
 
-pub(crate) fn is_single_component_path(path: &str) -> bool {
-    let path = std::path::Path::new(path);
+pub(crate) fn is_single_component_path_str(path: &str) -> bool {
+    is_single_component_path(std::path::Path::new(path))
+}
+
+pub(crate) fn is_single_component_path(path: &Path) -> bool {
     let mut components = path.components().peekable();
 
     if let Some(first) = components.peek() && !matches!(first, std::path::Component::Normal(_)) {

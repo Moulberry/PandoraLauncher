@@ -5,14 +5,14 @@ use std::{
 use bridge::keep_alive::{KeepAlive, KeepAliveHandle};
 use reqwest::StatusCode;
 use schema::{
-    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, maven::MavenMetadataXml, modrinth::{ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
+    assets_index::AssetsIndex, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, modrinth::{ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
 };
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
 use tokio::task::JoinHandle;
 use ustr::Ustr;
 
-use crate::metadata::items::MetadataItem;
+use crate::metadata::items::{MetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem};
 
 const DATA_TTL: Duration = Duration::from_secs(5 * 60);
 
@@ -33,7 +33,8 @@ pub struct MetadataManagerStates {
     pub(super) modrinth_project_versions: HashMap<ModrinthProjectVersionsRequest, MetaLoadStateWrapper<ModrinthProjectVersionsResult>>,
     pub(super) modrinth_project: HashMap<ModrinthProjectRequest, MetaLoadStateWrapper<ModrinthProjectResult>>,
     pub(super) modrinth_versions: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthProjectVersion>>,
-    pub(super) modrinth_version_updates: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
+    pub(super) modrinth_version_v2_updates: HashMap<ModrinthVersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
+    pub(super) modrinth_version_v3_updates: HashMap<ModrinthV3VersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
 }
 
 pub struct MetadataManager {

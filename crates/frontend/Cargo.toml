@@ -8,6 +8,7 @@ backtrace.workspace = true
 chrono.workspace = true
 ftree.workspace = true
 gpui.workspace = true
+gpui_platform.workspace = true
 gpui-component.workspace = true
 image.workspace = true
 lexical-sort.workspace = true
@@ -39,5 +40,6 @@ open.workspace = true
 directories.workspace = true
 log.workspace = true
 strum.workspace = true
+urlencoding.workspace = true
 
 rust-i18n = "3.1.5"

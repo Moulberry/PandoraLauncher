@@ -1,11 +1,13 @@
-use bridge::{handle::BackendHandle, import::{ImportFromOtherLaunchers, OtherLauncher}, message::{MessageToBackend, SyncState}, modal_action::ModalAction};
-use enumset::EnumSet;
+use std::sync::Arc;
+
+use bridge::{handle::BackendHandle, import::{ImportFromOtherLaunchers, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, tooltip::Tooltip, v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable
+    button::{Button, ButtonVariants}, checkbox::Checkbox, scroll::ScrollableElement, spinner::Spinner, v_flex, ActiveTheme as _, Disableable, Sizable
 };
+use schema::{content::ContentSource, loader::Loader};
 
-use crate::{component::responsive_grid::ResponsiveGrid, entity::DataEntities, ui};
+use crate::{component::{page::Page, responsive_grid::ResponsiveGrid}, entity::DataEntities, root};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
@@ -14,6 +16,7 @@ pub struct ImportPage {
     import_accounts: bool,
     import_instances: bool,
     _get_import_paths_task: Task<()>,
+    _open_file_task: Task<()>,
 }
 
 impl ImportPage {
@@ -25,6 +28,7 @@ impl ImportPage {
             import_accounts: true,
             import_instances: true,
             _get_import_paths_task: Task::ready(()),
+            _open_file_task: Task::ready(()),
         };
 
         page.update_launcher_paths(cx);
@@ -53,7 +57,10 @@ impl Render for ImportPage {
         let Some(imports) = &self.import_from_other_launchers else {
             let content = v_flex().size_full().p_3().gap_3()
                 .child(Spinner::new().with_size(gpui_component::Size::Large));
-            return ui::page(cx, h_flex().gap_8().child("Import")).child(content).overflow_y_scrollbar();
+
+            return Page::new("Import")
+                .scrollable()
+                .child(content);
         };
 
         let mut content = v_flex().size_full().p_3().gap_3()
@@ -74,6 +81,42 @@ impl Render for ImportPage {
                     .w_full()
                     .disabled(imports.imports[OtherLauncher::MultiMC].is_none())
                     .on_click(cx.listener(|page, _, _, _| page.import_from = Some(OtherLauncher::MultiMC))))
+                .child(Button::new("mrpack")
+                    .label("Import Modrinth Pack (.mrpack)")
+                    .w_full()
+                    .on_click(cx.listener(|page, _, window, cx| {
+                        let receiver = cx.prompt_for_paths(PathPromptOptions {
+                            files: true,
+                            directories: false,
+                            multiple: false,
+                            prompt: Some("Select Modrinth Pack".into())
+                        });
+                        let page_entity = cx.entity();
+                        page._open_file_task = window.spawn(cx, async move |cx| {
+                            let Ok(Ok(Some(result))) = receiver.await else {
+                                return;
+                            };
+                            let Some(path) = result.first() else {
+                                return;
+                            };
+                            _ = page_entity.update_in(cx, |page, window, cx| {
+                                let content_install = ContentInstall {
+                                    target: InstallTarget::NewInstance { name: None },
+                                    loader_hint: Loader::Unknown,
+                                    version_hint: None,
+                                    files: Arc::from([
+                                        ContentInstallFile {
+                                            replace_old: None,
+                                            path: ContentInstallPath::Automatic,
+                                            download: ContentDownload::File { path: path.into() },
+                                            content_source: ContentSource::Manual,
+                                        }
+                                    ]),
+                                };
+                                root::start_install(content_install, &page.backend_handle, window, cx);
+                            });
+                        })
+                    })))
             );
 
         if let Some(import_from) = self.import_from && let Some(import) = &imports.imports[import_from] {
@@ -100,11 +143,19 @@ impl Render for ImportPage {
                     .on_click(cx.listener(|page, checked, _, _| {
                     page.import_instances = *checked;
                 })))
-                .when(self.import_instances, |div| div.child(v_flex().w_full().border_1().p_2().rounded(cx.theme().radius).border_color(cx.theme().border).max_h_64().children(
-                    import.paths.iter().map(|path| {
-                        SharedString::new(path.to_string_lossy())
-                    })
-                ).overflow_y_scrollbar()))
+                .when(self.import_instances, |d| d.child(div()
+                    .w_full()
+                    .border_1()
+                    .p_2()
+                    .rounded(cx.theme().radius)
+                    .border_color(cx.theme().border)
+                    .max_h_64()
+                    .child(v_flex().overflow_y_scrollbar().children(
+                        import.paths.iter().map(|path| {
+                            SharedString::new(path.to_string_lossy())
+                        })
+                    )))
+                )
                 .child(Button::new("doimport").disabled(!import_accounts && !self.import_instances).success().label(label).on_click(cx.listener(move |page, _, window, cx| {
                     let modal_action = ModalAction::default();
 
@@ -121,6 +172,8 @@ impl Render for ImportPage {
             )
         }
 
-        ui::page(cx, h_flex().gap_8().child("Import")).child(content).overflow_y_scrollbar()
+        Page::new("Import")
+            .scrollable()
+            .child(content)
     }
 }

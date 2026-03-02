@@ -32,9 +32,6 @@ modrinth:
       en: Ornithe
     rift:
       en: Rift
-    # resourcepacks
-    minecraft:
-      en: Resource Pack
     # datapacks
     datapack:
       en: Data Pack
@@ -250,6 +247,10 @@ common:
     en: <unset>
   custom:
     en: Custom
+  cancel:
+    en: Cancel
+  ok:
+    en: OK
   nav:
     top:
       en: Go to Top
@@ -399,6 +400,8 @@ instance:
   # Advanced Settings
   memory:
     en: Set Memory
+  wrapper_command:
+    en: Add Wrapper Command
   jvm_flags:
     en: Add JVM Flags
   jvm_binary:
@@ -424,6 +427,8 @@ instance:
       en: Use GameMode
     use_discrete_gpu:
       en: Use Discrete GPU
+    disable_gl_threaded_optimizations:
+      en: Disable GL Threaded Optimizations
 
   # Delete Dialog
   delete_dialog:
@@ -519,8 +524,6 @@ instance:
           en: Loading project versions from Modrinth...
         error:
           en: "Error loading project versions from Modrinth: %{err}"
-      no_matching_versions:
-        en: Unable to find matching version of project
     install:
       label:
         en: Install
@@ -565,6 +568,8 @@ instance:
         en: No mod version selected
       unable_install_other:
         en: Unable to install 'other' project type
+      no_matching_versions:
+        en: Unable to find matching version of project
       unknown_type:
         en: Don't know how to handle this type of content
       select_resourcepacks:
@@ -619,6 +624,18 @@ instance:
       en: Folders
     mods:
       en: Mods
+    custom:
+      en: Custom
+    sync_name_file:
+      en: Sync %{name} file
+    sync_name_folder:
+      en: Sync %{name} folder
+    sync_file:
+      en: Sync file
+    sync_folder:
+      en: Sync folder
+    disable_syncing:
+      en: Disable Instance File Syncing
 
     targets:
       options:
@@ -657,6 +674,8 @@ settings:
     en: Settings
   interface:
     en: Interface
+  network:
+    en: Network
   theme:
     title:
       en: Theme
@@ -678,3 +697,24 @@ settings:
       en: Hide main window on launch
     open_game_output:
       en: Open game output on launch
+  proxy:
+    title:
+      en: Proxy Settings
+    enabled:
+      en: Enable Proxy
+    protocol:
+      en: Protocol
+    host:
+      en: Host
+    port:
+      en: Port
+    auth:
+      en: Authentication
+    use_auth:
+      en: Use Authentication
+    username:
+      en: Username
+    password:
+      en: Password
+    launcher_only_note:
+      en: Note - Proxy settings only apply to the launcher, not the game itself

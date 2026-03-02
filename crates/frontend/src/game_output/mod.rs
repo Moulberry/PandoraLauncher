@@ -1,16 +1,16 @@
-use std::{cell::RefCell, collections::HashMap, num::NonZeroUsize, ops::Range, rc::Rc, sync::Arc};
+use std::{cell::RefCell, num::NonZeroUsize, ops::Range, rc::Rc, sync::Arc};
 
 use ftree::FenwickTree;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::Button, h_flex, input::{Input, InputEvent, InputState}, scroll::{Scrollbar, ScrollbarHandle}, v_flex, ActiveTheme as _, Icon, IconName, Sizable
+    button::Button, h_flex, input::{Input, InputEvent, InputState}, scroll::{Scrollbar, ScrollbarHandle}, v_flex, ActiveTheme as _, Icon, Sizable
 };
 use lru::LruCache;
 use rustc_hash::FxBuildHasher;
 
 use bridge::{game_output::GameOutputLogLevel, keep_alive::KeepAlive};
 
-use crate::{CloseWindow, ts};
+use crate::{CloseWindow, icon::PandoraIcon, ts};
 
 struct CachedShapedLogLevels {
     fatal: Arc<ShapedLine>,
@@ -1054,7 +1054,7 @@ impl GameOutputRoot {
 
 impl Render for GameOutputRoot {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let search = Input::new(&self.search_state).prefix(Icon::new(IconName::Search).small());
+        let search = Input::new(&self.search_state).prefix(Icon::new(PandoraIcon::Search).small());
 
         let bar = h_flex()
             .w_full()

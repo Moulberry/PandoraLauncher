@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
 
-use chrono::{DateTime, Utc};
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Deserializer};
 use ustr::Ustr;

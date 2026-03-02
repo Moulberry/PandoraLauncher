@@ -27,7 +27,6 @@ impl RenderOnce for MenuGroup {
     fn render(self, _window: &mut gpui::Window, cx: &mut gpui::App) -> impl gpui::IntoElement {
         let title = div()
             .px_2()
-            .pt_3()
             .text_xs()
             .font_bold()
             .text_color(cx.theme().sidebar_foreground.opacity(0.7))

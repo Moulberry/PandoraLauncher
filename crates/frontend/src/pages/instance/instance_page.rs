@@ -5,12 +5,12 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, h_flex, tab::{Tab, TabBar}, Icon, IconName
+    button::{Button, ButtonVariants}, h_flex, tab::{Tab, TabBar}
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::page_path::PagePath, entity::{DataEntities, instance::InstanceEntry}, pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, root, ts, ui
+    component::{page::Page, page_path::PagePath}, entity::{DataEntities, instance::InstanceEntry}, icon::PandoraIcon, pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, root, ts
 };
 
 pub struct InstancePage {
@@ -54,8 +54,6 @@ impl Render for InstancePage {
             InstanceSubpage::Settings(_) => 4,
         };
 
-        let play_icon = Icon::empty().path("icons/play.svg");
-
         let instance = self.instance.read(cx);
         let id = instance.id;
         let name = instance.name.clone();
@@ -63,18 +61,18 @@ impl Render for InstancePage {
 
         let button = match instance.status {
             InstanceStatus::NotRunning => {
-                Button::new("start_instance").success().icon(play_icon).label(ts!("instance.start.label")).on_click(
+                Button::new("start_instance").success().icon(PandoraIcon::Play).label(ts!("instance.start.label")).on_click(
                     move |_, window, cx| {
                         root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
                     },
                 )
             },
             InstanceStatus::Launching => {
-                Button::new("launching").warning().icon(IconName::Loader).label(ts!("instance.start.starting"))
+                Button::new("launching").warning().icon(PandoraIcon::Loader).label(ts!("instance.start.starting"))
             },
             InstanceStatus::Running => Button::new("kill_instance")
                 .danger()
-                .icon(IconName::Close)
+                .icon(PandoraIcon::Close)
                 .label(ts!("instance.kill"))
                 .on_click(move |_, _, _| {
                     backend_handle.send(MessageToBackend::KillInstance { id });
@@ -83,7 +81,7 @@ impl Render for InstancePage {
 
         let open_dot_minecraft_button = Button::new("open_dot_minecraft")
             .info()
-            .icon(IconName::FolderOpen)
+            .icon(PandoraIcon::FolderOpen)
             .label(ts!("instance.open_folder"))
             .on_click({
             let dot_minecraft = instance.dot_minecraft_folder.clone();
@@ -93,7 +91,8 @@ impl Render for InstancePage {
         });
 
         let breadcrumb = self.page_path.create_breadcrumb(&self.data, cx);
-        ui::page(cx, h_flex().gap_8().child(breadcrumb).child(h_flex().gap_3().child(button).child(open_dot_minecraft_button)))
+
+        Page::new(h_flex().gap_8().child(breadcrumb).child(h_flex().gap_3().child(button).child(open_dot_minecraft_button)))
             .child(
                 TabBar::new("bar")
                     .prefix(div().w_4())

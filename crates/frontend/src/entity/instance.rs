@@ -19,6 +19,7 @@ impl InstanceEntries {
         id: InstanceID,
         name: SharedString,
         icon: Option<Arc<[u8]>>,
+        root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
         worlds_state: Arc<AtomicBridgeDataLoadState>,
@@ -33,6 +34,7 @@ impl InstanceEntries {
                 name,
                 icon,
                 title: "".into(),
+                root_path,
                 dot_minecraft_folder,
                 configuration,
                 status: InstanceStatus::NotRunning,
@@ -88,6 +90,7 @@ impl InstanceEntries {
         id: InstanceID,
         name: SharedString,
         icon: Option<Arc<[u8]>>,
+        root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
         status: InstanceStatus,
@@ -98,6 +101,7 @@ impl InstanceEntries {
                 let cloned = instance.update(cx, |instance, cx| {
                     instance.name = name.clone();
                     instance.icon = icon.clone();
+                    instance.root_path = root_path.clone();
                     instance.dot_minecraft_folder = dot_minecraft_folder.clone();
                     instance.configuration = configuration.clone();
                     instance.status = status;
@@ -193,6 +197,7 @@ pub struct InstanceEntry {
     pub name: SharedString,
     pub icon: Option<Arc<[u8]>>,
     pub title: SharedString,
+    pub root_path: Arc<Path>,
     pub dot_minecraft_folder: Arc<Path>,
     pub configuration: InstanceConfiguration,
     pub status: InstanceStatus,

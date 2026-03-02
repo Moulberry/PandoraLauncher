@@ -1,7 +1,7 @@
 use std::{ffi::{OsStr, OsString}, io::Write, path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, ContentSummary}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    install::{ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, ContentSummary}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
 use reqwest::StatusCode;
 use schema::{content::ContentSource, loader::Loader, modrinth::{ModrinthLoader, ModrinthProjectVersionsRequest}};
@@ -34,6 +34,8 @@ pub enum ContentInstallError {
     MetaLoadError(#[from] MetaLoadError),
     #[error("Mismatched project id for version {0}, expected {1} got {2}")]
     MismatchedProjectIdForVersion(Arc<str>, Arc<str>, Arc<str>),
+    #[error("No filename")]
+    NoFilename,
 }
 
 struct InstallFromContentLibrary {
@@ -228,7 +230,7 @@ impl BackendState {
                         let extension = match &content_file.path {
                             ContentInstallPath::Raw(path) => path.extension(),
                             ContentInstallPath::Safe(safe_path) => safe_path.extension().map(OsStr::new),
-                            ContentInstallPath::Automatic => unimplemented!(),
+                            ContentInstallPath::Automatic => copy_path.extension(),
                         };
 
                         if let Some(extension) = extension {
@@ -259,7 +261,26 @@ impl BackendState {
                         let install_path = match &content_file.path {
                             ContentInstallPath::Raw(path) => path.clone(),
                             ContentInstallPath::Safe(safe_path) => safe_path.to_path(Path::new("")).into(),
-                            ContentInstallPath::Automatic => unimplemented!(),
+                            ContentInstallPath::Automatic => {
+                                let Some(file_name) = copy_path.file_name() else {
+                                    return Err(ContentInstallError::NoFilename);
+                                };
+
+                                let base = if let Some(mod_summary) = &mod_summary {
+                                    match mod_summary.extra {
+                                        ContentType::Fabric | ContentType::Forge | ContentType::LegacyForge | ContentType::NeoForge | ContentType::JavaModule | ContentType::ModrinthModpack { .. } => {
+                                            Path::new("mods")
+                                        },
+                                        ContentType::ResourcePack => {
+                                            Path::new("resourcepacks")
+                                        }
+                                    }
+                                } else {
+                                    return Err(ContentInstallError::UnableToDetermineContentType(file_name.to_string_lossy().into()))
+                                };
+
+                                base.join(file_name).into()
+                            },
                         };
 
                         return Ok(InstallFromContentLibrary {
@@ -280,13 +301,21 @@ impl BackendState {
             Ok(files) => {
                 let mut instance_dir = None;
 
+                let mut loader_hint = content.loader_hint;
+                let mut version_hint = content.version_hint;
+
                 match content.target {
                     bridge::install::InstallTarget::Instance(instance_id) => {
                         if let Some(instance) = self.instance_state.write().instances.get_mut(instance_id) {
-                            if instance.configuration.get().loader == Loader::Vanilla && content.loader_hint != Loader::Unknown {
-                                instance.configuration.modify(|config| {
-                                    config.loader = content.loader_hint;
-                                });
+                            if instance.configuration.get().loader == Loader::Vanilla {
+                                if loader_hint == Loader::Unknown {
+                                    loader_hint = determine_loader_from_content(&files).unwrap_or(Loader::Unknown);
+                                }
+                                if loader_hint != Loader::Unknown {
+                                    instance.configuration.modify(|config| {
+                                        config.loader = content.loader_hint;
+                                    });
+                                }
                             }
 
                             instance_dir = Some(instance.dot_minecraft_path.clone());
@@ -294,16 +323,28 @@ impl BackendState {
                     },
                     bridge::install::InstallTarget::Library => {},
                     bridge::install::InstallTarget::NewInstance { name } => {
-                        let mut minecraft_version = content.version_hint;
-                        if minecraft_version.is_none() {
+                        if version_hint.is_none() {
+                            version_hint = determine_minecraft_version_from_content(&files);
+                        }
+                        if version_hint.is_none() {
                             if let Ok(meta) = self.meta.fetch(&MinecraftVersionManifestMetadataItem).await {
-                                minecraft_version = Some(meta.latest.release.into());
+                                version_hint = Some(meta.latest.release.into());
                             }
                         }
 
-                        if let Some(minecraft_version) = minecraft_version {
+                        if let Some(version_hint) = version_hint {
+                            if loader_hint == Loader::Unknown {
+                                loader_hint = determine_loader_from_content(&files).unwrap_or(Loader::Unknown);
+                            }
+
+                            let mut name = name;
+                            if name.is_none() {
+                                name = determine_name_from_content(&files);
+                            }
+                            let name = name.as_deref().unwrap_or("New Instance");
+
                             // todo: use icon of mod/modpack/etc. for icon of instance
-                            instance_dir = self.create_instance_sanitized(&name, &minecraft_version, content.loader_hint, None).await
+                            instance_dir = self.create_instance_sanitized(&name, &version_hint, loader_hint, None).await
                                 .map(|v| v.join(".minecraft").into());
                         }
                     },
@@ -495,4 +536,64 @@ impl BackendState {
         let summary = self.mod_metadata_manager.get_path(&path);
         Ok((path, expected_hash, summary))
     }
+}
+
+fn determine_loader_from_content(content: &[InstallFromContentLibrary]) -> Option<Loader> {
+    for content in content {
+        if let Some(summary) = &content.mod_summary {
+            match &summary.extra {
+                ContentType::Fabric => return Some(Loader::Fabric),
+                ContentType::LegacyForge => return Some(Loader::Forge),
+                ContentType::Forge => return Some(Loader::Forge),
+                ContentType::NeoForge => return Some(Loader::NeoForge),
+                ContentType::JavaModule => {},
+                ContentType::ModrinthModpack { dependencies, .. } => {
+                    for (key, _) in dependencies {
+                        match &**key {
+                            "forge" => return Some(Loader::Forge),
+                            "neoforge" => return Some(Loader::NeoForge),
+                            "fabric-loader" => return Some(Loader::Fabric),
+                            _ => {}
+                        }
+                    }
+                },
+                ContentType::ResourcePack => {},
+            }
+        }
+    }
+    None
+}
+
+fn determine_minecraft_version_from_content(content: &[InstallFromContentLibrary]) -> Option<Arc<str>> {
+    for content in content {
+        if let Some(summary) = &content.mod_summary {
+            match &summary.extra {
+                ContentType::Fabric => {},
+                ContentType::LegacyForge => {},
+                ContentType::Forge => {},
+                ContentType::NeoForge => {},
+                ContentType::JavaModule => {},
+                ContentType::ModrinthModpack { dependencies, .. } => {
+                    for (key, value) in dependencies {
+                        if &**key == "minecraft" {
+                            return Some(value.clone());
+                        }
+                    }
+                },
+                ContentType::ResourcePack => {},
+            }
+        }
+    }
+    None
+}
+
+fn determine_name_from_content(content: &[InstallFromContentLibrary]) -> Option<Arc<str>> {
+    for content in content {
+        if let Some(summary) = &content.mod_summary {
+            if let Some(name) = &summary.name {
+                return Some(name.clone());
+            }
+        }
+    }
+    None
 }

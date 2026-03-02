@@ -9,7 +9,7 @@ pub enum InstallTarget {
     Instance(InstanceID),
     Library,
     NewInstance {
-        name: Arc<str>,
+        name: Option<Arc<str>>,
     },
 }
 

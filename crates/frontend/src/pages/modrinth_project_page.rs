@@ -227,7 +227,7 @@ impl Render for ModrinthProjectPage {
                 .p_4()
                 .child(ErrorAlert::new(
                     "project_error",
-                    "Error loading project".into(),
+                    ts!("instance.content.error_loading"),
                     error.clone(),
                 ))
                 .into_any_element()
@@ -300,7 +300,7 @@ impl Render for ModrinthProjectPage {
             let project_type_str = project.project_type.as_str().to_string();
             link_row = link_row.child(
                 Button::new("modrinth_web")
-                    .label("Modrinth").text_color(gray)
+                    .label(ts!("modrinth.name")).text_color(gray)
                     .icon(Icon::empty().path("icons/external-link.svg"))
                     .ghost()
                     .on_click({
@@ -312,28 +312,28 @@ impl Render for ModrinthProjectPage {
             if let Some(url) = &project.source_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("source").label("Source").text_color(gray).icon(Icon::empty().path("icons/code-xml.svg")).ghost()
+                    Button::new("source").label(ts!("instance.content.links.source")).text_color(gray).icon(Icon::empty().path("icons/code-xml.svg")).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
             if let Some(url) = &project.issues_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("issues").label("Issues").text_color(gray).icon(Icon::empty().path("icons/bug.svg")).ghost()
+                    Button::new("issues").label(ts!("instance.content.links.issues")).text_color(gray).icon(Icon::empty().path("icons/bug.svg")).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
             if let Some(url) = &project.wiki_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("wiki").label("Wiki").text_color(gray).ghost()
+                    Button::new("wiki").label(ts!("instance.content.links.wiki")).text_color(gray).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
             if let Some(url) = &project.discord_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("discord").label("Discord").text_color(gray).ghost()
+                    Button::new("discord").label(ts!("instance.content.links.discord")).text_color(gray).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
@@ -412,8 +412,8 @@ impl Render for ModrinthProjectPage {
                     this.active_tab = *selected_index;
                     cx.notify();
                 }))
-                .child(Tab::new().label("Description"))
-                .child(Tab::new().label("Gallery"))
+                .child(Tab::new().label(ts!("instance.content.tabs.description")))
+                .child(Tab::new().label(ts!("instance.content.tabs.gallery")))
                 .into_any_element();
 
             let body_el: AnyElement = match active_tab {
@@ -426,7 +426,7 @@ impl Render for ModrinthProjectPage {
                     } else {
                         v_flex()
                             .mt_2().pt_2()
-                            .child(div().text_sm().text_color(Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 }).child("No description available."))
+                            .child(div().text_sm().text_color(Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 }).child(ts!("instance.content.no_description")))
                             .into_any_element()
                     }
                 }
@@ -453,11 +453,10 @@ impl Render for ModrinthProjectPage {
                                             }))
                                         .child(v_flex().p_1().max_w_full().min_w_0()
                                             .child(div().text_sm().font_bold().child(img.title.as_deref().unwrap_or("").to_string()))
-                                            //.child(div().text_xs().truncate().text_color(gray).child(img.description.as_deref().unwrap_or("").to_string()))
                                         )
                                 })).into_any_element()
                         } else {
-                            div().text_sm().text_color(Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 }).child("No gallery images.").into_any_element()
+                            div().text_sm().text_color(Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 }).child(ts!("instance.content.no_gallery")).into_any_element()
                         })
                         .into_any_element()
                 }
@@ -470,7 +469,7 @@ impl Render for ModrinthProjectPage {
             let install_button: AnyElement = {
                 let data = self.data.clone();
                 let install_for = self.install_for;
-                let project_name: SharedString = project.title.as_deref().unwrap_or("Unnamed").to_string().into();
+                let project_name: SharedString = project.title.as_deref().unwrap_or(ts!("instance.content.unnamed").as_str()).to_string().into();
 
                 let primary_action = if install_for.is_some() {
                     self.get_primary_action(&project_id_str, cx)
@@ -554,7 +553,7 @@ impl Render for ModrinthProjectPage {
                     .child(v_flex().w_full()
                         .child(h_flex().gap_4().mr_4().justify_between()
                             .child(v_flex().w_full().gap_2().mr_auto()
-                                .child(div().h_6().text_xl().overflow_hidden().font_bold().child(project.title.as_deref().unwrap_or("Unnamed").to_string()))
+                                .child(div().h_6().text_xl().overflow_hidden().font_bold().child(project.title.as_deref().unwrap_or(ts!("instance.content.unnamed").as_str()).to_string()))
                                 .child(div().h_12().min_w_0().line_clamp(2).text_color(gray).text_xs().child(project.description.as_deref().unwrap_or("").to_string()))
                             )
                             .child(install_button)

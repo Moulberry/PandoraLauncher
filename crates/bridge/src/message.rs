@@ -1,25 +1,38 @@
 use std::{
-    collections::BTreeMap, ffi::OsString, path::{Path, PathBuf}, sync::Arc
+    collections::BTreeMap,
+    ffi::OsString,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use schema::{
-    backend_config::{BackendConfig, ProxyConfig}, instance::{
+    backend_config::{BackendConfig, ProxyConfig},
+    instance::{
         InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
-        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration,
-    }, loader::Loader, pandora_update::UpdatePrompt
+        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration,
+        InstanceWrapperCommandConfiguration,
+    },
+    loader::Loader,
+    pandora_update::UpdatePrompt,
 };
 use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLaunchers, OtherLauncher}, install::ContentInstall, instance::{
+    account::Account,
+    game_output::GameOutputLogLevel,
+    import::{ImportFromOtherLaunchers, OtherLauncher},
+    install::ContentInstall,
+    instance::{
         InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus,
         InstanceWorldSummary,
-    }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction
+    },
+    keep_alive::{KeepAlive, KeepAliveHandle},
+    meta::{MetadataRequest, MetadataResult},
+    modal_action::ModalAction,
 };
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct BackendConfigWithPassword {
     pub config: BackendConfig,
     pub proxy_password: Option<String>,
@@ -45,15 +58,15 @@ pub enum MessageToBackend {
     },
     SetInstanceMinecraftVersion {
         id: InstanceID,
-        version: Ustr
+        version: Ustr,
     },
     SetInstanceLoader {
         id: InstanceID,
-        loader: Loader
+        loader: Loader,
     },
     SetInstancePreferredLoaderVersion {
         id: InstanceID,
-        loader_version: Option<&'static str>
+        loader_version: Option<&'static str>,
     },
     SetInstanceDisableFileSyncing {
         id: InstanceID,
@@ -127,7 +140,7 @@ pub enum MessageToBackend {
     DownloadAllMetadata,
     UpdateCheck {
         instance: InstanceID,
-        modal_action: ModalAction
+        modal_action: ModalAction,
     },
     UpdateContent {
         instance: InstanceID,
@@ -137,7 +150,7 @@ pub enum MessageToBackend {
     Sleep5s,
     ReadLog {
         path: Arc<Path>,
-        send: tokio::sync::mpsc::Sender<Arc<str>>
+        send: tokio::sync::mpsc::Sender<Arc<str>>,
     },
     GetLogFiles {
         instance: InstanceID,
@@ -169,7 +182,7 @@ pub enum MessageToBackend {
     },
     AddOfflineAccount {
         name: Arc<str>,
-        uuid: Uuid
+        uuid: Uuid,
     },
     SelectAccount {
         uuid: Uuid,
@@ -186,11 +199,11 @@ pub enum MessageToBackend {
     },
     CreateInstanceShortcut {
         id: InstanceID,
-        path: PathBuf
+        path: PathBuf,
     },
     RelocateInstance {
         id: InstanceID,
-        path: PathBuf
+        path: PathBuf,
     },
     InstallUpdate {
         update: UpdatePrompt,
@@ -201,7 +214,28 @@ pub enum MessageToBackend {
         import_accounts: bool,
         import_instances: bool,
         modal_action: ModalAction,
-    }
+    },
+    FetchPlayerSkin {
+        username: Arc<str>,
+        channel: tokio::sync::oneshot::Sender<Result<PlayerSkinResult, Arc<str>>>,
+    },
+    GetSkinHistory {
+        account_uuid: Uuid,
+        channel: tokio::sync::oneshot::Sender<Vec<SkinHistoryEntry>>,
+    },
+    ApplySkin {
+        account_uuid: Uuid,
+        head_png: Arc<[u8]>,
+        skin_png: Arc<[u8]>,
+        skin_model: SkinModel,
+        source_name: Arc<str>,
+        channel: tokio::sync::oneshot::Sender<Result<(), Arc<str>>>,
+    },
+    ApplySkinFromHistory {
+        account_uuid: Uuid,
+        history_index: usize,
+        channel: tokio::sync::oneshot::Sender<Result<(), Arc<str>>>,
+    },
 }
 
 #[derive(Debug)]
@@ -345,4 +379,28 @@ pub enum QuickPlayLaunch {
 pub enum EmbeddedOrRaw {
     Embedded(Arc<str>),
     Raw(Arc<[u8]>),
+}
+
+#[derive(Debug, Clone)]
+pub struct PlayerSkinResult {
+    pub username: Arc<str>,
+    pub uuid: Uuid,
+    pub head_png: Arc<[u8]>,
+    pub skin_png: Arc<[u8]>,
+    pub skin_model: SkinModel,
+}
+
+#[derive(Debug, Clone)]
+pub struct SkinHistoryEntry {
+    pub source_name: Arc<str>,
+    pub timestamp: i64,
+    pub head_png: Arc<[u8]>,
+    pub skin_png: Arc<[u8]>,
+    pub skin_model: SkinModel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkinModel {
+    Classic,
+    Slim,
 }

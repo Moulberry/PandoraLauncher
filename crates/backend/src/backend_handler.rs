@@ -1260,7 +1260,140 @@ impl BackendState {
             },
             MessageToBackend::ImportFromOtherLauncher { launcher, import_accounts, import_instances, modal_action } => {
                 crate::launcher_import::import_from_other_launcher(self, launcher, import_accounts, import_instances, modal_action).await;
-            }
+            },
+            MessageToBackend::FetchPlayerSkin { username, channel } => {
+                let state = self.clone();
+                tokio::task::spawn(async move {
+                    let result = state.fetch_player_skin_by_username(&username).await;
+                    let _ = channel.send(result);
+                });
+            },
+            MessageToBackend::GetSkinHistory { account_uuid, channel } => {
+                let uuid_str = account_uuid.to_string();
+                let entries = {
+                    let mut skin_history = self.skin_history.write();
+                    let history = skin_history.get();
+                    history.entries.get(&uuid_str).cloned().unwrap_or_default()
+                };
+                let bridge_entries: Vec<bridge::message::SkinHistoryEntry> = entries.into_iter().map(|e| {
+                    bridge::message::SkinHistoryEntry {
+                        source_name: Arc::from(e.source_name.as_str()),
+                        timestamp: e.timestamp,
+                        head_png: Arc::from(e.head_png),
+                        skin_png: Arc::from(e.skin_png),
+                        skin_model: e.skin_model.into(),
+                    }
+                }).collect();
+                let _ = channel.send(bridge_entries);
+            },
+            MessageToBackend::ApplySkin { account_uuid, head_png, skin_png, skin_model, source_name, channel } => {
+                let state = self.clone();
+                tokio::task::spawn(async move {
+                    // Step 1: Authenticate silently to get access token
+                    let access_token = match state.get_access_token_silent(account_uuid).await {
+                        Ok(token) => token,
+                        Err(e) => {
+                            let _ = channel.send(Err(e));
+                            return;
+                        }
+                    };
+
+                    // Step 2: Upload skin to Mojang
+                    if let Err(e) = state.upload_skin_to_mojang(&access_token, &skin_png, skin_model).await {
+                        let _ = channel.send(Err(e));
+                        return;
+                    }
+
+                    // Step 3: Update local account head
+                    {
+                        let mut account_info = state.account_info.write();
+                        account_info.modify(|info| {
+                            if let Some(account) = info.accounts.get_mut(&account_uuid) {
+                                account.head = Some(head_png.clone());
+                            }
+                        });
+                        state.send.send(account_info.get().create_update_message());
+                    }
+
+                    // Step 4: Add to skin history
+                    let uuid_str = account_uuid.to_string();
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    let entry = crate::backend::SkinHistoryEntryStored {
+                        source_name: source_name.to_string(),
+                        timestamp,
+                        head_png: head_png.to_vec(),
+                        skin_png: skin_png.to_vec(),
+                        skin_model: skin_model.into(),
+                    };
+                    let mut skin_history = state.skin_history.write();
+                    skin_history.modify(|history| {
+                        let entries = history.entries.entry(uuid_str).or_default();
+                        entries.insert(0, entry);
+                        entries.truncate(50);
+                    });
+
+                    let _ = channel.send(Ok(()));
+                });
+            },
+            MessageToBackend::ApplySkinFromHistory { account_uuid, history_index, channel } => {
+                let state = self.clone();
+                tokio::task::spawn(async move {
+                    // Step 1: Read skin data from history
+                    let (head_png, skin_png, skin_model) = {
+                        let mut skin_history = state.skin_history.write();
+                        let uuid_str = account_uuid.to_string();
+                        let history = skin_history.get();
+                        match history.entries.get(&uuid_str).and_then(|entries| entries.get(history_index)) {
+                            Some(entry) if !entry.skin_png.is_empty() => {
+                                (
+                                    Arc::<[u8]>::from(entry.head_png.clone()),
+                                    Arc::<[u8]>::from(entry.skin_png.clone()),
+                                    bridge::message::SkinModel::from(entry.skin_model),
+                                )
+                            },
+                            Some(_) => {
+                                let _ = channel.send(Err(Arc::from("This history entry doesn't have skin data (from older version)")));
+                                return;
+                            },
+                            None => {
+                                let _ = channel.send(Err(Arc::from("History entry not found")));
+                                return;
+                            },
+                        }
+                    };
+
+                    // Step 2: Authenticate silently
+                    let access_token = match state.get_access_token_silent(account_uuid).await {
+                        Ok(token) => token,
+                        Err(e) => {
+                            let _ = channel.send(Err(e));
+                            return;
+                        }
+                    };
+
+                    // Step 3: Upload skin to Mojang
+                    if let Err(e) = state.upload_skin_to_mojang(&access_token, &skin_png, skin_model).await {
+                        let _ = channel.send(Err(e));
+                        return;
+                    }
+
+                    // Step 4: Update local account head
+                    {
+                        let mut account_info = state.account_info.write();
+                        account_info.modify(|info| {
+                            if let Some(account) = info.accounts.get_mut(&account_uuid) {
+                                account.head = Some(head_png);
+                            }
+                        });
+                        state.send.send(account_info.get().create_update_message());
+                    }
+
+                    let _ = channel.send(Ok(()));
+                });
+            },
         }
     }
 

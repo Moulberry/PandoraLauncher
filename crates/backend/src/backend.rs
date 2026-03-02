@@ -18,6 +18,7 @@ use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, SyncTargets, ProxyConfig}, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
 use tokio::sync::{mpsc::Receiver, OnceCell};
@@ -130,6 +131,9 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     // Load accounts
     let account_info = Persistent::load(directories.accounts_json.clone());
 
+    // Load skin history
+    let skin_history = Persistent::load(directories.skin_history_json.clone());
+
     let mut state = BackendState {
         self_handle,
         send: send.clone(),
@@ -145,6 +149,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         config: Arc::new(RwLock::new(config)),
         secret_storage: Arc::new(OnceCell::new()),
         head_cache: Default::default(),
+        skin_history: Arc::new(RwLock::new(skin_history)),
     };
 
     log::debug!("Doing initial backend load");
@@ -200,7 +205,8 @@ pub struct BackendState {
     pub account_info: Arc<RwLock<Persistent<BackendAccountInfo>>>,
     pub config: Arc<RwLock<Persistent<BackendConfig>>>,
     pub secret_storage: Arc<OnceCell<Result<PlatformSecretStorage, SecretStorageError>>>,
-    pub head_cache: Arc<RwLock<FxHashMap<Arc<str>, HeadCacheEntry>>>
+    pub head_cache: Arc<RwLock<FxHashMap<Arc<str>, HeadCacheEntry>>>,
+    pub skin_history: Arc<RwLock<Persistent<SkinHistory>>>,
 }
 
 pub enum HeadCacheEntry {
@@ -211,6 +217,47 @@ pub enum HeadCacheEntry {
         head: Arc<[u8]>,
     },
     Failed,
+}
+
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct SkinHistory {
+    pub entries: HashMap<String, Vec<SkinHistoryEntryStored>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkinHistoryEntryStored {
+    pub source_name: String,
+    pub timestamp: i64,
+    pub head_png: Vec<u8>,
+    #[serde(default)]
+    pub skin_png: Vec<u8>,
+    #[serde(default)]
+    pub skin_model: SkinModelStored,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SkinModelStored {
+    #[default]
+    Classic,
+    Slim,
+}
+
+impl From<bridge::message::SkinModel> for SkinModelStored {
+    fn from(m: bridge::message::SkinModel) -> Self {
+        match m {
+            bridge::message::SkinModel::Classic => SkinModelStored::Classic,
+            bridge::message::SkinModel::Slim => SkinModelStored::Slim,
+        }
+    }
+}
+
+impl From<SkinModelStored> for bridge::message::SkinModel {
+    fn from(m: SkinModelStored) -> Self {
+        match m {
+            SkinModelStored::Classic => bridge::message::SkinModel::Classic,
+            SkinModelStored::Slim => bridge::message::SkinModel::Slim,
+        }
+    }
 }
 
 impl BackendState {
@@ -682,6 +729,251 @@ impl BackendState {
                 }
             });
         });
+    }
+
+    pub async fn fetch_player_skin_by_username(&self, username: &str) -> Result<bridge::message::PlayerSkinResult, Arc<str>> {
+        // Step 1: Look up UUID by username
+        let url = format!("https://api.mojang.com/users/profiles/minecraft/{}", username);
+        let response = self.http_client.get(&url).send().await
+            .map_err(|e| Arc::<str>::from(format!("Failed to look up player: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(Arc::from(format!("Player '{}' not found", username)));
+        }
+
+        let body = response.bytes().await
+            .map_err(|e| Arc::<str>::from(format!("Failed to read response: {}", e)))?;
+
+        #[derive(Deserialize)]
+        struct MojangUuidLookup {
+            id: String,
+            name: String,
+        }
+
+        let lookup: MojangUuidLookup = serde_json::from_slice(&body)
+            .map_err(|e| Arc::<str>::from(format!("Failed to parse response: {}", e)))?;
+
+        // Parse UUID (Mojang returns it without dashes)
+        let uuid = Uuid::try_parse(&lookup.id)
+            .map_err(|e| Arc::<str>::from(format!("Invalid UUID: {}", e)))?;
+
+        // Step 2: Get session profile with textures
+        let session_url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{}", lookup.id);
+        let session_response = self.http_client.get(&session_url).send().await
+            .map_err(|e| Arc::<str>::from(format!("Failed to get profile: {}", e)))?;
+
+        if !session_response.status().is_success() {
+            return Err(Arc::from(format!("Failed to get profile for '{}'", username)));
+        }
+
+        let session_body = session_response.bytes().await
+            .map_err(|e| Arc::<str>::from(format!("Failed to read session response: {}", e)))?;
+
+        #[derive(Deserialize)]
+        struct SessionProfile {
+            properties: Vec<SessionProperty>,
+        }
+
+        #[derive(Deserialize)]
+        struct SessionProperty {
+            name: String,
+            value: String,
+        }
+
+        let profile: SessionProfile = serde_json::from_slice(&session_body)
+            .map_err(|e| Arc::<str>::from(format!("Failed to parse session profile: {}", e)))?;
+
+        // Find the textures property and decode it
+        let textures_prop = profile.properties.iter()
+            .find(|p| p.name == "textures")
+            .ok_or_else(|| Arc::<str>::from("No textures property found"))?;
+
+        let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &textures_prop.value)
+            .map_err(|e| Arc::<str>::from(format!("Failed to decode textures: {}", e)))?;
+
+        #[derive(Deserialize)]
+        struct TexturesPayload {
+            textures: TexturesMap,
+        }
+
+        #[derive(Deserialize)]
+        struct TexturesMap {
+            #[serde(rename = "SKIN")]
+            skin: Option<TextureSkin>,
+        }
+
+        #[derive(Deserialize)]
+        struct TextureSkin {
+            url: String,
+            #[serde(default)]
+            metadata: Option<TextureSkinMetadata>,
+        }
+
+        #[derive(Deserialize)]
+        struct TextureSkinMetadata {
+            #[serde(default)]
+            model: Option<String>,
+        }
+
+        let payload: TexturesPayload = serde_json::from_slice(&decoded)
+            .map_err(|e| Arc::<str>::from(format!("Failed to parse textures: {}", e)))?;
+
+        let skin = payload.textures.skin
+            .ok_or_else(|| Arc::<str>::from("Player has no skin"))?;
+
+        // Determine skin model (slim if metadata.model == "slim", otherwise classic)
+        let skin_model = if skin.metadata.as_ref().and_then(|m| m.model.as_deref()) == Some("slim") {
+            bridge::message::SkinModel::Slim
+        } else {
+            bridge::message::SkinModel::Classic
+        };
+
+        // Step 3: Download the skin image
+        let skin_response = self.http_client.get(&skin.url).send().await
+            .map_err(|e| Arc::<str>::from(format!("Failed to download skin: {}", e)))?;
+
+        let skin_bytes = skin_response.bytes().await
+            .map_err(|e| Arc::<str>::from(format!("Failed to read skin data: {}", e)))?;
+
+        // Keep the full skin PNG for 3D rendering
+        let full_skin_png: Arc<[u8]> = Arc::from(skin_bytes.as_ref());
+
+        let mut image = image::load_from_memory(&skin_bytes)
+            .map_err(|e| Arc::<str>::from(format!("Failed to load skin image: {}", e)))?;
+
+        // Step 4: Extract head (same logic as update_profile_head)
+        let mut head = image.crop(8, 8, 8, 8);
+        let head_overlay = image.crop(40, 8, 8, 8);
+        image::imageops::overlay(&mut head, &head_overlay, 0, 0);
+
+        let mut head_bytes = Vec::new();
+        let mut cursor = Cursor::new(&mut head_bytes);
+        head.write_to(&mut cursor, image::ImageFormat::Png)
+            .map_err(|e| Arc::<str>::from(format!("Failed to encode head: {}", e)))?;
+
+        Ok(bridge::message::PlayerSkinResult {
+            username: Arc::from(lookup.name.as_str()),
+            uuid,
+            head_png: Arc::from(head_bytes),
+            skin_png: full_skin_png,
+            skin_model,
+        })
+    }
+
+    /// Silently obtain a Minecraft access token by refreshing credentials from the keyring.
+    /// Returns an error if interactive login is required (no refresh token, revoked, etc.).
+    pub async fn get_access_token_silent(&self, uuid: Uuid) -> Result<MinecraftAccessToken, Arc<str>> {
+        let secret_storage = self.secret_storage
+            .get_or_init(PlatformSecretStorage::new)
+            .await
+            .as_ref()
+            .map_err(|e| Arc::<str>::from(format!("Failed to access secret storage: {}", e)))?;
+
+        let mut credentials = secret_storage
+            .read_credentials(uuid)
+            .await
+            .map_err(|e| Arc::<str>::from(format!("Failed to read credentials: {}", e)))?
+            .unwrap_or_default();
+
+        let mut authenticator = Authenticator::new(self.http_client.clone());
+
+        loop {
+            match credentials.stage() {
+                auth::credentials::AuthStageWithData::Initial => {
+                    return Err(Arc::from("You need to log in again to change your skin"));
+                },
+                auth::credentials::AuthStageWithData::MsaRefresh(refresh) => {
+                    match authenticator.refresh_msa(&refresh, &credentials.msa_refresh_force_client_id).await {
+                        Ok(Some(msa_tokens)) => {
+                            credentials.msa_access = Some(msa_tokens.access);
+                            credentials.msa_refresh = msa_tokens.refresh;
+                        },
+                        Ok(None) => {
+                            return Err(Arc::from("Session expired. Please log in again to change your skin"));
+                        },
+                        Err(e) => {
+                            return Err(Arc::from(format!("Authentication failed: {}", e)));
+                        },
+                    }
+                },
+                auth::credentials::AuthStageWithData::MsaAccess(access) => {
+                    match authenticator.authenticate_xbox(&access).await {
+                        Ok(xbl) => {
+                            credentials.xbl = Some(xbl);
+                        },
+                        Err(e) => {
+                            return Err(Arc::from(format!("Xbox authentication failed: {}", e)));
+                        },
+                    }
+                },
+                auth::credentials::AuthStageWithData::XboxLive(xbl) => {
+                    match authenticator.obtain_xsts(&xbl).await {
+                        Ok(xsts) => {
+                            credentials.xsts = Some(xsts);
+                        },
+                        Err(e) => {
+                            return Err(Arc::from(format!("XSTS authentication failed: {}", e)));
+                        },
+                    }
+                },
+                auth::credentials::AuthStageWithData::XboxSecure { xsts, userhash } => {
+                    match authenticator.authenticate_minecraft(&xsts, &userhash).await {
+                        Ok(token) => {
+                            credentials.access_token = Some(token);
+                        },
+                        Err(e) => {
+                            return Err(Arc::from(format!("Minecraft authentication failed: {}", e)));
+                        },
+                    }
+                },
+                auth::credentials::AuthStageWithData::AccessToken(access_token) => {
+                    // Save updated credentials back to keyring
+                    if let Ok(ss) = self.secret_storage.get_or_init(PlatformSecretStorage::new).await.as_ref() {
+                        let _ = ss.write_credentials(uuid, &credentials).await;
+                    }
+                    return Ok(access_token);
+                },
+            }
+        }
+    }
+
+    /// Upload a skin to Mojang's servers.
+    pub async fn upload_skin_to_mojang(
+        &self,
+        access_token: &MinecraftAccessToken,
+        skin_png: &[u8],
+        skin_model: bridge::message::SkinModel,
+    ) -> Result<(), Arc<str>> {
+        let variant = match skin_model {
+            bridge::message::SkinModel::Classic => "classic",
+            bridge::message::SkinModel::Slim => "slim",
+        };
+
+        let form = reqwest::multipart::Form::new()
+            .text("variant", variant.to_string())
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(skin_png.to_vec())
+                    .file_name("skin.png")
+                    .mime_str("image/png")
+                    .map_err(|e| Arc::<str>::from(format!("Failed to create form part: {}", e)))?,
+            );
+
+        let response = self.http_client
+            .post("https://api.minecraftservices.com/minecraft/profile/skins")
+            .header("Authorization", format!("Bearer {}", access_token.secret()))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| Arc::<str>::from(format!("Failed to upload skin: {}", e)))?;
+
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            Err(Arc::from(format!("Skin upload failed ({}): {}", status, body)))
+        }
     }
 
     pub async fn prelaunch(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {

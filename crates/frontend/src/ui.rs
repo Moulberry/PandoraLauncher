@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::{
     component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath}, entity::{
         DataEntities, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, syncing_page::SyncingPage}, png_render_cache, ts
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, profile_page::ProfilePage, syncing_page::SyncingPage}, png_render_cache, ts
 };
 
 pub struct LauncherUI {
@@ -37,6 +37,7 @@ pub enum PageType {
     },
     Import,
     Syncing,
+    Profile,
     InstancePage(InstanceID, InstanceSubpageType),
 }
 
@@ -54,6 +55,7 @@ impl PageType {
             },
             PageType::Import => SerializedPageType::Import,
             PageType::Syncing => SerializedPageType::Syncing,
+            PageType::Profile => SerializedPageType::Profile,
             PageType::InstancePage(id, _) => {
                 if let Some(name) = InstanceEntries::find_name_by_id(&data.instances, *id, cx) {
                     SerializedPageType::InstancePage(name)
@@ -77,6 +79,7 @@ impl PageType {
             },
             SerializedPageType::Import => PageType::Import,
             SerializedPageType::Syncing => PageType::Syncing,
+            SerializedPageType::Profile => PageType::Profile,
             SerializedPageType::InstancePage(name) => {
                 if let Some(id) = InstanceEntries::find_id_by_name(&data.instances, name, cx) {
                     PageType::InstancePage(id, InstanceSubpageType::Quickplay)
@@ -98,6 +101,7 @@ pub enum SerializedPageType {
     },
     Import,
     Syncing,
+    Profile,
     InstancePage(SharedString),
 }
 
@@ -110,6 +114,7 @@ pub enum LauncherPage {
     },
     Import(Entity<ImportPage>),
     Syncing(Entity<SyncingPage>),
+    Profile(Entity<ProfilePage>),
     InstancePage(InstanceID, InstanceSubpageType, Entity<InstancePage>),
 }
 
@@ -120,6 +125,7 @@ impl LauncherPage {
             LauncherPage::Modrinth { page, .. } => page.into_any_element(),
             LauncherPage::Import(entity) => entity.into_any_element(),
             LauncherPage::Syncing(entity) => entity.into_any_element(),
+            LauncherPage::Profile(entity) => entity.into_any_element(),
             LauncherPage::InstancePage(_, _, entity) => entity.into_any_element(),
         }
     }
@@ -130,6 +136,7 @@ impl LauncherPage {
             LauncherPage::Modrinth { installing_for, .. } => PageType::Modrinth { installing_for: *installing_for, project_type: None },
             LauncherPage::Import(_) => PageType::Import,
             LauncherPage::Syncing(_) => PageType::Syncing,
+            LauncherPage::Profile(_) => PageType::Profile,
             LauncherPage::InstancePage(id, subpage, _) => PageType::InstancePage(*id, *subpage),
         }
     }
@@ -238,6 +245,9 @@ impl LauncherUI {
             PageType::Syncing => {
                 LauncherPage::Syncing(cx.new(|cx| SyncingPage::new(data, window, cx)))
             },
+            PageType::Profile => {
+                LauncherPage::Profile(cx.new(|cx| ProfilePage::new(data, window, cx)))
+            },
             PageType::InstancePage(id, subpage) => {
                 LauncherPage::InstancePage(id, subpage, cx.new(|cx| {
                     InstancePage::new(id, subpage, path, data, window, cx)
@@ -292,11 +302,19 @@ impl Render for LauncherUI {
                     launcher.switch_page(PageType::Syncing, &[], window, cx);
                 })));
 
-        let mut groups: heapless::Vec<MenuGroup, 4> = heapless::Vec::new();
+        let account_group = MenuGroup::new(ts!("profile.title"))
+            .child(MenuGroupItem::new(ts!("profile.sidebar"))
+                .active(page_type == PageType::Profile)
+                .on_click(cx.listener(|launcher, _, window, cx| {
+                    launcher.switch_page(PageType::Profile, &[], window, cx);
+                })));
+
+        let mut groups: heapless::Vec<MenuGroup, 5> = heapless::Vec::new();
 
         let _ = groups.push(library_group);
         let _ = groups.push(content_group);
         let _ = groups.push(files_group);
+        let _ = groups.push(account_group);
 
         if !self.recent_instances.is_empty() {
             let mut recent_instances_group = MenuGroup::new(ts!("instance.recent"));

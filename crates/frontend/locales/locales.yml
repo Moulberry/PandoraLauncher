@@ -718,3 +718,49 @@ settings:
       en: Password
     launcher_only_note:
       en: Note - Proxy settings only apply to the launcher, not the game itself
+
+profile:
+  title:
+    en: Profile
+  sidebar:
+    en: Profile & Account
+  current_skin:
+    en: Current Skin
+  no_account:
+    en: No account selected
+  select_account_first:
+    en: Please select an account first to view your profile
+  import_skin:
+    en: Import Skin
+  import_description:
+    en: Enter a Minecraft player username to import their skin
+  username_placeholder:
+    en: Player username
+  fetch:
+    en: Search
+  fetching:
+    en: Searching...
+  apply:
+    en: Apply Skin
+  applying:
+    en: Applying...
+  fetch_error:
+    en: "Error: %{err}"
+  preview:
+    en: Preview
+  skin_history:
+    en: Skin History
+  no_history:
+    en: No skin changes yet
+  from:
+    en: "From: %{name}"
+  revert:
+    en: Revert
+  applied:
+    en: Skin applied successfully
+  uuid_label:
+    en: "UUID: %{uuid}"
+  no_3d_preview:
+    en: No 3D preview available
+  uploading_skin:
+    en: Uploading skin to Mojang...

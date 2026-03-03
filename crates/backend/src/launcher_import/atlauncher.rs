@@ -1,12 +1,19 @@
 use std::path::{Path, PathBuf};
 use bridge::modal_action::{ModalAction, ProgressTracker};
+use image::imageops::FilterType::Lanczos3;
 use log::debug;
 use rusqlite::Transaction;
-use schema::{assets_index::{AssetObject, AssetsIndex}, instance::InstanceConfiguration, loader::Loader, modrinth::{ModrinthHit, ModrinthProjectVersion}, version::{AssetIndexLink, GameDownloads, GameLibrary, GameLogging, JavaVersion, LaunchArguments}};
+use schema::{assets_index::{AssetObject, AssetsIndex}, instance::{InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration}, loader::Loader, modrinth::{ModrinthHit, ModrinthProjectVersion}, version::{AssetIndexLink, GameDownloads, GameLibrary, GameLogging, JavaVersion, LaunchArguments}};
 use serde::Deserialize;
 use tokio::fs;
 use uuid::Uuid;
-use crate::{BackendState, write_safe};
+use crate::{BackendState, instance::Instance, write_safe};
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AtLauncherConfig {
+	maximum_memory: Option<usize>,
+}
 
 /// Going to just get the types converted before deleting a bunch probably...
 #[derive(Deserialize)]
@@ -17,6 +24,8 @@ pub struct AtLauncherInstance {
     id: String,
     // compliance_level: usize,
     // java_version: JavaVersion,
+    // NOTE: enable the below line will cause an error as `rules.features.has_custom_resolution` is a `"true"` not `true`
+    // NOTE: That being said, we probably don't need to worry about it that much... hopefully...
     // arguments: LaunchArguments,
     // #[serde(rename = "typ")]
     // modpack_type: String,
@@ -38,12 +47,19 @@ struct Launcher {
     // description: String,
     // pack_id: usize,
     // external_pack_id: usize,
-    version: String,
+    /// This is modpack version. NOT GAME VERSION
+    // version: String,
     // enable_curse_forge_integration: bool,
     // enable_editing_mods: bool,
     loader_version: LoaderVersion,
-    // required_memory: usize,
+    required_memory: usize,
     // required_perm_gen: usize,
+    maximum_memory: Option<usize>,
+    enable_commands: Option<bool>,
+    wrapper_command: Option<String>,
+    // use_system_glfw: Option<bool>,
+    // use_system_open_al: Option<bool>,
+
     // quick_play: QuickPlay,
     // is_dev: bool,
     // is_playable: bool,
@@ -65,7 +81,7 @@ struct Launcher {
 #[serde(rename_all = "camelCase")]
 struct LoaderVersion {
     // version: String,
-    // raw_version: String,
+    raw_version: String,
     // recommended: bool,
     #[serde(rename = "type")]
     loader_type: Loader,
@@ -194,11 +210,19 @@ struct Mod {
 
 
 pub fn import_from_atlauncher(backend: &BackendState, path: &Path, import_accounts: bool, import_instance: bool, modal_action: ModalAction) {
+	let launcher_config = {
+		match std::fs::read(path.join("configs/ATLauncher.json")).ok() {
+		    Some(launcher_config_bytes) => serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).ok(),
+		    None => None,
+		}
+	};
+	log::debug!("Launcher config: {}", launcher_config.is_some());
+
 	if import_accounts {
 		import_accounts_from_atlauncher(backend, path, &modal_action);
 	}
 	if import_instance {
-		import_instances_from_atlauncher(backend, path, &modal_action);
+		import_instances_from_atlauncher(backend, path, &launcher_config, &modal_action);
 	}
 }
 
@@ -213,15 +237,41 @@ struct AtLauncherInstanceToImport {
 	folder: PathBuf,
 }
 
-fn try_load_from_atlauncher(config_path: &Path) -> anyhow::Result<InstanceConfiguration> {
-	let instance_cfg_bytes = std::fs::read(config_path)?;
-    let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes)?;
+fn try_load_from_atlauncher(config_path: &Path, launcher_config: &Option<AtLauncherConfig>) -> anyhow::Result<InstanceConfiguration> {
+	// let instance_cfg_bytes = std::fs::read(config_path)?;
+ 	// let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes)?;
+ 	let instance_cfg_bytes = std::fs::read(config_path).expect("Failed to read from fs");
+    let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes).expect("Failed to convert to json");
+
     // tbh, idk why they have it as `id` they just do...
-    let configuration = InstanceConfiguration::new(instance_cfg.id.into(), instance_cfg.launcher.loader_version.loader_type);
+    // or at least, it's the most reliable one i've managed to read from so far.
+    let mut configuration = InstanceConfiguration::new(instance_cfg.id.into(), instance_cfg.launcher.loader_version.loader_type);
+
+    configuration.memory = if let Some(max_memory) = instance_cfg.launcher.maximum_memory.or({
+    	if let Some(lc) = launcher_config { lc.maximum_memory } else { None }
+    }) {
+	    Some(InstanceMemoryConfiguration {
+	        enabled: true,
+	        min: instance_cfg.launcher.required_memory as u32,
+	        max: max_memory as u32,
+	    })
+    } else { None };
+
+    if let Some(enable_commands) = instance_cfg.launcher.enable_commands && enable_commands {
+	    configuration.wrapper_command = if let Some(wrapper_command) = instance_cfg.launcher.wrapper_command {
+	    	Some(InstanceWrapperCommandConfiguration {
+	        	enabled: true,
+	         	flags: wrapper_command.into(),
+	     	})
+	    } else { None };
+    }
+
+    configuration.preferred_loader_version = Some(instance_cfg.launcher.loader_version.raw_version.into());
+
     Ok(configuration)
 }
 
-fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_action: &ModalAction) {
+fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, launcher_config: &Option<AtLauncherConfig>, modal_action: &ModalAction) {
 	let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
@@ -274,8 +324,9 @@ fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_a
 	    modal_action.trackers.push(tracker.clone());
 	    tracker.notify();
 
-		let Ok(configuration) = try_load_from_atlauncher(&to_import.config_path) else {
+		let Ok(configuration) = try_load_from_atlauncher(&to_import.config_path, launcher_config) else {
         	tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
+			log::error!("Failed to load config path from atlauncher for {:?}", to_import.folder.file_name().unwrap());
          	tracker.notify();
           	continue;
 		};

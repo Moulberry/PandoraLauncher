@@ -1,71 +1,74 @@
 use std::path::{Path, PathBuf};
 use bridge::modal_action::{ModalAction, ProgressTracker};
-use schema::{assets_index::{AssetObject, AssetsIndex}, modrinth::{ModrinthHit, ModrinthProjectVersion}, version::{AssetIndexLink, GameDownloads, GameLibrary, GameLogging, JavaVersion, LaunchArguments}};
+use log::debug;
+use rusqlite::Transaction;
+use schema::{assets_index::{AssetObject, AssetsIndex}, instance::InstanceConfiguration, loader::Loader, modrinth::{ModrinthHit, ModrinthProjectVersion}, version::{AssetIndexLink, GameDownloads, GameLibrary, GameLogging, JavaVersion, LaunchArguments}};
 use serde::Deserialize;
+use tokio::fs;
 use uuid::Uuid;
-use crate::BackendState;
+use crate::{BackendState, write_safe};
 
 /// Going to just get the types converted before deleting a bunch probably...
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AtLauncherInstance {
-    uuid: Uuid,
+    // uuid: Uuid,
     launcher: Launcher,
-    id: String,
-    compliance_level: usize,
-    java_version: JavaVersion,
-    arguments: LaunchArguments,
-    #[serde(rename = "typ")]
-    modpack_type: String,
-    time: String,
-    release_time: String,
-    minimum_launcher_version: String,
-    asset_index: AssetIndexLink,
-    assets: String,
-    downloads: Vec<GameDownloads>,
-    logging: GameLogging,
-    libraries: GameLibrary
+    // id: String,
+    // compliance_level: usize,
+    // java_version: JavaVersion,
+    // arguments: LaunchArguments,
+    // #[serde(rename = "typ")]
+    // modpack_type: String,
+    // time: String,
+    // release_time: String,
+    // minimum_launcher_version: String,
+    // asset_index: AssetIndexLink,
+    // assets: String,
+    // downloads: Vec<GameDownloads>,
+    // logging: GameLogging,
+    // libraries: GameLibrary
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Launcher {
-    name: String,
-    pack: String,
-    description: String,
-    pack_id: usize,
-    external_pack_id: usize,
+    // name: String,
+    // pack: String,
+    // description: String,
+    // pack_id: usize,
+    // external_pack_id: usize,
     version: String,
-    enable_curse_forge_integration: bool,
-    enable_editing_mods: bool,
+    // enable_curse_forge_integration: bool,
+    // enable_editing_mods: bool,
     loader_version: LoaderVersion,
-    required_memory: usize,
-    required_perm_gen: usize,
-    quick_play: QuickPlay,
-    is_dev: bool,
-    is_playable: bool,
-    assets_map_to_resources: bool,
-    curse_forge_project: Option<CurseForgeProject>,
-    curse_forge_project_description: Option<String>,
-    curse_forge_file: Option<CurseForgeFile>,
-    override_paths: Vec<String>,
-    check_for_updates: bool,
-    mods: Vec<Mod>,
-    ignored_updates: Vec<String>,
-    ignore_all_updates: bool,
-    vanilla_instance: bool,
-    last_played: usize,
-    num_plays: usize,
+    // required_memory: usize,
+    // required_perm_gen: usize,
+    // quick_play: QuickPlay,
+    // is_dev: bool,
+    // is_playable: bool,
+    // assets_map_to_resources: bool,
+    // curse_forge_project: Option<CurseForgeProject>,
+    // curse_forge_project_description: Option<String>,
+    // curse_forge_file: Option<CurseForgeFile>,
+    // override_paths: Vec<String>,
+    // check_for_updates: bool,
+    // mods: Vec<Mod>,
+    // ignored_updates: Vec<String>,
+    // ignore_all_updates: bool,
+    // vanilla_instance: bool,
+    // last_played: usize,
+    // num_plays: usize,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LoaderVersion {
-    version: String,
-    raw_version: String,
-    recommended: bool,
+    // version: String,
+    // raw_version: String,
+    // recommended: bool,
     #[serde(rename = "type")]
-    loader_type: String,
+    loader_type: Loader,
     // downloadables: Vec<>
 }
 
@@ -114,7 +117,7 @@ struct CurseForgeAuthor {
 struct CurseForgeFileDependency {
 	file_id: usize,
 	mod_id: usize,
-	relation_typee: usize,
+	relation_type: usize,
 }
 
 #[derive(Deserialize)]
@@ -195,7 +198,7 @@ pub fn import_from_atlauncher(backend: &BackendState, path: &Path, import_accoun
 		import_accounts_from_atlauncher(backend, path, &modal_action);
 	}
 	if import_instance {
-		import_instances_from_atlauncher(backend, path, &modal_action);
+		import_instances_from_atlauncher(backend, path, &modal_action).expect("I NEED TO DEAL WITH THIS!!!");
 	}
 }
 
@@ -206,11 +209,11 @@ fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, modal_ac
 
 struct AtLauncherInstanceToImport {
 	pandora_path: PathBuf,
-	atlauncher_instance_cfg: PathBuf,
+	instance_configuration: InstanceConfiguration,
 	folder: PathBuf,
 }
 
-fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_action: &ModalAction) {
+fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_action: &ModalAction) -> anyhow::Result<()> {
 	let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
@@ -218,7 +221,7 @@ fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_a
     let Ok(read_dir) = std::fs::read_dir(path.join("instances")) else {
         all_tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
         all_tracker.notify();
-        return;
+        return Ok(());
     };
 
     let mut to_import = Vec::new();
@@ -246,14 +249,60 @@ fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_a
             continue;
         }
 
+        debug!("Loading: {:?}", filename);
+        let instance_cfg_bytes = std::fs::read(atlauncher_instance_cfg)?;
+        let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes)?;
+        let mut configuration = InstanceConfiguration::new(instance_cfg.launcher.version.into(), instance_cfg.launcher.loader_version.loader_type);
+
         to_import.push(AtLauncherInstanceToImport {
             pandora_path,
-            atlauncher_instance_cfg,
+            instance_configuration: configuration,
             folder,
         });
     }
 
     all_tracker.set_total(to_import.len());
+
+    for to_import in to_import {
+	    let title = format!("Importing {}", to_import.folder.file_name().unwrap().to_string_lossy());
+	    let tracker = ProgressTracker::new(title.into(), backend.send.clone());
+	    modal_action.trackers.push(tracker.clone());
+	    tracker.notify();
+
+		let Ok(configuration_bytes) = serde_json::to_vec(&to_import.instance_configuration) else {
+            tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
+            tracker.notify();
+            continue;
+        };
+
+		_ = std::fs::create_dir_all(&to_import.pandora_path);
+		let target_dot_minecraft = to_import.pandora_path.join(".minecraft");
+
+		let copy_options = fs_extra::dir::CopyOptions::default().copy_inside(true);
+		_ = fs_extra::dir::copy_with_progress(to_import.folder, &target_dot_minecraft, &copy_options, |state| {
+			tracker.set_total(state.total_bytes as usize);
+			tracker.set_count(state.copied_bytes as usize);
+			tracker.notify();
+
+			fs_extra::dir::TransitProcessResult::ContinueOrAbort
+		});
+
+		// remove old configuration, rename icon path.
+		_ = std::fs::rename(&target_dot_minecraft.join("instance.png"), &to_import.pandora_path.join("icon.png"));
+		_ = std::fs::remove_file(&target_dot_minecraft.join("instance.json"));
+
+		let info_path = to_import.pandora_path.join("info_v1.json");
+		_ = write_safe(&info_path, &configuration_bytes);
+
+		all_tracker.add_count(1);
+		all_tracker.notify();
+
+		tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Fast);
+		tracker.notify();
+    }
+
     all_tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Normal);
     all_tracker.notify();
+
+    Ok(())
 }

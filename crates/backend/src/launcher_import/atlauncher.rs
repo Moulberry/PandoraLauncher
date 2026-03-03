@@ -198,7 +198,7 @@ pub fn import_from_atlauncher(backend: &BackendState, path: &Path, import_accoun
 		import_accounts_from_atlauncher(backend, path, &modal_action);
 	}
 	if import_instance {
-		import_instances_from_atlauncher(backend, path, &modal_action).expect("I NEED TO DEAL WITH THIS!!!");
+		import_instances_from_atlauncher(backend, path, &modal_action);
 	}
 }
 
@@ -209,11 +209,18 @@ fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, modal_ac
 
 struct AtLauncherInstanceToImport {
 	pandora_path: PathBuf,
-	instance_configuration: InstanceConfiguration,
+	config_path: PathBuf,
 	folder: PathBuf,
 }
 
-fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_action: &ModalAction) -> anyhow::Result<()> {
+fn try_load_from_atlauncher(config_path: &Path) -> anyhow::Result<InstanceConfiguration> {
+	let instance_cfg_bytes = std::fs::read(config_path)?;
+    let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes)?;
+    let configuration = InstanceConfiguration::new(instance_cfg.launcher.version.into(), instance_cfg.launcher.loader_version.loader_type);
+    Ok(configuration)
+}
+
+fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_action: &ModalAction) {
 	let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
@@ -221,7 +228,7 @@ fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_a
     let Ok(read_dir) = std::fs::read_dir(path.join("instances")) else {
         all_tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
         all_tracker.notify();
-        return Ok(());
+        return;
     };
 
     let mut to_import = Vec::new();
@@ -250,13 +257,10 @@ fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_a
         }
 
         debug!("Loading: {:?}", filename);
-        let instance_cfg_bytes = std::fs::read(atlauncher_instance_cfg)?;
-        let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes)?;
-        let mut configuration = InstanceConfiguration::new(instance_cfg.launcher.version.into(), instance_cfg.launcher.loader_version.loader_type);
 
         to_import.push(AtLauncherInstanceToImport {
             pandora_path,
-            instance_configuration: configuration,
+            config_path: atlauncher_instance_cfg,
             folder,
         });
     }
@@ -269,7 +273,13 @@ fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_a
 	    modal_action.trackers.push(tracker.clone());
 	    tracker.notify();
 
-		let Ok(configuration_bytes) = serde_json::to_vec(&to_import.instance_configuration) else {
+		let Ok(configuration) = try_load_from_atlauncher(&to_import.config_path) else {
+        	tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
+         	tracker.notify();
+          	continue;
+		};
+
+		let Ok(configuration_bytes) = serde_json::to_vec(&configuration) else {
             tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
             tracker.notify();
             continue;
@@ -302,7 +312,5 @@ fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, modal_a
     }
 
     all_tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Normal);
-    all_tracker.notify();
-
-    Ok(())
+    all_tracker.notify()
 }

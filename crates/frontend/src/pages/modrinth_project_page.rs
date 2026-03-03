@@ -1,21 +1,20 @@
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::{Arc};
 
-use bridge::{instance::{ContentUpdateStatus, InstanceContentID, InstanceID}, message::{AtomicBridgeDataLoadState, MessageToBackend}, meta::MetadataRequest, modal_action::ModalAction, serial::AtomicOptionSerial};
+use bridge::{instance::{InstanceID}, message::{AtomicBridgeDataLoadState, MessageToBackend}, meta::MetadataRequest, modal_action::ModalAction, serial::AtomicOptionSerial};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, IconName, StyledExt, WindowExt, button::{Button, ButtonVariants}, h_flex, notification::NotificationType, scroll::ScrollableElement, skeleton::Skeleton, tab::{Tab, TabBar}, text::TextView, v_flex
+    ActiveTheme, Icon, StyledExt, WindowExt, button::{Button, ButtonVariants}, h_flex, notification::NotificationType, skeleton::Skeleton, tab::{Tab, TabBar}, text::TextView, v_flex
 };
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxHashMap};
 use schema::{content::ContentSource, loader::Loader, modrinth::{
     ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectType,
-    ModrinthSideRequirement,
 }};
 
 use crate::{
     component::{error_alert::ErrorAlert, page::Page, page_path::PagePath}, entity::{
         DataEntities,
         metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult},
-    }, interface_config::InterfaceConfig, pages::modrinth_page::{InstalledMod, PrimaryAction, env_display, format_downloads, get_primary_action, icon_for}, ts, ui
+    }, icon::PandoraIcon, pages::modrinth_page::{InstalledMod, PrimaryAction, env_display, format_downloads, get_primary_action, icon_for}, ts
 };
 
 pub struct ModrinthProjectPage {
@@ -187,7 +186,6 @@ impl Render for ModrinthProjectPage {
                 .into_any_element()
         } else if let Some(project) = &self.project {
             let project = Arc::clone(project);
-            let install_for = self.install_for;
 
             let icon = gpui::img(SharedUri::from(project.icon_url.as_ref().map(|url| url.to_string()).unwrap_or_else(|| "".to_string())))
                     .with_fallback(|| Skeleton::new().rounded_lg().size_20().into_any_element());
@@ -196,7 +194,7 @@ impl Render for ModrinthProjectPage {
 
             let stats = h_flex().gap_4()
                 .child(h_flex().gap_1()
-                    .child(Icon::empty().path("icons/download.svg"))
+                    .child(PandoraIcon::Download)
                     .child(format_downloads(project.downloads)))
                 .child(h_flex().gap_1()
                     .child(env_icon)
@@ -233,7 +231,7 @@ impl Render for ModrinthProjectPage {
             link_row = link_row.child(
                 Button::new("modrinth_web")
                     .label(ts!("modrinth.name")).text_color(cx.theme().muted_foreground)
-                    .icon(Icon::empty().path("icons/external-link.svg"))
+                    .icon(PandoraIcon::ExternalLink)
                     .ghost()
                     .on_click({
                         let url = format!("https://modrinth.com/{}/{}", project_type_str, slug);
@@ -244,14 +242,14 @@ impl Render for ModrinthProjectPage {
             if let Some(url) = &project.source_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("source").label(ts!("instance.content.links.source")).text_color(cx.theme().muted_foreground).icon(Icon::empty().path("icons/code-xml.svg")).ghost()
+                    Button::new("source").label(ts!("instance.content.links.source")).text_color(cx.theme().muted_foreground).icon(PandoraIcon::CodeXml).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
             if let Some(url) = &project.issues_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("issues").label(ts!("instance.content.links.issues")).text_color(cx.theme().muted_foreground).icon(Icon::empty().path("icons/bug.svg")).ghost()
+                    Button::new("issues").label(ts!("instance.content.links.issues")).text_color(cx.theme().muted_foreground).icon(PandoraIcon::Bug).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
@@ -284,7 +282,7 @@ impl Render for ModrinthProjectPage {
                     .id("license")
                     .gap_2()
                     .text_sm()
-                    .child(Icon::empty().path("icons/scroll.svg"))
+                    .child(PandoraIcon::Scroll)
                     .child(display_id);
 
                 if let Some(url) = url {
@@ -311,7 +309,7 @@ impl Render for ModrinthProjectPage {
                 } else {
                     let text = cats.iter().map(|c| ts!(format!("modrinth.category.{}", c))).collect::<Vec<_>>().join(", ");
                     h_flex().gap_2().text_sm()
-                        .child(Icon::empty().path("icons/tags.svg"))
+                        .child(PandoraIcon::Tags)
                         .child(text)
                         .into_any_element()
                 }
@@ -329,7 +327,7 @@ impl Render for ModrinthProjectPage {
                             gv.len())
                     };
                     h_flex().gap_2().text_sm()
-                        .child(Icon::empty().path("icons/layers.svg"))
+                        .child(PandoraIcon::Layers)
                         .child(text)
                         .into_any_element()
                 })

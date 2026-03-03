@@ -6,6 +6,7 @@ use gpui_component::{
     button::{Button, ButtonVariants}, checkbox::Checkbox, scroll::ScrollableElement, spinner::Spinner, v_flex, ActiveTheme as _, Disableable, Sizable
 };
 use schema::{content::ContentSource, loader::Loader};
+use strum::IntoEnumIterator;
 
 use crate::{component::{page::Page, responsive_grid::ResponsiveGrid}, entity::DataEntities, root};
 
@@ -66,21 +67,15 @@ impl Render for ImportPage {
         let mut content = v_flex().size_full().p_3().gap_3()
             .child(ResponsiveGrid::new(Size::new(AvailableSpace::MinContent, AvailableSpace::MinContent))
                 .gap_2()
-                .child(Button::new("prism")
-                    .label("Import from Prism")
-                    .w_full()
-                    .disabled(imports.imports[OtherLauncher::Prism].is_none())
-                    .on_click(cx.listener(|page, _, _, _| page.import_from = Some(OtherLauncher::Prism))))
-                .child(Button::new("modrinth")
-                    .label("Import from Modrinth")
-                    .w_full()
-                    .disabled(imports.imports[OtherLauncher::Modrinth].is_none())
-                    .on_click(cx.listener(|page, _, _, _| page.import_from = Some(OtherLauncher::Modrinth))))
-                .child(Button::new("mmc")
-                    .label("Import from MultiMC")
-                    .w_full()
-                    .disabled(imports.imports[OtherLauncher::MultiMC].is_none())
-                    .on_click(cx.listener(|page, _, _, _| page.import_from = Some(OtherLauncher::MultiMC))))
+                .children({
+                	OtherLauncher::iter().map(|launcher| {
+                		Button::new(launcher.to_string())
+                 			.label(format!("Import from {}", launcher))
+                 			.w_full()
+                  			.disabled(imports.imports[launcher].is_none())
+                     		.on_click(cx.listener(move |page, _, _, _| page.import_from = Some(launcher)))
+                 	})
+                })
                 .child(Button::new("mrpack")
                     .label("Import Modrinth Pack (.mrpack)")
                     .w_full()
@@ -120,11 +115,7 @@ impl Render for ImportPage {
             );
 
         if let Some(import_from) = self.import_from && let Some(import) = &imports.imports[import_from] {
-            let label = match import_from {
-                OtherLauncher::Prism => "Import From Prism",
-                OtherLauncher::Modrinth => "Import From Modrinth",
-                OtherLauncher::MultiMC => "Import From MultiMC",
-            };
+        	let label = format!("Import From {}", import_from);
             let import_accounts = self.import_accounts && import.can_import_accounts;
             content = content.child(v_flex()
                 .w_full()
@@ -156,7 +147,7 @@ impl Render for ImportPage {
                         })
                     )))
                 )
-                .child(Button::new("doimport").disabled(!import_accounts && !self.import_instances).success().label(label).on_click(cx.listener(move |page, _, window, cx| {
+                .child(Button::new("doimport").disabled(!import_accounts && !self.import_instances).success().label(label.clone()).on_click(cx.listener(move |page, _, window, cx| {
                     let modal_action = ModalAction::default();
 
                     page.backend_handle.send(MessageToBackend::ImportFromOtherLauncher {
@@ -166,7 +157,7 @@ impl Render for ImportPage {
                         modal_action: modal_action.clone()
                     });
 
-                    let title = SharedString::new_static(label);
+                    let title = SharedString::new(label.clone());
                     crate::modals::generic::show_modal(window, cx, title, "Error importing".into(), modal_action);
                 })))
             )

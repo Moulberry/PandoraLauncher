@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use strum::{Display, EnumIter};
 
 #[derive(Default, Debug)]
 pub struct ImportFromOtherLaunchers {
@@ -11,7 +12,7 @@ pub struct ImportFromOtherLauncher {
     pub paths: Vec<PathBuf>,
 }
 
-#[derive(Debug, Clone, Copy, enum_map::Enum)]
+#[derive(Debug, Display, Clone, Copy, enum_map::Enum, EnumIter)]
 pub enum OtherLauncher {
     Prism,
     Modrinth,

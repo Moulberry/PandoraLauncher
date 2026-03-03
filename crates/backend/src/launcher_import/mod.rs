@@ -2,10 +2,14 @@ use std::path::Path;
 
 use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, modal_action::ModalAction};
 use schema::instance::InstanceConfiguration;
-use crate::{BackendState, launcher_import::{modrithn::{import_instances_from_modrinth, read_profiles_from_modrinth_db}, multimc::{import_from_multimc, try_load_from_multimc}}};
+use crate::{BackendState, launcher_import::{
+		modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db},
+		multimc::{import_from_multimc, try_load_from_multimc},
+	}
+};
 
 mod multimc;
-mod modrithn;
+mod modrinth;
 
 
 pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {

@@ -12,14 +12,13 @@ use gpui_component::{
 use schema::{content::ContentSource, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
-use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, root, ts, ui::PageType};
-
-use super::instance_page::InstanceSubpageType;
+use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, root, ts, ui::PageType};
 
 pub struct InstanceModsSubpage {
     instance: InstanceID,
     instance_loader: Loader,
     instance_version: Ustr,
+    instance_name: SharedString,
     backend_handle: BackendHandle,
     mods_state: Arc<AtomicBridgeDataLoadState>,
     mod_list: Entity<ListState<ContentListDelegate>>,
@@ -38,6 +37,7 @@ impl InstanceModsSubpage {
         let instance_loader = instance.configuration.loader;
         let instance_version = instance.configuration.minecraft_version;
         let instance_id = instance.id;
+        let instance_name = instance.name.clone();
 
         let mods_state = Arc::clone(&instance.mods_state);
 
@@ -60,6 +60,7 @@ impl InstanceModsSubpage {
             instance: instance_id,
             instance_loader,
             instance_version,
+            instance_name,
             backend_handle,
             mods_state,
             mod_list,
@@ -108,13 +109,11 @@ impl Render for InstanceModsSubpage {
                 }
             }))
             .child(Button::new("addmr").label(ts!("instance.content.install.from_modrinth")).success().compact().small().on_click({
-                let instance = self.instance;
+                let instance_name = self.instance_name.clone();
                 move |_, window, cx| {
-                    let page = crate::ui::PageType::Modrinth {
-                        installing_for: Some(instance),
-                        project_type: Some(ModrinthProjectType::Mod)
-                    };
-                    let path = &[PageType::Instances, PageType::InstancePage(instance, InstanceSubpageType::Mods)];
+                    let page = crate::ui::PageType::Modrinth { installing_for: Some(instance_name.clone()) };
+                    InterfaceConfig::get_mut(cx).modrinth_page_project_type = ModrinthProjectType::Mod;
+                    let path = &[PageType::Instances, PageType::InstancePage { name: instance_name.clone() }];
                     root::switch_page(page, path, window, cx);
                 }
             }))

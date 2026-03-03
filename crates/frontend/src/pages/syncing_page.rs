@@ -8,7 +8,7 @@ use gpui_component::{
 use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 
-use crate::{component::page::Page, entity::DataEntities, icon::PandoraIcon, ts};
+use crate::{entity::DataEntities, icon::PandoraIcon, pages::page::Page, ts};
 
 pub struct SyncingPage {
     backend_handle: BackendHandle,
@@ -124,6 +124,16 @@ impl SyncingPage {
     }
 }
 
+impl Page for SyncingPage {
+    fn controls(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
+    }
+
+    fn scrollable(&self, _cx: &App) -> bool {
+        true
+    }
+}
+
 impl Render for SyncingPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(sync_state) = &self.sync_state else {
@@ -131,9 +141,7 @@ impl Render for SyncingPage {
                 .child(ts!("instance.sync.description"))
                 .child(Spinner::new().with_size(gpui_component::Size::Large));
 
-            return Page::new(ts!("instance.sync.label"))
-                .scrollable()
-                .child(content);
+            return content;
         };
 
         let sync_folder = sync_state.sync_folder.clone();
@@ -220,9 +228,7 @@ impl Render for SyncingPage {
                     }
                 }))));
 
-        Page::new(ts!("instance.sync.label"))
-            .scrollable()
-            .child(content)
+        content
     }
 }
 

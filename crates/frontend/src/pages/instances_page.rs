@@ -6,7 +6,7 @@ use gpui_component::{
 use strum::IntoEnumIterator;
 
 use crate::{
-    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, page::Page, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::FrontendMetadata}, icon::PandoraIcon, interface_config::{InstancesViewMode, InterfaceConfig}, ts
+    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::FrontendMetadata}, icon::PandoraIcon, interface_config::{InstancesViewMode, InterfaceConfig}, pages::page::Page, ts
 };
 
 pub struct InstancesPage {
@@ -50,8 +50,8 @@ impl InstancesPage {
     }
 }
 
-impl Render for InstancesPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+impl Page for InstancesPage {
+    fn controls(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let create_instance = Button::new("create_instance")
             .success()
             .icon(PandoraIcon::Plus)
@@ -62,7 +62,20 @@ impl Render for InstancesPage {
             }));
         let select_view = Select::new(&self.view_dropdown).title_prefix(format!("{}: ", ts!("instance.view")));
 
-        let content = match InterfaceConfig::get(cx).instances_view_mode {
+        h_flex().gap_3().child(create_instance).child(select_view)
+    }
+
+    fn scrollable(&self, cx: &App) -> bool {
+        match InterfaceConfig::get(cx).instances_view_mode {
+            InstancesViewMode::Cards => true,
+            InstancesViewMode::List => false,
+        }
+    }
+}
+
+impl Render for InstancesPage {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        match InterfaceConfig::get(cx).instances_view_mode {
             InstancesViewMode::Cards => {
                 let cards = self.instance_table.update(cx, |table, cx| {
                     let rows = table.delegate().rows_count(cx);
@@ -79,13 +92,7 @@ impl Render for InstancesPage {
             InstancesViewMode::List => {
                 DataTable::new(&self.instance_table).bordered(false).into_any_element()
             },
-        };
-
-        let title_buttons = h_flex().gap_3().child(create_instance).child(select_view);
-
-        Page::new(h_flex().gap_8().child(ts!("instance.title")).child(title_buttons))
-            .scrollable()
-            .child(content)
+        }
     }
 }
 

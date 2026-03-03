@@ -3,17 +3,16 @@ use std::sync::Arc;
 use bridge::{instance::InstanceID, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, tooltip::Tooltip, v_flex
+    ActiveTheme as _, Disableable, Icon, InteractiveElementExt, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, tooltip::Tooltip, v_flex
 };
 use rand::Rng;
-use schema::modrinth::ModrinthProjectType;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath}, entity::{
+    component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath, title_bar::TitleBar}, entity::{
         DataEntities, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::{InstancePage, InstanceSubpageType}, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, syncing_page::SyncingPage}, png_render_cache, ts
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, page::Page, syncing_page::SyncingPage}, png_render_cache, ts
 };
 
 pub struct LauncherUI {
@@ -28,69 +27,9 @@ pub struct LauncherUI {
     _instance_moved_to_top_subscription: Subscription,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum PageType {
-    Instances,
-    Modrinth {
-        installing_for: Option<InstanceID>,
-        project_type: Option<ModrinthProjectType>,
-    },
-    Import,
-    Syncing,
-    InstancePage(InstanceID, InstanceSubpageType),
-}
-
-impl PageType {
-    fn to_serialized(&self, data: &DataEntities, cx: &App) -> SerializedPageType {
-        match self {
-            PageType::Instances => SerializedPageType::Instances,
-            PageType::Modrinth { installing_for, .. } => {
-                if let Some(installing_for) = installing_for {
-                    if let Some(name) = InstanceEntries::find_name_by_id(&data.instances, *installing_for, cx) {
-                        return SerializedPageType::Modrinth { installing_for: Some(name) };
-                    }
-                }
-                SerializedPageType::Modrinth { installing_for: None }
-            },
-            PageType::Import => SerializedPageType::Import,
-            PageType::Syncing => SerializedPageType::Syncing,
-            PageType::InstancePage(id, _) => {
-                if let Some(name) = InstanceEntries::find_name_by_id(&data.instances, *id, cx) {
-                    SerializedPageType::InstancePage(name)
-                } else {
-                    SerializedPageType::Instances
-                }
-            },
-        }
-    }
-
-    fn from_serialized(serialized: &SerializedPageType, data: &DataEntities, cx: &App) -> Self {
-        match serialized {
-            SerializedPageType::Instances => PageType::Instances,
-            SerializedPageType::Modrinth { installing_for } => {
-                if let Some(installing_for) = installing_for {
-                    if let Some(id) = InstanceEntries::find_id_by_name(&data.instances, installing_for, cx) {
-                        return PageType::Modrinth { installing_for: Some(id), project_type: None };
-                    }
-                }
-                PageType::Modrinth { installing_for: None, project_type: None }
-            },
-            SerializedPageType::Import => PageType::Import,
-            SerializedPageType::Syncing => PageType::Syncing,
-            SerializedPageType::InstancePage(name) => {
-                if let Some(id) = InstanceEntries::find_id_by_name(&data.instances, name, cx) {
-                    PageType::InstancePage(id, InstanceSubpageType::Quickplay)
-                } else {
-                    PageType::Instances
-                }
-            },
-        }
-    }
-}
-
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SerializedPageType {
+pub enum PageType {
     #[default]
     Instances,
     Modrinth {
@@ -98,39 +37,72 @@ pub enum SerializedPageType {
     },
     Import,
     Syncing,
-    InstancePage(SharedString),
-}
-
-#[derive(Clone)]
-pub enum LauncherPage {
-    Instances(Entity<InstancesPage>),
-    Modrinth {
-        installing_for: Option<InstanceID>,
-        page: Entity<ModrinthSearchPage>,
+    InstancePage {
+        name: SharedString,
     },
-    Import(Entity<ImportPage>),
-    Syncing(Entity<SyncingPage>),
-    InstancePage(InstanceID, InstanceSubpageType, Entity<InstancePage>),
 }
 
-impl LauncherPage {
-    pub fn into_any_element(self) -> AnyElement {
+impl PageType {
+    pub fn title(&self) -> SharedString {
         match self {
-            LauncherPage::Instances(entity) => entity.into_any_element(),
-            LauncherPage::Modrinth { page, .. } => page.into_any_element(),
-            LauncherPage::Import(entity) => entity.into_any_element(),
-            LauncherPage::Syncing(entity) => entity.into_any_element(),
-            LauncherPage::InstancePage(_, _, entity) => entity.into_any_element(),
+            PageType::Instances => ts!("instance.title"),
+            PageType::Modrinth { installing_for } => {
+                if installing_for.is_some() {
+                    ts!("instance.content.install.from_modrinth")
+                } else {
+                    ts!("modrinth.name")
+                }
+            },
+            PageType::Import => "Import".into(),
+            PageType::Syncing => ts!("instance.sync.label"),
+            PageType::InstancePage { name } => {
+                name.clone()
+            },
         }
     }
+}
 
-    pub fn page_type(&self) -> PageType {
-        match self {
-            LauncherPage::Instances(_) => PageType::Instances,
-            LauncherPage::Modrinth { installing_for, .. } => PageType::Modrinth { installing_for: *installing_for, project_type: None },
-            LauncherPage::Import(_) => PageType::Import,
-            LauncherPage::Syncing(_) => PageType::Syncing,
-            LauncherPage::InstancePage(id, subpage, _) => PageType::InstancePage(*id, *subpage),
+#[derive(IntoElement, Clone)]
+pub enum LauncherPage {
+    Instances(Entity<InstancesPage>),
+    Modrinth(Entity<ModrinthSearchPage>),
+    Import(Entity<ImportPage>),
+    Syncing(Entity<SyncingPage>),
+    InstancePage(Entity<InstancePage>),
+}
+
+impl RenderOnce for LauncherPage {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        fn process(entity: Entity<impl Page>, window: &mut Window, cx: &mut App) -> (bool, AnyElement, AnyElement) {
+            entity.update(cx, |page, cx| {
+                (page.scrollable(cx), page.controls(window, cx).into_any_element(), page.render(window, cx).into_any_element())
+            })
+        }
+
+        let (scrollable, controls, page) = match self {
+            LauncherPage::Instances(entity) => process(entity, window, cx),
+            LauncherPage::Modrinth(entity) => process(entity, window, cx),
+            LauncherPage::Import(entity) => process(entity, window, cx),
+            LauncherPage::Syncing(entity) => process(entity, window, cx),
+            LauncherPage::InstancePage(entity) => process(entity, window, cx),
+        };
+
+        let config = InterfaceConfig::get(cx);
+        let page_path = PagePath::new(config.main_page.clone(), config.page_path.clone());
+        let title_bar = TitleBar::new(page_path, controls);
+
+        if scrollable {
+            v_flex()
+                .size_full()
+                .child(title_bar)
+                .child(div().flex_1().overflow_hidden().child(
+                    v_flex().size_full().overflow_y_scrollbar().child(page),
+                ))
+        } else {
+            v_flex()
+                .size_full()
+                .child(title_bar)
+                .child(page)
         }
     }
 }
@@ -178,8 +150,9 @@ impl LauncherUI {
         let _instance_removed_subscription =
             cx.subscribe_in::<_, InstanceRemovedEvent>(&data.instances, window, |this, _, event, window, cx| {
                 this.recent_instances.retain(|entry| entry.0 != event.id);
-                if let LauncherPage::InstancePage(id, _, _) = this.page
-                    && id == event.id
+
+                if let LauncherPage::InstancePage(page) = &this.page
+                    && page.read(cx).instance.read(cx).id == event.id
                 {
                     this.switch_page(PageType::Instances, &[], window, cx);
                 }
@@ -196,17 +169,33 @@ impl LauncherUI {
             });
 
         let config = InterfaceConfig::get(cx);
-        let page_type = PageType::from_serialized(&config.main_page, data, cx);
-        let page_path: Vec<PageType> = config.page_path.iter().map(|page| PageType::from_serialized(page, data, cx)).collect();
 
-        let mut default_sidebar_width = InterfaceConfig::get(cx).sidebar_width;
+        let mut default_sidebar_width = config.sidebar_width;
         if default_sidebar_width <= 0.0 {
             default_sidebar_width = 150.0;
         }
 
+        let main_page = config.main_page.clone();
+
+        // If main_page failed to deserialize, also reset the path
+        if main_page == PageType::Instances {
+            let config = InterfaceConfig::get_mut(cx);
+            config.page_path = [].into();
+        }
+
+        let page = match Self::create_page(&data, main_page.clone(), window, cx) {
+            Ok(page) => page,
+            Err(page_type) => {
+                let config = InterfaceConfig::get_mut(cx);
+                config.main_page = page_type.clone();
+                config.page_path = [].into();
+                Self::create_page(&data, page_type, window, cx).unwrap()
+            },
+        };
+
         Self {
             data: data.clone(),
-            page: Self::create_page(&data, page_type, &page_path, window, cx),
+            page,
             sidebar_state,
             default_sidebar_width,
             recent_instances,
@@ -217,54 +206,65 @@ impl LauncherUI {
         }
     }
 
-    fn create_page(data: &DataEntities, page: PageType, path: &[PageType], window: &mut Window, cx: &mut Context<Self>) -> LauncherPage {
-        let path = PagePath::new(path.iter().cloned().chain(std::iter::once(page)).collect());
+    fn create_page(data: &DataEntities, page: PageType, window: &mut Window, cx: &mut Context<Self>) -> Result<LauncherPage, PageType> {
         match page {
             PageType::Instances => {
-                LauncherPage::Instances(cx.new(|cx| InstancesPage::new(data, window, cx)))
+                Ok(LauncherPage::Instances(cx.new(|cx| InstancesPage::new(data, window, cx))))
             },
-            PageType::Modrinth { installing_for, project_type } => {
+            PageType::Modrinth { ref installing_for } => {
+                let installing_for = installing_for.as_ref().and_then(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
+
                 let page = cx.new(|cx| {
-                    ModrinthSearchPage::new(installing_for, project_type, path, data, window, cx)
+                    ModrinthSearchPage::new(installing_for, data, window, cx)
                 });
-                LauncherPage::Modrinth {
-                    installing_for,
-                    page,
-                }
+                 Ok(LauncherPage::Modrinth(page))
             },
             PageType::Import => {
-                LauncherPage::Import(cx.new(|cx| ImportPage::new(data, window, cx)))
+                 Ok(LauncherPage::Import(cx.new(|cx| ImportPage::new(data, window, cx))))
             },
             PageType::Syncing => {
-                LauncherPage::Syncing(cx.new(|cx| SyncingPage::new(data, window, cx)))
+                 Ok(LauncherPage::Syncing(cx.new(|cx| SyncingPage::new(data, window, cx))))
             },
-            PageType::InstancePage(id, subpage) => {
-                LauncherPage::InstancePage(id, subpage, cx.new(|cx| {
-                    InstancePage::new(id, subpage, path, data, window, cx)
-                }))
+            PageType::InstancePage { ref name } => {
+                let Some(id) = InstanceEntries::find_id_by_name(&data.instances, name, cx) else {
+                    return Err(PageType::Instances);
+                };
+
+                Ok(LauncherPage::InstancePage(cx.new(|cx| {
+                    InstancePage::new(id, data, window, cx)
+                })))
             },
         }
     }
 
-    pub fn switch_page(&mut self, page: PageType, breadcrumbs: &[PageType], window: &mut Window, cx: &mut Context<Self>) {
-        if self.page.page_type() == page {
+    pub fn switch_page(&mut self, page: PageType, page_path: &[PageType], window: &mut Window, cx: &mut Context<Self>) {
+        if InterfaceConfig::get(cx).main_page == page {
             return;
         }
 
-        let main_page = page.to_serialized(&self.data, cx);
-        let page_path = breadcrumbs.iter().map(|page| page.to_serialized(&self.data, cx)).collect();
         let config = InterfaceConfig::get_mut(cx);
-        config.main_page = main_page;
-        config.page_path = page_path;
+        config.main_page = page.clone();
+        config.page_path = page_path.into();
 
-        self.page = Self::create_page(&self.data, page, breadcrumbs, window, cx);
+        match Self::create_page(&self.data, page, window, cx) {
+            Ok(page) => {
+                self.page = page;
+            },
+            Err(fallback) => {
+                let config = InterfaceConfig::get_mut(cx);
+                config.main_page = fallback.clone();
+                config.page_path = [].into();
+                self.page = Self::create_page(&self.data, fallback, window, cx).unwrap();
+            },
+        }
+
         cx.notify();
     }
 }
 
 impl Render for LauncherUI {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let page_type = self.page.page_type();
+        let page_type = InterfaceConfig::get(cx).main_page.clone();
 
         let library_group = MenuGroup::new(ts!("instance.play"))
             .child(MenuGroupItem::new(ts!("instance.title"))
@@ -275,9 +275,9 @@ impl Render for LauncherUI {
 
         let content_group = MenuGroup::new(ts!("instance.content.title"))
             .child(MenuGroupItem::new(ts!("modrinth.name"))
-                .active(page_type == PageType::Modrinth { installing_for: None, project_type: None })
+                .active(page_type == PageType::Modrinth { installing_for: None })
                 .on_click(cx.listener(|launcher, _, window, cx| {
-                    launcher.switch_page(PageType::Modrinth { installing_for: None, project_type: None }, &[], window, cx);
+                    launcher.switch_page(PageType::Modrinth { installing_for: None }, &[], window, cx);
                 })));
 
         let files_group = MenuGroup::new("Files")
@@ -301,18 +301,13 @@ impl Render for LauncherUI {
         if !self.recent_instances.is_empty() {
             let mut recent_instances_group = MenuGroup::new(ts!("instance.recent"));
 
-            for (id, name) in &self.recent_instances {
+            for (_, name) in &self.recent_instances {
                 let name = name.clone();
-                let id = *id;
-                let active = if let PageType::InstancePage(page_id, _) = page_type {
-                    page_id == id
-                } else {
-                    false
-                };
-                let item = MenuGroupItem::new(name)
+                let active = page_type == PageType::InstancePage { name: name.clone() };
+                let item = MenuGroupItem::new(name.clone())
                     .active(active)
                     .on_click(cx.listener(move |launcher, _, window, cx| {
-                        launcher.switch_page(PageType::InstancePage(id, InstanceSubpageType::Quickplay), &[PageType::Instances], window, cx);
+                        launcher.switch_page(PageType::InstancePage { name: name.clone() }, &[PageType::Instances], window, cx);
                     }));
                 recent_instances_group = recent_instances_group.child(item);
             }
@@ -509,7 +504,7 @@ impl Render for LauncherUI {
             });
 
         let header = h_flex()
-            .pt_5()
+            .when_else(cfg!(target_os = "macos"), |this| this.pt(px(9.0)), |this| this.pt(px(14.0)))
             .px_5()
             .pb_2()
             .gap_2()
@@ -524,6 +519,14 @@ impl Render for LauncherUI {
             .w_full()
             .bg(cx.theme().sidebar)
             .text_color(cx.theme().sidebar_foreground)
+            .when(cfg!(target_os = "macos"), |this| {
+                this.child(h_flex()
+                    .id("sidebar-double-clicker")
+                    .w_full()
+                    .h(px(32.0))
+                    .on_double_click(|_, window, _| window.titlebar_double_click())
+                )
+            })
             .child(header)
             .child(v_flex()
                 .flex_1()

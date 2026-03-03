@@ -26,7 +26,6 @@ pub struct LauncherUI {
     _instance_modified_subscription: Subscription,
     _instance_removed_subscription: Subscription,
     _instance_moved_to_top_subscription: Subscription,
-    cached_modrinth_page: Option<Entity<ModrinthSearchPage>>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -122,6 +121,7 @@ pub enum LauncherPage {
         project_title: SharedString,
         install_for: Option<InstanceID>,
         page: Entity<ModrinthProjectPage>,
+        modrinth_page: Entity<ModrinthSearchPage>,
     },
     InstancePage(InstanceID, InstanceSubpageType, Entity<InstancePage>),
 }
@@ -223,11 +223,9 @@ impl LauncherUI {
             default_sidebar_width = 150.0;
         }
 
-        let mut cached_modrinth_page: Option<Entity<ModrinthSearchPage>> = None;
-
         Self {
             data: data.clone(),
-            page: Self::create_page(&data, page_type, &page_path, &mut cached_modrinth_page, window, cx),
+            page: Self::create_page(&data, page_type, &page_path, None, window, cx),
             sidebar_state,
             default_sidebar_width,
             recent_instances,
@@ -235,29 +233,19 @@ impl LauncherUI {
             _instance_modified_subscription,
             _instance_removed_subscription,
             _instance_moved_to_top_subscription,
-            cached_modrinth_page,
         }
     }
 
-    fn create_page(data: &DataEntities, page: PageType, path: &[PageType], cached_modrinth_page: &mut Option<Entity<ModrinthSearchPage>>, window: &mut Window, cx: &mut Context<Self>) -> LauncherPage {
+    fn create_page(data: &DataEntities, page: PageType, path: &[PageType], current_page: Option<&LauncherPage>, window: &mut Window, cx: &mut Context<Self>) -> LauncherPage {
         let path = PagePath::new(path.iter().cloned().chain(std::iter::once(page.clone())).collect());
         match page {
             PageType::Instances => {
                 LauncherPage::Instances(cx.new(|cx| InstancesPage::new(data, window, cx)))
             },
             PageType::Modrinth { installing_for, project_type } => {
-                let page = if let Some(cached) = cached_modrinth_page {
-                    cached.clone()
-                } else {
-                    let page = cx.new(|cx| {
-                        ModrinthSearchPage::new(installing_for, project_type, path, data, window, cx)
-                    });
-                    *cached_modrinth_page = Some(page.clone());
-                    page
-                };
                 LauncherPage::Modrinth {
                     installing_for,
-                    page,
+                    page: cx.new(|cx| ModrinthSearchPage::new(installing_for, project_type, path, data, window, cx)),
                 }
             },
             PageType::Import => {
@@ -267,10 +255,19 @@ impl LauncherUI {
                 LauncherPage::Syncing(cx.new(|cx| SyncingPage::new(data, window, cx)))
             },
             PageType::ModrinthProject { project_id, project_title, install_for } => {
+                let modrinth_page = if let Some(LauncherPage::Modrinth { page, .. }) = current_page {
+                    page.clone()
+                } else if let Some(LauncherPage::ModrinthProject { modrinth_page, .. }) = current_page {
+                    modrinth_page.clone()
+                } else {
+                    cx.new(|cx| ModrinthSearchPage::new(install_for, None, path.clone(), data, window, cx))
+                };
+
                 LauncherPage::ModrinthProject {
                     project_id: project_id.clone(),
                     project_title: project_title.clone(),
                     install_for,
+                    modrinth_page,
                     page: cx.new(|cx| {
                         ModrinthProjectPage::new(
                             project_id.clone(),
@@ -296,13 +293,30 @@ impl LauncherUI {
             return;
         }
 
+        if let PageType::Modrinth { installing_for, .. } = &page {
+            if let LauncherPage::ModrinthProject { modrinth_page, .. } = &self.page {
+                let modrinth_page = modrinth_page.clone();
+                let installing_for = *installing_for;
+
+                let main_page = page.to_serialized(&self.data, cx);
+                let page_path = breadcrumbs.iter().map(|p| p.to_serialized(&self.data, cx)).collect();
+                let config = InterfaceConfig::get_mut(cx);
+                config.main_page = main_page;
+                config.page_path = page_path;
+
+                self.page = LauncherPage::Modrinth { installing_for, page: modrinth_page };
+                cx.notify();
+                return;
+            }
+        }
+
         let main_page = page.to_serialized(&self.data, cx);
         let page_path = breadcrumbs.iter().map(|page| page.to_serialized(&self.data, cx)).collect();
         let config = InterfaceConfig::get_mut(cx);
         config.main_page = main_page;
         config.page_path = page_path;
 
-        self.page = Self::create_page(&self.data, page, breadcrumbs, &mut self.cached_modrinth_page, window, cx);
+        self.page = Self::create_page(&self.data, page, breadcrumbs, Some(&self.page), window, cx);
         cx.notify();
     }
 }

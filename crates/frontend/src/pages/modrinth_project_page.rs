@@ -15,7 +15,7 @@ use crate::{
     component::{error_alert::ErrorAlert, page::Page, page_path::PagePath}, entity::{
         DataEntities,
         metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult},
-    }, interface_config::InterfaceConfig, pages::modrinth_page::{InstalledMod, PrimaryAction, icon_for}, ts, ui
+    }, interface_config::InterfaceConfig, pages::modrinth_page::{InstalledMod, PrimaryAction, env_display, format_downloads, get_primary_action, icon_for}, ts, ui
 };
 
 pub struct ModrinthProjectPage {
@@ -59,7 +59,7 @@ impl ModrinthProjectPage {
                     
                     let status = summary.update.status_if_matches(
                         instance.configuration.loader, 
-                        instance.configuration.minecraft_version.as_str().into() // Konwersja na Ustr
+                        instance.configuration.minecraft_version.as_str().into()
                     );
                     
                     installed.push(InstalledMod {
@@ -115,46 +115,12 @@ impl ModrinthProjectPage {
     }
 
     fn get_primary_action(&self, project_id: &str, cx: &App) -> PrimaryAction {
-        let install_latest = self.can_install_latest && !InterfaceConfig::get(cx).modrinth_install_normally;
-
-        let installed = self.installed_mods_by_project.get(project_id);
-
-        if let Some(installed) = installed && !installed.is_empty() {
-            if !install_latest {
-                return PrimaryAction::Reinstall;
-            }
-
-            let mut action = PrimaryAction::CheckForUpdates;
-            for installed_mod in installed {
-                match installed_mod.status {
-                    ContentUpdateStatus::Unknown => {},
-                    ContentUpdateStatus::AlreadyUpToDate => {
-                        if !matches!(action, PrimaryAction::Update(..)) {
-                            action = PrimaryAction::UpToDate;
-                        }
-                    },
-                    ContentUpdateStatus::Modrinth => {
-                        if let PrimaryAction::Update(vec) = &mut action {
-                            vec.push(installed_mod.mod_id);
-                        } else {
-                            action = PrimaryAction::Update(vec![installed_mod.mod_id]);
-                        }
-                    },
-                    _ => {
-                        if action == PrimaryAction::CheckForUpdates {
-                            action = PrimaryAction::ErrorCheckingForUpdates;
-                        }
-                    }
-                };
-            }
-            return action;
-        }
-
-        if install_latest {
-            PrimaryAction::InstallLatest
-        } else {
-            PrimaryAction::Install
-        }
+        get_primary_action(
+            project_id,
+            self.can_install_latest,
+            &self.installed_mods_by_project,
+            cx,
+        )
     }
 
     fn fetch_project(&mut self, cx: &mut Context<Self>) {
@@ -196,18 +162,6 @@ impl ModrinthProjectPage {
     }
 }
 
-fn format_downloads(downloads: usize) -> SharedString {
-    if downloads >= 1_000_000_000 {
-        ts!("instance.content.downloads", num = format!("{}B", (downloads / 10_000_000) as f64 / 100.0))
-    } else if downloads >= 1_000_000 {
-        ts!("instance.content.downloads", num = format!("{}M", (downloads / 10_000) as f64 / 100.0))
-    } else if downloads >= 10_000 {
-        ts!("instance.content.downloads", num = format!("{}K", (downloads / 10) as f64 / 100.0))
-    } else {
-        ts!("instance.content.downloads", num = downloads)
-    }
-}
-
 impl Render for ModrinthProjectPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let breadcrumb = self.page_path.create_breadcrumb(&self.data, cx);
@@ -238,29 +192,7 @@ impl Render for ModrinthProjectPage {
             let icon = gpui::img(SharedUri::from(project.icon_url.as_ref().map(|url| url.to_string()).unwrap_or_else(|| "".to_string())))
                     .with_fallback(|| Skeleton::new().rounded_lg().size_20().into_any_element());
 
-            let (env_icon, env_name) = match (project.client_side.unwrap(), project.server_side.unwrap()) {
-                (ModrinthSideRequirement::Required, ModrinthSideRequirement::Required) => {
-                    (Icon::empty().path("icons/globe.svg"), ts!("modrinth.environment.client_and_server"))
-                },
-                (ModrinthSideRequirement::Required, ModrinthSideRequirement::Unsupported) => {
-                    (Icon::empty().path("icons/computer.svg"), ts!("modrinth.environment.client_only"))
-                },
-                (ModrinthSideRequirement::Required, ModrinthSideRequirement::Optional) => {
-                    (Icon::empty().path("icons/computer.svg"), ts!("modrinth.environment.client_only_server_optional"))
-                },
-                (ModrinthSideRequirement::Unsupported, ModrinthSideRequirement::Required) => {
-                    (Icon::empty().path("icons/router.svg"), ts!("modrinth.environment.server_only"))
-                },
-                (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Required) => {
-                    (Icon::empty().path("icons/router.svg"), ts!("modrinth.environment.server_only_client_optional"))
-                },
-                (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Optional) => {
-                    (Icon::empty().path("icons/globe.svg"), ts!("modrinth.environment.client_or_server"))
-                },
-                _ => (Icon::empty().path("icons/cpu.svg"), ts!("modrinth.environment.unknown_environment")),
-            };
-
-            let gray = Hsla { h: 0.0, s: 0.0, l: 0.5, a: 1.0 };
+            let (env_icon, env_name) = env_display(project.client_side.unwrap(), project.server_side.unwrap());
 
             let stats = h_flex().gap_4()
                 .child(h_flex().gap_1()
@@ -300,7 +232,7 @@ impl Render for ModrinthProjectPage {
             let project_type_str = project.project_type.as_str().to_string();
             link_row = link_row.child(
                 Button::new("modrinth_web")
-                    .label(ts!("modrinth.name")).text_color(gray)
+                    .label(ts!("modrinth.name")).text_color(cx.theme().muted_foreground)
                     .icon(Icon::empty().path("icons/external-link.svg"))
                     .ghost()
                     .on_click({
@@ -312,28 +244,28 @@ impl Render for ModrinthProjectPage {
             if let Some(url) = &project.source_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("source").label(ts!("instance.content.links.source")).text_color(gray).icon(Icon::empty().path("icons/code-xml.svg")).ghost()
+                    Button::new("source").label(ts!("instance.content.links.source")).text_color(cx.theme().muted_foreground).icon(Icon::empty().path("icons/code-xml.svg")).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
             if let Some(url) = &project.issues_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("issues").label(ts!("instance.content.links.issues")).text_color(gray).icon(Icon::empty().path("icons/bug.svg")).ghost()
+                    Button::new("issues").label(ts!("instance.content.links.issues")).text_color(cx.theme().muted_foreground).icon(Icon::empty().path("icons/bug.svg")).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
             if let Some(url) = &project.wiki_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("wiki").label(ts!("instance.content.links.wiki")).text_color(gray).ghost()
+                    Button::new("wiki").label(ts!("instance.content.links.wiki")).text_color(cx.theme().muted_foreground).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
             if let Some(url) = &project.discord_url {
                 let url = url.to_string();
                 link_row = link_row.child(
-                    Button::new("discord").label(ts!("instance.content.links.discord")).text_color(gray).ghost()
+                    Button::new("discord").label(ts!("instance.content.links.discord")).text_color(cx.theme().muted_foreground).ghost()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
             }
@@ -554,7 +486,7 @@ impl Render for ModrinthProjectPage {
                         .child(h_flex().gap_4().mr_4().justify_between()
                             .child(v_flex().w_full().gap_2().mr_auto()
                                 .child(div().h_6().text_xl().overflow_hidden().font_bold().child(project.title.as_deref().unwrap_or(ts!("instance.content.unnamed").as_str()).to_string()))
-                                .child(div().h_12().min_w_0().line_clamp(2).text_color(gray).text_xs().child(project.description.as_deref().unwrap_or("").to_string()))
+                                .child(div().h_12().min_w_0().line_clamp(2).text_color(cx.theme().muted_foreground).text_xs().child(project.description.as_deref().unwrap_or("").to_string()))
                             )
                             .child(install_button)
                         )

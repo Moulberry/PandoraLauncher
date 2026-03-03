@@ -47,6 +47,72 @@ pub struct InstalledMod {
     pub status: ContentUpdateStatus
 }
 
+pub fn get_primary_action(
+    project_id: &str,
+    can_install_latest: bool,
+    installed_mods_by_project: &FxHashMap<Arc<str>, Vec<InstalledMod>>,
+    cx: &App,
+) -> PrimaryAction {
+    let install_latest = can_install_latest && !InterfaceConfig::get(cx).modrinth_install_normally;
+    let installed = installed_mods_by_project.get(project_id);
+
+    if let Some(installed) = installed && !installed.is_empty() {
+        if !install_latest {
+            return PrimaryAction::Reinstall;
+        }
+
+        let mut action = PrimaryAction::CheckForUpdates;
+        for installed_mod in installed {
+            match installed_mod.status {
+                ContentUpdateStatus::Unknown => {},
+                ContentUpdateStatus::AlreadyUpToDate => {
+                    if !matches!(action, PrimaryAction::Update(..)) {
+                        action = PrimaryAction::UpToDate;
+                    }
+                },
+                ContentUpdateStatus::Modrinth => {
+                    if let PrimaryAction::Update(vec) = &mut action {
+                        vec.push(installed_mod.mod_id);
+                    } else {
+                        action = PrimaryAction::Update(vec![installed_mod.mod_id]);
+                    }
+                },
+                _ => {
+                    if action == PrimaryAction::CheckForUpdates {
+                        action = PrimaryAction::ErrorCheckingForUpdates;
+                    }
+                }
+            };
+        }
+        return action;
+    }
+
+    if install_latest {
+        PrimaryAction::InstallLatest
+    } else {
+        PrimaryAction::Install
+    }
+}
+
+pub fn env_display(client_side: ModrinthSideRequirement, server_side: ModrinthSideRequirement) -> (PandoraIcon, SharedString) {
+    match (client_side, server_side) {
+        (ModrinthSideRequirement::Required, ModrinthSideRequirement::Required) =>
+            (PandoraIcon::Globe, ts!("modrinth.environment.client_and_server")),
+        (ModrinthSideRequirement::Required, ModrinthSideRequirement::Unsupported) =>
+            (PandoraIcon::Computer, ts!("modrinth.environment.client_only")),
+        (ModrinthSideRequirement::Required, ModrinthSideRequirement::Optional) =>
+            (PandoraIcon::Computer, ts!("modrinth.environment.client_only_server_optional")),
+        (ModrinthSideRequirement::Unsupported, ModrinthSideRequirement::Required) =>
+            (PandoraIcon::Router, ts!("modrinth.environment.server_only")),
+        (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Required) =>
+            (PandoraIcon::Router, ts!("modrinth.environment.server_only_client_optional")),
+        (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Optional) =>
+            (PandoraIcon::Globe, ts!("modrinth.environment.client_or_server")),
+        _ =>
+            (PandoraIcon::Cpu, ts!("modrinth.environment.unknown_environment")),
+    }
+}
+
 impl ModrinthSearchPage {
     pub fn new(install_for: Option<InstanceID>, project_type: Option<ModrinthProjectType>, page_path: PagePath, data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(ts!("instance.content.search.mod")).clean_on_escape());
@@ -390,27 +456,7 @@ impl ModrinthSearchPage {
                 let client_side = hit.client_side.unwrap_or(ModrinthSideRequirement::Unknown);
                 let server_side = hit.server_side.unwrap_or(ModrinthSideRequirement::Unknown);
 
-                let (env_icon, env_name) = match (client_side, server_side) {
-                    (ModrinthSideRequirement::Required, ModrinthSideRequirement::Required) => {
-                        (PandoraIcon::Globe, ts!("modrinth.environment.client_and_server"))
-                    },
-                    (ModrinthSideRequirement::Required, ModrinthSideRequirement::Unsupported) => {
-                        (PandoraIcon::Computer, ts!("modrinth.environment.client_only"))
-                    },
-                    (ModrinthSideRequirement::Required, ModrinthSideRequirement::Optional) => {
-                        (PandoraIcon::Computer, ts!("modrinth.environment.client_only_server_optional"))
-                    },
-                    (ModrinthSideRequirement::Unsupported, ModrinthSideRequirement::Required) => {
-                        (PandoraIcon::Router, ts!("modrinth.environment.server_only"))
-                    },
-                    (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Required) => {
-                        (PandoraIcon::Router, ts!("modrinth.environment.server_only_client_optional"))
-                    },
-                    (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Optional) => {
-                        (PandoraIcon::Globe, ts!("modrinth.environment.client_or_server"))
-                    },
-                    _ => (PandoraIcon::Cpu, ts!("modrinth.environment.unknown_environment")),
-                };
+                let (env_icon, env_name) = env_display(client_side, server_side);
 
                 let environment = h_flex().gap_1().font_bold().child(env_icon).child(env_name);
 
@@ -589,46 +635,7 @@ impl ModrinthSearchPage {
     }
 
     pub fn get_primary_action(&self, project_id: &str, cx: &App) -> PrimaryAction {
-        let install_latest = self.can_install_latest && !InterfaceConfig::get(cx).modrinth_install_normally;
-
-        let installed = self.installed_mods_by_project.get(project_id);
-
-        if let Some(installed) = installed && !installed.is_empty() {
-            if !install_latest {
-                return PrimaryAction::Reinstall;
-            }
-
-            let mut action = PrimaryAction::CheckForUpdates;
-            for installed_mod in installed {
-                match installed_mod.status {
-                    ContentUpdateStatus::Unknown => {},
-                    ContentUpdateStatus::AlreadyUpToDate => {
-                        if !matches!(action, PrimaryAction::Update(..)) {
-                            action = PrimaryAction::UpToDate;
-                        }
-                    },
-                    ContentUpdateStatus::Modrinth => {
-                        if let PrimaryAction::Update(vec) = &mut action {
-                            vec.push(installed_mod.mod_id);
-                        } else {
-                            action = PrimaryAction::Update(vec![installed_mod.mod_id]);
-                        }
-                    },
-                    _ => {
-                        if action == PrimaryAction::CheckForUpdates {
-                            action = PrimaryAction::ErrorCheckingForUpdates;
-                        }
-                    }
-                };
-            }
-            return action;
-        }
-
-        if install_latest {
-            PrimaryAction::InstallLatest
-        } else {
-            PrimaryAction::Install
-        }
+        get_primary_action(project_id, self.can_install_latest, &self.installed_mods_by_project, cx)
     }
 }
 
@@ -872,7 +879,7 @@ impl Render for ModrinthSearchPage {
     }
 }
 
-fn format_downloads(downloads: usize) -> SharedString {
+pub fn format_downloads(downloads: usize) -> SharedString {
     if downloads >= 1_000_000_000 {
         ts!("instance.content.downloads", num = format!("{}B", (downloads / 10_000_000) as f64 / 100.0))
     } else if downloads >= 1_000_000 {

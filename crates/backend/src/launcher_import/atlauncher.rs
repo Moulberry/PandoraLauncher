@@ -14,7 +14,7 @@ use crate::{BackendState, write_safe};
 pub struct AtLauncherInstance {
     // uuid: Uuid,
     launcher: Launcher,
-    // id: String,
+    id: String,
     // compliance_level: usize,
     // java_version: JavaVersion,
     // arguments: LaunchArguments,
@@ -216,7 +216,8 @@ struct AtLauncherInstanceToImport {
 fn try_load_from_atlauncher(config_path: &Path) -> anyhow::Result<InstanceConfiguration> {
 	let instance_cfg_bytes = std::fs::read(config_path)?;
     let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes)?;
-    let configuration = InstanceConfiguration::new(instance_cfg.launcher.version.into(), instance_cfg.launcher.loader_version.loader_type);
+    // tbh, idk why they have it as `id` they just do...
+    let configuration = InstanceConfiguration::new(instance_cfg.id.into(), instance_cfg.launcher.loader_version.loader_type);
     Ok(configuration)
 }
 

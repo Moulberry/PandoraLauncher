@@ -509,9 +509,9 @@ impl ModrinthSearchPage {
                         let install_for = self.install_for.clone();
                         let project_type = hit.project_type;
 
-                        move |_, window, cx| {                            
+                        move |_, window, cx| {
                             cx.stop_propagation();
-                            
+
                             if project_type != ModrinthProjectType::Other {
                                 match primary_action {
                                     PrimaryAction::Install | PrimaryAction::Reinstall => {
@@ -574,7 +574,6 @@ impl ModrinthSearchPage {
                     });
 
                 let item = h_flex()
-                    .id(format!("project-{}", hit.project_id))
                     .rounded_lg()
                     .px_4()
                     .py_2()
@@ -584,20 +583,22 @@ impl ModrinthSearchPage {
                     .border_color(theme.border)
                     .border_1()
                     .size_full()
-                    .cursor_pointer()
-                    .on_click({
-                        let open_project_page = open_project_page.clone();
-                        move |_, window, cx| {
-                            open_project_page(window, cx);
-                        }
-                    })
                     .child(image.rounded_lg().size_16().min_w_16().min_h_16())
                     .child(
                         v_flex()
+                            .id(("open-project", index))
                             .h(px(104.0))
                             .flex_grow()
                             .gap_1()
                             .overflow_hidden()
+                            .cursor_pointer()
+                            .hover(|style| style.underline())
+                            .on_click({
+                                let open_project_page = open_project_page.clone();
+                                move |_, window, cx| {
+                                    open_project_page(window, cx);
+                                }
+                            })
                             .child(
                                 h_flex()
                                     .gap_1()
@@ -609,6 +610,7 @@ impl ModrinthSearchPage {
                             )
                             .child(
                                 div()
+                                    .text_decoration_0()
                                     .flex_auto()
                                     .line_height(px(20.0))
                                     .line_clamp(2)
@@ -616,6 +618,7 @@ impl ModrinthSearchPage {
                             )
                             .child(
                                 h_flex()
+                                    .text_decoration_0()
                                     .gap_2p5()
                                     .children(std::iter::once(environment).chain(categories)),
                             ),

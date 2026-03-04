@@ -1,13 +1,9 @@
 use std::path::{Path, PathBuf};
 use bridge::modal_action::{ModalAction, ProgressTracker};
-use image::imageops::FilterType::Lanczos3;
 use log::debug;
-use rusqlite::Transaction;
-use schema::{assets_index::{AssetObject, AssetsIndex}, instance::{InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration}, loader::Loader, modrinth::{ModrinthHit, ModrinthProjectVersion}, version::{AssetIndexLink, GameDownloads, GameLibrary, GameLogging, JavaVersion, LaunchArguments}};
+use schema::{instance::{InstanceConfiguration, InstanceMemoryConfiguration,  InstanceWrapperCommandConfiguration}, loader::Loader};
 use serde::Deserialize;
-use tokio::fs;
-use uuid::Uuid;
-use crate::{BackendState, instance::Instance, write_safe};
+use crate::{BackendState, write_safe};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,121 +84,121 @@ struct LoaderVersion {
     // downloadables: Vec<>
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct QuickPlay {}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct QuickPlay {}
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CurseForgeCategory {
-	name: String,
-	slug: String,
-	url: String,
-	date_modified: String,
-	game_id: usize,
-	is_class: bool,
-	id: usize,
-	icon_url: String,
-	parent_category_id: usize,
-	class_id: usize,
-}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct CurseForgeCategory {
+// 	name: String,
+// 	slug: String,
+// 	url: String,
+// 	date_modified: String,
+// 	game_id: usize,
+// 	is_class: bool,
+// 	id: usize,
+// 	icon_url: String,
+// 	parent_category_id: usize,
+// 	class_id: usize,
+// }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CurseForgeProject {
-    id: usize,
-    #[serde(rename = "name")]
-    project_name: String,
-    authors: Vec<CurseForgeAuthor>,
-    game_id: usize,
-    summary: String,
-    categories: Vec<CurseForgeCategory>,
-}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct CurseForgeProject {
+//     id: usize,
+//     #[serde(rename = "name")]
+//     project_name: String,
+//     authors: Vec<CurseForgeAuthor>,
+//     game_id: usize,
+//     summary: String,
+//     categories: Vec<CurseForgeCategory>,
+// }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CurseForgeAuthor {
-    id: usize,
-    name: String,
-    url: String,
-}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct CurseForgeAuthor {
+//     id: usize,
+//     name: String,
+//     url: String,
+// }
 
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CurseForgeFileDependency {
-	file_id: usize,
-	mod_id: usize,
-	relation_type: usize,
-}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct CurseForgeFileDependency {
+// 	file_id: usize,
+// 	mod_id: usize,
+// 	relation_type: usize,
+// }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CurseForgeFileModule {
-	fingerprint: usize,
-	name: String,
-}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct CurseForgeFileModule {
+// 	fingerprint: usize,
+// 	name: String,
+// }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CurseForgeFileHash {
-	value: String,
-	algo: usize,
-}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct CurseForgeFileHash {
+// 	value: String,
+// 	algo: usize,
+// }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SortableGameVersion {
-	game_version_padded: String,
-	game_version: String,
-	game_version_release_date: String,
-	game_version_name: String,
-}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct SortableGameVersion {
+// 	game_version_padded: String,
+// 	game_version: String,
+// 	game_version_release_date: String,
+// 	game_version_name: String,
+// }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CurseForgeFile {
-	id: usize,
-	game_id: usize,
-	is_available: bool,
-	display_name: String,
-	file_name: String,
-	release_type: usize,
-	file_status: usize,
-	file_date: String,
-	file_length: usize,
-	dependencies: Vec<CurseForgeFileDependency>,
-	alternate_file_id: usize,
-	modules: Vec<CurseForgeFileModule>,
-	is_server_pack: bool,
-	hashes: Vec<CurseForgeFileHash>,
-	sortable_game_versions: Vec<SortableGameVersion>,
-	game_versions: Vec<String>,
-	file_fingerprint: usize,
-	mod_id: usize,
-}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct CurseForgeFile {
+// 	id: usize,
+// 	game_id: usize,
+// 	is_available: bool,
+// 	display_name: String,
+// 	file_name: String,
+// 	release_type: usize,
+// 	file_status: usize,
+// 	file_date: String,
+// 	file_length: usize,
+// 	dependencies: Vec<CurseForgeFileDependency>,
+// 	alternate_file_id: usize,
+// 	modules: Vec<CurseForgeFileModule>,
+// 	is_server_pack: bool,
+// 	hashes: Vec<CurseForgeFileHash>,
+// 	sortable_game_versions: Vec<SortableGameVersion>,
+// 	game_versions: Vec<String>,
+// 	file_fingerprint: usize,
+// 	mod_id: usize,
+// }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Mod {
-    name: String,
-    version: String,
-    optional: bool,
-    file: String,
-    #[serde(rename = "type")]
-    mod_type: String,
-    description: String,
-    disabled: bool,
-    user_added: bool,
-    was_selected: bool,
-    skipped: bool,
-    curse_forge_project_id: Option<usize>,
-    curse_forge_file_id: Option<usize>,
-    curse_forge_project: Option<CurseForgeProject>,
-    curse_forge_file: Option<CurseForgeFile>,
-    modrinth_project: Option<ModrinthHit>,
-    modrinth_version: Option<ModrinthProjectVersion>
-}
+// #[derive(Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct Mod {
+//     name: String,
+//     version: String,
+//     optional: bool,
+//     file: String,
+//     #[serde(rename = "type")]
+//     mod_type: String,
+//     description: String,
+//     disabled: bool,
+//     user_added: bool,
+//     was_selected: bool,
+//     skipped: bool,
+//     curse_forge_project_id: Option<usize>,
+//     curse_forge_file_id: Option<usize>,
+//     curse_forge_project: Option<CurseForgeProject>,
+//     curse_forge_file: Option<CurseForgeFile>,
+//     modrinth_project: Option<ModrinthHit>,
+//     modrinth_version: Option<ModrinthProjectVersion>
+// }
 
 
 

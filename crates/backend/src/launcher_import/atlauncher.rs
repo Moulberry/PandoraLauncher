@@ -52,7 +52,7 @@ struct Launcher {
     // version: String,
     // enable_curse_forge_integration: bool,
     // enable_editing_mods: bool,
-    loader_version: LoaderVersion,
+    loader_version: Option<LoaderVersion>,
     required_memory: usize,
     // required_perm_gen: usize,
     maximum_memory: Option<usize>,
@@ -362,7 +362,7 @@ fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConf
 
     // tbh, idk why they have it as `id` they just do...
     // or at least, it's the most reliable one i've managed to read from so far.
-    let mut configuration = InstanceConfiguration::new(instance_cfg.id.into(), instance_cfg.launcher.loader_version.loader_type);
+    let mut configuration = InstanceConfiguration::new(instance_cfg.id.into(), instance_cfg.launcher.loader_version.as_ref().map(|loader_version| loader_version.loader_type).unwrap_or(Loader::Vanilla));
 
     configuration.memory = if let Some(max_memory) = instance_cfg.launcher.maximum_memory.or(launcher_config.maximum_memory) {
 	    Some(InstanceMemoryConfiguration {
@@ -381,7 +381,7 @@ fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConf
 	    } else { None };
     }
 
-    configuration.preferred_loader_version = Some(instance_cfg.launcher.loader_version.raw_version.into());
+    configuration.preferred_loader_version = instance_cfg.launcher.loader_version.map(|loader_version| loader_version.raw_version.into());
 
     Ok(configuration)
 }

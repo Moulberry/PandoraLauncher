@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath, title_bar::TitleBar}, entity::{
         DataEntities, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, page::Page, syncing_page::SyncingPage}, png_render_cache, ts
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, page::Page, syncing_page::SyncingPage}, png_render_cache, ts
 };
 
 pub struct LauncherUI {
@@ -37,6 +37,11 @@ pub enum PageType {
     },
     Import,
     Syncing,
+    ModrinthProject {
+        project_id: SharedString,
+        project_title: SharedString,
+        install_for: Option<SharedString>,
+    },
     InstancePage {
         name: SharedString,
     },
@@ -55,9 +60,8 @@ impl PageType {
             },
             PageType::Import => "Import".into(),
             PageType::Syncing => ts!("instance.sync.label"),
-            PageType::InstancePage { name } => {
-                name.clone()
-            },
+            PageType::ModrinthProject { project_title, .. } => project_title.clone(),
+            PageType::InstancePage { name } => name.clone(),
         }
     }
 }
@@ -68,6 +72,13 @@ pub enum LauncherPage {
     Modrinth(Entity<ModrinthSearchPage>),
     Import(Entity<ImportPage>),
     Syncing(Entity<SyncingPage>),
+    ModrinthProject {
+        project_id: SharedString,
+        project_title: SharedString,
+        install_for: Option<InstanceID>,
+        modrinth_page: Entity<ModrinthSearchPage>,
+        page: Entity<ModrinthProjectPage>,
+    },
     InstancePage(Entity<InstancePage>),
 }
 
@@ -84,6 +95,7 @@ impl RenderOnce for LauncherPage {
             LauncherPage::Modrinth(entity) => process(entity, window, cx),
             LauncherPage::Import(entity) => process(entity, window, cx),
             LauncherPage::Syncing(entity) => process(entity, window, cx),
+            LauncherPage::ModrinthProject { page, .. } => process(page, window, cx),
             LauncherPage::InstancePage(entity) => process(entity, window, cx),
         };
 
@@ -183,13 +195,13 @@ impl LauncherUI {
             config.page_path = [].into();
         }
 
-        let page = match Self::create_page(&data, main_page.clone(), window, cx) {
+        let page = match Self::create_page(&data, main_page.clone(), None, window, cx) {
             Ok(page) => page,
             Err(page_type) => {
                 let config = InterfaceConfig::get_mut(cx);
                 config.main_page = page_type.clone();
                 config.page_path = [].into();
-                Self::create_page(&data, page_type, window, cx).unwrap()
+                Self::create_page(&data, page_type, None, window, cx).unwrap()
             },
         };
 
@@ -206,7 +218,7 @@ impl LauncherUI {
         }
     }
 
-    fn create_page(data: &DataEntities, page: PageType, window: &mut Window, cx: &mut Context<Self>) -> Result<LauncherPage, PageType> {
+    fn create_page(data: &DataEntities, page: PageType, current_page: Option<&LauncherPage>, window: &mut Window, cx: &mut Context<Self>) -> Result<LauncherPage, PageType> {
         match page {
             PageType::Instances => {
                 Ok(LauncherPage::Instances(cx.new(|cx| InstancesPage::new(data, window, cx))))
@@ -217,13 +229,41 @@ impl LauncherUI {
                 let page = cx.new(|cx| {
                     ModrinthSearchPage::new(installing_for, data, window, cx)
                 });
-                 Ok(LauncherPage::Modrinth(page))
+                Ok(LauncherPage::Modrinth(page))
             },
             PageType::Import => {
-                 Ok(LauncherPage::Import(cx.new(|cx| ImportPage::new(data, window, cx))))
+                Ok(LauncherPage::Import(cx.new(|cx| ImportPage::new(data, window, cx))))
             },
             PageType::Syncing => {
-                 Ok(LauncherPage::Syncing(cx.new(|cx| SyncingPage::new(data, window, cx))))
+                Ok(LauncherPage::Syncing(cx.new(|cx| SyncingPage::new(data, window, cx))))
+            },
+            PageType::ModrinthProject { ref project_id, ref project_title, ref install_for } => {
+                let install_for_id = install_for.as_ref().and_then(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
+
+                let modrinth_page = match current_page {
+                    Some(LauncherPage::Modrinth(page)) => page.clone(),
+                    Some(LauncherPage::ModrinthProject { modrinth_page, .. }) => modrinth_page.clone(),
+                    _ => cx.new(|cx| ModrinthSearchPage::new(install_for_id, data, window, cx)),
+                };
+
+                let project_id = project_id.clone();
+                let project_title = project_title.clone();
+
+                Ok(LauncherPage::ModrinthProject {
+                    project_id: project_id.clone(),
+                    project_title: project_title.clone(),
+                    install_for: install_for_id,
+                    modrinth_page,
+                    page: cx.new(|cx| {
+                        ModrinthProjectPage::new(
+                            project_id,
+                            install_for_id,
+                            data,
+                            window,
+                            cx,
+                        )
+                    }),
+                })
             },
             PageType::InstancePage { ref name } => {
                 let Some(id) = InstanceEntries::find_id_by_name(&data.instances, name, cx) else {
@@ -242,11 +282,30 @@ impl LauncherUI {
             return;
         }
 
+        if let PageType::Modrinth { installing_for } = &page {
+            if let LauncherPage::ModrinthProject { modrinth_page, install_for, .. } = &self.page {
+                let target_id = installing_for.as_ref()
+                    .and_then(|name| InstanceEntries::find_id_by_name(&self.data.instances, name, cx));
+
+                if target_id == *install_for {
+                    let modrinth_page = modrinth_page.clone();
+
+                    let config = InterfaceConfig::get_mut(cx);
+                    config.main_page = page.clone();
+                    config.page_path = page_path.into();
+
+                    self.page = LauncherPage::Modrinth(modrinth_page);
+                    cx.notify();
+                    return;
+                }
+            }
+        }
+
         let config = InterfaceConfig::get_mut(cx);
         config.main_page = page.clone();
         config.page_path = page_path.into();
 
-        match Self::create_page(&self.data, page, window, cx) {
+        match Self::create_page(&self.data, page, Some(&self.page), window, cx) {
             Ok(page) => {
                 self.page = page;
             },
@@ -254,7 +313,7 @@ impl LauncherUI {
                 let config = InterfaceConfig::get_mut(cx);
                 config.main_page = fallback.clone();
                 config.page_path = [].into();
-                self.page = Self::create_page(&self.data, fallback, window, cx).unwrap();
+                self.page = Self::create_page(&self.data, fallback, None, window, cx).unwrap();
             },
         }
 
@@ -275,7 +334,7 @@ impl Render for LauncherUI {
 
         let content_group = MenuGroup::new(ts!("instance.content.title"))
             .child(MenuGroupItem::new(ts!("modrinth.name"))
-                .active(page_type == PageType::Modrinth { installing_for: None })
+                .active(matches!(page_type, PageType::Modrinth { installing_for: None } | PageType::ModrinthProject { install_for: None, .. }))
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Modrinth { installing_for: None }, &[], window, cx);
                 })));

@@ -507,6 +507,24 @@ instance:
       en: by %{name}
     no_description:
       en: No Description
+    error_loading:
+      en: Error loading project
+    no_gallery:
+      en: No gallery images
+    tabs:
+      description:
+        en: Description
+      gallery:
+        en: Gallery
+    links:
+      source:
+        en: Source
+      issues:
+        en: Issues
+      wiki:
+        en: Wiki
+      discord:
+        en: Discord
     categories:
       en: Categories
     downloads:

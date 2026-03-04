@@ -5,55 +5,39 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, h_flex, tab::{Tab, TabBar}
+    button::{Button, ButtonVariants}, h_flex, tab::{Tab, TabBar}, v_flex
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::{page::Page, page_path::PagePath}, entity::{DataEntities, instance::InstanceEntry}, icon::PandoraIcon, pages::instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, root, ts
+    entity::{DataEntities, instance::InstanceEntry}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, page::Page}, root, ts
 };
 
 pub struct InstancePage {
-    page_path: PagePath,
     backend_handle: BackendHandle,
     data: DataEntities,
-    instance: Entity<InstanceEntry>,
+    pub instance: Entity<InstanceEntry>,
     subpage: InstanceSubpage,
 }
 
 impl InstancePage {
-    pub fn new(instance_id: InstanceID, subpage: InstanceSubpageType, page_path: PagePath, data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(instance_id: InstanceID, data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let instance = data.instances.read(cx).entries.get(&instance_id).unwrap().clone();
 
-        let subpage = subpage.create(&instance, data, data.backend_handle.clone(), window, cx);
+        let instance_subpage = InterfaceConfig::get(cx).instance_subpage;
+        let subpage = instance_subpage.create(&instance, data, data.backend_handle.clone(), window, cx);
 
         Self {
-            page_path,
             backend_handle: data.backend_handle.clone(),
             data: data.clone(),
             instance,
             subpage,
         }
     }
-
-    fn set_subpage(&mut self, page_type: InstanceSubpageType, window: &mut Window, cx: &mut Context<Self>) {
-        if page_type == self.subpage.page_type() {
-            return;
-        }
-        self.subpage = page_type.create(&self.instance, &self.data, self.backend_handle.clone(), window, cx);
-    }
 }
 
-impl Render for InstancePage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let selected_index = match &self.subpage {
-            InstanceSubpage::Quickplay(_) => 0,
-            InstanceSubpage::Logs(_) => 1,
-            InstanceSubpage::Mods(_) => 2,
-            InstanceSubpage::ResourcePacks(_) => 3,
-            InstanceSubpage::Settings(_) => 4,
-        };
-
+impl Page for InstancePage {
+    fn controls(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let instance = self.instance.read(cx);
         let id = instance.id;
         let name = instance.name.clone();
@@ -90,9 +74,31 @@ impl Render for InstancePage {
             }
         });
 
-        let breadcrumb = self.page_path.create_breadcrumb(&self.data, cx);
+        h_flex().gap_3().child(button).child(open_dot_minecraft_button)
+    }
 
-        Page::new(h_flex().gap_8().child(breadcrumb).child(h_flex().gap_3().child(button).child(open_dot_minecraft_button)))
+    fn scrollable(&self, _cx: &App) -> bool {
+        false
+    }
+}
+
+impl Render for InstancePage {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let instance_subpage = InterfaceConfig::get(cx).instance_subpage;
+        if instance_subpage != self.subpage.page_type() {
+            self.subpage = instance_subpage.create(&self.instance, &self.data, self.backend_handle.clone(), window, cx);
+        }
+
+        let selected_index = match &self.subpage {
+            InstanceSubpage::Quickplay(_) => 0,
+            InstanceSubpage::Logs(_) => 1,
+            InstanceSubpage::Mods(_) => 2,
+            InstanceSubpage::ResourcePacks(_) => 3,
+            InstanceSubpage::Settings(_) => 4,
+        };
+
+        v_flex()
+            .size_full()
             .child(
                 TabBar::new("bar")
                     .prefix(div().w_4())
@@ -103,7 +109,7 @@ impl Render for InstancePage {
                     .child(Tab::new().label(ts!("instance.content.mods")))
                     .child(Tab::new().label(ts!("instance.content.resourcepacks")))
                     .child(Tab::new().label(ts!("settings.title")))
-                    .on_click(cx.listener(|page, index, window, cx| {
+                    .on_click(cx.listener(|_, index, _, cx| {
                         let page_type = match *index {
                             0 => InstanceSubpageType::Quickplay,
                             1 => InstanceSubpageType::Logs,
@@ -114,16 +120,17 @@ impl Render for InstancePage {
                                 return;
                             },
                         };
-                        page.set_subpage(page_type, window, cx);
+                        InterfaceConfig::get_mut(cx).instance_subpage = page_type;
                     })),
             )
             .child(self.subpage.clone().into_any_element())
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstanceSubpageType {
+    #[default]
     Quickplay,
     Logs,
     Mods,

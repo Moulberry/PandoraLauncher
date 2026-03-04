@@ -8,10 +8,9 @@ use bridge::{
     modal_action::ModalAction,
 };
 use gpui::{prelude::*, *};
-use gpui_component::{Root, Theme, scroll::ScrollableElement, v_flex};
-use parking_lot::RwLock;
+use gpui_component::{Root, Theme, WindowExt, scroll::ScrollableElement, v_flex};
 
-use crate::{CloseWindow, MAIN_FONT, entity::DataEntities, modals, ts, ui::{LauncherUI, PageType}};
+use crate::{CloseWindow, MAIN_FONT, OpenSettings, entity::DataEntities, modals, ts, ui::{LauncherUI, PageType}};
 
 pub struct LauncherRootGlobal {
     pub root: Entity<LauncherRoot>,
@@ -21,9 +20,7 @@ impl Global for LauncherRootGlobal {}
 
 pub struct LauncherRoot {
     pub ui: Entity<LauncherUI>,
-    pub panic_message: Arc<RwLock<Option<String>>>,
-    pub deadlock_message: Arc<RwLock<Option<String>>>,
-    pub backend_handle: BackendHandle,
+    data: DataEntities,
     focus_handle: FocusHandle,
 }
 
@@ -40,9 +37,7 @@ impl LauncherRoot {
 
         Self {
             ui: launcher_ui,
-            panic_message: data.panic_messages.panic_message.clone(),
-            deadlock_message: data.panic_messages.deadlock_message.clone(),
-            backend_handle: data.backend_handle.clone(),
+            data: data.clone(),
             focus_handle,
         }
     }
@@ -50,7 +45,7 @@ impl LauncherRoot {
 
 impl Render for LauncherRoot {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if let Some(message) = &*self.deadlock_message.read() {
+        if let Some(message) = &*self.data.panic_messages.deadlock_message.read() {
             let purple = Hsla {
                 h: 0.8333333333,
                 s: 1.,
@@ -59,19 +54,14 @@ impl Render for LauncherRoot {
             };
             return v_flex().size_full().text_color(gpui::white()).bg(purple).child(message.clone()).overflow_y_scrollbar().into_any_element();
         }
-        if let Some(message) = &*self.panic_message.read() {
+        if let Some(message) = &*self.data.panic_messages.panic_message.read() {
             return v_flex().size_full().text_color(gpui::white()).bg(gpui::blue()).child(message.clone()).overflow_y_scrollbar().into_any_element();
         }
-        if self.backend_handle.is_closed() {
+        if self.data.backend_handle.is_closed() {
             return v_flex().size_full().text_color(gpui::white()).bg(gpui::red()).child(ts!("system.backend_shutdown")).into_any_element();
         }
 
-        let has_csd_titlebar = matches!(window.window_decorations(), Decorations::Client { .. });
-        Theme::global_mut(cx).sheet.margin_top = if has_csd_titlebar {
-            gpui_component::TITLE_BAR_HEIGHT
-        } else {
-            Pixels::ZERO
-        };
+        Theme::global_mut(cx).sheet.margin_top = Pixels::ZERO;
 
         let sheet_layer = Root::render_sheet_layer(window, cx);
         let dialog_layer = Root::render_dialog_layer(window, cx);
@@ -80,9 +70,6 @@ impl Render for LauncherRoot {
         v_flex()
             .size_full()
             .font_family(MAIN_FONT)
-            .when(has_csd_titlebar, |this| {
-                this.child(gpui_component::TitleBar::new().child(ts!("common.app_name")))
-            })
             .child(self.ui.clone())
             .children(sheet_layer)
             .children(dialog_layer)
@@ -90,6 +77,13 @@ impl Render for LauncherRoot {
             .track_focus(&self.focus_handle)
             .on_action(|_: &CloseWindow, window, _| {
                 window.remove_window();
+            })
+            .on_action({
+                let data = self.data.clone();
+                move |_: &OpenSettings, window, cx| {
+                    let build = crate::modals::settings::build_settings_sheet(&data, window, cx);
+                    window.open_sheet_at(gpui_component::Placement::Left, cx, build);
+                }
             })
             .into_any_element()
     }

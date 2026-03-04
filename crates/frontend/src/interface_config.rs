@@ -5,7 +5,7 @@ use rand::RngCore;
 use schema::modrinth::ModrinthProjectType;
 use serde::{Deserialize, Serialize};
 
-use crate::{ts, ui::SerializedPageType};
+use crate::{pages::instance::instance_page::InstanceSubpageType, ts, ui::PageType};
 
 struct InterfaceConfigHolder {
     config: InterfaceConfig,
@@ -24,9 +24,9 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub sidebar_width: f32,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub main_page: SerializedPageType,
+    pub main_page: PageType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub page_path: Vec<SerializedPageType>,
+    pub page_path: Arc<[PageType]>,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub quick_delete_mods: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -43,6 +43,8 @@ pub struct InterfaceConfig {
     pub show_snapshots_in_create_instance: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub instances_view_mode: InstancesViewMode,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instance_subpage: InstanceSubpageType,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

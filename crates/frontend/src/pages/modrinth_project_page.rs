@@ -11,7 +11,7 @@ use schema::{content::ContentSource, loader::Loader, modrinth::{
 }};
 
 use crate::{
-    component::{error_alert::ErrorAlert, page::Page, page_path::PagePath}, entity::{
+    component::error_alert::ErrorAlert, entity::{
         DataEntities,
         metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult},
     }, icon::PandoraIcon, pages::modrinth_page::{InstalledMod, PrimaryAction, env_display, format_downloads, get_primary_action, icon_for}, ts
@@ -21,7 +21,6 @@ pub struct ModrinthProjectPage {
     data: DataEntities,
     project_id: SharedString,
     install_for: Option<InstanceID>,
-    page_path: PagePath,
     loading: Option<Subscription>,
     project: Option<Arc<ModrinthProjectResult>>,
     error: Option<SharedString>,
@@ -35,7 +34,6 @@ impl ModrinthProjectPage {
     pub fn new(
         project_id: SharedString,
         install_for: Option<InstanceID>,
-        page_path: PagePath,
         data: &DataEntities,
         _window: &mut Window,
         cx: &mut Context<Self>,
@@ -100,7 +98,6 @@ impl ModrinthProjectPage {
             data: data.clone(),
             project_id,
             install_for,
-            page_path,
             loading: None,
             project: None,
             error: None,
@@ -161,9 +158,20 @@ impl ModrinthProjectPage {
     }
 }
 
+use crate::pages::page::Page;
+
+impl Page for ModrinthProjectPage {
+    fn controls(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
+    }
+
+    fn scrollable(&self, _cx: &App) -> bool {
+        true
+    }
+}
+
 impl Render for ModrinthProjectPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let breadcrumb = self.page_path.create_breadcrumb(&self.data, cx);
         let theme = cx.theme().clone();
 
         if let Some((mods_state, load_serial)) = &self.mods_load_state
@@ -517,6 +525,6 @@ impl Render for ModrinthProjectPage {
                 .into_any_element()
         };
 
-        Page::new(breadcrumb).child(content).scrollable()
+        content
     }
 }

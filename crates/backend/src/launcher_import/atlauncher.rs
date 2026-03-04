@@ -1,8 +1,7 @@
 use std::{path::{Path, PathBuf}, str::FromStr};
-use auth::{credentials::{self, AccountCredentials}, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
+use auth::{credentials::AccountCredentials, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
 use bridge::modal_action::{ModalAction, ProgressTracker};
-use chrono::{DateTime, Utc};
-use image::imageops::FilterType::Triangle;
+use chrono::DateTime;
 use log::debug;
 use schema::{instance::{InstanceConfiguration, InstanceMemoryConfiguration,  InstanceWrapperCommandConfiguration}, loader::Loader};
 use serde::Deserialize;
@@ -211,10 +210,10 @@ struct LoaderVersion {
 struct AtLauncherAccount {
 	access_token: String,
 	// oauth_token:
-	xstsAuth: AtLauncherXstsAuth,
+	xsts_auth: AtLauncherXstsAuth,
 	access_token_expires_at: String,
-	must_login: bool,
-	username: String,
+	// must_login: bool,
+	username: Uuid,
 	minecraft_username: String,
 	uuid: Uuid,
 	// collapsed_packs: Vec<>
@@ -225,7 +224,7 @@ struct AtLauncherAccount {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 struct AtLauncherXstsAuth {
-	issue_instant: String,
+	// issue_instant: String,
 	not_after: String,
 	token: String,
 	display_claims: AtLauncherDisplayClaims,
@@ -276,10 +275,10 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, la
         return;
     };
 
-    // let Ok(accounts_json) = serde_json::from_slice::<Vec<AtLauncherAccount>>(&accounts_bytes) else {
-    //     return;
-    // };
-    let accounts_json = serde_json::from_slice::<Vec<AtLauncherAccount>>(&accounts_bytes).expect("Failed to read account file");
+    let Ok(accounts_json) = serde_json::from_slice::<Vec<AtLauncherAccount>>(&accounts_bytes) else {
+        return;
+    };
+    // let accounts_json = serde_json::from_slice::<Vec<AtLauncherAccount>>(&accounts_bytes).expect("Failed to read account file");
 
     let secret_storage = match backend.secret_storage.get_or_init(PlatformSecretStorage::new).await {
         Ok(secret_storage) => secret_storage,
@@ -294,6 +293,7 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, la
     tracker.add_total(num_accounts);
 
     backend.account_info.write().modify(|accounts| {
+    	let mut last_account_username = None;
         for account in &accounts_json {
        		tracker.add_count(1);
          	tracker.notify();
@@ -302,8 +302,11 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, la
              	offline: false,
               	head: None,
           	});
+	        if let Some(last_account) = launcher_config.last_account && account.username == last_account {
+		       	last_account_username = Some(account.uuid);
+	        }
         }
-        accounts.selected_account = launcher_config.last_account;
+        accounts.selected_account = last_account_username;
     });
 
     tracker.set_title("Importing credentials".into());
@@ -323,12 +326,12 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, la
 	        	expiry,
           	});
         }
-        if let Ok(expiry) = DateTime::from_str(&account.xstsAuth.not_after) && expiry < now {
+        if let Ok(expiry) = DateTime::from_str(&account.xsts_auth.not_after) && expiry < now {
         	non_default_creds = true;
 	        credentials.xsts = Some(XstsToken {
-	            token: account.xstsAuth.token.into(),
+	            token: account.xsts_auth.token.into(),
 	            expiry,
-	            userhash: account.xstsAuth.display_claims.xui[0].uhs.clone().into(),
+	            userhash: account.xsts_auth.display_claims.xui[0].uhs.clone().into(),
 	        });
         }
 

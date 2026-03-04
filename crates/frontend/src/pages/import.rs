@@ -8,7 +8,7 @@ use gpui_component::{
 use schema::{content::ContentSource, loader::Loader};
 use strum::IntoEnumIterator;
 
-use crate::{component::{page::Page, responsive_grid::ResponsiveGrid}, entity::DataEntities, root};
+use crate::{component::{responsive_grid::ResponsiveGrid}, entity::DataEntities, pages::page::Page, root};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
@@ -53,15 +53,23 @@ impl ImportPage {
     }
 }
 
+impl Page for ImportPage {
+    fn controls(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
+    }
+
+    fn scrollable(&self, _cx: &App) -> bool {
+        true
+    }
+}
+
 impl Render for ImportPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(imports) = &self.import_from_other_launchers else {
             let content = v_flex().size_full().p_3().gap_3()
                 .child(Spinner::new().with_size(gpui_component::Size::Large));
 
-            return Page::new("Import")
-                .scrollable()
-                .child(content);
+            return content;
         };
 
         let mut content = v_flex().size_full().p_3().gap_3()
@@ -163,8 +171,6 @@ impl Render for ImportPage {
             )
         }
 
-        Page::new("Import")
-            .scrollable()
-            .child(content)
+        content
     }
 }

@@ -7,7 +7,7 @@ use gpui_component::{
 use crate::{
     entity::{
         instance::{InstanceAddedEvent, InstanceEntry, InstanceModifiedEvent, InstanceRemovedEvent}, DataEntities
-    }, pages::instance::instance_page::InstanceSubpageType, png_render_cache, ts, root, ui
+    }, png_render_cache, ts, root, ui
 };
 
 pub struct InstanceList {
@@ -122,9 +122,9 @@ impl InstanceList {
                     }
                 }))
                 .child(Button::new(("view", index)).flex_grow().small().info().label(ts!("instance.view")).on_click({
-                    let id = item.id;
+                    let name = item.name.clone();
                     move |_, window, cx| {
-                        root::switch_page(ui::PageType::InstancePage(id, InstanceSubpageType::Quickplay),
+                        root::switch_page(ui::PageType::InstancePage { name: name.clone() },
                             &[ui::PageType::Instances], window, cx);
                     }
                 })))
@@ -187,9 +187,9 @@ impl TableDelegate for InstanceList {
                             }
                         }))
                         .child(Button::new("view").w(relative(0.5)).small().info().label(ts!("instance.view")).on_click({
-                            let id = item.id;
+                            let name = item.name.clone();
                             move |_, window, cx| {
-                                root::switch_page(ui::PageType::InstancePage(id, InstanceSubpageType::Quickplay),
+                                root::switch_page(ui::PageType::InstancePage { name: name.clone() },
                                     &[ui::PageType::Instances], window, cx);
                             }
                         }))

@@ -70,13 +70,6 @@ impl InstanceEntries {
         None
     }
 
-    pub fn find_title_by_id(entity: &Entity<Self>, id: InstanceID, cx: &App) -> Option<SharedString> {
-        if let Some(entry) = entity.read(cx).entries.get(&id) {
-            return Some(entry.read(cx).title())
-        }
-        None
-    }
-
     pub fn remove(entity: &Entity<Self>, id: InstanceID, cx: &mut App) {
         entity.update(cx, |entries, cx| {
             if let Some(_) = entries.entries.shift_remove(&id) {

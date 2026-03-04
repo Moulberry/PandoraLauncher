@@ -1,14 +1,20 @@
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, str::FromStr};
+use auth::{credentials::{self, AccountCredentials}, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
 use bridge::modal_action::{ModalAction, ProgressTracker};
+use chrono::{DateTime, Utc};
+use image::imageops::FilterType::Triangle;
 use log::debug;
 use schema::{instance::{InstanceConfiguration, InstanceMemoryConfiguration,  InstanceWrapperCommandConfiguration}, loader::Loader};
 use serde::Deserialize;
-use crate::{BackendState, write_safe};
+use uuid::Uuid;
+use crate::{BackendState, account::BackendAccount, write_safe};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AtLauncherConfig {
 	maximum_memory: Option<usize>,
+	// i'm assuming this is optional if there is no said last account.
+	last_account: Option<Uuid>,
 }
 
 /// Going to just get the types converted before deleting a bunch probably...
@@ -200,31 +206,143 @@ struct LoaderVersion {
 //     modrinth_version: Option<ModrinthProjectVersion>
 // }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AtLauncherAccount {
+	access_token: String,
+	// oauth_token:
+	xstsAuth: AtLauncherXstsAuth,
+	access_token_expires_at: String,
+	must_login: bool,
+	username: String,
+	minecraft_username: String,
+	uuid: Uuid,
+	// collapsed_packs: Vec<>
+	// collapsed_instances: Vec<>
+	// collapsed_servers: Vec<>
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct AtLauncherXstsAuth {
+	issue_instant: String,
+	not_after: String,
+	token: String,
+	display_claims: AtLauncherDisplayClaims,
+}
+
+
+#[derive(Debug, Deserialize)]
+// #[serde(rename_all = "case")]
+struct AtLauncherDisplayClaims {
+	xui: Vec<AtLauncherDisplayClaim>,
+}
+
+
+#[derive(Debug, Deserialize)]
+// #[serde(rename_all = "case")]
+struct AtLauncherDisplayClaim {
+	uhs: String,
+}
 
 
 
 
-
-pub fn import_from_atlauncher(backend: &BackendState, path: &Path, import_accounts: bool, import_instance: bool, modal_action: ModalAction) {
+pub async fn import_from_atlauncher(backend: &BackendState, path: &Path, import_accounts: bool, import_instance: bool, modal_action: ModalAction) {
+	// probably a better way of doing this mess...
 	let launcher_config = {
 		match std::fs::read(path.join("configs/ATLauncher.json")).ok() {
-		    Some(launcher_config_bytes) => serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).ok(),
-		    None => None,
+		    Some(launcher_config_bytes) => serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json"),
+		    None => return,
 		}
 	};
-	log::debug!("Launcher config: {}", launcher_config.is_some());
+	// log::debug!("Launcher config: {}", launcher_config.is_some());
 
 	if import_accounts {
-		import_accounts_from_atlauncher(backend, path, &modal_action);
+		import_accounts_from_atlauncher(backend, path, &launcher_config, &modal_action).await;
 	}
 	if import_instance {
 		import_instances_from_atlauncher(backend, path, &launcher_config, &modal_action);
 	}
 }
 
-fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, modal_action: &ModalAction) {
-	// todo!();
-	return;
+async fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
+	let tracker = ProgressTracker::new("Reading accounts.json".into(), backend.send.clone());
+    modal_action.trackers.push(tracker.clone());
+    tracker.notify();
+
+    let accounts_path = path.join("configs/accounts.json");
+    let Ok(accounts_bytes) = std::fs::read(&accounts_path) else {
+        return;
+    };
+
+    // let Ok(accounts_json) = serde_json::from_slice::<Vec<AtLauncherAccount>>(&accounts_bytes) else {
+    //     return;
+    // };
+    let accounts_json = serde_json::from_slice::<Vec<AtLauncherAccount>>(&accounts_bytes).expect("Failed to read account file");
+
+    let secret_storage = match backend.secret_storage.get_or_init(PlatformSecretStorage::new).await {
+        Ok(secret_storage) => secret_storage,
+        Err(error) => {
+            log::error!("Error initializing secret storage: {error}");
+            return;
+        }
+    };
+
+    let num_accounts = accounts_json.len();
+    tracker.set_title("Importing accounts".into());
+    tracker.add_total(num_accounts);
+
+    backend.account_info.write().modify(|accounts| {
+        for account in &accounts_json {
+       		tracker.add_count(1);
+         	tracker.notify();
+         	accounts.accounts.insert(account.uuid, BackendAccount {
+            	username: account.minecraft_username.clone().into(),
+             	offline: false,
+              	head: None,
+          	});
+        }
+        accounts.selected_account = launcher_config.last_account;
+    });
+
+    tracker.set_title("Importing credentials".into());
+    tracker.set_count(0);
+    tracker.set_total(num_accounts);
+    tracker.notify();
+
+    for account in accounts_json {
+    	let mut credentials = AccountCredentials::default();
+     	let mut non_default_creds = false;
+      	let now = chrono::Utc::now();
+
+       	if let Ok(expiry) = DateTime::from_str(&account.access_token_expires_at) && expiry < now {
+       		non_default_creds = true;
+         	credentials.access_token = Some(TokenWithExpiry {
+          		token: account.access_token.into(),
+	        	expiry,
+          	});
+        }
+        if let Ok(expiry) = DateTime::from_str(&account.xstsAuth.not_after) && expiry < now {
+        	non_default_creds = true;
+	        credentials.xsts = Some(XstsToken {
+	            token: account.xstsAuth.token.into(),
+	            expiry,
+	            userhash: account.xstsAuth.display_claims.xui[0].uhs.clone().into(),
+	        });
+        }
+
+        // credential
+
+        if non_default_creds {
+        	_ = secret_storage.write_credentials(account.uuid, &credentials).await;
+        }
+    }
+
+    tracker.set_count(num_accounts);
+    tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Normal);
+    tracker.notify();
+
 }
 
 struct AtLauncherInstanceToImport {
@@ -233,7 +351,7 @@ struct AtLauncherInstanceToImport {
 	folder: PathBuf,
 }
 
-fn try_load_from_atlauncher(config_path: &Path, launcher_config: &Option<AtLauncherConfig>) -> anyhow::Result<InstanceConfiguration> {
+fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConfig) -> anyhow::Result<InstanceConfiguration> {
 	// let instance_cfg_bytes = std::fs::read(config_path)?;
  	// let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes)?;
  	let instance_cfg_bytes = std::fs::read(config_path).expect("Failed to read from fs");
@@ -243,9 +361,7 @@ fn try_load_from_atlauncher(config_path: &Path, launcher_config: &Option<AtLaunc
     // or at least, it's the most reliable one i've managed to read from so far.
     let mut configuration = InstanceConfiguration::new(instance_cfg.id.into(), instance_cfg.launcher.loader_version.loader_type);
 
-    configuration.memory = if let Some(max_memory) = instance_cfg.launcher.maximum_memory.or({
-    	if let Some(lc) = launcher_config { lc.maximum_memory } else { None }
-    }) {
+    configuration.memory = if let Some(max_memory) = instance_cfg.launcher.maximum_memory.or(launcher_config.maximum_memory) {
 	    Some(InstanceMemoryConfiguration {
 	        enabled: true,
 	        min: instance_cfg.launcher.required_memory as u32,
@@ -267,7 +383,7 @@ fn try_load_from_atlauncher(config_path: &Path, launcher_config: &Option<AtLaunc
     Ok(configuration)
 }
 
-fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, launcher_config: &Option<AtLauncherConfig>, modal_action: &ModalAction) {
+fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
 	let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();

@@ -104,7 +104,7 @@ pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherL
         },
         OtherLauncher::AtLauncher => {
         	let atlauncher = data_dir.join("atlauncher");
-         	import_from_atlauncher(backend, &atlauncher, import_accounts, import_instances, modal_action)
+         	import_from_atlauncher(backend, &atlauncher, import_accounts, import_instances, modal_action).await;
         }
     }
 }

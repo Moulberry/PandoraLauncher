@@ -52,7 +52,7 @@ struct Launcher {
     // version: String,
     // enable_curse_forge_integration: bool,
     // enable_editing_mods: bool,
-    loader_version: LoaderVersion,
+    loader_version: Option<LoaderVersion>,
     required_memory: usize,
     // required_perm_gen: usize,
     maximum_memory: Option<usize>,
@@ -248,13 +248,10 @@ struct AtLauncherDisplayClaim {
 
 
 pub async fn import_from_atlauncher(backend: &BackendState, path: &Path, import_accounts: bool, import_instance: bool, modal_action: ModalAction) {
-	// probably a better way of doing this mess...
-	let launcher_config = {
-		match std::fs::read(path.join("configs/ATLauncher.json")).ok() {
-		    Some(launcher_config_bytes) => serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json"),
-		    None => return,
-		}
-	};
+    let Ok(launcher_config_bytes) = std::fs::read(path.join("configs/ATLauncher.json")) else {
+        return;
+    };
+	let launcher_config = serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json");
 	// log::debug!("Launcher config: {}", launcher_config.is_some());
 
 	if import_accounts {
@@ -362,7 +359,7 @@ fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConf
 
     // tbh, idk why they have it as `id` they just do...
     // or at least, it's the most reliable one i've managed to read from so far.
-    let mut configuration = InstanceConfiguration::new(instance_cfg.id.into(), instance_cfg.launcher.loader_version.loader_type);
+    let mut configuration = InstanceConfiguration::new(instance_cfg.id.into(), instance_cfg.launcher.loader_version.as_ref().map(|loader_version| loader_version.loader_type).unwrap_or(Loader::Vanilla));
 
     configuration.memory = if let Some(max_memory) = instance_cfg.launcher.maximum_memory.or(launcher_config.maximum_memory) {
 	    Some(InstanceMemoryConfiguration {
@@ -381,7 +378,7 @@ fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConf
 	    } else { None };
     }
 
-    configuration.preferred_loader_version = Some(instance_cfg.launcher.loader_version.raw_version.into());
+    configuration.preferred_loader_version = instance_cfg.launcher.loader_version.map(|loader_version| loader_version.raw_version.into());
 
     Ok(configuration)
 }
@@ -467,6 +464,38 @@ fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, launche
 		// remove old configuration, rename icon path.
 		_ = std::fs::rename(&target_dot_minecraft.join("instance.png"), &to_import.pandora_path.join("icon.png"));
 		_ = std::fs::remove_file(&target_dot_minecraft.join("instance.json"));
+
+        // move disable mods
+        let mods_path = target_dot_minecraft.join("mods");
+        let resourcepacks_path = target_dot_minecraft.join("resourcepacks");
+
+        let disabled_mods_path = target_dot_minecraft.join("disabledmods");
+        if let Ok(disabled_mods_folder) =  std::fs::read_dir(&disabled_mods_path){
+            // moving mods to the mods folder could throw an error if there was no mod folder, if all mods were disabled for example
+            _ = std::fs::create_dir(&mods_path);
+            _ = std::fs::create_dir(&resourcepacks_path);
+
+            for mod_file in disabled_mods_folder{
+                let Ok(entry) = mod_file else{
+                    continue;
+                };
+
+                let Ok(file_name) = entry.file_name().to_owned().into_string() else {
+                    continue;
+                };
+
+                let new_path = match &file_name {
+                    resourcepack if resourcepack.ends_with(".zip") => &resourcepacks_path,
+                    jar_mod if jar_mod.ends_with(".jar") => &mods_path,
+                    _=> continue
+                };
+
+                _ = std::fs::rename(entry.path(),  new_path.join( file_name + ".disabled"));
+            }
+
+            // cleanup old disabled mod folder
+            _ = std::fs::remove_dir_all(&disabled_mods_path);
+        }
 
 		let info_path = to_import.pandora_path.join("info_v1.json");
 		_ = write_safe(&info_path, &configuration_bytes);

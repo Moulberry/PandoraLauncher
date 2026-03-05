@@ -12,10 +12,11 @@ pub struct ImportFromOtherLauncher {
     pub paths: Vec<PathBuf>,
 }
 
-#[derive(Debug, Display, Clone, Copy, enum_map::Enum, EnumIter)]
+#[derive(Debug, Display, Clone, Copy, enum_map::Enum, EnumIter, PartialEq)]
 pub enum OtherLauncher {
 	AtLauncher,
     Prism,
     Modrinth,
     MultiMC,
+    Custom,
 }

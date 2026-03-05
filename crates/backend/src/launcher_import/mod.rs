@@ -1,6 +1,7 @@
-use std::path::Path;
+use std::{path::{Path, PathBuf}};
 
 use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, modal_action::ModalAction};
+use log::debug;
 use schema::instance::InstanceConfiguration;
 use crate::{BackendState, launcher_import::{
 		modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db},
@@ -13,14 +14,23 @@ mod multimc;
 mod modrinth;
 mod atlauncher;
 
-
-pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
+pub fn discover_instances_from_other_launchers(path: Option<PathBuf>) -> ImportFromOtherLaunchers {
     let mut imports = ImportFromOtherLaunchers::default();
 
-    let Some(base_dirs) = directories::BaseDirs::new() else {
-        return imports;
+    debug!("Received request to update data w/path: {:?}", path);
+
+    let data_dir = if let Some(external_path) = path {
+    	external_path
+    } else if let Some(base_dirs) = directories::BaseDirs::new() {
+    	base_dirs.data_dir().to_path_buf()
+    } else {
+    	return imports;
     };
-    let data_dir = base_dirs.data_dir();
+
+    // let Some(base_dirs) = directories::BaseDirs::new() else {
+    //     return imports;
+    // };
+    // let data_dir = base_dirs.data_dir();
 
     let prism_instances = data_dir.join("PrismLauncher").join("instances");
     imports.imports[OtherLauncher::Prism] = from_subfolders(&prism_instances, &|path| {
@@ -32,7 +42,7 @@ pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
         path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
     });
 
-    if let Ok(import) = read_profiles_from_modrinth_db(data_dir) {
+    if let Ok(import) = read_profiles_from_modrinth_db(data_dir.as_path()) {
         imports.imports[OtherLauncher::Modrinth] = import;
     }
 
@@ -40,6 +50,8 @@ pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
     imports.imports[OtherLauncher::AtLauncher] = from_subfolders(&atlauncher_instances, &|path| {
     	path.join("instance.json").exists()
     });
+
+    log::debug!("Completed reqwest with data: {:?}", imports);
 
     imports
 }
@@ -105,6 +117,7 @@ pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherL
         OtherLauncher::AtLauncher => {
         	let atlauncher = data_dir.join("atlauncher");
          	import_from_atlauncher(backend, &atlauncher, import_accounts, import_instances, modal_action).await;
-        }
+        },
+        OtherLauncher::Custom => todo!()
     }
 }

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{handle::BackendHandle, import::{ImportFromOtherLaunchers, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
 use gpui::{prelude::*, *};
@@ -32,12 +32,12 @@ impl ImportPage {
             _open_file_task: Task::ready(()),
         };
 
-        page.update_launcher_paths(cx);
+        page.update_launcher_paths(cx, None);
 
         page
     }
 
-    pub fn update_launcher_paths(&mut self, cx: &mut Context<Self>) {
+    pub fn update_launcher_paths(&mut self, cx: &mut Context<Self>, path: Option<PathBuf>) {
         let (send, recv) = tokio::sync::oneshot::channel();
         self._get_import_paths_task = cx.spawn(async move |page, cx| {
             let result: ImportFromOtherLaunchers = recv.await.unwrap_or_default();
@@ -49,6 +49,7 @@ impl ImportPage {
 
         self.backend_handle.send(MessageToBackend::GetImportFromOtherLauncherPaths {
             channel: send,
+            path,
         });
     }
 }
@@ -76,13 +77,15 @@ impl Render for ImportPage {
             .child(ResponsiveGrid::new(Size::new(AvailableSpace::MinContent, AvailableSpace::MinContent))
                 .gap_2()
                 .children({
-                	OtherLauncher::iter().map(|launcher| {
-                		Button::new(launcher.to_string())
-                 			.label(format!("Import from {}", launcher))
-                 			.w_full()
-                  			.disabled(imports.imports[launcher].is_none())
-                     		.on_click(cx.listener(move |page, _, _, _| page.import_from = Some(launcher)))
-                 	})
+                	OtherLauncher::iter()
+	                    .filter(|launcher| *launcher != OtherLauncher::Custom)
+	                 	.map(|launcher| {
+	                		Button::new(launcher.to_string())
+	                 			.label(format!("Import from {}", launcher))
+	                 			.w_full()
+	                  			.disabled(imports.imports[launcher].is_none())
+	                     		.on_click(cx.listener(move |page, _, _, _| page.import_from = Some(launcher)))
+	                 	})
                 })
                 .child(Button::new("mrpack")
                     .label("Import Modrinth Pack (.mrpack)")
@@ -119,6 +122,49 @@ impl Render for ImportPage {
                                 root::start_install(content_install, &page.backend_handle, window, cx);
                             });
                         })
+                    })))
+               	.child(Button::new("custom")
+                    .label("Import From Custom Directory")
+                    .w_full()
+                    .on_click(cx.listener(|page, _, window, cx| {
+	                    let receiver = cx.prompt_for_paths(PathPromptOptions {
+	                        files: false,
+	                        directories: true,
+	                        multiple: false,
+	                        prompt: Some("Select Directory To Import From".into())
+	                    });
+	                    let page_entity = cx.entity();
+						page._open_file_task = window.spawn(cx, async move |cx| {
+							println!("Waiting for file");
+                            let Ok(Ok(Some(result))) = receiver.await else {
+                                return;
+                            };
+                            println!("Received {:?}", result);
+                            let Some(path) = result.first() else {
+                                return;
+                            };
+
+							_ = page_entity.update_in(cx, move |page, window, cx| {
+									page.update_launcher_paths(cx, Some(path.to_owned()));
+									page.import_from = Some(OtherLauncher::Custom);
+
+
+	                                // let content_install = ContentInstall {
+	                                //     target: InstallTarget::NewInstance { name: None },
+	                                //     loader_hint: Loader::Unknown,
+	                                //     version_hint: None,
+	                                //     files: Arc::from([
+	                                //         ContentInstallFile {
+	                                //             replace_old: None,
+	                                //             path: ContentInstallPath::Automatic,
+	                                //             download: ContentDownload::File { path: path.into() },
+	                                //             content_source: ContentSource::Manual,
+	                                //         }
+	                                //     ]),
+	                                // };
+	                                // root::start_install(content_install, &page.backend_handle, window, cx);
+                            });
+						});
                     })))
             );
 

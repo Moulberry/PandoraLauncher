@@ -827,8 +827,8 @@ impl BackendState {
                     }
                 }
             },
-            MessageToBackend::GetImportFromOtherLauncherPaths { channel } => {
-                let result = crate::launcher_import::discover_instances_from_other_launchers();
+            MessageToBackend::GetImportFromOtherLauncherPaths { channel, path } => {
+                let result = crate::launcher_import::discover_instances_from_other_launchers(path);
                 _ = channel.send(result);
             },
             MessageToBackend::GetSyncState { channel } => {

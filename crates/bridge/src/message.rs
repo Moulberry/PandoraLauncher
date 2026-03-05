@@ -145,6 +145,7 @@ pub enum MessageToBackend {
     },
     GetImportFromOtherLauncherPaths {
         channel: tokio::sync::oneshot::Sender<ImportFromOtherLaunchers>,
+        path: Option<PathBuf>
     },
     GetSyncState {
         channel: tokio::sync::oneshot::Sender<SyncState>,

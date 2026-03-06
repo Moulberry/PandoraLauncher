@@ -1,6 +1,6 @@
 use std::{path::{Path, PathBuf}, sync::Arc};
 
-use bridge::{handle::BackendHandle, import::{ImportFromOtherLaunchers, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
+use bridge::{handle::BackendHandle, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants}, checkbox::Checkbox, scroll::ScrollableElement, spinner::Spinner, v_flex, ActiveTheme as _, Disableable, Sizable
@@ -32,12 +32,12 @@ impl ImportPage {
             _open_file_task: Task::ready(()),
         };
 
-        page.update_launcher_paths(cx, None);
+        page.update_launcher_paths(cx);
 
         page
     }
 
-    pub fn update_launcher_paths(&mut self, cx: &mut Context<Self>, path: Option<PathBuf>) {
+    pub fn update_launcher_paths(&mut self, cx: &mut Context<Self>) {
         let (send, recv) = tokio::sync::oneshot::channel();
         self._get_import_paths_task = cx.spawn(async move |page, cx| {
             let result: ImportFromOtherLaunchers = recv.await.unwrap_or_default();
@@ -49,8 +49,26 @@ impl ImportPage {
 
         self.backend_handle.send(MessageToBackend::GetImportFromOtherLauncherPaths {
             channel: send,
-            path,
         });
+    }
+
+    pub fn request_custom_paths(&mut self, cx: &mut Context<Self>, path: PathBuf) {
+    	let (send, recv) = tokio::sync::oneshot::channel();
+     	self._get_import_paths_task = cx.spawn(async move |page, cx| {
+      		let result: Option<ImportFromOtherLauncher> = recv.await.unwrap_or_default();
+        	let _ = page.update(cx, move |page, cx| {
+         		if let Some(other) = page.import_from_other_launchers.as_mut() {
+           			other.imports[OtherLauncher::Custom] = result;
+	           	} else {
+	           		let mut other_import = ImportFromOtherLaunchers::default();
+	            	other_import.imports[OtherLauncher::Custom] = result;
+	             	page.import_from_other_launchers = Some(other_import);
+				}
+           		cx.notify();
+         	});
+      	});
+
+      	self.backend_handle.send(MessageToBackend::GetImportFromCustomLauncherPath { channel: send, path });
     }
 }
 
@@ -145,7 +163,7 @@ impl Render for ImportPage {
                             };
 
 							_ = page_entity.update_in(cx, move |page, window, cx| {
-									page.update_launcher_paths(cx, Some(path.to_owned()));
+									page.request_custom_paths(cx, path.to_owned());
 									page.import_from = Some(OtherLauncher::Custom);
 
 

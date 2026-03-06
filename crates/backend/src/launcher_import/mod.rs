@@ -14,23 +14,13 @@ mod multimc;
 mod modrinth;
 mod atlauncher;
 
-pub fn discover_instances_from_other_launchers(path: Option<PathBuf>) -> ImportFromOtherLaunchers {
+pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
     let mut imports = ImportFromOtherLaunchers::default();
 
-    debug!("Received request to update data w/path: {:?}", path);
-
-    let data_dir = if let Some(external_path) = path {
-    	external_path
-    } else if let Some(base_dirs) = directories::BaseDirs::new() {
-    	base_dirs.data_dir().to_path_buf()
-    } else {
-    	return imports;
+    let Some(base_dirs) = directories::BaseDirs::new() else {
+        return imports;
     };
-
-    // let Some(base_dirs) = directories::BaseDirs::new() else {
-    //     return imports;
-    // };
-    // let data_dir = base_dirs.data_dir();
+    let data_dir = base_dirs.data_dir();
 
     let prism_instances = data_dir.join("PrismLauncher").join("instances");
     imports.imports[OtherLauncher::Prism] = from_subfolders(&prism_instances, &|path| {
@@ -42,7 +32,7 @@ pub fn discover_instances_from_other_launchers(path: Option<PathBuf>) -> ImportF
         path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
     });
 
-    if let Ok(import) = read_profiles_from_modrinth_db(data_dir.as_path()) {
+    if let Ok(import) = read_profiles_from_modrinth_db(data_dir) {
         imports.imports[OtherLauncher::Modrinth] = import;
     }
 
@@ -51,9 +41,15 @@ pub fn discover_instances_from_other_launchers(path: Option<PathBuf>) -> ImportF
     	path.join("instance.json").exists()
     });
 
-    log::debug!("Completed reqwest with data: {:?}", imports);
-
     imports
+}
+
+pub fn discover_instances_from_path(path: PathBuf) -> Option<ImportFromOtherLauncher> {
+ 	debug!("Received request to update data w/path: {:?}", path);
+
+  	from_subfolders(path.as_path(), &|path| {
+   		path.join("instance.json").exists()
+   	})
 }
 
 fn from_subfolders(folder: &Path, check: &dyn Fn(&Path) -> bool) -> Option<ImportFromOtherLauncher> {

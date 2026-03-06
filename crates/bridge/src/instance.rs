@@ -57,6 +57,10 @@ pub struct InstanceServerSummary {
     pub name: Arc<str>,
     pub ip: Arc<str>,
     pub png_icon: Option<Arc<[u8]>>,
+    pub motd: Option<Arc<str>>,
+    pub player_count: Option<u32>,
+    pub max_players: Option<u32>,
+    pub ping: Option<u32>,
 }
 
 #[derive(Debug, Clone)]

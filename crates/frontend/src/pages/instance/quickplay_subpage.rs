@@ -235,38 +235,103 @@ impl ListDelegate for ServersListDelegate {
         self.searched.len()
     }
 
-    fn render_item(&mut self, ix: IndexPath, _window: &mut Window, cx: &mut Context<ListState<Self>>) -> Option<Self::Item> {
+    fn render_item(
+        &mut self,
+        ix: IndexPath,
+        _window: &mut Window,
+        cx: &mut Context<ListState<Self>>,
+    ) -> Option<Self::Item> {
         let summary = self.searched.get(ix.row)?;
 
         let icon = if let Some(png_icon) = summary.png_icon.as_ref() {
             png_render_cache::render(Arc::clone(png_icon), cx)
         } else {
-            gpui::img(ImageSource::Resource(Resource::Embedded("images/default_world.png".into())))
+            gpui::img(ImageSource::Resource(Resource::Embedded(
+                "images/default_server.png".into(),
+            )))
+        };
+
+        let motd = summary
+            .motd
+            .as_ref()
+            .map(|m| SharedString::from(m.clone()))
+            .unwrap_or_else(|| SharedString::from(""));
+
+        let player_text = if let (Some(p), Some(m)) = (summary.player_count, summary.max_players) {
+            SharedString::from(format!("{p}/{m} players"))
+        } else {
+            SharedString::from("Offline")
+        };
+
+        let online = summary.ping.is_some();
+        let status_color = if online {
+            cx.theme().success
+        } else {
+            cx.theme().muted_foreground
+        };
+
+        let ping_color = match summary.ping {
+            Some(p) if p < 80  => cx.theme().success,
+            Some(p) if p < 180 => cx.theme().warning,
+            Some(_)            => cx.theme().danger,
+            None               => cx.theme().muted,
+        };
+        let ping_text = match summary.ping {
+            Some(p) => SharedString::from(format!("{p} ms")),
+            None    => SharedString::from("—"),
         };
 
         let description = v_flex()
+            .w_full()
             .child(SharedString::from(summary.name.clone()))
-            .child(div().text_color(cx.theme().muted_foreground).child(SharedString::from(summary.ip.clone())));
+            .child(
+                div()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(motd),
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .child(
+                        div()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(SharedString::from(summary.ip.clone())),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(div().text_color(ping_color).child(ping_text))
+                            .child(div().text_color(status_color).child(player_text)),
+                    ),
+            );
 
         let id = self.id;
         let name = self.name.clone();
         let backend_handle = self.backend_handle.clone();
         let target = OsString::from(summary.ip.to_string());
+
         let item = ListItem::new(ix).p_1().child(
             h_flex()
-                .gap_1()
+                .gap_2()
+                .w_full()
                 .child(
                     div()
-                        .child(Button::new(ix).success().icon(PandoraIcon::Play).on_click(move |_, window, cx| {
-                            root::start_instance(
-                                id,
-                                name.clone(),
-                                Some(QuickPlayLaunch::Multiplayer(target.clone())),
-                                &backend_handle,
-                                window,
-                                cx,
-                            );
-                        }))
+                        .child(
+                            Button::new(ix)
+                                .success()
+                                .icon(PandoraIcon::Play)
+                                .on_click(move |_, window, cx| {
+                                    root::start_instance(
+                                        id,
+                                        name.clone(),
+                                        Some(QuickPlayLaunch::Multiplayer(target.clone())),
+                                        &backend_handle,
+                                        window,
+                                        cx,
+                                    );
+                                }),
+                        )
                         .px_2(),
                 )
                 .child(icon.size_16().min_w_16().min_h_16())

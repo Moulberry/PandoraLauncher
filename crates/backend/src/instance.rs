@@ -405,8 +405,8 @@ impl Instance {
                 return Some((last.clone(), false));
             } else {
                 let server_dat_path = this.server_dat_path.clone();
-                tokio::task::spawn_blocking(move || {
-                    Self::load_servers_all(&server_dat_path)
+                tokio::spawn(async move {
+                    Self::load_servers_all(server_dat_path).await
                 })
             };
 
@@ -435,22 +435,20 @@ impl Instance {
         Some((result, true))
     }
 
-    fn load_servers_all(server_dat_path: &Path) -> Arc<[InstanceServerSummary]> {
+    async fn load_servers_all(server_dat_path: Arc<Path>) -> Arc<[InstanceServerSummary]> {
         log::info!("Loading servers from {:?}", server_dat_path);
 
         if !server_dat_path.is_file() {
             return Arc::from([]);
         }
 
-        let result = match load_servers_summary(&server_dat_path) {
+        match load_servers_summary(&server_dat_path).await {
             Ok(summaries) => summaries.into(),
             Err(err) => {
                 log::error!("Error loading servers: {:?}", err);
                 Arc::from([])
             },
-        };
-
-        result
+        }
     }
 
     pub async fn load_content(
@@ -939,16 +937,26 @@ fn load_world_summary(path: &Path) -> anyhow::Result<InstanceWorldSummary> {
     })
 }
 
-fn load_servers_summary(server_dat_path: &Path) -> anyhow::Result<Vec<InstanceServerSummary>> {
+async fn load_servers_summary(server_dat_path: &Path) -> anyhow::Result<Vec<InstanceServerSummary>> {
     let raw = std::fs::read(server_dat_path)?;
 
     let mut nbt_data = raw.as_slice();
     let result = nbt::decode::read_named(&mut nbt_data)?;
 
     let root = result.as_compound().context("Unable to get root compound")?;
-    let servers = root.find_list("servers", nbt::TAG_COMPOUND_ID).context("Unable to get servers")?;
+    let servers = root
+        .find_list("servers", nbt::TAG_COMPOUND_ID)
+        .context("Unable to get servers")?;
 
-    let mut summaries = Vec::with_capacity(servers.len());
+    // Collect static server info first (no I/O), then ping all concurrently.
+    struct ServerEntry {
+        name: Arc<str>,
+        ip: Arc<str>,
+        png_icon: Option<Arc<[u8]>>,
+        addr: String,
+    }
+
+    let mut entries = Vec::with_capacity(servers.len());
 
     for server in servers.iter() {
         let server = server.as_compound().unwrap();
@@ -970,16 +978,213 @@ fn load_servers_summary(server_dat_path: &Path) -> anyhow::Result<Vec<InstanceSe
 
         let icon = server
             .find_string("icon")
-            .and_then(|v| base64::engine::general_purpose::STANDARD.decode(v).map(Arc::from).ok());
+            .and_then(|v| {
+                base64::engine::general_purpose::STANDARD
+                    .decode(v)
+                    .map(Arc::from)
+                    .ok()
+            });
 
-        summaries.push(InstanceServerSummary {
+        let addr = if ip.contains(':') {
+            ip.to_string()
+        } else {
+            format!("{ip}:25565")
+        };
+
+        entries.push(ServerEntry {
             name,
             ip: Arc::from(ip.as_str()),
             png_icon: icon,
+            addr,
         });
     }
 
+    // Ping all servers concurrently.
+    let ping_futures = entries.iter().map(|e| {
+        let addr = e.addr.clone();
+        async move { async_ping_server(&addr).await }
+    });
+    let ping_results = futures::future::join_all(ping_futures).await;
+
+    let summaries = entries
+        .into_iter()
+        .zip(ping_results)
+        .map(|(entry, ping_result)| {
+            let (motd, player_count, max_players, ping) =
+                if let Ok((motd_str, players, max, ping)) = ping_result {
+                    (Some(Arc::from(motd_str)), Some(players), Some(max), Some(ping))
+                } else {
+                    (None, None, None, None)
+                };
+
+            InstanceServerSummary {
+                name: entry.name,
+                ip: entry.ip,
+                png_icon: entry.png_icon,
+                motd,
+                player_count,
+                max_players,
+                ping,
+            }
+        })
+        .collect();
+
     Ok(summaries)
+}
+
+async fn async_ping_server(addr: &str) -> anyhow::Result<(String, u32, u32, u32)> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
+    use std::time::Instant;
+
+    const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+    fn write_varint(buf: &mut Vec<u8>, mut value: usize) {
+        loop {
+            let mut byte = (value & 0x7F) as u8;
+            value >>= 7;
+            if value != 0 {
+                byte |= 0x80;
+            }
+            buf.push(byte);
+            if value == 0 {
+                break;
+            }
+        }
+    }
+
+    async fn read_varint<R: AsyncReadExt + Unpin>(r: &mut R) -> anyhow::Result<i32> {
+        let mut result = 0i32;
+        let mut shift = 0u32;
+        loop {
+            let byte = r.read_u8().await?;
+            result |= ((byte & 0x7F) as i32) << shift;
+            if byte & 0x80 == 0 {
+                return Ok(result);
+            }
+            shift += 7;
+            anyhow::ensure!(shift < 35, "VarInt too long");
+        }
+    }
+
+    async fn send_packet<W: AsyncWriteExt + Unpin>(w: &mut W, body: &[u8]) -> anyhow::Result<()> {
+        let mut frame = Vec::with_capacity(5 + body.len());
+        write_varint(&mut frame, body.len());
+        frame.extend_from_slice(body);
+        w.write_all(&frame).await?;
+        Ok(())
+    }
+
+    let mut stream = tokio::time::timeout(TIMEOUT, TcpStream::connect(addr))
+        .await
+        .context("Connection timed out")?
+        .context("TCP connect failed")?;
+
+    let (host, port): (&str, u16) = if let Some(pos) = addr.rfind(':') {
+        let h = &addr[..pos];
+        let p = addr[pos + 1..].parse::<u16>().unwrap_or(25565);
+        (h, p)
+    } else {
+        (addr, 25565)
+    };
+
+
+    let mut handshake = Vec::new();
+    write_varint(&mut handshake, 0x00);
+    write_varint(&mut handshake, 0x2F);
+    write_varint(&mut handshake, host.len());
+    handshake.extend_from_slice(host.as_bytes());
+    handshake.extend_from_slice(&port.to_be_bytes());
+    write_varint(&mut handshake, 1);
+
+    send_packet(&mut stream, &handshake).await?;
+
+    send_packet(&mut stream, &[0x00]).await?;
+
+    let _packet_len = tokio::time::timeout(TIMEOUT, read_varint(&mut stream))
+        .await
+        .context("Status response timed out")??;
+
+    let packet_id = tokio::time::timeout(TIMEOUT, read_varint(&mut stream))
+        .await
+        .context("Packet ID read timed out")??;
+    anyhow::ensure!(packet_id == 0x00, "Unexpected packet id: {packet_id:#x}");
+
+    let json_len = tokio::time::timeout(TIMEOUT, read_varint(&mut stream))
+        .await
+        .context("JSON length read timed out")?? as usize;
+
+    let mut json_bytes = vec![0u8; json_len];
+    tokio::time::timeout(TIMEOUT, stream.read_exact(&mut json_bytes))
+        .await
+        .context("JSON body read timed out")??;
+
+
+    let ping_payload: u64 = 0xDEAD_BEEF_CAFE_1234;
+    let mut ping_pkt = Vec::with_capacity(9);
+    write_varint(&mut ping_pkt, 0x01);
+    ping_pkt.extend_from_slice(&ping_payload.to_be_bytes());
+
+    let ping_start = Instant::now();
+    let _ = send_packet(&mut stream, &ping_pkt).await;
+
+    let _ = tokio::time::timeout(TIMEOUT, read_varint(&mut stream)).await;
+    let _ = tokio::time::timeout(TIMEOUT, read_varint(&mut stream)).await;
+
+    let ping_ms = ping_start.elapsed().as_millis() as u32;
+
+    let json: serde_json::Value = serde_json::from_slice(&json_bytes)
+        .context("Failed to parse status JSON")?;
+
+    fn extract_chat_text(val: &serde_json::Value) -> String {
+        match val {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Object(obj) => {
+                let mut out = String::new();
+                if let Some(serde_json::Value::String(t)) = obj.get("text") {
+                    out.push_str(t);
+                }
+                if let Some(serde_json::Value::Array(extra)) = obj.get("extra") {
+                    for child in extra {
+                        out.push_str(&extract_chat_text(child));
+                    }
+                }
+                out
+            }
+            _ => String::new(),
+        }
+    }
+
+    fn strip_section_codes(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut chars = s.chars();
+        while let Some(ch) = chars.next() {
+            if ch == '§' {
+                chars.next();
+            } else {
+                out.push(ch);
+            }
+        }
+        out
+    }
+
+    let raw_motd = match json.get("description") {
+        Some(val) => extract_chat_text(val),
+        None => String::new(),
+    };
+    let motd = strip_section_codes(&raw_motd);
+
+    let online_players = json
+        .pointer("/players/online")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+
+    let max_players = json
+        .pointer("/players/max")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+
+    Ok((motd, online_players, max_players, ping_ms))
 }
 
 fn cas_update(state: &Arc<AtomicBridgeDataLoadState>, func: impl Fn(BridgeDataLoadState) -> BridgeDataLoadState) {

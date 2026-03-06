@@ -953,7 +953,6 @@ async fn load_servers_summary(server_dat_path: &Path) -> anyhow::Result<Vec<Inst
         name: Arc<str>,
         ip: Arc<str>,
         png_icon: Option<Arc<[u8]>>,
-        addr: String,
     }
 
     let mut entries = Vec::with_capacity(servers.len());
@@ -985,24 +984,16 @@ async fn load_servers_summary(server_dat_path: &Path) -> anyhow::Result<Vec<Inst
                     .ok()
             });
 
-        let addr = if ip.contains(':') {
-            ip.to_string()
-        } else {
-            format!("{ip}:25565")
-        };
-
         entries.push(ServerEntry {
             name,
             ip: Arc::from(ip.as_str()),
             png_icon: icon,
-            addr,
         });
     }
 
-    // Ping all servers concurrently.
     let ping_futures = entries.iter().map(|e| {
-        let addr = e.addr.clone();
-        async move { async_ping_server(&addr).await }
+        let ip = e.ip.clone();
+        async move { async_ping_server(&ip).await }
     });
     let ping_results = futures::future::join_all(ping_futures).await;
 
@@ -1032,12 +1023,23 @@ async fn load_servers_summary(server_dat_path: &Path) -> anyhow::Result<Vec<Inst
     Ok(summaries)
 }
 
-async fn async_ping_server(addr: &str) -> anyhow::Result<(String, u32, u32, u32)> {
+async fn async_ping_server(ip: &str) -> anyhow::Result<(String, u32, u32, u32)> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpStream;
     use std::time::Instant;
 
     const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+    const DEFAULT_PORT: u16 = 25565;
+
+    let (host, port): (&str, u16) = if let Some(pos) = ip.rfind(':') {
+        let h = &ip[..pos];
+        let p = ip[pos + 1..].parse::<u16>().unwrap_or(DEFAULT_PORT);
+        (h, p)
+    } else {
+        (ip, DEFAULT_PORT)
+    };
+
+    let addr = format!("{host}:{port}");
 
     fn write_varint(buf: &mut Vec<u8>, mut value: usize) {
         loop {
@@ -1075,19 +1077,10 @@ async fn async_ping_server(addr: &str) -> anyhow::Result<(String, u32, u32, u32)
         Ok(())
     }
 
-    let mut stream = tokio::time::timeout(TIMEOUT, TcpStream::connect(addr))
+    let mut stream = tokio::time::timeout(TIMEOUT, TcpStream::connect(&addr))
         .await
         .context("Connection timed out")?
         .context("TCP connect failed")?;
-
-    let (host, port): (&str, u16) = if let Some(pos) = addr.rfind(':') {
-        let h = &addr[..pos];
-        let p = addr[pos + 1..].parse::<u16>().unwrap_or(25565);
-        (h, p)
-    } else {
-        (addr, 25565)
-    };
-
 
     let mut handshake = Vec::new();
     write_varint(&mut handshake, 0x00);
@@ -1155,24 +1148,10 @@ async fn async_ping_server(addr: &str) -> anyhow::Result<(String, u32, u32, u32)
         }
     }
 
-    fn strip_section_codes(s: &str) -> String {
-        let mut out = String::with_capacity(s.len());
-        let mut chars = s.chars();
-        while let Some(ch) = chars.next() {
-            if ch == '§' {
-                chars.next();
-            } else {
-                out.push(ch);
-            }
-        }
-        out
-    }
-
-    let raw_motd = match json.get("description") {
+    let motd = match json.get("description") {
         Some(val) => extract_chat_text(val),
         None => String::new(),
     };
-    let motd = strip_section_codes(&raw_motd);
 
     let online_players = json
         .pointer("/players/online")

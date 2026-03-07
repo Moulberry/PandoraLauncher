@@ -1263,8 +1263,8 @@ impl BackendState {
             MessageToBackend::InstallUpdate { update, modal_action } => {
                 tokio::task::spawn(crate::update::install_update(self.redirecting_http_client.clone(), self.directories.clone(), self.send.clone(), update, modal_action));
             },
-            MessageToBackend::ImportFromOtherLauncher { launcher, import_accounts, import_instances, modal_action } => {
-                crate::launcher_import::import_from_other_launcher(self, launcher, import_accounts, import_instances, modal_action).await;
+            MessageToBackend::ImportFromOtherLauncher { details, modal_action } => {
+                crate::launcher_import::import_from_other_launcher(self, details, modal_action).await;
             }
         }
     }

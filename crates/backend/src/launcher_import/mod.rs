@@ -100,13 +100,13 @@ pub fn try_load_from_other_launcher_formats(folder: &Path) -> Option<InstanceCon
     None
 }
 
-pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherLauncher, import_accounts: bool, import_instances: Vec<PathBuf>, modal_action: ModalAction) {
+pub async fn import_from_other_launcher(backend: &BackendState, details: ImportFromOtherLauncher, modal_action: ModalAction) {
     let Some(base_dirs) = directories::BaseDirs::new() else {
         return;
     };
     let data_dir = base_dirs.data_dir();
 
-    match launcher {
+    match details.launcher {
         OtherLauncher::Prism => {
             let prism = data_dir.join("PrismLauncher");
             import_from_multimc(backend, &prism, import_accounts, import_instances, modal_action).await;

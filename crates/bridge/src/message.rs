@@ -201,9 +201,7 @@ pub enum MessageToBackend {
         modal_action: ModalAction,
     },
     ImportFromOtherLauncher {
-        launcher: OtherLauncher,
-        import_accounts: bool,
-        import_instances: Vec<PathBuf>,
+    	details: ImportFromOtherLauncher,
         modal_action: ModalAction,
     }
 }

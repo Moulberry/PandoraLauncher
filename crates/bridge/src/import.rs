@@ -6,7 +6,7 @@ pub struct ImportFromOtherLaunchers {
     pub imports: enum_map::EnumMap<OtherLauncher, Option<ImportFromOtherLauncher>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImportFromOtherLauncher {
     // launcher is duplicated here for when we send a custom path request.
 	pub launcher: OtherLauncher,
@@ -25,7 +25,7 @@ pub enum OtherLauncher {
     MultiMC,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ImportStatus {
 	#[default]
 	NotImporting,

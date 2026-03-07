@@ -241,21 +241,12 @@ impl Render for ImportPage {
                     let modal_action = ModalAction::default();
                     debug!("{:?}", page.import_from_other_launchers);
 
-                    let instances = if page.import_instances {
-                    	page.import_from_other_launchers.as_ref().unwrap()
-                     		.imports[import_from].as_ref().unwrap()
-                       		.instances.iter()
-                         		.filter(|(_, import)| **import == ImportStatus::Importing)
-                          		.map(|(instance, _)| instance.to_path_buf())
-                            	.collect::<Vec<PathBuf>>()
-                    } else {
-                    	Vec::new()
-                    };
+                    let mut details = page.import_from_other_launchers.as_ref().unwrap().imports[import_from].as_ref().unwrap().clone();
+                    details.account = if import_accounts { details.account } else { None };
+                    if !page.import_instances { details.instances.clear(); }
 
                     page.backend_handle.send(MessageToBackend::ImportFromOtherLauncher {
-                        launcher: import_from,
-                        import_accounts: import_accounts,
-                        import_instances: instances,
+                    	details,
                         modal_action: modal_action.clone()
                     });
 

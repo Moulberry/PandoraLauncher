@@ -1,6 +1,6 @@
-use std::{path::{Path, PathBuf}, str::FromStr};
+use std::{collections::HashMap, path::{Path, PathBuf}, str::FromStr};
 use auth::{credentials::AccountCredentials, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
-use bridge::modal_action::{ModalAction, ProgressTracker};
+use bridge::{import::{ImportFromOtherLauncher, ImportStatus}, modal_action::{ModalAction, ProgressTracker}};
 use chrono::DateTime;
 use log::debug;
 use schema::{instance::{InstanceConfiguration, InstanceMemoryConfiguration,  InstanceWrapperCommandConfiguration}, loader::Loader};
@@ -245,7 +245,7 @@ struct AtLauncherDisplayClaim {
 }
 
 
-pub async fn import_from_atlauncher(backend: &BackendState, path: &Path, import_accounts: bool, import_instance: Vec<PathBuf>, modal_action: ModalAction) {
+pub async fn import_from_atlauncher(backend: &BackendState, path: &Path, details: ImportFromOtherLauncher, modal_action: ModalAction) {
 	// probably a better way of doing this mess...
 	let launcher_config = {
 		match std::fs::read(path.join("configs/ATLauncher.json")).ok() {
@@ -255,20 +255,19 @@ pub async fn import_from_atlauncher(backend: &BackendState, path: &Path, import_
 	};
 	// log::debug!("Launcher config: {}", launcher_config.is_some());
 
-	if import_accounts {
-		import_accounts_from_atlauncher(backend, path, &launcher_config, &modal_action).await;
+	if let Some(account_path) = details.account {
+		import_accounts_from_atlauncher(backend, &account_path, &launcher_config, &modal_action).await;
 	}
-	if !import_instance.is_empty() {
-		import_instances_from_atlauncher(backend, import_instance, &launcher_config, &modal_action);
+	if !details.instances.is_empty() {
+		import_instances_from_atlauncher(backend, details.instances, &launcher_config, &modal_action);
 	}
 }
 
-async fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
+async fn import_accounts_from_atlauncher(backend: &BackendState, account_path: &Path, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
 	let tracker = ProgressTracker::new("Reading accounts.json".into(), backend.send.clone());
     modal_action.trackers.push(tracker.clone());
     tracker.notify();
 
-    let accounts_path = path.join("configs/accounts.json");
     let Ok(accounts_bytes) = std::fs::read(&accounts_path) else {
         return;
     };
@@ -384,13 +383,17 @@ fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConf
     Ok(configuration)
 }
 
-fn import_instances_from_atlauncher(backend: &BackendState, instances: Vec<PathBuf>, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
+fn import_instances_from_atlauncher(backend: &BackendState, instances: HashMap<PathBuf, ImportStatus>, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
 	let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
     let mut to_import = Vec::new();
 
-    for entry in instances {
+    for (entry, state) in instances {
+	    if state != ImportStatus::Importing {
+		    continue;
+	    }
+
 	    if !entry.exists() {
 	        continue;
 	    };

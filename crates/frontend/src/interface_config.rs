@@ -40,6 +40,8 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub hide_server_addresses: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub show_snapshots_in_create_instance: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub instances_view_mode: InstancesViewMode,

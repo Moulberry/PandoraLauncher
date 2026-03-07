@@ -3,8 +3,9 @@ use std::{path::{Path, PathBuf}, sync::Arc};
 use bridge::{handle::BackendHandle, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, scroll::ScrollableElement, spinner::Spinner, v_flex, ActiveTheme as _, Disableable, Sizable
+    ActiveTheme as _, Disableable, Sizable, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, v_flex
 };
+use log::debug;
 use schema::{content::ContentSource, loader::Loader};
 use strum::IntoEnumIterator;
 
@@ -180,6 +181,30 @@ impl Render for ImportPage {
                     .rounded(cx.theme().radius)
                     .border_color(cx.theme().border)
                     .max_h_64()
+                    .child(h_flex().children([
+                    	Button::new("uncheck_all").label("Uncheck All")
+                        	.on_click({
+		                         let import_from_copy = import_from;
+		                         cx.listener(move |page, _, _, _| {
+	                       			if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
+	                       				if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
+	                           				import_entry.instances.iter_mut().for_each(|instance| *instance.1 = false);
+	                           			}
+	                          		}
+	                        	})
+                         }),
+                    	Button::new("check_all").label("Check All")
+                        	.on_click({
+		                         let import_from_copy = import_from;
+		                         cx.listener(move |page, _, _, _| {
+	                       			if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
+	                       				if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
+	                           				import_entry.instances.iter_mut().for_each(|instance| *instance.1 = true);
+	                           			}
+	                          		}
+	                        	})
+                         })
+                    ]))
                     .child(v_flex().overflow_y_scrollbar().children(
                         import.instances.iter().map(|(path, checked)| {
                          Checkbox::new(SharedString::new(path.to_string_lossy()))
@@ -203,12 +228,23 @@ impl Render for ImportPage {
                 )
                 .child(Button::new("doimport").disabled(!import_accounts && !self.import_instances).success().label(label.clone()).on_click(cx.listener(move |page, _, window, cx| {
                     let modal_action = ModalAction::default();
-                    println!("{:?}", page.import_from_other_launchers);
+                    debug!("{:?}", page.import_from_other_launchers);
+
+                    let instances = if page.import_instances {
+                    	page.import_from_other_launchers.as_ref().unwrap()
+                     		.imports[import_from].as_ref().unwrap()
+                       		.instances.iter()
+                         		.filter(|(_, import)| **import)
+                          		.map(|(instance, _)| instance.to_path_buf())
+                            	.collect::<Vec<PathBuf>>()
+                    } else {
+                    	Vec::new()
+                    };
 
                     page.backend_handle.send(MessageToBackend::ImportFromOtherLauncher {
                         launcher: import_from,
                         import_accounts: import_accounts,
-                        import_instances: page.import_instances,
+                        import_instances: instances,
                         modal_action: modal_action.clone()
                     });
 

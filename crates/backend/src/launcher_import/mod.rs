@@ -100,7 +100,7 @@ pub fn try_load_from_other_launcher_formats(folder: &Path) -> Option<InstanceCon
     None
 }
 
-pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherLauncher, import_accounts: bool, import_instances: bool, modal_action: ModalAction) {
+pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherLauncher, import_accounts: bool, import_instances: Vec<PathBuf>, modal_action: ModalAction) {
     let Some(base_dirs) = directories::BaseDirs::new() else {
         return;
     };
@@ -109,10 +109,10 @@ pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherL
     match launcher {
         OtherLauncher::Prism => {
             let prism = data_dir.join("PrismLauncher");
-            import_from_multimc(backend, &prism, import_accounts, import_instances, modal_action).await;
+            import_from_multimc(backend, &prism, import_accounts, !import_instances.is_empty(), modal_action).await;
         },
         OtherLauncher::Modrinth => {
-            if import_instances {
+            if !import_instances.is_empty() {
                 let modrinth = data_dir.join("ModrinthApp");
                 if let Err(err) = import_instances_from_modrinth(backend, &modrinth, &modal_action) {
                     log::error!("Sqlite error while importing from modrinth: {err}");
@@ -122,7 +122,7 @@ pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherL
         },
         OtherLauncher::MultiMC => {
             let multimc = data_dir.join("multimc");
-            import_from_multimc(backend, &multimc, import_accounts, import_instances, modal_action).await;
+            import_from_multimc(backend, &multimc, import_accounts, !import_instances.is_empty(), modal_action).await;
         },
         OtherLauncher::AtLauncher => {
         	let atlauncher = data_dir.join("atlauncher");

@@ -391,13 +391,13 @@ fn import_instances_from_atlauncher(backend: &BackendState, instances: Vec<PathB
     let mut to_import = Vec::new();
 
     for entry in instances {
-        if !entry.exists() {
-            continue;
-        };
-        let folder = entry;
-        if !folder.is_dir() {
-            continue;
-        }
+	    if !entry.exists() {
+	        continue;
+	    };
+	    let folder = entry;
+	    if !folder.is_dir() {
+	        continue;
+	    }
 
         let Some(filename) = folder.file_name() else {
             continue;

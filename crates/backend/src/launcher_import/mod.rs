@@ -109,9 +109,11 @@ pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherL
     match launcher {
         OtherLauncher::Prism => {
             let prism = data_dir.join("PrismLauncher");
-            import_from_multimc(backend, &prism, import_accounts, !import_instances.is_empty(), modal_action).await;
+            import_from_multimc(backend, &prism, import_accounts, import_instances, modal_action).await;
         },
         OtherLauncher::Modrinth => {
+        	// bit harder to say to modrithn, "hey here are the paths.", so just going to ignore this for now.
+         	// TODO: The above is possible, it just needs some work. THIS PR SHOULD NOT BE MERGED UNTIL THIS IS RESOLVED.
             if !import_instances.is_empty() {
                 let modrinth = data_dir.join("ModrinthApp");
                 if let Err(err) = import_instances_from_modrinth(backend, &modrinth, &modal_action) {
@@ -122,7 +124,7 @@ pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherL
         },
         OtherLauncher::MultiMC => {
             let multimc = data_dir.join("multimc");
-            import_from_multimc(backend, &multimc, import_accounts, !import_instances.is_empty(), modal_action).await;
+            import_from_multimc(backend, &multimc, import_accounts, import_instances, modal_action).await;
         },
         OtherLauncher::AtLauncher => {
         	let atlauncher = data_dir.join("atlauncher");

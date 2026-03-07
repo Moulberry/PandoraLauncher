@@ -232,12 +232,12 @@ struct MultiMCAccountTokenExtra {
     uhs: Option<Arc<str>>,
 }
 
-pub async fn import_from_multimc(backend: &BackendState, path: &Path, import_accounts: bool, import_instances: bool, modal_action: ModalAction) {
+pub async fn import_from_multimc(backend: &BackendState, path: &Path, import_accounts: bool, import_instances: Vec<PathBuf>, modal_action: ModalAction) {
     if import_accounts {
         import_accounts_from_multimc(backend, path, &modal_action).await;
     }
-    if import_instances {
-        import_instances_from_multimc(backend, path, &modal_action);
+    if !import_instances.is_empty() {
+        import_instances_from_multimc(backend, import_instances, &modal_action);
     }
 }
 
@@ -378,27 +378,21 @@ struct MultiMCInstanceToImport {
     folder: PathBuf,
 }
 
-fn import_instances_from_multimc(backend: &BackendState, path: &Path, modal_action: &ModalAction) {
+fn import_instances_from_multimc(backend: &BackendState, instances: Vec<PathBuf>, modal_action: &ModalAction) {
     let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
 
-    let Ok(read_dir) = std::fs::read_dir(path.join("instances")) else {
-        all_tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
-        all_tracker.notify();
-        return;
-    };
-
     let mut to_import = Vec::new();
 
-    for entry in read_dir {
-        let Ok(entry) = entry else {
-            continue;
-        };
-        let folder = entry.path();
-        if !folder.is_dir() {
-            continue;
-        }
+    for entry in instances {
+    	if !entry.exists() {
+	        continue;
+	    };
+	    let folder = entry;
+	    if !folder.is_dir() {
+	        continue;
+	    }
 
         let Some(filename) = folder.file_name() else {
             continue;

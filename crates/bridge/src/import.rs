@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 use strum::{Display, EnumIter};
 
 #[derive(Default, Debug)]
@@ -6,16 +6,15 @@ pub struct ImportFromOtherLaunchers {
     pub imports: enum_map::EnumMap<OtherLauncher, Option<ImportFromOtherLauncher>>,
 }
 
-#[derive(Debug, Default)]
-pub struct ImportFromOtherLauncher {
-    pub can_import_accounts: bool,
-    pub paths: Vec<PathBuf>,
-}
-
 #[derive(Debug)]
-pub struct ImportFromCustomPath {
-	pub paths: Vec<PathBuf>,
-	pub launcher_type: OtherLauncher,
+pub struct ImportFromOtherLauncher {
+    // launcher is duplicated here for when we send a custom path request.
+	pub launcher: OtherLauncher,
+	pub instances: HashMap<PathBuf, bool>,
+	pub account: Option<PathBuf>,
+	// This is placeholder for a future update if we ever implement it.
+	// might remove it before releasing this PR though... (if i don't, then i forgot.)
+	// pub can_deduplicate: bool,
 }
 
 #[derive(Debug, Display, Clone, Copy, enum_map::Enum, EnumIter, PartialEq)]
@@ -24,11 +23,4 @@ pub enum OtherLauncher {
     Prism,
     Modrinth,
     MultiMC,
-    Custom,
-}
-
-pub struct OtherLauncherImportData {
-	pub launcher_type: OtherLauncher,
-	pub can_import_accounts: bool,
-	pub paths: Vec<PathBuf>,
 }

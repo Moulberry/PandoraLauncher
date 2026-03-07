@@ -52,24 +52,24 @@ impl ImportPage {
         });
     }
 
-    pub fn request_custom_paths(&mut self, cx: &mut Context<Self>, path: PathBuf) {
-    	let (send, recv) = tokio::sync::oneshot::channel();
-     	self._get_import_paths_task = cx.spawn(async move |page, cx| {
-      		let result: Option<ImportFromOtherLauncher> = recv.await.unwrap_or_default();
-        	let _ = page.update(cx, move |page, cx| {
-         		if let Some(other) = page.import_from_other_launchers.as_mut() {
-           			other.imports[OtherLauncher::Custom] = result;
-	           	} else {
-	           		let mut other_import = ImportFromOtherLaunchers::default();
-	            	other_import.imports[OtherLauncher::Custom] = result;
-	             	page.import_from_other_launchers = Some(other_import);
-				}
-           		cx.notify();
-         	});
-      	});
+    // pub fn request_custom_paths(&mut self, cx: &mut Context<Self>, path: PathBuf) {
+    // 	let (send, recv) = tokio::sync::oneshot::channel();
+    //  	self._get_import_paths_task = cx.spawn(async move |page, cx| {
+    //   		let result: Option<ImportFromOtherLauncher> = recv.await.unwrap_or_default();
+    //     	let _ = page.update(cx, move |page, cx| {
+    //      		if let Some(other) = page.import_from_other_launchers.as_mut() {
+    //        			other.imports[OtherLauncher::Custom] = result;
+	   //         	} else {
+	   //         		let mut other_import = ImportFromOtherLaunchers::default();
+	   //          	other_import.imports[OtherLauncher::Custom] = result;
+	   //           	page.import_from_other_launchers = Some(other_import);
+				// }
+    //        		cx.notify();
+    //      	});
+    //   	});
 
-      	self.backend_handle.send(MessageToBackend::GetImportFromCustomLauncherPath { channel: send, path });
-    }
+    //   	self.backend_handle.send(MessageToBackend::GetImportFromCustomLauncherPath { channel: send, path });
+    // }
 }
 
 impl Page for ImportPage {
@@ -96,7 +96,6 @@ impl Render for ImportPage {
                 .gap_2()
                 .children({
                 	OtherLauncher::iter()
-	                    .filter(|launcher| *launcher != OtherLauncher::Custom)
 	                 	.map(|launcher| {
 	                		Button::new(launcher.to_string())
 	                 			.label(format!("Import from {}", launcher))
@@ -151,44 +150,12 @@ impl Render for ImportPage {
 	                        multiple: false,
 	                        prompt: Some("Select Directory To Import From".into())
 	                    });
-	                    let page_entity = cx.entity();
-						page._open_file_task = window.spawn(cx, async move |cx| {
-							println!("Waiting for file");
-                            let Ok(Ok(Some(result))) = receiver.await else {
-                                return;
-                            };
-                            println!("Received {:?}", result);
-                            let Some(path) = result.first() else {
-                                return;
-                            };
-
-							_ = page_entity.update_in(cx, move |page, window, cx| {
-									page.request_custom_paths(cx, path.to_owned());
-									page.import_from = Some(OtherLauncher::Custom);
-
-
-	                                // let content_install = ContentInstall {
-	                                //     target: InstallTarget::NewInstance { name: None },
-	                                //     loader_hint: Loader::Unknown,
-	                                //     version_hint: None,
-	                                //     files: Arc::from([
-	                                //         ContentInstallFile {
-	                                //             replace_old: None,
-	                                //             path: ContentInstallPath::Automatic,
-	                                //             download: ContentDownload::File { path: path.into() },
-	                                //             content_source: ContentSource::Manual,
-	                                //         }
-	                                //     ]),
-	                                // };
-	                                // root::start_install(content_install, &page.backend_handle, window, cx);
-                            });
-						});
                     })))
             );
 
         if let Some(import_from) = self.import_from && let Some(import) = &imports.imports[import_from] {
         	let label = format!("Import From {}", import_from);
-            let import_accounts = self.import_accounts && import.can_import_accounts;
+            let import_accounts = self.import_accounts && import.account.is_some();
             content = content.child(v_flex()
                 .w_full()
                 .border_1()
@@ -196,7 +163,7 @@ impl Render for ImportPage {
                 .p_2()
                 .rounded(cx.theme().radius_lg)
                 .border_color(cx.theme().border)
-                .when(import.can_import_accounts, |div| div.child(Checkbox::new("accounts").label("Import Accounts")
+                .when(import.account.is_some(), |div| div.child(Checkbox::new("accounts").label("Import Accounts")
                     .checked(self.import_accounts)
                     .on_click(cx.listener(|page, checked, _, _| {
                     page.import_accounts = *checked;
@@ -214,13 +181,29 @@ impl Render for ImportPage {
                     .border_color(cx.theme().border)
                     .max_h_64()
                     .child(v_flex().overflow_y_scrollbar().children(
-                        import.paths.iter().map(|path| {
-                            SharedString::new(path.to_string_lossy())
+                        import.instances.iter().map(|(path, checked)| {
+                         Checkbox::new(SharedString::new(path.to_string_lossy()))
+                         	.label(SharedString::new(path.to_string_lossy()))
+                           	.checked(*checked)
+                            .on_click({
+                                let path_buf = path.clone();
+                                let import_from_copy = import_from;
+                                cx.listener(move |page, _, _, _| {
+                                    if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
+                                        if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
+                                            if let Some(state) = import_entry.instances.get_mut(path_buf.as_path()) {
+                                                *state = !*state;
+                                            }
+                                        }
+                                    }
+                                })
+                            })
                         })
                     )))
                 )
                 .child(Button::new("doimport").disabled(!import_accounts && !self.import_instances).success().label(label.clone()).on_click(cx.listener(move |page, _, window, cx| {
                     let modal_action = ModalAction::default();
+                    println!("{:?}", page.import_from_other_launchers);
 
                     page.backend_handle.send(MessageToBackend::ImportFromOtherLauncher {
                         launcher: import_from,

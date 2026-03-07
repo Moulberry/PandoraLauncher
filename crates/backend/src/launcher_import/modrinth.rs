@@ -1,6 +1,6 @@
-use std::{io::Cursor, path::{Path, PathBuf}};
+use std::{collections::HashMap, io::Cursor, path::{Path, PathBuf}};
 
-use bridge::{import::ImportFromOtherLauncher, modal_action::{ModalAction, ProgressTracker}, safe_path::SafePath};
+use bridge::{import::{ImportFromOtherLauncher, OtherLauncher}, modal_action::{ModalAction, ProgressTracker}, safe_path::SafePath};
 use image::ImageFormat;
 use schema::{instance::InstanceConfiguration, loader::Loader};
 
@@ -141,18 +141,19 @@ pub fn read_profiles_from_modrinth_db(data_dir: &Path) -> rusqlite::Result<Optio
     let mut stmt = conn.prepare("SELECT path FROM profiles")?;
     let mut query = stmt.query([])?;
 
-    let mut paths = Vec::new();
+    let mut paths = HashMap::new();
 
     while let Ok(Some(row)) = query.next() {
         let path: String = row.get(0)?;
         let profile = profiles.join(path);
         if profile.is_dir() {
-            paths.push(profile);
+            paths.insert(profile, true);
         }
     }
 
     Ok(Some(ImportFromOtherLauncher {
-        can_import_accounts: false,
-        paths,
+    	launcher: OtherLauncher::Modrinth,
+     	account: None,
+      	instances: paths,
     }))
 }

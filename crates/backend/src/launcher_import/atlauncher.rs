@@ -6,7 +6,7 @@ use log::debug;
 use schema::{instance::{InstanceConfiguration, InstanceMemoryConfiguration,  InstanceWrapperCommandConfiguration}, loader::Loader};
 use serde::Deserialize;
 use uuid::Uuid;
-use crate::{BackendState, account::BackendAccount, launcher_import::LauncherImport, write_safe};
+use crate::{BackendState, account::BackendAccount, write_safe};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -242,40 +242,6 @@ struct AtLauncherDisplayClaims {
 // #[serde(rename_all = "case")]
 struct AtLauncherDisplayClaim {
 	uhs: String,
-}
-
-struct AtLauncherImporter {
-	config: Option<AtLauncherConfig>,
-	path: Option<PathBuf>,
-}
-
-impl Default for AtLauncherImporter {
-	fn default() -> Self {
-		Self {
-			config: None,
-			path: directories::BaseDirs::new().map(|dir|
-				dir.data_dir().join("atlauncher").to_path_buf()
-			)
-		}
-	}
-}
-
-impl LauncherImport for AtLauncherImporter {
-    fn is_valid_instance(&self, path: &Path) -> bool {
-        todo!()
-    }
-
-    fn is_valid_account(&self, path: &Path) -> bool {
-        todo!()
-    }
-
-    async fn import_accounts(&self, backend: &BackendState, path: &Path, modal_action: ModalAction) {
-        todo!()
-    }
-
-    fn import_instances(&self, backend: &BackendState, path: PathBuf, modal_action: ModalAction) {
-        todo!()
-    }
 }
 
 

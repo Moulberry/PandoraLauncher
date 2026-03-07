@@ -1,4 +1,4 @@
-use std::{path::{Path, PathBuf}};
+use std::{collections::HashMap, path::{Path, PathBuf}};
 
 use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, modal_action::ModalAction};
 use log::debug;
@@ -27,23 +27,6 @@ mod atlauncher;
 // 		- Options between: accounts (specific account?), instances, deduplication (if possible)
 // - The backend then processes each launcher like we currently do. (in parallel?)
 
-
-pub trait LauncherImport {
-	/// Returns true if the path contains the required things for it to be an instance.
-	///
-	/// Note: The path is of the instance folder, for example: `{launcher}/instances/{instance_name}`
-	fn is_valid_instance(&self, path: &Path) -> bool;
-
-	/// Returns true if the path contains the required things for it to be an instance.
-	///
-	/// Note: The path is of the launcher folder, for example: `{launcher}`
-	fn is_valid_account(&self, path: &Path) -> bool;
-
-	fn import_accounts(&self, backend: &BackendState, path: &Path, modal_action: ModalAction) -> impl Future<Output = ()>;
-
-	fn import_instances(&self, backend: &BackendState, path: PathBuf, modal_action: ModalAction);
-}
-
 pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
     let mut imports = ImportFromOtherLaunchers::default();
 
@@ -53,12 +36,12 @@ pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
     let data_dir = base_dirs.data_dir();
 
     let prism_instances = data_dir.join("PrismLauncher").join("instances");
-    imports.imports[OtherLauncher::Prism] = from_subfolders(&prism_instances, &|path| {
+    imports.imports[OtherLauncher::Prism] = from_subfolders(OtherLauncher::Prism, &prism_instances, &|path| {
         path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
     });
 
     let multimc_instances = data_dir.join("multimc").join("instances");
-    imports.imports[OtherLauncher::MultiMC] = from_subfolders(&multimc_instances, &|path| {
+    imports.imports[OtherLauncher::MultiMC] = from_subfolders(OtherLauncher::MultiMC, &multimc_instances, &|path| {
         path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
     });
 
@@ -67,26 +50,26 @@ pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
     }
 
     let atlauncher_instances = data_dir.join("atlauncher").join("instances");
-    imports.imports[OtherLauncher::AtLauncher] = from_subfolders(&atlauncher_instances, &|path| {
+    imports.imports[OtherLauncher::AtLauncher] = from_subfolders(OtherLauncher::AtLauncher, &atlauncher_instances, &|path| {
     	path.join("instance.json").exists()
     });
 
     imports
 }
 
-pub fn discover_instances_from_path(path: PathBuf) -> Option<ImportFromOtherLauncher> {
- 	debug!("Received request to update data w/path: {:?}", path);
+// pub fn discover_instances_from_path(path: PathBuf) -> Option<ImportFromOtherLauncher> {
+//  	debug!("Received request to update data w/path: {:?}", path);
 
-  	from_subfolders(path.as_path(), &|path| {
-   		path.join("instance.json").exists()
-   	})
-}
+//   	from_subfolders(path.as_path(), &|path| {
+//    		path.join("instance.json").exists()
+//    	})
+// }
 
-fn from_subfolders(folder: &Path, check: &dyn Fn(&Path) -> bool) -> Option<ImportFromOtherLauncher> {
+fn from_subfolders(launcher: OtherLauncher, folder: &Path, check: &dyn Fn(&Path) -> bool) -> Option<ImportFromOtherLauncher> {
     let Ok(read_dir) = std::fs::read_dir(folder) else {
         return None;
     };
-    let mut paths = Vec::new();
+    let mut paths = HashMap::new();
     for entry in read_dir {
         let Ok(entry) = entry else {
             continue;
@@ -98,11 +81,12 @@ fn from_subfolders(folder: &Path, check: &dyn Fn(&Path) -> bool) -> Option<Impor
         if !(check)(&path) {
             continue;
         }
-        paths.push(path);
+        paths.insert(path, true);
     }
     Some(ImportFromOtherLauncher {
-        can_import_accounts: true,
-        paths,
+    	launcher,
+    	instances: paths,
+        account: None,
     })
 }
 
@@ -144,6 +128,5 @@ pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherL
         	let atlauncher = data_dir.join("atlauncher");
          	import_from_atlauncher(backend, &atlauncher, import_accounts, import_instances, modal_action).await;
         },
-        OtherLauncher::Custom => todo!()
     }
 }

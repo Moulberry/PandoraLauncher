@@ -831,10 +831,7 @@ impl BackendState {
                 let result = crate::launcher_import::discover_instances_from_other_launchers();
                 _ = channel.send(result);
             },
-            MessageToBackend::GetImportFromCustomLauncherPath { channel, path } => {
-            	let result = crate::launcher_import::discover_instances_from_path(path);
-             	_ = channel.send(result);
-            }
+            MessageToBackend::GetImportFromCustomLauncherPath { channel, path } => todo!(),
             MessageToBackend::GetSyncState { channel } => {
                 let result = crate::syncing::get_sync_state(&self.config.write().get().sync_targets, &mut *self.instance_state.write(), &self.directories);
 

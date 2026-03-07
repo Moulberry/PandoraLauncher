@@ -1,6 +1,6 @@
 use std::{path::{Path, PathBuf}, sync::Arc};
 
-use bridge::{handle::BackendHandle, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
+use bridge::{handle::BackendHandle, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, ImportStatus, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
     ActiveTheme, Disableable, Sizable, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, v_flex
@@ -157,6 +157,9 @@ impl Render for ImportPage {
         if let Some(import_from) = self.import_from && let Some(import) = &imports.imports[import_from] {
         	let label = format!("Import From {}", import_from);
             let import_accounts = self.import_accounts && import.account.is_some();
+           	let mut list = import.instances.iter().collect::<Vec<_>>();
+            list.sort_by(|a, b| a.0.cmp(b.0));
+
             content = content.child(v_flex()
                 .w_full()
                 .border_1()
@@ -188,7 +191,7 @@ impl Render for ImportPage {
 		                         cx.listener(move |page, _, _, _| {
 	                       			if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
 	                       				if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
-	                           				import_entry.instances.iter_mut().filter(|instance| *instance.1 < 2).for_each(|instance| *instance.1 = 0);
+	                           				import_entry.instances.iter_mut().for_each(|(_, state)| state.disable());
 	                           			}
 	                          		}
 	                        	})
@@ -199,36 +202,32 @@ impl Render for ImportPage {
 		                         cx.listener(move |page, _, _, _| {
 	                       			if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
 	                       				if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
-	                           				import_entry.instances.iter_mut().filter(|instance| *instance.1 < 2).for_each(|instance| *instance.1 = 1);
+	                           				import_entry.instances.iter_mut().for_each(|(_, state)| state.enable());
 	                           			}
 	                          		}
 	                        	})
                          })
                     ]))
-                    .child(v_flex().overflow_y_scrollbar().children(
-                        import.instances.iter().map(|(path, checked)| {
+                    .child(v_flex().overflow_y_scrollbar().children({
+                        list.iter().map(|(path, checked)| {
                         	let mut line = h_flex().child(Checkbox::new(SharedString::new(path.to_string_lossy()))
 	                         	.label(SharedString::new(path.to_string_lossy()))
-	                           	.checked(*checked == 1)
-	                            .disabled(*checked == 2)
+	                           	.checked(**checked == ImportStatus::Importing)
+	                            .disabled(**checked == ImportStatus::Duplicate)
 	                            .on_click({
-	                                let path_buf = path.clone();
+	                                let path_buf = path.to_path_buf();
 	                                let import_from_copy = import_from;
 	                                cx.listener(move |page, _, _, _| {
 	                                    if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
 	                                        if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
-	                                            if let Some(state) = import_entry.instances.get_mut(path_buf.as_path()) {
-	                                                *state = match *state {
-														0 => 1_u8,
-														1 => 0_u8,
-														_ => 2_u8
-													};
+	                                            if let Some(state) = import_entry.instances.get_mut(&path_buf) {
+	                                                state.flip()
 	                                            }
 	                                        }
 	                                    }
 	                                })
 	                            }));
-                         	if *checked == 2 {
+                         	if **checked == ImportStatus::Duplicate {
                          		line = line.child(h_flex().text_color(cx.theme().red)
                            			.child(PandoraIcon::TriangleAlert)
                             		.child("Unable to import, an instance with this name already exists.")
@@ -236,7 +235,7 @@ impl Render for ImportPage {
                           	}
                            	line
                         })
-                    )))
+                    })))
                 )
                 .child(Button::new("doimport").disabled(!import_accounts && !self.import_instances).success().label(label.clone()).on_click(cx.listener(move |page, _, window, cx| {
                     let modal_action = ModalAction::default();
@@ -246,7 +245,7 @@ impl Render for ImportPage {
                     	page.import_from_other_launchers.as_ref().unwrap()
                      		.imports[import_from].as_ref().unwrap()
                        		.instances.iter()
-                         		.filter(|(_, import)| **import == 1)
+                         		.filter(|(_, import)| **import == ImportStatus::Importing)
                           		.map(|(instance, _)| instance.to_path_buf())
                             	.collect::<Vec<PathBuf>>()
                     } else {

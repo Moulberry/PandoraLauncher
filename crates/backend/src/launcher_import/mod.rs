@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::{Path, PathBuf}};
 
-use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, modal_action::ModalAction};
+use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, ImportStatus, OtherLauncher}, modal_action::ModalAction};
 use log::debug;
 use schema::instance::InstanceConfiguration;
 use crate::{BackendState, backend, launcher_import::{
@@ -44,7 +44,7 @@ pub fn discover_instances_from_other_launchers(backend: &BackendState) -> Import
         path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
     });
 
-    if let Ok(import) = read_profiles_from_modrinth_db(data_dir) {
+    if let Ok(import) = read_profiles_from_modrinth_db(data_dir, &pandora_dir) {
         imports.imports[OtherLauncher::Modrinth] = import;
     }
 
@@ -80,7 +80,7 @@ fn from_subfolders(launcher: OtherLauncher, folder: &Path, pandora: &Path, check
         if !(check)(&path) {
             continue;
         }
-        let state = if pandora.join(path.file_name().unwrap()).exists() { 2 } else { 1 };
+        let state = if pandora.join(path.file_name().unwrap()).exists() { ImportStatus::Duplicate } else { ImportStatus::Importing };
         paths.insert(path, state);
     }
     Some(ImportFromOtherLauncher {

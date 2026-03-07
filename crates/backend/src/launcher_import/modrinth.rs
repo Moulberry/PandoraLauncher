@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::Cursor, path::{Path, PathBuf}};
 
-use bridge::{import::{ImportFromOtherLauncher, OtherLauncher}, modal_action::{ModalAction, ProgressTracker}, safe_path::SafePath};
+use bridge::{import::{ImportFromOtherLauncher, ImportStatus, OtherLauncher}, modal_action::{ModalAction, ProgressTracker}, safe_path::SafePath};
 use image::ImageFormat;
 use schema::{instance::InstanceConfiguration, loader::Loader};
 
@@ -127,7 +127,7 @@ pub fn import_instances_from_modrinth(backend: &BackendState, modrinth: &Path, m
     Ok(())
 }
 
-pub fn read_profiles_from_modrinth_db(data_dir: &Path) -> rusqlite::Result<Option<ImportFromOtherLauncher>> {
+pub fn read_profiles_from_modrinth_db(data_dir: &Path, pandora_dir: &Path) -> rusqlite::Result<Option<ImportFromOtherLauncher>> {
     let modrinth = data_dir.join("ModrinthApp");
     let profiles = modrinth.join("profiles");
     let app_db = modrinth.join("app.db");
@@ -147,7 +147,8 @@ pub fn read_profiles_from_modrinth_db(data_dir: &Path) -> rusqlite::Result<Optio
         let path: String = row.get(0)?;
         let profile = profiles.join(path);
         if profile.is_dir() {
-            paths.insert(profile, 1);
+        	let state = if pandora_dir.join(profile.file_name().unwrap()).exists() { ImportStatus::Duplicate } else { ImportStatus::Importing };
+            paths.insert(profile, state);
         }
     }
 

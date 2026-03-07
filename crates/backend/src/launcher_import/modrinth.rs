@@ -147,7 +147,7 @@ pub fn read_profiles_from_modrinth_db(data_dir: &Path) -> rusqlite::Result<Optio
         let path: String = row.get(0)?;
         let profile = profiles.join(path);
         if profile.is_dir() {
-            paths.insert(profile, true);
+            paths.insert(profile, 1);
         }
     }
 

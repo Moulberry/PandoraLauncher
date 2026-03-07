@@ -3,13 +3,13 @@ use std::{path::{Path, PathBuf}, sync::Arc};
 use bridge::{handle::BackendHandle, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Sizable, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, v_flex
+    ActiveTheme, Disableable, Sizable, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, v_flex
 };
 use log::debug;
 use schema::{content::ContentSource, loader::Loader};
 use strum::IntoEnumIterator;
 
-use crate::{component::{responsive_grid::ResponsiveGrid}, entity::DataEntities, pages::page::Page, root};
+use crate::{component::responsive_grid::ResponsiveGrid, entity::DataEntities, icon::PandoraIcon, pages::page::Page, root};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
@@ -188,7 +188,7 @@ impl Render for ImportPage {
 		                         cx.listener(move |page, _, _, _| {
 	                       			if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
 	                       				if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
-	                           				import_entry.instances.iter_mut().for_each(|instance| *instance.1 = false);
+	                           				import_entry.instances.iter_mut().filter(|instance| *instance.1 < 2).for_each(|instance| *instance.1 = 0);
 	                           			}
 	                          		}
 	                        	})
@@ -199,7 +199,7 @@ impl Render for ImportPage {
 		                         cx.listener(move |page, _, _, _| {
 	                       			if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
 	                       				if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
-	                           				import_entry.instances.iter_mut().for_each(|instance| *instance.1 = true);
+	                           				import_entry.instances.iter_mut().filter(|instance| *instance.1 < 2).for_each(|instance| *instance.1 = 1);
 	                           			}
 	                          		}
 	                        	})
@@ -207,22 +207,34 @@ impl Render for ImportPage {
                     ]))
                     .child(v_flex().overflow_y_scrollbar().children(
                         import.instances.iter().map(|(path, checked)| {
-                         Checkbox::new(SharedString::new(path.to_string_lossy()))
-                         	.label(SharedString::new(path.to_string_lossy()))
-                           	.checked(*checked)
-                            .on_click({
-                                let path_buf = path.clone();
-                                let import_from_copy = import_from;
-                                cx.listener(move |page, _, _, _| {
-                                    if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
-                                        if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
-                                            if let Some(state) = import_entry.instances.get_mut(path_buf.as_path()) {
-                                                *state = !*state;
-                                            }
-                                        }
-                                    }
-                                })
-                            })
+                        	let mut line = h_flex().child(Checkbox::new(SharedString::new(path.to_string_lossy()))
+	                         	.label(SharedString::new(path.to_string_lossy()))
+	                           	.checked(*checked == 1)
+	                            .disabled(*checked == 2)
+	                            .on_click({
+	                                let path_buf = path.clone();
+	                                let import_from_copy = import_from;
+	                                cx.listener(move |page, _, _, _| {
+	                                    if let Some(other_launchers) = page.import_from_other_launchers.as_mut() {
+	                                        if let Some(import_entry) = other_launchers.imports[import_from_copy].as_mut() {
+	                                            if let Some(state) = import_entry.instances.get_mut(path_buf.as_path()) {
+	                                                *state = match *state {
+														0 => 1_u8,
+														1 => 0_u8,
+														_ => 2_u8
+													};
+	                                            }
+	                                        }
+	                                    }
+	                                })
+	                            }));
+                         	if *checked == 2 {
+                         		line = line.child(h_flex().text_color(cx.theme().red)
+                           			.child(PandoraIcon::TriangleAlert)
+                            		.child("Unable to import, an instance with this name already exists.")
+                           		);
+                          	}
+                           	line
                         })
                     )))
                 )
@@ -234,7 +246,7 @@ impl Render for ImportPage {
                     	page.import_from_other_launchers.as_ref().unwrap()
                      		.imports[import_from].as_ref().unwrap()
                        		.instances.iter()
-                         		.filter(|(_, import)| **import)
+                         		.filter(|(_, import)| **import == 1)
                           		.map(|(instance, _)| instance.to_path_buf())
                             	.collect::<Vec<PathBuf>>()
                     } else {

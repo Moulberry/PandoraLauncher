@@ -3,10 +3,8 @@ use std::{collections::HashMap, path::{Path, PathBuf}};
 use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, modal_action::ModalAction};
 use log::debug;
 use schema::instance::InstanceConfiguration;
-use crate::{BackendState, launcher_import::{
-		modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db},
-		multimc::{import_from_multimc, try_load_from_multimc},
-		atlauncher::import_from_atlauncher
+use crate::{BackendState, backend, launcher_import::{
+		atlauncher::import_from_atlauncher, modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db}, multimc::{import_from_multimc, try_load_from_multimc}
 	}
 };
 
@@ -27,21 +25,22 @@ mod atlauncher;
 // 		- Options between: accounts (specific account?), instances, deduplication (if possible)
 // - The backend then processes each launcher like we currently do. (in parallel?)
 
-pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
+pub fn discover_instances_from_other_launchers(backend: &BackendState) -> ImportFromOtherLaunchers {
     let mut imports = ImportFromOtherLaunchers::default();
 
     let Some(base_dirs) = directories::BaseDirs::new() else {
         return imports;
     };
     let data_dir = base_dirs.data_dir();
+    let pandora_dir = &backend.directories.instances_dir;
 
     let prism_instances = data_dir.join("PrismLauncher").join("instances");
-    imports.imports[OtherLauncher::Prism] = from_subfolders(OtherLauncher::Prism, &prism_instances, &|path| {
+    imports.imports[OtherLauncher::Prism] = from_subfolders(OtherLauncher::Prism, &prism_instances, &pandora_dir, &|path| {
         path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
     });
 
     let multimc_instances = data_dir.join("multimc").join("instances");
-    imports.imports[OtherLauncher::MultiMC] = from_subfolders(OtherLauncher::MultiMC, &multimc_instances, &|path| {
+    imports.imports[OtherLauncher::MultiMC] = from_subfolders(OtherLauncher::MultiMC, &multimc_instances, &pandora_dir, &|path| {
         path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
     });
 
@@ -50,7 +49,7 @@ pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
     }
 
     let atlauncher_instances = data_dir.join("atlauncher").join("instances");
-    imports.imports[OtherLauncher::AtLauncher] = from_subfolders(OtherLauncher::AtLauncher, &atlauncher_instances, &|path| {
+    imports.imports[OtherLauncher::AtLauncher] = from_subfolders(OtherLauncher::AtLauncher, &atlauncher_instances, &pandora_dir, &|path| {
     	path.join("instance.json").exists()
     });
 
@@ -65,7 +64,7 @@ pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
 //    	})
 // }
 
-fn from_subfolders(launcher: OtherLauncher, folder: &Path, check: &dyn Fn(&Path) -> bool) -> Option<ImportFromOtherLauncher> {
+fn from_subfolders(launcher: OtherLauncher, folder: &Path, pandora: &Path, check: &dyn Fn(&Path) -> bool) -> Option<ImportFromOtherLauncher> {
     let Ok(read_dir) = std::fs::read_dir(folder) else {
         return None;
     };
@@ -81,7 +80,8 @@ fn from_subfolders(launcher: OtherLauncher, folder: &Path, check: &dyn Fn(&Path)
         if !(check)(&path) {
             continue;
         }
-        paths.insert(path, true);
+        let state = if pandora.join(path.file_name().unwrap()).exists() { 2 } else { 1 };
+        paths.insert(path, state);
     }
     Some(ImportFromOtherLauncher {
     	launcher,

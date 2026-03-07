@@ -828,7 +828,7 @@ impl BackendState {
                 }
             },
             MessageToBackend::GetImportFromOtherLauncherPaths { channel } => {
-                let result = crate::launcher_import::discover_instances_from_other_launchers();
+                let result = crate::launcher_import::discover_instances_from_other_launchers(&self);
                 _ = channel.send(result);
             },
             MessageToBackend::GetImportFromCustomLauncherPath { channel, path } => todo!(),

@@ -13,6 +13,36 @@ use crate::{BackendState, launcher_import::{
 mod multimc;
 mod modrinth;
 mod atlauncher;
+// Leaving this here as a note...
+//
+// Each launcher importer we support needs to:
+// - implement the below API.
+//
+// besides that, unpon requesting the files for a certain launcher we need to...
+// - Get every launcher to scan the directory to see which is valid.
+// 		(this might get expensive but i don't see any other way. Worst case scenario we just shove rayon at it?)
+// - If it is a valid launcher, we need to return an object of said launcher with the bsaic details.
+// 		- Alternatively, an generalised object in a vector? of all the launchers.
+// - The user on the front-end selects what they want to import.
+// 		- Options between: accounts (specific account?), instances, deduplication (if possible)
+// - The backend then processes each launcher like we currently do. (in parallel?)
+
+
+pub trait LauncherImport {
+	/// Returns true if the path contains the required things for it to be an instance.
+	///
+	/// Note: The path is of the instance folder, for example: `{launcher}/instances/{instance_name}`
+	fn is_valid_instance(&self, path: &Path) -> bool;
+
+	/// Returns true if the path contains the required things for it to be an instance.
+	///
+	/// Note: The path is of the launcher folder, for example: `{launcher}`
+	fn is_valid_account(&self, path: &Path) -> bool;
+
+	fn import_accounts(&self, backend: &BackendState, path: &Path, modal_action: ModalAction) -> impl Future<Output = ()>;
+
+	fn import_instances(&self, backend: &BackendState, path: PathBuf, modal_action: ModalAction);
+}
 
 pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
     let mut imports = ImportFromOtherLaunchers::default();

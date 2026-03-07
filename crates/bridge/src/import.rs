@@ -26,3 +26,9 @@ pub enum OtherLauncher {
     MultiMC,
     Custom,
 }
+
+pub struct OtherLauncherImportData {
+	pub launcher_type: OtherLauncher,
+	pub can_import_accounts: bool,
+	pub paths: Vec<PathBuf>,
+}

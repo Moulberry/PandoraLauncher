@@ -5,12 +5,12 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex, ActiveTheme as _, Disableable, Sizable, WindowExt
+    ActiveTheme as _, Disableable, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectDelegate, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
 };
 use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
 
-use crate::{component::{horizontal_sections::HorizontalSections, path_label::PathLabel}, entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
+use crate::{component::{horizontal_sections::HorizontalSections, path_label::PathLabel}, entity::{DataEntities, account::{AccountEntries, AccountList}, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
 
 #[derive(PartialEq, Eq)]
 enum NewNameChangeState {
@@ -26,6 +26,7 @@ pub struct InstanceSettingsSubpage {
     new_name_input_state: Entity<InputState>,
     version_state: TypelessFrontendMetadataResult,
     version_select_state: Entity<SelectState<VersionList>>,
+    account_select_state: Entity<SelectState<AccountList>>,
     loader: Loader,
     loader_select_state: Entity<SelectState<Vec<&'static str>>>,
     loader_versions_state: TypelessFrontendMetadataResult,
@@ -105,6 +106,15 @@ impl InstanceSettingsSubpage {
         }).detach();
         cx.subscribe(&version_select_state, Self::on_minecraft_version_selected).detach();
 
+        let account_select_state = cx.new(|cx| {
+        	let accounts = data.accounts.read(cx);
+        	SelectState::new(AccountList::from(accounts), None, window, cx).searchable(true)
+        });
+        cx.observe_in(&data.accounts, window, |page, accounts, window, cx| {
+        	page.update_account_list(accounts, window, cx);
+        }).detach();
+        cx.subscribe(&account_select_state, Self::on_account_selected).detach();
+
         let loader_select_state = cx.new(|cx| {
             let loaders = Loader::iter()
                 .filter(|l| *l != Loader::Unknown)
@@ -162,6 +172,7 @@ impl InstanceSettingsSubpage {
             new_name_input_state,
             version_state: TypelessFrontendMetadataResult::Loading,
             version_select_state,
+            account_select_state,
             loader,
             loader_select_state,
             loader_version_select_state,
@@ -327,6 +338,15 @@ impl InstanceSettingsSubpage {
         items
     }
 
+    fn update_account_list(&mut self, accounts: Entity<AccountEntries>, window: &mut Window, cx: &mut Context<Self>) {
+    	let accounts = accounts.read(cx);
+     	let list = AccountList::from(accounts);
+
+    	self.account_select_state.update(cx, move |dropdown, cx| {
+     		dropdown.set_items(list, window, cx);
+     	})
+    }
+
     pub fn on_new_name_input(
         &mut self,
         state: Entity<InputState>,
@@ -371,6 +391,20 @@ impl InstanceSettingsSubpage {
             id: self.instance_id,
             version: value.as_str().into(),
         });
+    }
+
+    pub fn on_account_selected(
+    	&mut self,
+     	_state: Entity<SelectState<AccountList>>,
+      	event: &SelectEvent<AccountList>,
+       	_cx: &mut Context<Self>,
+    ) {
+	   	let SelectEvent::Confirm(value) = event;
+
+	    let Some(value) = value else {
+	        return;
+	    };
+   		println!("Selected: {:?}", value);
     }
 
     pub fn on_loader_selected(
@@ -646,7 +680,17 @@ impl Render for InstanceSettingsSubpage {
                         }
                     })
                 )
-            );
+            )
+           	.child(
+            // v_flex()
+            //     .gap_1()
+            //     .child(Checkbox::)
+            crate::labelled(
+            	ts!("accounts.single"),
+             	h_flex()
+                .gap_2()
+                .child(Select::new(&self.account_select_state))
+            ));
 
         let mut version_content = v_flex().gap_2();
 

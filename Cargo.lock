@@ -845,6 +845,8 @@ dependencies = [
  "atomic_enum",
  "enum-map",
  "enumset",
+ "gpui",
+ "gpui-component",
  "indexmap 2.13.0",
  "relative-path",
  "rustc-hash 2.1.1",

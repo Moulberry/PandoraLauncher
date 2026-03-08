@@ -290,6 +290,8 @@ system:
 account:
   title:
     en: Accounts
+  single:
+    en: Account
   none:
     en: No Account
   name:

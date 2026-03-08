@@ -404,6 +404,7 @@ impl Render for LauncherUI {
                                     .when(selected, |this| {
                                         this.info()
                                     })
+                                    .max_w(Length::Definite(DefiniteLength::Fraction(0.8)))
                                     .h_10()
                                     .child(head.size_8().min_w_8().min_h_8())
                                     .child(account_name.clone())

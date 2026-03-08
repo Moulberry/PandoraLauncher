@@ -102,6 +102,13 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::SetInstancePreferredAccount { id, account } => {
+            	if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+           			instance.configuration.modify(|configuration| {
+           				configuration.preferred_account = Some(account);
+              		});
+             	}
+            }
             MessageToBackend::SetInstancePreferredLoaderVersion { id, loader_version } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.configuration.modify(|configuration| {
@@ -182,7 +189,7 @@ impl BackendState {
                 quick_play,
                 modal_action,
             } => {
-                let Some(login_info) = self.get_login_info(&modal_action).await else {
+            	let Some(login_info) = self.get_login_info(&modal_action).await else {
                     return;
                 };
 

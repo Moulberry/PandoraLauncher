@@ -6784,6 +6784,7 @@ dependencies = [
  "thiserror 2.0.18",
  "urlencoding",
  "ustr",
+ "uuid",
 ]
 
 [[package]]

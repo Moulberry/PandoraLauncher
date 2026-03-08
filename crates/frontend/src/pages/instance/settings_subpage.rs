@@ -80,6 +80,7 @@ impl InstanceSettingsSubpage {
         let instance_id = entry.id;
         let loader = entry.configuration.loader;
         let preferred_loader_version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+        let account = entry.configuration.preferred_account;
         let disable_file_syncing = entry.configuration.disable_file_syncing;
 
         let memory = entry.configuration.memory.unwrap_or_default();
@@ -108,7 +109,11 @@ impl InstanceSettingsSubpage {
 
         let account_select_state = cx.new(|cx| {
         	let accounts = data.accounts.read(cx);
-        	SelectState::new(AccountList::from(accounts), None, window, cx).searchable(true)
+         	let list = AccountList::from(accounts);
+          	let selected = if let Some(preferred_account) = account {
+           		list.position(&preferred_account)
+           	} else { None };
+        	SelectState::new(list, selected, window, cx).searchable(true)
         });
         cx.observe_in(&data.accounts, window, |page, accounts, window, cx| {
         	page.update_account_list(accounts, window, cx);
@@ -395,15 +400,21 @@ impl InstanceSettingsSubpage {
 
     pub fn on_account_selected(
     	&mut self,
-     	_state: Entity<SelectState<AccountList>>,
+     	state: Entity<SelectState<AccountList>>,
       	event: &SelectEvent<AccountList>,
-       	_cx: &mut Context<Self>,
+       	cx: &mut Context<Self>,
     ) {
 	   	let SelectEvent::Confirm(value) = event;
 
 	    let Some(value) = value else {
 	        return;
 	    };
+
+		self.backend_handle.send(MessageToBackend::SetInstancePreferredAccount {
+			id: self.instance_id,
+			account: *value,
+		});
+
    		println!("Selected: {:?}", value);
     }
 
@@ -686,10 +697,10 @@ impl Render for InstanceSettingsSubpage {
             //     .gap_1()
             //     .child(Checkbox::)
             crate::labelled(
-            	ts!("accounts.single"),
+            	ts!("account.single"),
              	h_flex()
                 .gap_2()
-                .child(Select::new(&self.account_select_state))
+                .child(Select::new(&self.account_select_state).placeholder("Using current selected account"))
             ));
 
         let mut version_content = v_flex().gap_2();

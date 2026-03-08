@@ -13,13 +13,13 @@ pub struct Account {
 
 
 impl SelectItem for Account {
-    type Value = Arc<str>;
+    type Value = Uuid;
 
     fn title(&self) -> SharedString {
    		SharedString::from(self.username.clone())
     }
 
     fn value(&self) -> &Self::Value {
-   		&self.username
+   		&self.uuid
     }
 }

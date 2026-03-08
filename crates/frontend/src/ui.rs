@@ -407,7 +407,7 @@ impl Render for LauncherUI {
                                     .max_w(Length::Definite(DefiniteLength::Fraction(0.8)))
                                     .h_10()
                                     .child(head.size_8().min_w_8().min_h_8())
-                                    .child(account_name.clone())
+                                    .child(div().child(account_name.clone()).w_full())
                                     .when(!selected, |this| {
                                         this.on_click({
                                             let backend_handle = backend_handle.clone();

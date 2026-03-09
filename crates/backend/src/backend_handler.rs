@@ -105,7 +105,7 @@ impl BackendState {
             MessageToBackend::SetInstancePreferredAccount { id, account } => {
             	if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
            			instance.configuration.modify(|configuration| {
-           				configuration.preferred_account = Some(account);
+           				configuration.preferred_account = account;
               		});
              	}
             }

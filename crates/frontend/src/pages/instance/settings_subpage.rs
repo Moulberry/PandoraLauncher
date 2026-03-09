@@ -400,15 +400,11 @@ impl InstanceSettingsSubpage {
 
     pub fn on_account_selected(
     	&mut self,
-     	state: Entity<SelectState<AccountList>>,
+     	_state: Entity<SelectState<AccountList>>,
       	event: &SelectEvent<AccountList>,
-       	cx: &mut Context<Self>,
+       	_cx: &mut Context<Self>,
     ) {
 	   	let SelectEvent::Confirm(value) = event;
-
-	    let Some(value) = value else {
-	        return;
-	    };
 
 		self.backend_handle.send(MessageToBackend::SetInstancePreferredAccount {
 			id: self.instance_id,
@@ -692,15 +688,11 @@ impl Render for InstanceSettingsSubpage {
                     })
                 )
             )
-           	.child(
-            // v_flex()
-            //     .gap_1()
-            //     .child(Checkbox::)
-            crate::labelled(
+           	.child(crate::labelled(
             	ts!("account.single"),
              	h_flex()
                 .gap_2()
-                .child(Select::new(&self.account_select_state).placeholder("Using current selected account"))
+                .child(Select::new(&self.account_select_state).placeholder("Using current launcher account").cleanable(true))
             ));
 
         let mut version_content = v_flex().gap_2();

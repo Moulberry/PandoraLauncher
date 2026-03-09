@@ -189,7 +189,28 @@ impl BackendState {
                 quick_play,
                 modal_action,
             } => {
-            	let Some(login_info) = self.get_login_info(&modal_action).await else {
+	            let (dot_minecraft, configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+	                if instance.child.is_some() {
+	                    self.send.send_warning("Can't launch instance, already running");
+	                    modal_action.set_error_message("Can't launch instance, already running".into());
+	                    modal_action.set_finished();
+	                    return;
+	                }
+
+	                self.send.send(MessageToFrontend::MoveInstanceToTop {
+	                    id
+	                });
+	                self.send.send(instance.create_modify_message_with_status(InstanceStatus::Launching));
+
+	                (instance.dot_minecraft_path.clone(), instance.configuration.get().clone())
+	            } else {
+	                self.send.send_error("Can't launch instance, unknown id");
+	                modal_action.set_error_message("Can't launch instance, unknown id".into());
+	                modal_action.set_finished();
+	                return;
+	            };
+
+            	let Some(login_info) = self.get_login_info(&modal_action, configuration.preferred_account).await else {
                     return;
                 };
 
@@ -206,27 +227,6 @@ impl BackendState {
                     self.send.send(MessageToFrontend::Refresh);
                     return;
                 }
-
-                let (dot_minecraft, configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    if instance.child.is_some() {
-                        self.send.send_warning("Can't launch instance, already running");
-                        modal_action.set_error_message("Can't launch instance, already running".into());
-                        modal_action.set_finished();
-                        return;
-                    }
-
-                    self.send.send(MessageToFrontend::MoveInstanceToTop {
-                        id
-                    });
-                    self.send.send(instance.create_modify_message_with_status(InstanceStatus::Launching));
-
-                    (instance.dot_minecraft_path.clone(), instance.configuration.get().clone())
-                } else {
-                    self.send.send_error("Can't launch instance, unknown id");
-                    modal_action.set_error_message("Can't launch instance, unknown id".into());
-                    modal_action.set_finished();
-                    return;
-                };
 
                 let launch_tracker = ProgressTracker::new(Arc::from("Launching"), self.send.clone());
                 modal_action.trackers.push(launch_tracker.clone());

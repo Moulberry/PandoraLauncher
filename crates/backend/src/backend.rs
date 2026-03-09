@@ -1133,12 +1133,12 @@ impl BackendState {
 
     }
 
-    pub async fn get_login_info(&self, modal_action: &ModalAction) -> Option<MinecraftLoginInfo> {
+    pub async fn get_login_info(&self, modal_action: &ModalAction, instance_account: Option<Uuid>) -> Option<MinecraftLoginInfo> {
         let selected_account = {
             let mut account_info = self.account_info.write();
             let account_info = account_info.get();
 
-            let mut selected_account = account_info.selected_account;
+            let mut selected_account = instance_account.or(account_info.selected_account);
 
             if let Some(uuid) = selected_account {
                 if let Some(account) = account_info.accounts.get(&uuid) {

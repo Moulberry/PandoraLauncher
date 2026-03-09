@@ -398,13 +398,13 @@ impl Render for LauncherUI {
 
                             // div().grid().grid_cols(2)
 
+                            // div().flex().flex_row()
                             h_flex()
                                 .gap_2()
                                 .flex_wrap()
                                 .w_full()
-
-	                                .child(head.size_8().min_w_8().min_h_8())
-	                                .child(Button::new(account_name.clone())
+	                                .child(Button::new(account_name.clone()).justify_start().items_start().px_0()
+	                                .child(div().child(head.size_8().min_w_8().min_h_8()).pl_4())
 	                                    .flex_grow()
 	                                    .when(selected, |this| {
 	                                        this.info()
@@ -412,7 +412,7 @@ impl Render for LauncherUI {
 	                                    .h_10()
 	                                    .min_w_0()
 	                                    .flex_1()
-	                                    .child(div().child(account_name.clone()).w_full().flex_1())
+	                                    .child(div().child(account_name.clone()).justify_start().flex_1().max_w(Length::Definite(DefiniteLength::Fraction(0.7))))
 	                                    .when(!selected, |this| {
 	                                        this.on_click({
 	                                            let backend_handle = backend_handle.clone();

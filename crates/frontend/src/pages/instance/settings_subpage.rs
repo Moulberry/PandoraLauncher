@@ -410,8 +410,6 @@ impl InstanceSettingsSubpage {
 			id: self.instance_id,
 			account: *value,
 		});
-
-   		println!("Selected: {:?}", value);
     }
 
     pub fn on_loader_selected(

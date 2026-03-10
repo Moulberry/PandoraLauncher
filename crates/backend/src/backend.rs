@@ -1,11 +1,11 @@
 use std::{
-    collections::HashMap, io::Cursor, path::{Path, PathBuf}, sync::Arc, time::{Duration, SystemTime}
+    collections::HashMap, path::{Path, PathBuf}, sync::Arc, time::{Duration, Instant, SystemTime}
 };
 
 use auth::{
     authenticator::{Authenticator, MsaAuthorizationError, XboxAuthenticateError},
     credentials::{AccountCredentials, AUTH_STAGE_COUNT},
-    models::{MinecraftAccessToken, MinecraftProfileResponse, SkinState},
+    models::MinecraftAccessToken,
     secret::{PlatformSecretStorage, SecretStorageError},
     serve_redirect::{self, ProcessAuthorizationError},
 };
@@ -17,14 +17,14 @@ use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, SyncTargets, ProxyConfig}, instance::InstanceConfiguration, loader::Loader, modrinth::ModrinthSideRequirement};
+use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, ProxyConfig, SyncTargets}, instance::InstanceConfiguration, loader::Loader, minecraft_profile::MinecraftProfileResponse, modrinth::ModrinthSideRequirement};
 use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
-use tokio::sync::{mpsc::Receiver, OnceCell};
+use tokio::sync::{OnceCell, Semaphore, mpsc::Receiver};
 use uuid::Uuid;
 
 use crate::{
-    account::{BackendAccountInfo, MinecraftLoginInfo}, directories::LauncherDirectories, id_slab::IdSlab, instance::{Instance, ContentFolder}, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent
+    account::{BackendAccountInfo, MinecraftLoginInfo}, directories::LauncherDirectories, id_slab::IdSlab, instance::{ContentFolder, Instance}, launch::Launcher, metadata::{items::MinecraftVersionManifestMetadataItem, manager::MetadataManager}, mod_metadata::ModMetadataManager, persistent::Persistent, skin_manager::SkinManager
 };
 
 fn build_http_clients(user_agent: &str, proxy_config: &ProxyConfig, proxy_password: Option<&str>) -> (reqwest::Client, reqwest::Client) {
@@ -130,7 +130,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     // Load accounts
     let account_info = Persistent::load(directories.accounts_json.clone());
 
-    let mut state = BackendState {
+    let state = BackendState {
         self_handle,
         send: send.clone(),
         http_client,
@@ -144,7 +144,9 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         account_info: Arc::new(RwLock::new(account_info)),
         config: Arc::new(RwLock::new(config)),
         secret_storage: Arc::new(OnceCell::new()),
-        head_cache: Default::default(),
+        login_semaphore: Arc::new(Semaphore::new(1)),
+        cached_minecraft_profiles: Default::default(),
+        skin_manager: Default::default(),
     };
 
     log::debug!("Doing initial backend load");
@@ -169,6 +171,7 @@ pub enum WatchTarget {
     InstanceWorldDir { id: InstanceID },
     InstanceSavesDir { id: InstanceID },
     InstanceContentDir { id: InstanceID, folder: ContentFolder },
+    SkinLibraryDir,
 }
 
 pub struct BackendStateInstances {
@@ -185,7 +188,6 @@ pub struct BackendStateFileWatching {
     symlink_link_to_src: HashMap<Arc<Path>, Arc<Path>>,
 }
 
-#[derive(Clone)]
 pub struct BackendState {
     pub self_handle: BackendHandle,
     pub send: FrontendHandle,
@@ -200,17 +202,30 @@ pub struct BackendState {
     pub account_info: Arc<RwLock<Persistent<BackendAccountInfo>>>,
     pub config: Arc<RwLock<Persistent<BackendConfig>>>,
     pub secret_storage: Arc<OnceCell<Result<PlatformSecretStorage, SecretStorageError>>>,
-    pub head_cache: Arc<RwLock<FxHashMap<Arc<str>, HeadCacheEntry>>>
+    pub login_semaphore: Arc<Semaphore>,
+    pub cached_minecraft_profiles: Arc<RwLock<FxHashMap<Uuid, CachedMinecraftProfile>>>,
+    pub skin_manager: Arc<RwLock<SkinManager>>,
 }
 
-pub enum HeadCacheEntry {
-    Pending {
-        accounts: Vec<Uuid>,
-    },
-    Success {
-        head: Arc<[u8]>,
-    },
-    Failed,
+pub struct CachedMinecraftProfile {
+    pub profile: MinecraftProfileResponse,
+    pub not_before: Instant,
+    pub not_after: Instant,
+}
+
+impl CachedMinecraftProfile {
+    pub fn new(profile: MinecraftProfileResponse) -> Self {
+        let now = Instant::now();
+        Self {
+            profile,
+            not_before: now,
+            not_after: now + Duration::from_mins(5)
+        }
+    }
+
+    pub fn is_valid(&self, now: Instant) -> bool {
+        now >= self.not_before && now < self.not_after
+    }
 }
 
 impl BackendState {
@@ -222,10 +237,10 @@ impl BackendState {
         // Pre-fetch version manifest
         self.meta.load(&MinecraftVersionManifestMetadataItem).await;
 
-        self.handle(recv, watcher_rx).await;
+        Arc::new(self).handle(recv, watcher_rx).await;
     }
 
-    pub async fn load_all_instances(&mut self) {
+    pub async fn load_all_instances(&self) {
         log::info!("Loading all instances");
 
         let mut paths_with_time = Vec::new();
@@ -274,7 +289,7 @@ impl BackendState {
         }
     }
 
-    pub fn remove_instance(&mut self, id: InstanceID) {
+    pub fn remove_instance(&self, id: InstanceID) {
         log::info!("Removing instance {id:?}");
 
         let mut instance_state = self.instance_state.write();
@@ -285,7 +300,7 @@ impl BackendState {
         }
     }
 
-    pub fn load_instance_from_path(&mut self, path: &Path, mut show_errors: bool, show_success: bool) -> bool {
+    pub fn load_instance_from_path(&self, path: &Path, mut show_errors: bool, show_success: bool) -> bool {
         let instance = Instance::load_from_folder(&path);
 
         let instance_id = {
@@ -364,7 +379,7 @@ impl BackendState {
         true
     }
 
-    async fn handle(mut self, mut backend_recv: BackendReceiver, mut watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>) {
+    async fn handle(self: Arc<Self>, mut backend_recv: BackendReceiver, mut watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>) {
         let mut interval = tokio::time::interval(Duration::from_millis(1000));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         tokio::pin!(interval);
@@ -394,7 +409,7 @@ impl BackendState {
         }
     }
 
-    async fn handle_tick(&mut self) {
+    async fn handle_tick(&self) {
         self.meta.expire().await;
 
         let mut instance_state = self.instance_state.write();
@@ -412,28 +427,32 @@ impl BackendState {
     pub async fn login(
         &self,
         credentials: &mut AccountCredentials,
-        login_tracker: &ProgressTracker,
-        modal_action: &ModalAction,
+        login_tracker: Option<&ProgressTracker>,
+        modal_action: Option<&ModalAction>,
     ) -> Result<(MinecraftProfileResponse, MinecraftAccessToken), LoginError> {
         log::info!("Starting login");
 
         let mut authenticator = Authenticator::new(self.http_client.clone());
 
-        login_tracker.set_total(AUTH_STAGE_COUNT as usize + 1);
-        login_tracker.notify();
+        if let Some(login_tracker) = login_tracker {
+            login_tracker.set_total(AUTH_STAGE_COUNT as usize + 1);
+            login_tracker.notify();
+        }
 
         let mut last_auth_stage = None;
         let mut allow_backwards = true;
         loop {
-            if modal_action.has_requested_cancel() {
+            if let Some(modal_action) = modal_action && modal_action.has_requested_cancel() {
                 return Err(LoginError::CancelledByUser);
             }
 
             let stage_with_data = credentials.stage();
             let stage = stage_with_data.stage();
 
-            login_tracker.set_count(stage as usize + 1);
-            login_tracker.notify();
+            if let Some(login_tracker) = login_tracker {
+                login_tracker.set_count(stage as usize + 1);
+                login_tracker.notify();
+            }
 
             if let Some(last_stage) = last_auth_stage {
                 if stage > last_stage {
@@ -454,6 +473,10 @@ impl BackendState {
             match credentials.stage() {
                 auth::credentials::AuthStageWithData::Initial => {
                     log::debug!("Auth Flow: Initial");
+
+                    let Some(modal_action) = modal_action else {
+                        return Err(LoginError::NeedsUserInteraction);
+                    };
 
                     let pending = authenticator.create_authorization();
                     modal_action.set_visit_url(ModalActionVisitUrl {
@@ -569,8 +592,10 @@ impl BackendState {
 
                     match authenticator.get_minecraft_profile(&access_token).await {
                         Ok(profile) => {
-                            login_tracker.set_count(AUTH_STAGE_COUNT as usize + 1);
-                            login_tracker.notify();
+                            if let Some(login_tracker) = login_tracker {
+                                login_tracker.set_count(AUTH_STAGE_COUNT as usize + 1);
+                                login_tracker.notify();
+                            }
 
                             return Ok((profile, access_token));
                         },
@@ -589,102 +614,7 @@ impl BackendState {
         }
     }
 
-    pub fn update_profile_head(&self, profile: &MinecraftProfileResponse) {
-        log::info!("Updating profile head for {}", profile.id);
-
-        let Some(skin) = profile.skins.iter().find(|skin| skin.state == SkinState::Active).cloned() else {
-            return;
-        };
-
-        let mut head_cache = self.head_cache.write();
-        if let Some(existing) = head_cache.get_mut(&skin.url) {
-            match existing {
-                HeadCacheEntry::Pending { accounts } => {
-                    accounts.push(profile.id);
-                },
-                HeadCacheEntry::Success { head } => {
-                    let head = head.clone();
-                    drop(head_cache);
-                    self.account_info.write().modify(move |account_info| {
-                        if let Some(account) = account_info.accounts.get_mut(&profile.id) {
-                            account.head = Some(head);
-                        }
-                    });
-                },
-                HeadCacheEntry::Failed => {}
-            }
-            return;
-        }
-
-        head_cache.insert(skin.url.clone(), HeadCacheEntry::Pending { accounts: vec![profile.id] });
-
-        let head_cache = self.head_cache.clone();
-        let account_info = self.account_info.clone();
-        let skin_url = skin.url;
-
-        let http_client = self.http_client.clone();
-
-        tokio::task::spawn(async move {
-            log::info!("Downloading skin from {}", skin_url);
-            let Ok(response) = http_client.get(&*skin_url).send().await else {
-                log::warn!("Http error while requesting skin from {}", skin_url);
-                head_cache.write().insert(skin_url.clone(), HeadCacheEntry::Failed);
-                return;
-            };
-            let Ok(bytes) = response.bytes().await else {
-                log::warn!("Http error while downloading skin bytes from {}", skin_url);
-                head_cache.write().insert(skin_url.clone(), HeadCacheEntry::Failed);
-                return;
-            };
-            let Ok(mut image) = image::load_from_memory(&bytes) else {
-                log::warn!("Image load error for skin from {}", skin_url);
-                head_cache.write().insert(skin_url.clone(), HeadCacheEntry::Failed);
-                return;
-            };
-
-            let mut head = image.crop(8, 8, 8, 8);
-            let head_overlay = image.crop(40, 8, 8, 8);
-
-            image::imageops::overlay(&mut head, &head_overlay, 0, 0);
-
-            let mut head_bytes = Vec::new();
-            let mut cursor = Cursor::new(&mut head_bytes);
-            if head.write_to(&mut cursor, image::ImageFormat::Png).is_err() {
-                head_cache.write().insert(skin_url.clone(), HeadCacheEntry::Failed);
-                return;
-            }
-
-            let head_png: Arc<[u8]> = Arc::from(head_bytes);
-
-            let accounts = {
-                let mut head_cache = head_cache.write();
-                let previous = head_cache.insert(skin_url.clone(), HeadCacheEntry::Success { head: head_png.clone() });
-
-                if let Some(HeadCacheEntry::Pending { accounts }) = previous {
-                    accounts
-                } else {
-                    Vec::new()
-                }
-            };
-
-            log::info!("Successfully downloaded skin from {}", skin_url);
-
-            if accounts.is_empty() {
-                return;
-            }
-
-            let mut account_info = account_info.write();
-            account_info.modify(move |info| {
-                for uuid in accounts {
-                    if let Some(account) = info.accounts.get_mut(&uuid) {
-                        account.head = Some(head_png.clone());
-                    }
-                }
-            });
-        });
-    }
-
-    pub async fn prelaunch(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
+    pub async fn prelaunch(self: &Arc<Self>, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
         self.apply_syncing_to_instance(id);
         self.prelaunch_apply_modpacks(id, modal_action).await
     }
@@ -703,7 +633,7 @@ impl BackendState {
         }
     }
 
-    pub async fn prelaunch_apply_modpacks(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
+    pub async fn prelaunch_apply_modpacks(self: &Arc<Self>, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
         let (loader, minecraft_version, mod_dir) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let configuration = instance.configuration.get();
             (configuration.loader, configuration.minecraft_version, instance.content_state[ContentFolder::Mods].path.clone())
@@ -950,7 +880,7 @@ impl BackendState {
         add_mods
     }
 
-    pub async fn load_instance_servers(self, id: InstanceID) -> Option<Arc<[InstanceServerSummary]>> {
+    pub async fn load_instance_servers(self: Arc<Self>, id: InstanceID) -> Option<Arc<[InstanceServerSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
             file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
@@ -971,7 +901,7 @@ impl BackendState {
 
     }
 
-    pub async fn load_instance_content(self, id: InstanceID, folder: ContentFolder) -> Option<Arc<[InstanceContentSummary]>> {
+    pub async fn load_instance_content(self: Arc<Self>, id: InstanceID, folder: ContentFolder) -> Option<Arc<[InstanceContentSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
             file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
@@ -1006,7 +936,7 @@ impl BackendState {
         result.map(|(content, _)| content)
     }
 
-    pub async fn load_instance_worlds(self, id: InstanceID) -> Option<Arc<[InstanceWorldSummary]>> {
+    pub async fn load_instance_worlds(self: Arc<Self>, id: InstanceID) -> Option<Arc<[InstanceWorldSummary]>> {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             let mut file_watching = self.file_watching.write();
             file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
@@ -1290,6 +1220,8 @@ pub enum LoginError {
     MsaAuthorizationError(#[from] MsaAuthorizationError),
     #[error("XboxLive authentication error: {0}")]
     XboxAuthenticateError(#[from] XboxAuthenticateError),
+    #[error("Needs user interaction")]
+    NeedsUserInteraction,
     #[error("Cancelled by user")]
     CancelledByUser,
 }

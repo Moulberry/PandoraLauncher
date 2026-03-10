@@ -3,16 +3,15 @@ use std::path::Path;
 use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, modal_action::ModalAction};
 use schema::instance::InstanceConfiguration;
 use crate::{BackendState, launcher_import::{
-		modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db},
-		multimc::{import_from_multimc, try_load_from_multimc},
-		atlauncher::import_from_atlauncher
-	}
+        modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db},
+        multimc::{import_from_multimc, try_load_from_multimc},
+        atlauncher::import_from_atlauncher
+    }
 };
 
 mod multimc;
 mod modrinth;
 mod atlauncher;
-
 
 pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
     let mut imports = ImportFromOtherLaunchers::default();
@@ -37,8 +36,8 @@ pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
     }
 
     let atlauncher_instances = data_dir.join("atlauncher").join("instances");
-    imports.imports[OtherLauncher::AtLauncher] = from_subfolders(&atlauncher_instances, &|path| {
-    	path.join("instance.json").exists()
+    imports.imports[OtherLauncher::ATLauncher] = from_subfolders(&atlauncher_instances, &|path| {
+        path.join("instance.json").exists()
     });
 
     imports
@@ -102,9 +101,9 @@ pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherL
             let multimc = data_dir.join("multimc");
             import_from_multimc(backend, &multimc, import_accounts, import_instances, modal_action).await;
         },
-        OtherLauncher::AtLauncher => {
-        	let atlauncher = data_dir.join("atlauncher");
-         	import_from_atlauncher(backend, &atlauncher, import_accounts, import_instances, modal_action).await;
+        OtherLauncher::ATLauncher => {
+            let atlauncher = data_dir.join("atlauncher");
+             import_from_atlauncher(backend, &atlauncher, import_accounts, import_instances, modal_action).await;
         }
     }
 }

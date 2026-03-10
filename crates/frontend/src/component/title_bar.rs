@@ -67,32 +67,36 @@ impl RenderOnce for TitleBar {
             .text_xl()
             .child(h_flex()
                 .left_2()
-                .gap_8()
+                .w_full()
                 .on_any_mouse_down(|_, window, cx| {
                     if window.default_prevented() {
                         cx.stop_propagation();
                     }
                 })
-                .child(self.path)
-                .child(self.controls))
-            .when(!cfg!(target_os = "macos"), |this| {
-                this.child(h_flex().absolute().right_0().pr_4()
-                    .gap_1()
-                    .on_any_mouse_down(|_, window, cx| {
-                        if window.default_prevented() {
-                            cx.stop_propagation();
-                        }
-                    })
-                    .bg(cx.theme().background)
-                    .h_full()
-                    .when(window_controls.minimize, |this| this.child(WindowControl::Minimize))
-                    .when(window_controls.maximize, |this| this.child(if window.is_maximized() {
-                        WindowControl::Restore
-                    } else {
-                        WindowControl::Maximize
-                    }))
-                    .child(WindowControl::Close))
-            })
+                .child(h_flex()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(div().overflow_hidden().pr_8().child(self.path))
+                    .child(div().flex_1().child(self.controls))
+                )
+                .when(!cfg!(target_os = "macos"), |this| {
+                    this.child(h_flex()
+                        .flex_shrink_0()
+                        .h_full()
+                        .gap_1()
+                        .on_any_mouse_down(|_, window, cx| {
+                            if window.default_prevented() {
+                                cx.stop_propagation();
+                            }
+                        })
+                        .when(window_controls.minimize, |this| this.child(WindowControl::Minimize))
+                        .when(window_controls.maximize, |this| this.child(if window.is_maximized() {
+                            WindowControl::Restore
+                        } else {
+                            WindowControl::Maximize
+                        }))
+                        .child(WindowControl::Close))
+                }))
     }
 }
 

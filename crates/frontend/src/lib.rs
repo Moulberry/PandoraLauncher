@@ -21,6 +21,7 @@ use crate::{
 };
 
 pub mod component;
+pub mod data_asset_loader;
 pub mod entity;
 pub mod game_output;
 pub mod modals;
@@ -212,7 +213,7 @@ pub fn open_main_window(data: &DataEntities, cx: &mut App) -> AnyWindowHandle {
     let handle = cx.open_window(
         WindowOptions {
             app_id: Some("PandoraLauncher".into()),
-            window_min_size: Some(size(px(360.0), px(240.0))),
+            window_min_size: Some(size(px(500.0), px(250.0))),
             titlebar: Some(TitlebarOptions {
                 title: None,
                 appears_transparent: true,
@@ -271,6 +272,7 @@ pub fn open_main_window(data: &DataEntities, cx: &mut App) -> AnyWindowHandle {
                 LauncherRoot::new(&data, window, cx)
             });
 
+            DataEntities::init_globals(cx);
             cx.set_global(LauncherRootGlobal {
                 root: launcher_root.clone(),
             });
@@ -307,7 +309,12 @@ pub(crate) fn labelled(label: impl Into<SharedString>, element: impl IntoElement
 }
 
 pub(crate) fn open_folder(path: &Path, window: &mut Window, cx: &mut App) {
-    if path.is_dir() {
+    let mut is_dir = path.is_dir();
+    if !is_dir && !path.exists() {
+        _ = std::fs::create_dir_all(path);
+        is_dir = true;
+    }
+    if is_dir {
         if let Err(err) = open::that_detached(path) {
             let notification: Notification = (NotificationType::Error, ts!("file_system.open_folder.error", err = err)).into();
             window.push_notification(notification.autohide(false), cx);

@@ -8,7 +8,7 @@ use notify::{
 use rustc_hash::FxHashSet;
 use strum::IntoEnumIterator;
 
-use crate::{BackendState, WatchTarget, instance::ContentFolder};
+use crate::{BackendState, FolderChanges, WatchTarget, instance::ContentFolder, skin_manager::SkinManager};
 
 #[derive(Debug)]
 enum FilesystemEvent {
@@ -29,14 +29,16 @@ impl FilesystemEvent {
 
 struct AfterDebounceEffects {
     reload_immediately: FxHashSet<(InstanceID, ContentFolder)>,
+    skin_manager_changes: FolderChanges,
 }
 
 impl BackendState {
-    pub async fn handle_filesystem(&mut self, result: notify_debouncer_full::DebounceEventResult) {
+    pub async fn handle_filesystem(self: &Arc<Self>, result: notify_debouncer_full::DebounceEventResult) {
         match result {
             Ok(events) => {
                 let mut after_debounce_effects = AfterDebounceEffects {
                     reload_immediately: Default::default(),
+                    skin_manager_changes: FolderChanges::no_changes()
                 };
 
                 let mut last_event: Option<FilesystemEvent> = None;
@@ -63,6 +65,7 @@ impl BackendState {
                 for (instance_id, folder) in after_debounce_effects.reload_immediately {
                     tokio::task::spawn(self.clone().load_instance_content(instance_id, folder));
                 }
+                SkinManager::skin_library_mark_dirty(self, after_debounce_effects.skin_manager_changes);
             },
             Err(_) => {
                 log::error!("An error occurred while watching the filesystem! The launcher might be out-of-sync with your files!");
@@ -72,7 +75,7 @@ impl BackendState {
     }
 
     async fn handle_filesystem_change_event(
-        &mut self,
+        self: &Arc<Self>,
         path: Arc<Path>,
         after_debounce_effects: &mut AfterDebounceEffects,
     ) {
@@ -90,7 +93,7 @@ impl BackendState {
     }
 
     async fn handle_filesystem_remove_event(
-        &mut self,
+        self: &Arc<Self>,
         path: Arc<Path>,
         target: Option<WatchTarget>,
         after_debounce_effects: &mut AfterDebounceEffects,
@@ -110,7 +113,7 @@ impl BackendState {
     }
 
     async fn handle_filesystem_event(
-        &mut self,
+        self: &Arc<Self>,
         event: FilesystemEvent,
         after_debounce_effects: &mut AfterDebounceEffects,
     ) {
@@ -161,7 +164,7 @@ impl BackendState {
     }
 
     async fn filesystem_handle_change(
-        &mut self,
+        self: &Arc<Self>,
         _target: WatchTarget,
         _path: &Arc<Path>,
         _after_debounce_effects: &mut AfterDebounceEffects,
@@ -170,10 +173,10 @@ impl BackendState {
     }
 
     async fn filesystem_handle_removed(
-        &mut self,
+        self: &Arc<Self>,
         target: WatchTarget,
         path: &Arc<Path>,
-        _after_debounce_effects: &mut AfterDebounceEffects,
+        after_debounce_effects: &mut AfterDebounceEffects,
     ) -> bool {
         match target {
             WatchTarget::RootDir => {
@@ -228,11 +231,15 @@ impl BackendState {
                 }
                 true
             },
+            WatchTarget::SkinLibraryDir => {
+                after_debounce_effects.skin_manager_changes.dirty_all();
+                true
+            }
         }
     }
 
     async fn filesystem_handle_renamed(
-        &mut self,
+        self: &Arc<Self>,
         from_target: WatchTarget,
         from: &Arc<Path>,
         to: &Arc<Path>,
@@ -264,7 +271,7 @@ impl BackendState {
     }
 
     async fn filesystem_handle_child_change(
-        &mut self,
+        self: &Arc<Self>,
         parent: WatchTarget,
         parent_path: &Path,
         path: &Arc<Path>,
@@ -283,6 +290,12 @@ impl BackendState {
                     let mut account_info = self.account_info.write();
                     account_info.mark_changed(&path);
                     self.send.send(account_info.get().create_update_message());
+                } else if file_name == "skins" {
+                    let is_not_unloaded = self.skin_manager.read().skin_library_state.is_not_unloaded();
+                    if is_not_unloaded {
+                        self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::SkinLibraryDir);
+                        after_debounce_effects.skin_manager_changes.dirty_all();
+                    }
                 }
             }
             WatchTarget::InstancesDir => {
@@ -373,11 +386,14 @@ impl BackendState {
                     }
                 }
             },
+            WatchTarget::SkinLibraryDir => {
+                after_debounce_effects.skin_manager_changes.dirty_path(path.clone());
+            },
         }
     }
 
     async fn filesystem_handle_child_removed(
-        &mut self,
+        self: &Arc<Self>,
         parent: WatchTarget,
         parent_path: &Path,
         path: &Arc<Path>,
@@ -421,6 +437,9 @@ impl BackendState {
                         after_debounce_effects.reload_immediately.insert((id, folder));
                     }
                 }
+            },
+            WatchTarget::SkinLibraryDir => {
+                after_debounce_effects.skin_manager_changes.dirty_path(path.clone());
             },
             _ => {},
         }

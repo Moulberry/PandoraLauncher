@@ -93,7 +93,7 @@ impl Render for InstanceResourcePacksSubpage {
         let theme = cx.theme();
 
         let state = self.resource_packs_state.load(Ordering::SeqCst);
-        if state.should_send_load_request() {
+        if state.should_load() {
             self.backend_handle.send_with_serial(MessageToBackend::RequestLoadResourcePacks { id: self.instance }, &self.load_serial);
         }
 

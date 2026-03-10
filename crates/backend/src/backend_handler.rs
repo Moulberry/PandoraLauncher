@@ -1,23 +1,24 @@
-use std::{io::{BufRead, Read}, sync::Arc, time::{Duration, SystemTime}};
+use std::{borrow::Cow, io::{BufRead, Read}, sync::Arc, time::{Duration, Instant, SystemTime}};
 
-use auth::{credentials::AccountCredentials, models::{MinecraftAccessToken, MinecraftProfileResponse}, secret::PlatformSecretStorage};
+use auth::{credentials::AccountCredentials, models::{MinecraftAccessToken}, secret::PlatformSecretStorage};
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{InstanceStatus, ContentType, ContentSummary}, message::{BackendConfigWithPassword, LogFiles, MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
+    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{ContentSummary, ContentType, InstanceStatus}, message::{AccountCapesResult, AccountSkinResult, BackendConfigWithPassword, LogFiles, MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
 };
 use futures::TryFutureExt;
 use rustc_hash::FxHashSet;
-use schema::{auxiliary::AuxiliaryContentMeta, content::ContentSource, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
-use serde::Deserialize;
+use schema::{auxiliary::AuxiliaryContentMeta, content::ContentSource, minecraft_profile::MinecraftProfileResponse, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
-use tokio::{io::AsyncBufReadExt, sync::Semaphore};
+use tokio::{io::AsyncBufReadExt, sync::{Semaphore, TryAcquireError}};
 use ustr::Ustr;
+use uuid::Uuid;
 
 use crate::{
-    BackendState, LoginError, account::BackendAccount, arcfactory::ArcStrFactory, instance::ContentFolder, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::{ContentUpdateAction, ContentUpdateKey}
+    BackendState, CachedMinecraftProfile, LoginError, account::BackendAccount, arcfactory::ArcStrFactory, instance::ContentFolder, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::{ContentUpdateAction, ContentUpdateKey}, skin_manager::SkinManager
 };
 
 impl BackendState {
-    pub async fn handle_message(&self, message: MessageToBackend) {
+    pub async fn handle_message(self: &Arc<Self>, message: MessageToBackend) {
         match message {
             MessageToBackend::RequestMetadata { request, force_reload } => {
                 let meta = self.meta.clone();
@@ -1079,6 +1080,7 @@ impl BackendState {
             },
             MessageToBackend::AddNewAccount { modal_action } => {
                 self.login_flow(&modal_action, None).await;
+                modal_action.set_finished();
             },
             MessageToBackend::AddOfflineAccount { name, uuid } => {
                 let mut account_info = self.account_info.write();
@@ -1271,20 +1273,340 @@ impl BackendState {
             },
             MessageToBackend::ImportFromOtherLauncher { launcher, import_accounts, import_instances, modal_action } => {
                 crate::launcher_import::import_from_other_launcher(self, launcher, import_accounts, import_instances, modal_action).await;
+            },
+            MessageToBackend::GetAccountSkin { account, result } => {
+                let backend = self.clone();
+                tokio::task::spawn(async move {
+                    let Some(account) = backend.get_minecraft_profile(account).await else {
+                        _ = result.send(AccountSkinResult::NeedsLogin);
+                        return;
+                    };
+
+                    if let Some(skin) = account.active_skin() {
+                        SkinManager::frontend_request(&backend, skin.url.clone(), result);
+                    } else {
+                        _ = result.send(AccountSkinResult::Success { skin: None });
+                    }
+                });
+            },
+            MessageToBackend::SetAccountSkin { account, skin, variant } => {
+                let Some((_, access_token)) = self.noninteractive_login_flow(account).await else {
+                    self.send.send_error("Unable to get access token");
+                    return;
+                };
+
+                let variant_str = match variant {
+                    schema::minecraft_profile::SkinVariant::Slim => "slim",
+                    _ => "classic",
+                };
+
+                let form = reqwest::multipart::Form::new()
+                    .text("variant", variant_str)
+                    .part("file", reqwest::multipart::Part::bytes(skin.to_vec())
+                        .file_name("file.png")
+                        .mime_str("image/png").unwrap());
+
+                let response = self.http_client
+                    .post("https://api.minecraftservices.com/minecraft/profile/skins")
+                    .multipart(form)
+                    .bearer_auth(access_token.secret())
+                    .send()
+                    .await;
+
+                let response = match response {
+                    Ok(response) => response,
+                    Err(err) => {
+                        log::error!("Error while making skin change request: {:?}", err);
+                        self.send.send_error("Error while making skin change request");
+                        return;
+                    },
+                };
+
+                let status = response.status();
+                if status != reqwest::StatusCode::OK {
+                    #[derive(Deserialize)]
+                    struct MojangApiResponse {
+                        #[serde(rename = "errorMessage")]
+                        error_message: String
+                    }
+                    if let Ok(response) = response.json::<MojangApiResponse>().await {
+                        log::error!("Skin change failed: {}", &response.error_message);
+                        self.send.send_error(format!("Skin change failed: {}", &response.error_message));
+                    } else {
+                        log::error!("Skin change failed with non-200 status code: {}", status);
+                        self.send.send_error(format!("Skin change failed with non-200 status code: {}", status));
+                    }
+                    return;
+                } else if let Ok(profile) = response.json().await {
+                    self.cached_minecraft_profiles.write().insert(account, CachedMinecraftProfile::new(profile));
+                }
+            },
+            MessageToBackend::GetAccountCapes { account, result } => {
+                let backend = self.clone();
+                tokio::task::spawn(async move {
+                    let Some(account) = backend.get_minecraft_profile(account).await else {
+                        _ = result.send(AccountCapesResult::NeedsLogin);
+                        return;
+                    };
+
+                    _ = result.send(AccountCapesResult::Success {
+                        capes: account.capes
+                    });
+                });
+            },
+            MessageToBackend::SetAccountCape { account, cape } => {
+                let Some((_, access_token)) = self.noninteractive_login_flow(account).await else {
+                    self.send.send_error("Unable to get access token");
+                    return;
+                };
+
+                let request = if let Some(cape) = cape {
+                    #[derive(Serialize)]
+                    struct PutActiveCape {
+                        #[serde(rename = "capeId")]
+                        cape_id: Uuid
+                    }
+
+                    self.http_client.put("https://api.minecraftservices.com/minecraft/profile/capes/active").json(&PutActiveCape {
+                        cape_id: cape
+                    })
+                } else {
+                    self.http_client.delete("https://api.minecraftservices.com/minecraft/profile/capes/active")
+                };
+
+                let response = request
+                    .bearer_auth(access_token.secret())
+                    .send()
+                    .await;
+
+                let response = match response {
+                    Ok(response) => response,
+                    Err(err) => {
+                        log::error!("Error while making cape change request: {:?}", err);
+                        self.send.send_error("Error while making cape change request");
+                        return;
+                    },
+                };
+
+                let status = response.status();
+                if status != reqwest::StatusCode::OK {
+                    #[derive(Deserialize)]
+                    struct MojangApiResponse {
+                        #[serde(rename = "errorMessage")]
+                        error_message: String
+                    }
+                    if let Ok(response) = response.json::<MojangApiResponse>().await {
+                        log::error!("Cape change failed: {}", &response.error_message);
+                        self.send.send_error(format!("Cape change failed: {}", &response.error_message));
+                    } else {
+                        log::error!("Cape change failed with non-200 status code: {}", status);
+                        self.send.send_error(format!("Cape change failed with non-200 status code: {}", status));
+                    }
+                    return;
+                } else if let Ok(profile) = response.json().await {
+                    self.cached_minecraft_profiles.write().insert(account, CachedMinecraftProfile::new(profile));
+                }
+            },
+            MessageToBackend::RequestSkinLibrary => {
+                SkinManager::load_skin_library(&self);
+            },
+            MessageToBackend::AddToSkinLibrary { source } => {
+                let (bytes, filename) = match source {
+                    bridge::message::UrlOrFile::Url { url } => {
+                        let url = match reqwest::Url::parse(&*url) {
+                            Ok(url) => url,
+                            Err(err) => {
+                                log::error!("Invalid URL: {}", err);
+                                self.send.send_error(format!("Invalid URL: {}", err));
+                                return;
+                            },
+                        };
+
+                        let filename = url.path_segments()
+                            .and_then(|s| s.last())
+                            .unwrap_or("skin.png")
+                            .to_owned();
+
+                        let response = self.redirecting_http_client.get(url).send().await;
+
+                        let response = match response {
+                            Ok(response) => response,
+                            Err(err) => {
+                                log::error!("Error while requesting skin: {:?}", err);
+                                self.send.send_error("Error while requesting skin, see logs for more details");
+                                return;
+                            },
+                        };
+
+                        let bytes = match response.bytes().await {
+                            Ok(bytes) => bytes.to_vec(),
+                            Err(err) => {
+                                log::error!("Error while downloading skin: {:?}", err);
+                                self.send.send_error("Error while downloading skin, see logs for more details");
+                                return;
+                            },
+                        };
+
+                        (bytes, filename)
+                    },
+                    bridge::message::UrlOrFile::File { path } => {
+                        let bytes = match std::fs::read(&path) {
+                            Ok(bytes) => bytes,
+                            Err(err) => {
+                                log::error!("Error while reading skin file: {:?}", err);
+                                self.send.send_error("Error while reading skin file, see logs for more details");
+                                return;
+                            },
+                        };
+
+                        let filename = path.file_name()
+                            .map(|s| s.to_string_lossy())
+                            .unwrap_or(Cow::Borrowed("skin.png"))
+                            .into_owned();
+
+                        (bytes, filename)
+                    },
+                };
+
+                let image = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png);
+                let image = match image {
+                    Ok(image) => image,
+                    Err(err) => {
+                        if let image::ImageError::Decoding(_) = err {
+                            self.send.send_error("Skin is not a valid PNG image");
+                        } else {
+                            log::error!("An error occurred while loading the image: {:?}", err);
+                            self.send.send_error("An error occurred while loading the image, see logs for more details");
+                        }
+                        return;
+                    },
+                };
+                if !SkinManager::is_valid_size(&image) {
+                    self.send.send_error("Invalid skin file. Must be 64x64 or 64x32.");
+                    return;
+                }
+
+                let filename = sanitize_filename::sanitize_with_options(filename, sanitize_filename::Options { windows: true, ..Default::default() });
+
+                let mut path = self.directories.skin_library_dir.join(&filename);
+
+                if path.exists() {
+                    for i in 1..32 {
+                        let new_filename = format!("{filename} ({i})");
+                        let new_path = self.directories.skin_library_dir.join(&new_filename);
+                        if !new_path.exists() {
+                            path = new_path;
+                            break;
+                        }
+                    }
+                }
+
+                if let Err(err) = crate::write_safe(&path, &bytes) {
+                    log::error!("Error while saving skin: {:?}", err);
+                    self.send.send_error("Error while saving skin, see logs for more details");
+                }
+            },
+            MessageToBackend::Login { account, modal_action } => {
+                self.login_flow(&modal_action, Some(account)).await;
+                modal_action.set_finished();
+            },
+        }
+    }
+
+    pub async fn get_minecraft_profile(&self, account: Uuid) -> Option<MinecraftProfileResponse> {
+        if let Some(cached_profile) = self.cached_minecraft_profiles.read().get(&account) {
+            if cached_profile.is_valid(Instant::now()) {
+                return Some(cached_profile.profile.clone());
+            }
+        }
+
+        let try_permit = self.login_semaphore.try_acquire();
+        let mut await_permit = None;
+        if matches!(try_permit, Err(TryAcquireError::NoPermits)) {
+            await_permit = Some(self.login_semaphore.acquire().await);
+
+            if let Some(cached_profile) = self.cached_minecraft_profiles.read().get(&account) {
+                if cached_profile.is_valid(Instant::now()) {
+                    return Some(cached_profile.profile.clone());
+                }
+            }
+        }
+
+        let secret_storage = self.get_secret_storage(None).await?;
+        let credentials = secret_storage.read_credentials(account).await.ok().flatten().unwrap_or_default();
+
+        Some(self.noninteractive_login_flow_inner(account, credentials).await?.0)
+    }
+
+    pub async fn noninteractive_login_flow(&self, account: Uuid) -> Option<(MinecraftProfileResponse, MinecraftAccessToken)> {
+        let _permit = self.login_semaphore.acquire().await;
+
+        let secret_storage = self.get_secret_storage(None).await?;
+        let credentials = secret_storage.read_credentials(account).await.ok().flatten().unwrap_or_default();
+
+        if let Some(access_token) = credentials.access_token()
+            && let Some(cached_profile) = self.cached_minecraft_profiles.read().get(&account)
+            && cached_profile.is_valid(Instant::now())
+        {
+            return Some((cached_profile.profile.clone(), access_token));
+        }
+
+        self.noninteractive_login_flow_inner(account, credentials).await
+    }
+
+    pub async fn noninteractive_login_flow_inner(&self, account: Uuid, mut credentials: AccountCredentials) -> Option<(MinecraftProfileResponse, MinecraftAccessToken)> {
+        log::info!("Doing non-interactive login flow for {account}");
+        let login_result = self.login(&mut credentials, None, None).await;
+
+        if let Err(LoginError::NeedsUserInteraction) | Err(LoginError::CancelledByUser) = login_result {
+            return None;
+        }
+
+        let secret_storage = self.get_secret_storage(None).await?;
+
+        let (profile, access_token) = match login_result {
+            Ok(login_result) => login_result,
+            Err(ref err) => {
+                log::error!("Error logging in: {err}");
+                let _ = secret_storage.delete_credentials(account).await;
+                return None;
+            },
+        };
+
+        self.cached_minecraft_profiles.write().insert(profile.id, CachedMinecraftProfile::new(profile.clone()));
+
+        if profile.id != account {
+            let _ = secret_storage.delete_credentials(account).await;
+        }
+
+        self.update_account_info_with_profile(&profile, false);
+
+        if let Err(error) = secret_storage.write_credentials(profile.id, &credentials).await {
+            log::warn!("Unable to write credentials to keychain: {error}");
+        }
+
+        Some((profile, access_token))
+    }
+
+    pub async fn get_secret_storage(&self, modal_action: Option<&ModalAction>) -> Option<&PlatformSecretStorage> {
+        match self.secret_storage.get_or_init(PlatformSecretStorage::new).await {
+            Ok(secret_storage) => Some(secret_storage),
+            Err(error) => {
+                log::error!("Error initializing secret storage: {error}");
+                if let Some(modal_action) = modal_action {
+                    modal_action.set_error_message(format!("Error initializing secret storage: {error}").into());
+                    modal_action.set_finished();
+                }
+                return None;
             }
         }
     }
 
-    pub async fn login_flow(&self, modal_action: &ModalAction, selected_account: Option<uuid::Uuid>) -> Option<(MinecraftProfileResponse, MinecraftAccessToken)> {
+    pub async fn login_flow(&self, modal_action: &ModalAction, selected_account: Option<Uuid>) -> Option<(MinecraftProfileResponse, MinecraftAccessToken)> {
+        let _permit = self.login_semaphore.acquire().await;
+
         let mut credentials = if let Some(selected_account) = selected_account {
-            let secret_storage = match self.secret_storage.get_or_init(PlatformSecretStorage::new).await {
-                Ok(secret_storage) => secret_storage,
-                Err(error) => {
-                    modal_action.set_error_message(format!("Error initializing secret storage: {error}").into());
-                    modal_action.set_finished();
-                    return None;
-                }
-            };
+            let secret_storage = self.get_secret_storage(Some(modal_action)).await?;
 
             match secret_storage.read_credentials(selected_account).await {
                 Ok(credentials) => credentials.unwrap_or_default(),
@@ -1300,24 +1622,27 @@ impl BackendState {
             AccountCredentials::default()
         };
 
+        if let Some(selected_account) = selected_account
+            && let Some(access_token) = credentials.access_token()
+            && let Some(cached_profile) = self.cached_minecraft_profiles.read().get(&selected_account)
+        {
+            let now = Instant::now();
+            if now >= cached_profile.not_before && now < cached_profile.not_after {
+                return Some((cached_profile.profile.clone(), access_token));
+            }
+        }
+
         let login_tracker = ProgressTracker::new(Arc::from("Logging in"), self.send.clone());
         modal_action.trackers.push(login_tracker.clone());
 
-        let login_result = self.login(&mut credentials, &login_tracker, &modal_action).await;
+        let login_result = self.login(&mut credentials, Some(&login_tracker), Some(&modal_action)).await;
 
         if matches!(login_result, Err(LoginError::CancelledByUser)) {
             self.send.send(MessageToFrontend::CloseModal);
             return None;
         }
 
-        let secret_storage = match self.secret_storage.get_or_init(PlatformSecretStorage::new).await {
-            Ok(secret_storage) => secret_storage,
-            Err(error) => {
-                modal_action.set_error_message(format!("Error initializing secret storage: {error}").into());
-                modal_action.set_finished();
-                return None;
-            }
-        };
+        let secret_storage = self.get_secret_storage(Some(modal_action)).await?;
 
         let (profile, access_token) = match login_result {
             Ok(login_result) => {
@@ -1326,6 +1651,8 @@ impl BackendState {
                 login_result
             },
             Err(ref err) => {
+                log::error!("Error logging in: {err}");
+
                 if let Some(selected_account) = selected_account {
                     let _ = secret_storage.delete_credentials(selected_account).await;
                 }
@@ -1338,13 +1665,15 @@ impl BackendState {
             },
         };
 
+        self.cached_minecraft_profiles.write().insert(profile.id, CachedMinecraftProfile::new(profile.clone()));
+
         if let Some(selected_account) = selected_account
             && profile.id != selected_account
         {
             let _ = secret_storage.delete_credentials(selected_account).await;
         }
 
-        self.update_account_info_with_profile(&profile);
+        self.update_account_info_with_profile(&profile, true);
 
         if let Err(error) = secret_storage.write_credentials(profile.id, &credentials).await {
             log::warn!("Unable to write credentials to keychain: {error}");
@@ -1354,13 +1683,15 @@ impl BackendState {
         Some((profile, access_token))
     }
 
-    pub fn update_account_info_with_profile(&self, profile: &MinecraftProfileResponse) {
+    pub fn update_account_info_with_profile(&self, profile: &MinecraftProfileResponse, select: bool) {
         let mut account_info = self.account_info.write();
 
         let info = account_info.get();
-        if info.accounts.contains_key(&profile.id) && info.selected_account == Some(profile.id) {
+        if info.accounts.contains_key(&profile.id) && (!select || info.selected_account == Some(profile.id)) {
             drop(account_info);
-            self.update_profile_head(&profile);
+            if let Some(skin) = profile.active_skin().cloned() {
+                SkinManager::update_account(self, profile.id, skin.url);
+            }
             return;
         }
 
@@ -1370,11 +1701,15 @@ impl BackendState {
                 info.accounts.insert(profile.id, account);
             }
 
-            info.selected_account = Some(profile.id);
+            if select {
+                info.selected_account = Some(profile.id);
+            }
         });
 
         drop(account_info);
-        self.update_profile_head(&profile);
+        if let Some(skin) = profile.active_skin().cloned() {
+            SkinManager::update_account(self, profile.id, skin.url);
+        }
     }
 
     pub async fn download_all_metadata(&self) {

@@ -60,24 +60,24 @@ pub fn create_shortcut(mut path: PathBuf, name: &str, bin: &Path, args: &[&str])
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-   	<key>CFBundleExecutable</key>
-   	<string>run.sh</string>
-   	<key>CFBundleIdentifier</key>
-   	<string>com.moulberry.pandoralauncher.Shortcut</string>
-   	<key>CFBundleName</key>
-   	<string>{name}</string>
-   	<key>CFBundleDisplayName</key>
-   	<string>{name}</string>
-   	<key>CFBundlePackageType</key>
-   	<string>APPL</string>
-   	<key>CFBundleSignature</key>
-   	<string>????</string>
-   	<key>CFBundleSupportedPlatforms</key>
-   	<array>
-  		<string>MacOSX</string>
-   	</array>
-   	<key>CFBundleVersion</key>
-   	<string>0</string>
+    <key>CFBundleExecutable</key>
+    <string>run.sh</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.moulberry.pandoralauncher.Shortcut</string>
+    <key>CFBundleName</key>
+    <string>{name}</string>
+    <key>CFBundleDisplayName</key>
+    <string>{name}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleSupportedPlatforms</key>
+    <array>
+        <string>MacOSX</string>
+    </array>
+    <key>CFBundleVersion</key>
+    <string>0</string>
 </dict>
 </plist>"#).as_bytes());
 

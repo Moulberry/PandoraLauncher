@@ -1,19 +1,6 @@
-//! Software 3D renderer for Minecraft player skins.
-//!
-//! Takes a full 64x64 Minecraft skin texture (PNG bytes) and renders an isometric
-//! 3D view of the player model. The output is a PNG image suitable for display
-//! via `png_render_cache`.
+use image::{GenericImageView, ImageFormat, Pixel, RgbaImage};
 
-use image::{GenericImageView, ImageFormat, Rgba, RgbaImage};
-use std::io::Cursor;
-
-/// Default rotation angles for the initial view.
-pub const DEFAULT_YAW: f64 = 25.0;
-pub const DEFAULT_PITCH: f64 = -20.0;
-
-// ── Math types ──────────────────────────────────────────────────────────────
-
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct V3 {
     x: f64,
     y: f64,
@@ -21,8 +8,12 @@ struct V3 {
 }
 
 impl V3 {
-    fn new(x: f64, y: f64, z: f64) -> Self {
+    const fn new(x: f64, y: f64, z: f64) -> Self {
         Self { x, y, z }
+    }
+
+    fn dot(&self, other: V3) -> f64 {
+        self.x * other.x + self.y * other.y + self.z * other.z
     }
 }
 
@@ -30,12 +21,15 @@ impl V3 {
 struct Mat3([[f64; 3]; 3]);
 
 impl Mat3 {
-    /// Build a combined rotation: first rotate `ry` radians around Y, then `rx` around X.
     fn rotation_yx(ry: f64, rx: f64) -> Self {
         let (sy, cy) = ry.sin_cos();
         let (sx, cx) = rx.sin_cos();
-        // Rx * Ry
         Self([[cy, 0.0, sy], [sx * sy, cx, -sx * cy], [-cx * sy, sx, cx * cy]])
+    }
+
+    fn rotation_x(rx: f64) -> Self {
+        let (sx, cx) = rx.sin_cos();
+        Self([[1.0, 0.0, 0.0], [0.0, cx, -sx], [0.0, sx, cx]])
     }
 
     fn transform(&self, v: V3) -> V3 {
@@ -46,271 +40,676 @@ impl Mat3 {
             z: r[2][0] * v.x + r[2][1] * v.y + r[2][2] * v.z,
         }
     }
+
+    fn transform_with_offset(&self, v: V3, o: V3) -> V3 {
+        let r = &self.0;
+        let x = v.x - o.x;
+        let y = v.y - o.y;
+        let z = v.z - o.z;
+        V3 {
+            x: r[0][0] * x + r[0][1] * y + r[0][2] * z + o.x,
+            y: r[1][0] * x + r[1][1] * y + r[1][2] * z + o.y,
+            z: r[2][0] * x + r[2][1] * y + r[2][2] * z + o.z,
+        }
+    }
 }
 
-// ── Quad / face definitions ─────────────────────────────────────────────────
-
-/// A textured quad (face) ready for rendering.
-struct Quad {
-    /// 4 corners in 3D (order: top-left, top-right, bottom-right, bottom-left as seen from outside).
-    verts: [V3; 4],
-    /// Absolute texture pixel coordinates for each corner.
-    uvs: [(f64, f64); 4],
-    /// Outward face normal (before rotation).
-    normal: V3,
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BodyPartType {
+    Head,
+    Body,
+    RightArm,
+    LeftArm,
+    RightLeg,
+    LeftLeg,
+    HeadOverlay,
+    BodyOverlay,
+    RightArmOverlay,
+    LeftArmOverlay,
+    RightLegOverlay,
+    LeftLegOverlay,
+    Cape,
 }
 
-/// Generate the 6 face quads for an axis-aligned box.
-///
-/// - `min`/`max`: box corners in model space.
-/// - `tx`, `ty`: top-left corner of this box's texture region in the skin.
-/// - `w`, `h`, `d`: box width (X), height (Y), depth (Z) – must equal max-min.
-fn box_quads(min: V3, max: V3, tx: f64, ty: f64, w: f64, h: f64, d: f64) -> [Quad; 6] {
-    let (x0, y0, z0) = (min.x, min.y, min.z);
-    let (x1, y1, z1) = (max.x, max.y, max.z);
+impl BodyPartType {
+    pub const fn inflate(self) -> f64 {
+        match self {
+            Self::HeadOverlay |
+                Self::RightArmOverlay |
+                Self::LeftArmOverlay |
+                Self::RightLegOverlay |
+                Self::LeftLegOverlay =>
+            {
+                0.25
+            },
+            Self::BodyOverlay => 0.24,
+            _ => 0.0,
+        }
+    }
 
-    [
-        // Front face (+Z) – texture region at (tx+d, ty+d) size w×h
-        Quad {
-            verts: [
-                V3::new(x0, y1, z1),
-                V3::new(x1, y1, z1),
-                V3::new(x1, y0, z1),
-                V3::new(x0, y0, z1),
-            ],
-            uvs: [
-                (tx + d, ty + d),
-                (tx + d + w, ty + d),
-                (tx + d + w, ty + d + h),
-                (tx + d, ty + d + h),
-            ],
-            normal: V3::new(0.0, 0.0, 1.0),
-        },
-        // Back face (-Z) – texture at (tx+2d+w, ty+d) size w×h
-        Quad {
-            verts: [
-                V3::new(x1, y1, z0),
-                V3::new(x0, y1, z0),
-                V3::new(x0, y0, z0),
-                V3::new(x1, y0, z0),
-            ],
-            uvs: [
-                (tx + 2.0 * d + w, ty + d),
-                (tx + 2.0 * d + 2.0 * w, ty + d),
-                (tx + 2.0 * d + 2.0 * w, ty + d + h),
-                (tx + 2.0 * d + w, ty + d + h),
-            ],
-            normal: V3::new(0.0, 0.0, -1.0),
-        },
-        // Right face (-X, player's right) – texture at (tx, ty+d) size d×h
-        Quad {
-            verts: [
-                V3::new(x0, y1, z1),
-                V3::new(x0, y1, z0),
-                V3::new(x0, y0, z0),
-                V3::new(x0, y0, z1),
-            ],
-            uvs: [(tx + d, ty + d), (tx, ty + d), (tx, ty + d + h), (tx + d, ty + d + h)],
-            normal: V3::new(-1.0, 0.0, 0.0),
-        },
-        // Left face (+X, player's left) – texture at (tx+d+w, ty+d) size d×h
-        Quad {
-            verts: [
-                V3::new(x1, y1, z0),
-                V3::new(x1, y1, z1),
-                V3::new(x1, y0, z1),
-                V3::new(x1, y0, z0),
-            ],
-            uvs: [
-                (tx + 2.0 * d + w, ty + d),
-                (tx + d + w, ty + d),
-                (tx + d + w, ty + d + h),
-                (tx + 2.0 * d + w, ty + d + h),
-            ],
-            normal: V3::new(1.0, 0.0, 0.0),
-        },
-        // Top face (+Y) – texture at (tx+d, ty) size w×d
-        Quad {
-            verts: [
-                V3::new(x0, y1, z0),
-                V3::new(x1, y1, z0),
-                V3::new(x1, y1, z1),
-                V3::new(x0, y1, z1),
-            ],
-            uvs: [(tx + d, ty), (tx + d + w, ty), (tx + d + w, ty + d), (tx + d, ty + d)],
-            normal: V3::new(0.0, 1.0, 0.0),
-        },
-        // Bottom face (-Y) – texture at (tx+d+w, ty) size w×d
-        Quad {
-            verts: [
-                V3::new(x1, y0, z0),
-                V3::new(x0, y0, z0),
-                V3::new(x0, y0, z1),
-                V3::new(x1, y0, z1),
-            ],
-            uvs: [
-                (tx + d + w, ty),
-                (tx + d + 2.0 * w, ty),
-                (tx + d + 2.0 * w, ty + d),
-                (tx + d + w, ty + d),
-            ],
-            normal: V3::new(0.0, -1.0, 0.0),
-        },
-    ]
+    pub const fn allow_transparency(self) -> bool {
+        match self {
+            Self::HeadOverlay |
+                Self::RightArmOverlay |
+                Self::LeftArmOverlay |
+                Self::RightLegOverlay |
+                Self::LeftLegOverlay |
+                Self::BodyOverlay =>
+            {
+                true
+            },
+            _ => false,
+        }
+    }
+
+    pub const fn sway_time_mult(self) -> f64 {
+        if let Self::Cape = self {
+            1.0
+        } else {
+            4.0
+        }
+    }
+
+    pub const fn sway_strength(self) -> f64 {
+        match self {
+            Self::RightArm |
+                Self::RightArmOverlay |
+                Self::LeftLeg |
+                Self::LeftLegOverlay =>
+            {
+                1.0
+            },
+            Self::LeftArm |
+                Self::LeftArmOverlay |
+                Self::RightLeg |
+                Self::RightLegOverlay =>
+            {
+                -1.0
+            },
+            Self::Cape => {
+                0.25
+            },
+            _ => 0.0,
+        }
+    }
+
+    pub const fn pitch_offset(self) -> f64 {
+        if let Self::Cape = self {
+            18.75_f64.to_radians()
+        } else {
+            0.0
+        }
+    }
 }
-
-// ── Body part definitions ───────────────────────────────────────────────────
 
 struct BodyPartDef {
     min: V3,
     max: V3,
+    pivot: Option<V3>,
     tx: f64,
     ty: f64,
-    w: f64,
-    h: f64,
-    d: f64,
+    flip_x: bool,
+    part_type: BodyPartType,
 }
 
-/// Returns all body parts (base layer + overlay layer).
-/// The overlay boxes are 0.5 units larger on each side.
-fn player_model() -> Vec<BodyPartDef> {
-    // Player model dimensions (units = skin pixels):
-    //   Legs:  y  0..12,   4 wide, 4 deep
-    //   Body:  y 12..24,   8 wide, 4 deep
-    //   Arms:  y 12..24,   4 wide, 4 deep
-    //   Head:  y 24..32,   8 wide, 8 deep
-    //
-    // Centered at x=0, z=0.
+impl BodyPartDef {
+    pub const fn to_quads(&self) -> [Quad; 6] {
+        let inflate = self.part_type.inflate();
+        let allow_transparency = self.part_type.allow_transparency();
 
-    let e = 0.5; // overlay expansion
+        let w = self.max.x - self.min.x;
+        let h = self.max.y - self.min.y;
+        let d = self.max.z - self.min.z;
+        let x0 = self.min.x - inflate;
+        let y0 = self.min.y - inflate;
+        let z0 = self.min.z - inflate;
+        let x1 = self.max.x + inflate;
+        let y1 = self.max.y + inflate;
+        let z1 = self.max.z + inflate;
+        let tx = self.tx;
+        let ty = self.ty;
+        let flip_x = self.flip_x;
+        let flip_z = matches!(self.part_type, BodyPartType::Cape);
 
-    vec![
-        // ── Base layers ──
-        // Head
-        BodyPartDef {
-            min: V3::new(-4.0, 24.0, -4.0),
-            max: V3::new(4.0, 32.0, 4.0),
-            tx: 0.0,
-            ty: 0.0,
-            w: 8.0,
-            h: 8.0,
-            d: 8.0,
-        },
-        // Body
-        BodyPartDef {
-            min: V3::new(-4.0, 12.0, -2.0),
-            max: V3::new(4.0, 24.0, 2.0),
-            tx: 16.0,
-            ty: 16.0,
-            w: 8.0,
-            h: 12.0,
-            d: 4.0,
-        },
-        // Right Arm
-        BodyPartDef {
-            min: V3::new(-8.0, 12.0, -2.0),
-            max: V3::new(-4.0, 24.0, 2.0),
-            tx: 40.0,
-            ty: 16.0,
-            w: 4.0,
-            h: 12.0,
-            d: 4.0,
-        },
-        // Left Arm
-        BodyPartDef {
-            min: V3::new(4.0, 12.0, -2.0),
-            max: V3::new(8.0, 24.0, 2.0),
-            tx: 32.0,
-            ty: 48.0,
-            w: 4.0,
-            h: 12.0,
-            d: 4.0,
-        },
-        // Right Leg
-        BodyPartDef {
-            min: V3::new(-4.0, 0.0, -2.0),
-            max: V3::new(0.0, 12.0, 2.0),
-            tx: 0.0,
-            ty: 16.0,
-            w: 4.0,
-            h: 12.0,
-            d: 4.0,
-        },
-        // Left Leg
-        BodyPartDef {
-            min: V3::new(0.0, 0.0, -2.0),
-            max: V3::new(4.0, 12.0, 2.0),
-            tx: 16.0,
-            ty: 48.0,
-            w: 4.0,
-            h: 12.0,
-            d: 4.0,
-        },
-        // ── Overlay layers (slightly expanded boxes) ──
-        // Head overlay (hat)
-        BodyPartDef {
-            min: V3::new(-4.0 - e, 24.0 - e, -4.0 - e),
-            max: V3::new(4.0 + e, 32.0 + e, 4.0 + e),
-            tx: 32.0,
-            ty: 0.0,
-            w: 8.0,
-            h: 8.0,
-            d: 8.0,
-        },
-        // Body overlay
-        BodyPartDef {
-            min: V3::new(-4.0 - e, 12.0 - e, -2.0 - e),
-            max: V3::new(4.0 + e, 24.0 + e, 2.0 + e),
-            tx: 16.0,
-            ty: 32.0,
-            w: 8.0,
-            h: 12.0,
-            d: 4.0,
-        },
-        // Right Arm overlay
-        BodyPartDef {
-            min: V3::new(-8.0 - e, 12.0 - e, -2.0 - e),
-            max: V3::new(-4.0 + e, 24.0 + e, 2.0 + e),
-            tx: 40.0,
-            ty: 32.0,
-            w: 4.0,
-            h: 12.0,
-            d: 4.0,
-        },
-        // Left Arm overlay
-        BodyPartDef {
-            min: V3::new(4.0 - e, 12.0 - e, -2.0 - e),
-            max: V3::new(8.0 + e, 24.0 + e, 2.0 + e),
-            tx: 48.0,
-            ty: 48.0,
-            w: 4.0,
-            h: 12.0,
-            d: 4.0,
-        },
-        // Right Leg overlay
-        BodyPartDef {
-            min: V3::new(-4.0 - e, 0.0 - e, -2.0 - e),
-            max: V3::new(0.0 + e, 12.0 + e, 2.0 + e),
-            tx: 0.0,
-            ty: 32.0,
-            w: 4.0,
-            h: 12.0,
-            d: 4.0,
-        },
-        // Left Leg overlay
-        BodyPartDef {
-            min: V3::new(0.0 - e, 0.0 - e, -2.0 - e),
-            max: V3::new(4.0 + e, 12.0 + e, 2.0 + e),
-            tx: 0.0,
-            ty: 48.0,
-            w: 4.0,
-            h: 12.0,
-            d: 4.0,
-        },
-    ]
+        let mut quads = [
+            // Front face (+Z) – texture region at (tx+d, ty+d) size w×h
+            Quad {
+                verts: [
+                    V3::new(x0, y1, z1),
+                    V3::new(x1, y1, z1),
+                    V3::new(x1, y0, z1),
+                    V3::new(x0, y0, z1),
+                ],
+                uvs: [
+                    (tx + d, ty + d),
+                    (tx + d + w, ty + d),
+                    (tx + d + w, ty + d + h),
+                    (tx + d, ty + d + h),
+                ],
+                normal: V3::new(0.0, 0.0, 1.0),
+                allow_transparency,
+            }.flip_uv_horz(flip_x),
+            // Back face (-Z) – texture at (tx+2d+w, ty+d) size w×h
+            Quad {
+                verts: [
+                    V3::new(x1, y1, z0),
+                    V3::new(x0, y1, z0),
+                    V3::new(x0, y0, z0),
+                    V3::new(x1, y0, z0),
+                ],
+                uvs: [
+                    (tx + 2.0 * d + w, ty + d),
+                    (tx + 2.0 * d + 2.0 * w, ty + d),
+                    (tx + 2.0 * d + 2.0 * w, ty + d + h),
+                    (tx + 2.0 * d + w, ty + d + h),
+                ],
+                normal: V3::new(0.0, 0.0, -1.0),
+                allow_transparency,
+            }.flip_uv_horz(flip_x),
+            // Right face (-X, player's right) – texture at (tx, ty+d) size d×h
+            Quad {
+                verts: [
+                    V3::new(x0, y1, z1),
+                    V3::new(x0, y1, z0),
+                    V3::new(x0, y0, z0),
+                    V3::new(x0, y0, z1),
+                ],
+                uvs: [
+                    (tx + d, ty + d),
+                    (tx, ty + d),
+                    (tx, ty + d + h),
+                    (tx + d, ty + d + h)
+                ],
+                normal: V3::new(-1.0, 0.0, 0.0),
+                allow_transparency,
+            }.flip_uv_horz(flip_z),
+            // Left face (+X, player's left) – texture at (tx+d+w, ty+d) size d×h
+            Quad {
+                verts: [
+                    V3::new(x1, y1, z0),
+                    V3::new(x1, y1, z1),
+                    V3::new(x1, y0, z1),
+                    V3::new(x1, y0, z0),
+                ],
+                uvs: [
+                    (tx + 2.0 * d + w, ty + d),
+                    (tx + d + w, ty + d),
+                    (tx + d + w, ty + d + h),
+                    (tx + 2.0 * d + w, ty + d + h),
+                ],
+                normal: V3::new(1.0, 0.0, 0.0),
+                allow_transparency,
+            }.flip_uv_horz(flip_z),
+            // Top face (+Y) – texture at (tx+d, ty) size w×d
+            Quad {
+                verts: [
+                    V3::new(x0, y1, z0),
+                    V3::new(x1, y1, z0),
+                    V3::new(x1, y1, z1),
+                    V3::new(x0, y1, z1),
+                ],
+                uvs: [
+                    (tx + d, ty),
+                    (tx + d + w, ty),
+                    (tx + d + w, ty + d),
+                    (tx + d, ty + d)
+                ],
+                normal: V3::new(0.0, 1.0, 0.0),
+                allow_transparency,
+            }.flip_uv_horz(flip_x).flip_uv_vert(flip_z),
+            // Bottom face (-Y) – texture at (tx+d+w, ty) size w×d
+            Quad {
+                verts: [
+                    V3::new(x1, y0, z0),
+                    V3::new(x0, y0, z0),
+                    V3::new(x0, y0, z1),
+                    V3::new(x1, y0, z1),
+                ],
+                uvs: [
+                    (tx + d + w, ty),
+                    (tx + d + 2.0 * w, ty),
+                    (tx + d + 2.0 * w, ty + d),
+                    (tx + d + w, ty + d),
+                ],
+                normal: V3::new(0.0, -1.0, 0.0),
+                allow_transparency,
+            }.flip_uv_horz(flip_x).flip_uv_vert(flip_z),
+        ];
+
+        if flip_x {
+            unsafe {
+                std::ptr::swap(&raw mut quads[2].uvs, &raw mut quads[3].uvs);
+            }
+        }
+        if flip_z {
+            unsafe {
+                std::ptr::swap(&raw mut quads[0].uvs, &raw mut quads[1].uvs);
+            }
+        }
+
+        quads
+    }
+
+    fn add_projected_quads(&self, projected_quads: &mut Vec<ProjectedQuad>, rot: &Mat3, light0: V3, light1: V3, sway_progress: f64) {
+        let mut quads = self.to_quads();
+        let sway_strength = self.part_type.sway_strength();
+        let sway_time_mult = self.part_type.sway_time_mult();
+        let pitch_offset = self.part_type.pitch_offset();
+
+        let pitch = -15.0_f64.to_radians() * sway_strength * (sway_progress * std::f64::consts::TAU * sway_time_mult).sin() + pitch_offset;
+
+        if pitch != 0.0 {
+            let transform = Mat3::rotation_x(pitch);
+            for quad in &mut quads {
+                let pivot = self.pivot.unwrap_or_else(|| {
+                    V3::new(
+                        self.min.x/2.0 + self.max.x/2.0,
+                        self.min.y/2.0 + self.max.y/2.0,
+                        self.min.z/2.0 + self.max.z/2.0,
+                    )
+                });
+                for vert in &mut quad.verts {
+                    *vert = transform.transform_with_offset(*vert, pivot);
+                };
+                quad.normal = transform.transform(quad.normal);
+            }
+        }
+
+        for quad in &quads {
+            let mut rn = rot.transform(quad.normal);
+
+            if rn.z <= 0.0 {
+                if !quad.allow_transparency {
+                    // Cull back facing quads
+                    continue;
+                } else {
+                    // Flip for correct lighting
+                    rn.x *= -1.0;
+                    rn.y *= -1.0;
+                    rn.z *= -1.0;
+                }
+            }
+
+            let dot0 = rn.dot(light0).clamp(0.0, 1.0);
+            let dot1 = rn.dot(light1).clamp(0.0, 1.0);
+            let accum = ((dot0 + dot1).min(1.0) * 0.5 + 0.5).clamp(0.0, 1.0);
+            let shade = (accum * 255.0) as u8;
+
+            // Transform vertices
+            let mut screen_verts = [V3::new(0.0, 0.0, 0.0); 4];
+            let mut avg_z = 0.0;
+            for (j, v) in quad.verts.iter().enumerate() {
+                let mut rv = rot.transform(*v);
+                rv.y *= -1.0; // flip for screenspace (y down)
+                screen_verts[j] = rv;
+                avg_z += rv.z;
+            }
+            avg_z /= 4.0;
+
+            projected_quads.push(ProjectedQuad {
+                verts: screen_verts,
+                uvs: quad.uvs,
+                avg_z,
+                allow_transparency: quad.allow_transparency,
+                shade,
+                part_type: self.part_type
+            });
+        }
+    }
 }
 
-// ── Rasterization ───────────────────────────────────────────────────────────
+static PLAYER_MODEL: &'static [BodyPartDef] = &[
+    // Head
+    BodyPartDef {
+        min: V3::new(-4.0, 8.0, -4.0),
+        max: V3::new(4.0, 16.0, 4.0),
+        pivot: None,
+        tx: 0.0,
+        ty: 0.0,
+        flip_x: false,
+        part_type: BodyPartType::Head,
+    },
+    // Body
+    BodyPartDef {
+        min: V3::new(-4.0, -4.0, -2.0),
+        max: V3::new(4.0, 8.0, 2.0),
+        pivot: None,
+        tx: 16.0,
+        ty: 16.0,
+        flip_x: false,
+        part_type: BodyPartType::Body,
+    },
+    // Right Arm
+    BodyPartDef {
+        min: V3::new(-8.0, -4.0, -2.0),
+        max: V3::new(-4.0, 8.0, 2.0),
+        pivot: Some(V3::new(-4.0, 8.0, 0.0)),
+        tx: 40.0,
+        ty: 16.0,
+        flip_x: false,
+        part_type: BodyPartType::RightArm,
+    },
+    // Left Arm
+    BodyPartDef {
+        min: V3::new(4.0, -4.0, -2.0),
+        max: V3::new(8.0, 8.0, 2.0),
+        pivot: Some(V3::new(4.0, 8.0, 0.0)),
+        tx: 32.0,
+        ty: 48.0,
+        flip_x: false,
+        part_type: BodyPartType::LeftArm,
+    },
+    // Right Leg
+    BodyPartDef {
+        min: V3::new(-4.0, -16.0, -2.0),
+        max: V3::new(0.0, -4.0, 2.0),
+        pivot: Some(V3::new(-2.0, -4.0, 0.0)),
+        tx: 0.0,
+        ty: 16.0,
+        flip_x: false,
+        part_type: BodyPartType::RightLeg,
+    },
+    // Left Leg
+    BodyPartDef {
+        min: V3::new(0.0, -16.0, -2.0),
+        max: V3::new(4.0, -4.0, 2.0),
+        pivot: Some(V3::new(2.0, -4.0, 0.0)),
+        tx: 16.0,
+        ty: 48.0,
+        flip_x: false,
+        part_type: BodyPartType::LeftLeg,
+    },
+    // Head overlay (hat)
+    BodyPartDef {
+        min: V3::new(-4.0, 8.0, -4.0),
+        max: V3::new(4.0, 16.0, 4.0),
+        pivot: None,
+        tx: 32.0,
+        ty: 0.0,
+        flip_x: false,
+        part_type: BodyPartType::HeadOverlay,
+    },
+    // Body overlay
+    BodyPartDef {
+        min: V3::new(-4.0, -4.0, -2.0),
+        max: V3::new(4.0, 8.0, 2.0),
+        pivot: None,
+        tx: 16.0,
+        ty: 32.0,
+        flip_x: false,
+        part_type: BodyPartType::BodyOverlay,
+    },
+    // Right Arm overlay
+    BodyPartDef {
+        min: V3::new(-8.0, -4.0, -2.0),
+        max: V3::new(-4.0, 8.0, 2.0),
+        pivot: Some(V3::new(-4.0, 8.0, 0.0)),
+        tx: 40.0,
+        ty: 32.0,
+        flip_x: false,
+        part_type: BodyPartType::RightArmOverlay,
+    },
+    // Left Arm overlay
+    BodyPartDef {
+        min: V3::new(4.0, -4.0, -2.0),
+        max: V3::new(8.0, 8.0, 2.0),
+        pivot: Some(V3::new(4.0, 8.0, 0.0)),
+        tx: 48.0,
+        ty: 48.0,
+        flip_x: false,
+        part_type: BodyPartType::LeftArmOverlay,
+    },
+    // Right Leg overlay
+    BodyPartDef {
+        min: V3::new(-4.0, -16.0, -2.0),
+        max: V3::new(0.0, -4.0, 2.0),
+        pivot: Some(V3::new(-2.0, -4.0, 0.0)),
+        tx: 0.0,
+        ty: 32.0,
+        flip_x: false,
+        part_type: BodyPartType::RightLegOverlay,
+    },
+    // Left Leg overlay
+    BodyPartDef {
+        min: V3::new(0.0, -16.0, -2.0),
+        max: V3::new(4.0, -4.0, 2.0),
+        pivot: Some(V3::new(2.0, -4.0, 0.0)),
+        tx: 0.0,
+        ty: 48.0,
+        flip_x: false,
+        part_type: BodyPartType::LeftLegOverlay,
+    },
+];
+
+static SLIM_PLAYER_MODEL: &'static [BodyPartDef] = &[
+    // Head
+    BodyPartDef {
+        min: V3::new(-4.0, 8.0, -4.0),
+        max: V3::new(4.0, 16.0, 4.0),
+        pivot: None,
+        tx: 0.0,
+        ty: 0.0,
+        flip_x: false,
+        part_type: BodyPartType::Head,
+    },
+    // Body
+    BodyPartDef {
+        min: V3::new(-4.0, -4.0, -2.0),
+        max: V3::new(4.0, 8.0, 2.0),
+        pivot: None,
+        tx: 16.0,
+        ty: 16.0,
+        flip_x: false,
+        part_type: BodyPartType::Body,
+    },
+    // Right Arm
+    BodyPartDef {
+        min: V3::new(-7.0, -4.0, -2.0),
+        max: V3::new(-4.0, 8.0, 2.0),
+        pivot: Some(V3::new(-4.0, 8.0, 0.0)),
+        tx: 40.0,
+        ty: 16.0,
+        flip_x: false,
+        part_type: BodyPartType::RightArm,
+    },
+    // Left Arm
+    BodyPartDef {
+        min: V3::new(4.0, -4.0, -2.0),
+        max: V3::new(7.0, 8.0, 2.0),
+        pivot: Some(V3::new(4.0, 8.0, 0.0)),
+        tx: 32.0,
+        ty: 48.0,
+        flip_x: false,
+        part_type: BodyPartType::LeftArm,
+    },
+    // Right Leg
+    BodyPartDef {
+        min: V3::new(-4.0, -16.0, -2.0),
+        max: V3::new(0.0, -4.0, 2.0),
+        pivot: Some(V3::new(-2.0, -4.0, 0.0)),
+        tx: 0.0,
+        ty: 16.0,
+        flip_x: false,
+        part_type: BodyPartType::RightLeg,
+    },
+    // Left Leg
+    BodyPartDef {
+        min: V3::new(0.0, -16.0, -2.0),
+        max: V3::new(4.0, -4.0, 2.0),
+        pivot: Some(V3::new(2.0, -4.0, 0.0)),
+        tx: 16.0,
+        ty: 48.0,
+        flip_x: false,
+        part_type: BodyPartType::LeftLeg,
+    },
+    // Head overlay (hat)
+    BodyPartDef {
+        min: V3::new(-4.0, 8.0, -4.0),
+        max: V3::new(4.0, 16.0, 4.0),
+        pivot: None,
+        tx: 32.0,
+        ty: 0.0,
+        flip_x: false,
+        part_type: BodyPartType::HeadOverlay,
+    },
+    // Body overlay
+    BodyPartDef {
+        min: V3::new(-4.0, -4.0, -2.0),
+        max: V3::new(4.0, 8.0, 2.0),
+        pivot: None,
+        tx: 16.0,
+        ty: 32.0,
+        flip_x: false,
+        part_type: BodyPartType::BodyOverlay,
+    },
+    // Right Arm overlay
+    BodyPartDef {
+        min: V3::new(-7.0, -4.0, -2.0),
+        max: V3::new(-4.0, 8.0, 2.0),
+        pivot: Some(V3::new(-4.0, 8.0, 0.0)),
+        tx: 40.0,
+        ty: 32.0,
+        flip_x: false,
+        part_type: BodyPartType::RightArmOverlay,
+    },
+    // Left Arm overlay
+    BodyPartDef {
+        min: V3::new(4.0, -4.0, -2.0),
+        max: V3::new(7.0, 8.0, 2.0),
+        pivot: Some(V3::new(4.0, 8.0, 0.0)),
+        tx: 46.0,
+        ty: 48.0,
+        flip_x: false,
+        part_type: BodyPartType::LeftArmOverlay,
+    },
+    // Right Leg overlay
+    BodyPartDef {
+        min: V3::new(-4.0, -16.0, -2.0),
+        max: V3::new(0.0, -4.0, 2.0),
+        pivot: Some(V3::new(-2.0, -4.0, 0.0)),
+        tx: 0.0,
+        ty: 32.0,
+        flip_x: false,
+        part_type: BodyPartType::RightLegOverlay,
+    },
+    // Left Leg overlay
+    BodyPartDef {
+        min: V3::new(0.0, -16.0, -2.0),
+        max: V3::new(4.0, -4.0, 2.0),
+        pivot: Some(V3::new(2.0, -4.0, 0.0)),
+        tx: 0.0,
+        ty: 48.0,
+        flip_x: false,
+        part_type: BodyPartType::LeftLegOverlay,
+    },
+];
+
+static LEGACY_PLAYER_MODEL: &'static [BodyPartDef] = &[
+    // Head
+    BodyPartDef {
+        min: V3::new(-4.0, 8.0, -4.0),
+        max: V3::new(4.0, 16.0, 4.0),
+        pivot: None,
+        tx: 0.0,
+        ty: 0.0,
+        flip_x: false,
+        part_type: BodyPartType::Head,
+    },
+    // Body
+    BodyPartDef {
+        min: V3::new(-4.0, -4.0, -2.0),
+        max: V3::new(4.0, 8.0, 2.0),
+        pivot: None,
+        tx: 16.0,
+        ty: 16.0,
+        flip_x: false,
+        part_type: BodyPartType::Body,
+    },
+    // Right Arm
+    BodyPartDef {
+        min: V3::new(-8.0, -4.0, -2.0),
+        max: V3::new(-4.0, 8.0, 2.0),
+        pivot: Some(V3::new(-4.0, 8.0, 0.0)),
+        tx: 40.0,
+        ty: 16.0,
+        flip_x: false,
+        part_type: BodyPartType::RightArm,
+    },
+    // Left Arm
+    BodyPartDef {
+        min: V3::new(4.0, -4.0, -2.0),
+        max: V3::new(8.0, 8.0, 2.0),
+        pivot: Some(V3::new(4.0, 8.0, 0.0)),
+        tx: 40.0,
+        ty: 16.0,
+        flip_x: true,
+        part_type: BodyPartType::LeftArm,
+    },
+    // Right Leg
+    BodyPartDef {
+        min: V3::new(-4.0, -16.0, -2.0),
+        max: V3::new(0.0, -4.0, 2.0),
+        pivot: Some(V3::new(-2.0, -4.0, 0.0)),
+        tx: 0.0,
+        ty: 16.0,
+        flip_x: false,
+        part_type: BodyPartType::RightLeg,
+    },
+    // Left Leg
+    BodyPartDef {
+        min: V3::new(0.0, -16.0, -2.0),
+        max: V3::new(4.0, -4.0, 2.0),
+        pivot: Some(V3::new(2.0, -4.0, 0.0)),
+        tx: 0.0,
+        ty: 16.0,
+        flip_x: true,
+        part_type: BodyPartType::LeftLeg,
+    },
+    // Head overlay (hat)
+    BodyPartDef {
+        min: V3::new(-4.0, 8.0, -4.0),
+        max: V3::new(4.0, 16.0, 4.0),
+        pivot: None,
+        tx: 32.0,
+        ty: 0.0,
+        flip_x: false,
+        part_type: BodyPartType::HeadOverlay,
+    },
+];
+
+struct Quad {
+    verts: [V3; 4],
+    uvs: [(f64, f64); 4],
+    normal: V3,
+    allow_transparency: bool,
+}
+
+impl Quad {
+    pub const fn flip_uv_horz(mut self, flip: bool) -> Self {
+        if flip {
+            self.uvs.swap(0, 1);
+            self.uvs.swap(2, 3);
+        }
+        self
+    }
+
+    pub const fn flip_uv_vert(mut self, flip: bool) -> Self {
+        if flip {
+            self.uvs.swap(0, 3);
+            self.uvs.swap(1, 2);
+        }
+        self
+    }
+}
+
+struct ProjectedQuad {
+    verts: [V3; 4],
+    uvs: [(f64, f64); 4],
+    avg_z: f64,
+    allow_transparency: bool,
+    shade: u8,
+    part_type: BodyPartType,
+}
 
 /// 2D edge function: positive when `p` is to the left of edge `a→b`.
 #[inline]
@@ -318,35 +717,12 @@ fn edge(ax: f64, ay: f64, bx: f64, by: f64, px: f64, py: f64) -> f64 {
     (bx - ax) * (py - ay) - (by - ay) * (px - ax)
 }
 
-/// Alpha-blend `src` over `dst` (premultiplied-style, simple).
-#[inline]
-fn alpha_blend(dst: &mut Rgba<u8>, src: Rgba<u8>) {
-    let sa = src[3] as u16;
-    if sa == 0 {
-        return;
-    }
-    if sa == 255 {
-        *dst = src;
-        return;
-    }
-    let da = dst[3] as u16;
-    let inv_sa = 255 - sa;
-    let out_a = sa + (da * inv_sa) / 255;
-    if out_a == 0 {
-        return;
-    }
-    for i in 0..3 {
-        dst[i] = ((src[i] as u16 * sa + dst[i] as u16 * da * inv_sa / 255) / out_a) as u8;
-    }
-    dst[3] = out_a as u8;
-}
-
 /// Rasterize a single triangle with texture mapping and z-buffering.
 fn rasterize_triangle(
     // Screen-space vertices (x, y, z for depth)
-    v0: (f64, f64, f64),
-    v1: (f64, f64, f64),
-    v2: (f64, f64, f64),
+    v0: V3,
+    v1: V3,
+    v2: V3,
     // Texture coordinates (absolute pixel coords in skin)
     uv0: (f64, f64),
     uv1: (f64, f64),
@@ -354,19 +730,21 @@ fn rasterize_triangle(
     skin: &image::DynamicImage,
     output: &mut RgbaImage,
     zbuf: &mut [f64],
-    out_w: u32,
-    out_h: u32,
+    allow_transparency: bool,
+    shade: u8,
 ) {
     let skin_w = skin.width();
     let skin_h = skin.height();
+    let out_w = output.width();
+    let out_h = output.height();
 
     // Bounding box (clamped to output)
-    let min_x = v0.0.min(v1.0).min(v2.0).floor().max(0.0) as i32;
-    let max_x = v0.0.max(v1.0).max(v2.0).ceil().min(out_w as f64 - 1.0) as i32;
-    let min_y = v0.1.min(v1.1).min(v2.1).floor().max(0.0) as i32;
-    let max_y = v0.1.max(v1.1).max(v2.1).ceil().min(out_h as f64 - 1.0) as i32;
+    let min_x = v0.x.min(v1.x).min(v2.x).floor().max(0.0) as i32;
+    let max_x = v0.x.max(v1.x).max(v2.x).ceil().min(out_w as f64 - 1.0) as i32;
+    let min_y = v0.y.min(v1.y).min(v2.y).floor().max(0.0) as i32;
+    let max_y = v0.y.max(v1.y).max(v2.y).ceil().min(out_h as f64 - 1.0) as i32;
 
-    let area = edge(v0.0, v0.1, v1.0, v1.1, v2.0, v2.1);
+    let area = edge(v0.x, v0.y, v1.x, v1.y, v2.x, v2.y);
     if area.abs() < 0.001 {
         return; // degenerate
     }
@@ -377,27 +755,33 @@ fn rasterize_triangle(
             let cx = px as f64 + 0.5;
             let cy = py as f64 + 0.5;
 
-            let w0 = edge(v1.0, v1.1, v2.0, v2.1, cx, cy) * inv_area;
-            let w1 = edge(v2.0, v2.1, v0.0, v0.1, cx, cy) * inv_area;
+            let w0 = edge(v1.x, v1.y, v2.x, v2.y, cx, cy) * inv_area;
+            let w1 = edge(v2.x, v2.y, v0.x, v0.y, cx, cy) * inv_area;
             let w2 = 1.0 - w0 - w1;
 
             if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
-                let z = w0 * v0.2 + w1 * v1.2 + w2 * v2.2;
+                let z = w0 * v0.z + w1 * v1.z + w2 * v2.z;
                 let idx = (py as u32 * out_w + px as u32) as usize;
 
                 if z > zbuf[idx] {
                     let u = w0 * uv0.0 + w1 * uv1.0 + w2 * uv2.0;
                     let v = w0 * uv0.1 + w1 * uv1.1 + w2 * uv2.1;
 
-                    // Nearest-neighbor sampling (crisp Minecraft pixels)
                     let tx = (u.floor() as u32).min(skin_w - 1);
                     let ty = (v.floor() as u32).min(skin_h - 1);
-                    let pixel = skin.get_pixel(tx, ty);
+                    let mut pixel = skin.get_pixel(tx, ty);
 
-                    if pixel[3] > 0 {
+                    pixel[0] = ((pixel[0] as u16 * shade as u16) / 255) as u8;
+                    pixel[1] = ((pixel[1] as u16 * shade as u16) / 255) as u8;
+                    pixel[2] = ((pixel[2] as u16 * shade as u16) / 255) as u8;
+
+                    if !allow_transparency {
+                        pixel[3] = 0xFF;
+                        output.put_pixel(px as u32, py as u32, pixel);
                         zbuf[idx] = z;
-                        let dst = output.get_pixel_mut(px as u32, py as u32);
-                        alpha_blend(dst, pixel);
+                    } else if pixel[3] > 0 {
+                        output.get_pixel_mut(px as u32, py as u32).blend(&pixel);
+                        zbuf[idx] = z;
                     }
                 }
             }
@@ -405,152 +789,236 @@ fn rasterize_triangle(
     }
 }
 
-/// Rasterize a quad (4 vertices) as two triangles.
-fn rasterize_quad(
-    verts: &[(f64, f64, f64); 4],
-    uvs: &[(f64, f64); 4],
-    skin: &image::DynamicImage,
-    output: &mut RgbaImage,
-    zbuf: &mut [f64],
-    out_w: u32,
-    out_h: u32,
-) {
-    // Triangle 1: v0, v1, v2
-    rasterize_triangle(verts[0], verts[1], verts[2], uvs[0], uvs[1], uvs[2], skin, output, zbuf, out_w, out_h);
-    // Triangle 2: v0, v2, v3
-    rasterize_triangle(verts[0], verts[2], verts[3], uvs[0], uvs[2], uvs[3], skin, output, zbuf, out_w, out_h);
+impl ProjectedQuad {
+    fn rasterize(
+        &self,
+        skin: &image::DynamicImage,
+        output: &mut RgbaImage,
+        zbuf: &mut [f64],
+    ) {
+        // Triangle 1: v0, v1, v2
+        rasterize_triangle(self.verts[0], self.verts[1], self.verts[2],
+           self.uvs[0], self.uvs[1], self.uvs[2],
+           skin, output, zbuf, self.allow_transparency, self.shade);
+        // Triangle 2: v0, v2, v3
+        rasterize_triangle(self.verts[0], self.verts[2], self.verts[3],
+            self.uvs[0], self.uvs[2], self.uvs[3],
+            skin, output, zbuf, self.allow_transparency, self.shade);
+    }
 }
 
-// ── Public API ──────────────────────────────────────────────────────────────
+fn collect_quads(
+    is_legacy: bool,
+    is_slim: bool,
+    add_cape: bool,
+    yaw_deg: f64,
+    pitch_deg: f64,
+    sway_progress: f64,
+) -> Vec<ProjectedQuad> {
+    let rot = Mat3::rotation_yx(yaw_deg.to_radians(), pitch_deg.to_radians());
 
-/// Render a Minecraft skin into an isometric 3D view, returning raw RGBA pixel data.
-///
-/// - `skin_png_bytes`: the full 64×64 (or 64×32 legacy) skin texture as PNG.
-/// - `out_width`, `out_height`: desired output image dimensions.
-/// - `yaw_deg`: Y-axis rotation in degrees (horizontal spin).
-/// - `pitch_deg`: X-axis rotation in degrees (vertical tilt; negative = looking from above).
-///
-/// Returns the rendered `RgbaImage`, or `None` on failure.
-pub fn render_skin_3d_raw(
+    let parts = if is_legacy {
+        LEGACY_PLAYER_MODEL
+    } else if is_slim {
+        SLIM_PLAYER_MODEL
+    } else {
+        PLAYER_MODEL
+    };
+    let mut projected_quads: Vec<ProjectedQuad> = Vec::new();
+
+    let light0 = V3::new(0.16169041669088866, 0.8084520834544432, -0.5659164584181102);
+    let light1 = V3::new(-0.16169041669088866, 0.8084520834544432, 0.5659164584181102);
+
+    for part in parts.iter() {
+        part.add_projected_quads(&mut projected_quads, &rot, light0, light1, sway_progress);
+    }
+
+    if add_cape {
+        BodyPartDef {
+            min: V3::new(-5.0, -8.0, -3.0),
+            max: V3::new(5.0, 8.0, -2.0),
+            pivot: Some(V3::new(0.0, 8.0, -2.0)),
+            tx: 0.0,
+            ty: 0.0,
+            flip_x: false,
+            part_type: BodyPartType::Cape,
+        }.add_projected_quads(&mut projected_quads, &rot, light0, light1, sway_progress);
+    }
+
+    projected_quads
+}
+
+pub fn is_slim(
     skin_png_bytes: &[u8],
+) -> Option<bool> {
+    let skin = image::load_from_memory_with_format(skin_png_bytes, ImageFormat::Png).ok()?;
+    Some(skin.height() != 32 && skin.get_pixel(54, 20)[3] < 20)
+}
+
+pub fn render_skin_3d(
+    skin_png_bytes: &[u8],
+    cape_png_bytes: Option<&[u8]>,
     out_width: u32,
     out_height: u32,
     yaw_deg: f64,
     pitch_deg: f64,
+    sway_progress: f64,
 ) -> Option<RgbaImage> {
     let skin = image::load_from_memory_with_format(skin_png_bytes, ImageFormat::Png).ok()?;
+    let cape = cape_png_bytes.map(|cape| image::load_from_memory_with_format(cape, ImageFormat::Png).ok()).flatten();
 
-    // Handle legacy 64×32 skins by only using the top portion body parts
-    let is_legacy = skin.height() < 64;
-
-    let rot = Mat3::rotation_yx(yaw_deg.to_radians(), pitch_deg.to_radians());
-
-    // Center of model vertically (player is 32 units tall, from y=0 to y=32)
-    let center_y = 16.0;
-
-    // Gather all quads from all body parts
-    let parts = player_model();
-    let mut projected_quads: Vec<([(f64, f64, f64); 4], [(f64, f64); 4], f64)> = Vec::new();
-
-    for (i, part) in parts.iter().enumerate() {
-        // Skip overlay left limbs on legacy skins (they don't exist in 64×32)
-        if is_legacy && i >= 6 {
-            // Overlay layers: indices 6..12
-            // For legacy skins, only head overlay (index 6) works (at 32,0)
-            // Skip body/arm/leg overlays that reference rows >= 32
-            if i > 6 {
-                continue;
-            }
-        }
-        // Skip left limb base layers on legacy skins (use right limb mirrored – but for
-        // simplicity we just skip; they'd sample garbage from the texture)
-        if is_legacy && (i == 3 || i == 5) {
-            continue;
-        }
-
-        let quads = box_quads(part.min, part.max, part.tx, part.ty, part.w, part.h, part.d);
-
-        for quad in &quads {
-            // Rotate normal to check visibility
-            let rn = rot.transform(quad.normal);
-            // Camera looks along -Z, so faces with normal.z > 0 face the camera
-            if rn.z <= 0.0 {
-                continue;
-            }
-
-            // Transform vertices
-            let mut screen_verts = [(0.0, 0.0, 0.0); 4];
-            let mut avg_z = 0.0;
-            for (j, v) in quad.verts.iter().enumerate() {
-                let centered = V3::new(v.x, v.y - center_y, v.z);
-                let rv = rot.transform(centered);
-                screen_verts[j] = (rv.x, -rv.y, rv.z); // flip Y for screen coords (Y down)
-                avg_z += rv.z;
-            }
-            avg_z /= 4.0;
-
-            projected_quads.push((screen_verts, quad.uvs, avg_z));
-        }
-    }
-
-    // Sort back-to-front (painter's algorithm): smaller Z = further from camera = draw first
-    projected_quads.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
-
-    // Compute bounding box of all projected vertices to determine scale + offset
-    let mut min_x = f64::MAX;
-    let mut max_x = f64::MIN;
-    let mut min_y = f64::MAX;
-    let mut max_y = f64::MIN;
-    for (verts, _, _) in &projected_quads {
-        for &(x, y, _) in verts {
-            min_x = min_x.min(x);
-            max_x = max_x.max(x);
-            min_y = min_y.min(y);
-            max_y = max_y.max(y);
-        }
-    }
-
-    if max_x <= min_x || max_y <= min_y {
+    let is_legacy = skin.height() == 32;
+    if skin.width() != 64 {
         return None;
     }
+    if skin.height() != 64 && !is_legacy {
+        return None;
+    }
+    let is_slim = !is_legacy && skin.get_pixel(54, 20)[3] < 20;
 
-    let model_w = max_x - min_x;
-    let model_h = max_y - min_y;
-    let padding = 4.0; // pixels of padding on each side
-    let avail_w = out_width as f64 - 2.0 * padding;
-    let avail_h = out_height as f64 - 2.0 * padding;
-    let scale = (avail_w / model_w).min(avail_h / model_h);
-    let offset_x = padding + (avail_w - model_w * scale) / 2.0 - min_x * scale;
-    let offset_y = padding + (avail_h - model_h * scale) / 2.0 - min_y * scale;
+    let mut projected_quads = collect_quads(is_legacy, is_slim, cape.is_some(), yaw_deg, pitch_deg, sway_progress);
+
+    // Sort back-to-front (painter's algorithm): smaller Z = further from camera = draw first
+    projected_quads.sort_by(|a, b| a.avg_z.partial_cmp(&b.avg_z).unwrap_or(std::cmp::Ordering::Equal));
+
+    let scale = (out_width as f64 / MAX_WIDTH_AT_ANY_ANGLE).min(out_height as f64 / MAX_HEIGHT_AT_ANY_ANGLE);
+    let offset_x = out_width as f64 / 2.0;
+    let offset_y = out_height as f64 / 2.0;
 
     // Create output image (transparent background)
     let mut output = RgbaImage::new(out_width, out_height);
     let mut zbuf = vec![f64::MIN; (out_width * out_height) as usize];
 
     // Rasterize each quad
-    for (verts, uvs, _) in &projected_quads {
-        let mut sv = [(0.0, 0.0, 0.0); 4];
+    for mut projected_quad in projected_quads {
+        let verts = &mut projected_quad.verts;
         for i in 0..4 {
-            sv[i] = (verts[i].0 * scale + offset_x, verts[i].1 * scale + offset_y, verts[i].2);
+            verts[i] = V3::new(verts[i].x * scale + offset_x, verts[i].y * scale + offset_y, verts[i].z);
         }
-        rasterize_quad(&sv, uvs, &skin, &mut output, &mut zbuf, out_width, out_height);
+        if projected_quad.part_type == BodyPartType::Cape {
+            if let Some(cape) = &cape {
+                projected_quad.rasterize(&cape, &mut output, &mut zbuf);
+            }
+        } else {
+            projected_quad.rasterize(&skin, &mut output, &mut zbuf);
+        }
     }
 
     Some(output)
 }
 
-/// Render a Minecraft skin into an isometric 3D view, returning PNG-encoded bytes.
-///
-/// Convenience wrapper around [`render_skin_3d_raw`] that encodes the result to PNG.
-pub fn render_skin_3d(
-    skin_png_bytes: &[u8],
-    out_width: u32,
-    out_height: u32,
-    yaw_deg: f64,
-    pitch_deg: f64,
-) -> Option<Vec<u8>> {
-    let output = render_skin_3d_raw(skin_png_bytes, out_width, out_height, yaw_deg, pitch_deg)?;
-    let mut png_bytes = Vec::new();
-    output.write_to(&mut Cursor::new(&mut png_bytes), ImageFormat::Png).ok()?;
-    Some(png_bytes)
+// Constants calculated by brute force
+const MAX_CAPE_ANGLE_SWAY_PROGRESS: f64 = 3.0/4.0;
+const MAX_WIDTH_AT_ANY_ANGLE: f64 = 20.407198535851574; // yaw=60.65789523301863, pitch=0
+const MAX_HEIGHT_AT_ANY_ANGLE: f64 = 34.65183977799737; // yaw=45, pitch=20.29798422703834
+pub const ASPECT_RATIO: f64 = MAX_WIDTH_AT_ANY_ANGLE / MAX_HEIGHT_AT_ANY_ANGLE;
+
+// Debug function used to brute force the max bounds of the model
+#[cfg(debug_assertions)]
+pub fn brute_force_bounds() {
+    let mut best_yaw = 0.0;
+    let mut best_pitch = 0.0;
+    let mut max_w = 0.0;
+    let mut scale = 90.0;
+    let yaw_acc = 128;
+    let pitch_acc = 128;
+    let mut yaw_offset = 0.0;
+    let mut pitch_offset = 0.0;
+
+    log::info!("Calculating largest width");
+    loop {
+        log::info!("Scale: {scale}");
+        for y in 0..=yaw_acc {
+            for p in 0..=pitch_acc {
+                let yaw = y as f64 / yaw_acc as f64 * scale + yaw_offset;
+                let pitch = p as f64 / pitch_acc as f64 * scale + pitch_offset;
+
+                let projected_quads = collect_quads(false, true, true, yaw, pitch, MAX_CAPE_ANGLE_SWAY_PROGRESS);
+                let mut w = f64::MIN;
+                for quad in &projected_quads {
+                    for vert in &quad.verts {
+                        w = w.max(vert.x.abs());
+                    }
+                }
+
+                if w*2.0 > max_w {
+                    max_w = w*2.0;
+                    best_yaw = yaw;
+                    best_pitch = pitch;
+                } else if w*2.0 == max_w && best_yaw.abs()+best_pitch.abs() > yaw.abs()+pitch.abs() {
+                    best_yaw = yaw;
+                    best_pitch = pitch;
+                }
+            }
+        }
+        if scale == 90.0 {
+            scale = 32.0;
+        } else {
+            scale /= 2.0;
+        }
+        let new_yaw_offset = best_yaw - scale/2.0;
+        let new_pitch_offset = best_pitch - scale/2.0;
+        if new_yaw_offset == yaw_offset || new_pitch_offset == pitch_offset {
+            break;
+        }
+        yaw_offset = new_yaw_offset;
+        pitch_offset = new_pitch_offset;
+        log::info!("Best angle: {best_yaw:?}, {best_pitch:?}");
+        log::info!("Width: {max_w:?}");
+    }
+
+    let best_w_yaw = best_yaw;
+    let best_w_pitch = best_pitch;
+
+    best_yaw = 0.0;
+    best_pitch = 0.0;
+    let mut max_h = 0.0;
+    scale = 90.0;
+    yaw_offset = 0.0;
+    pitch_offset = 0.0;
+
+    log::info!("Calculating largest height");
+    loop {
+        log::info!("Scale: {scale}");
+        for y in 0..=yaw_acc {
+            for p in 0..=pitch_acc {
+                let yaw = y as f64 / yaw_acc as f64 * scale + yaw_offset;
+                let pitch = p as f64 / pitch_acc as f64 * scale + pitch_offset;
+
+                let projected_quads = collect_quads(false, true, true, yaw, pitch, MAX_CAPE_ANGLE_SWAY_PROGRESS);
+                let mut h = f64::MIN;
+                for quad in &projected_quads {
+                    for vert in &quad.verts {
+                        h = h.max(vert.y.abs());
+                    }
+                }
+
+                if h*2.0 > max_h {
+                    max_h = h*2.0;
+                    best_yaw = yaw;
+                    best_pitch = pitch;
+                } else if h*2.0 == max_h && best_yaw.abs()+best_pitch.abs() > yaw.abs()+pitch.abs() {
+                    best_yaw = yaw;
+                    best_pitch = pitch;
+                }
+            }
+        }
+        if scale == 90.0 {
+            scale = 32.0;
+        } else {
+            scale /= 2.0;
+        }
+        let new_yaw_offset = best_yaw - scale/2.0;
+        let new_pitch_offset = best_pitch - scale/2.0;
+        if new_yaw_offset == yaw_offset || new_pitch_offset == pitch_offset {
+            break;
+        }
+        yaw_offset = new_yaw_offset;
+        pitch_offset = new_pitch_offset;
+        log::info!("Best angle: {best_yaw:?}, {best_pitch:?}");
+        log::info!("Height: {max_h:?}");
+    }
+
+    log::info!("Largest width = {max_w:?} (yaw={best_w_yaw:?}, pitch={best_w_pitch:?}");
+    log::info!("Largest height = {max_h:?} (yaw={best_yaw:?}, pitch={best_pitch:?}");
 }

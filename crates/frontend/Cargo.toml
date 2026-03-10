@@ -41,6 +41,7 @@ directories.workspace = true
 log.workspace = true
 strum.workspace = true
 urlencoding.workspace = true
+futures.workspace = true
 
 rust-i18n = "3.1.5"
 

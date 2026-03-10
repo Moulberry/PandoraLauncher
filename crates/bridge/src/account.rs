@@ -5,5 +5,6 @@ use uuid::Uuid;
 pub struct Account {
     pub uuid: Uuid,
     pub username: Arc<str>,
+    pub offline: bool,
     pub head: Option<Arc<[u8]>>,
 }

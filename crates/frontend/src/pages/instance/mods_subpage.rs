@@ -92,7 +92,7 @@ impl Render for InstanceModsSubpage {
         let theme = cx.theme();
 
         let state = self.mods_state.load(Ordering::SeqCst);
-        if state.should_send_load_request() {
+        if state.should_load() {
             self.backend_handle.send_with_serial(MessageToBackend::RequestLoadMods { id: self.instance }, &self.load_serial);
         }
 

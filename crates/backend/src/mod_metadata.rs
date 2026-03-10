@@ -555,7 +555,8 @@ fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) 
 
         icon_bytes.clear();
         let mut cursor = Cursor::new(&mut icon_bytes);
-        if resized.write_to(&mut cursor, image::ImageFormat::Png).is_err() {
+        let encoder = image::codecs::png::PngEncoder::new_with_quality(&mut cursor, image::codecs::png::CompressionType::Best, Default::default());
+        if resized.write_with_encoder(encoder).is_err() {
             return None;
         }
     }

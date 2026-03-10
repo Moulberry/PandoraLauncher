@@ -176,7 +176,7 @@ impl Render for ModrinthProjectPage {
             && let Some(install_for) = self.install_for
         {
             let state = mods_state.load(std::sync::atomic::Ordering::SeqCst);
-            if state.should_send_load_request() {
+            if state.should_load() {
                 self.data.backend_handle.send_with_serial(MessageToBackend::RequestLoadMods { id: install_for }, load_serial);
             }
         }

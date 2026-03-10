@@ -47,11 +47,21 @@ impl InstanceEntries {
                 resource_packs_state,
                 resource_packs: cx.new(|_| [].into()),
             };
-            instance.title = instance.create_title().into();
+            instance.title = instance.create_title();
 
             entries.entries.insert_before(0, id, cx.new(|_| instance.clone()));
             cx.emit(InstanceAddedEvent { instance });
         });
+    }
+
+    pub fn find_title_by_name(entity: &Entity<Self>, name: &SharedString, cx: &App) -> Option<SharedString> {
+        for (_, entry) in &entity.read(cx).entries {
+            let entry = entry.read(cx);
+            if &entry.name == name {
+                return Some(entry.title());
+            }
+        }
+        None
     }
 
     pub fn find_id_by_name(entity: &Entity<Self>, name: &SharedString, cx: &App) -> Option<InstanceID> {
@@ -98,7 +108,7 @@ impl InstanceEntries {
                     instance.dot_minecraft_folder = dot_minecraft_folder.clone();
                     instance.configuration = configuration.clone();
                     instance.status = status;
-                    instance.title = instance.create_title().into();
+                    instance.title = instance.create_title();
                     cx.notify();
 
                     instance.clone()
@@ -222,22 +232,49 @@ impl PartialEq for InstanceEntry {
     }
 }
 
+fn is_version_continuation(ascii_char: u8) -> bool {
+    ascii_char.is_ascii_digit() || ascii_char == b'.'
+}
+
 impl InstanceEntry {
     pub fn title(&self) -> SharedString {
         self.title.clone()
     }
 
-    fn create_title(&self) -> String {
-        if self.name == &*self.configuration.minecraft_version {
-            if self.configuration.loader == Loader::Vanilla {
-                format!("{}", self.name)
+    fn create_title(&self) -> SharedString {
+        let lower = self.name.to_ascii_lowercase();
+
+        let loader_string = self.configuration.loader.name();
+        let loader_string_lower = loader_string.to_ascii_lowercase();
+        let contains_loader = lower.contains(&loader_string_lower);
+
+        let contains_minecraft_version = if let Some(index) = lower.find(self.configuration.minecraft_version.as_str()) {
+            let lower_bytes = lower.as_bytes();
+            let next = index + self.configuration.minecraft_version.len();
+            if index > 0 && is_version_continuation(lower_bytes[index-1]) {
+                false
+            } else if next < lower_bytes.len() && is_version_continuation(lower_bytes[next]) {
+                false
             } else {
-                format!("{} ({:?})", self.name, self.configuration.loader)
+                true
             }
-        } else if self.configuration.loader == Loader::Vanilla {
-            format!("{} ({})", self.name, self.configuration.minecraft_version)
         } else {
-            format!("{} ({:?} {})", self.name, self.configuration.loader, self.configuration.minecraft_version)
+            false
+        };
+
+        match (contains_loader, contains_minecraft_version) {
+            (false, false) => {
+                format!("{} ({} {})", self.name, loader_string, self.configuration.minecraft_version).into()
+            },
+            (false, true) => {
+                format!("{} ({})", self.name, loader_string).into()
+            },
+            (true, false) => {
+                format!("{} ({})", self.name, self.configuration.minecraft_version).into()
+            },
+            (true, true) => {
+                self.name.clone()
+            }
         }
     }
 }

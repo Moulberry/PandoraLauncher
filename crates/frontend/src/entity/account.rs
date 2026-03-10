@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use bridge::account::Account;
 use gpui::{App, Entity};
-use gpui_component::{IndexPath, select::{SelectDelegate, SelectItem}};
 use uuid::Uuid;
 
 #[derive(Default)]

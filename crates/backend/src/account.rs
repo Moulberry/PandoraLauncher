@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
-use auth::models::{MinecraftAccessToken, MinecraftProfileResponse};
+use auth::models::MinecraftAccessToken;
 use bridge::{account::Account, message::MessageToFrontend};
 use rustc_hash::FxHashMap;
+use schema::minecraft_profile::MinecraftProfileResponse;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -25,6 +26,7 @@ impl BackendAccountInfo {
             accounts.push(Account {
                 uuid: *uuid,
                 username: account.username.clone(),
+                offline: account.offline,
                 head: account.head.clone(),
             });
         }

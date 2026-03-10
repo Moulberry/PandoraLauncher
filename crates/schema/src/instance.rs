@@ -13,7 +13,7 @@ pub struct InstanceConfiguration {
     pub loader: Loader,
     #[serde(default, skip_serializing_if = "crate::skip_if_none")]
     pub preferred_loader_version: Option<Ustr>,
-    #[serde(default, skip_serializing_if = "crate::skip_if_none")]
+    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "crate::skip_if_none")]
     pub preferred_account: Option<Uuid>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_memory_configuration")]
     pub memory: Option<InstanceMemoryConfiguration>,

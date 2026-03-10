@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{instance::InstanceID, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Edges, Icon, InteractiveElementExt, StyledExt, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, tooltip::Tooltip, v_flex
+    ActiveTheme as _, Disableable, Icon, InteractiveElementExt, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, tooltip::Tooltip, v_flex
 };
 use rand::Rng;
 use rustc_hash::FxHashMap;
@@ -396,22 +396,21 @@ impl Render for LauncherUI {
 
                             let selected = Some(account.uuid) == selected_account;
 
-                            // div().grid().grid_cols(2)
-
-                            // div().flex().flex_row()
                             h_flex()
                                 .gap_2()
                                 .flex_wrap()
+                                .h_12()
                                 .w_full()
-	                                .child(Button::new(account_name.clone()).justify_start().items_start().px_0()
-	                                .child(div().child(head.size_8().min_w_8().min_h_8()).pl_4())
+	                                .child(Button::new(account_name.clone())
+										.p_0()
 	                                    .flex_grow()
 	                                    .when(selected, |this| {
 	                                        this.info()
 	                                    })
-	                                    .h_10()
+										.h_12()
 	                                    .min_w_0()
 	                                    .flex_1()
+		                                .child(div().child(head.size_8().min_w_8().min_h_8()))
 	                                    .child(div().child(account_name.clone()).justify_start().flex_1().max_w(Length::Definite(DefiniteLength::Fraction(0.7))))
 	                                    .when(!selected, |this| {
 	                                        this.on_click({
@@ -425,8 +424,7 @@ impl Render for LauncherUI {
 
                                 .child(Button::new((account_name.clone(), 1))
                                     .icon(PandoraIcon::Trash2)
-                                    .h_10()
-                                    .w_10()
+                                    .size_12()
                                     .danger()
                                     .on_click({
                                         let backend_handle = backend_handle.clone();

@@ -312,6 +312,17 @@ impl Settings {
             div = div.child(Spinner::new().large());
         }
 
+        div = div.child(crate::labelled(ts!("settings.privacy.title"),
+            v_flex().gap_2()
+                .child(Checkbox::new("hide-server-addresses")
+                    .label(ts!("settings.privacy.hide_server_addresses"))
+                    .checked(interface_config.hide_server_addresses)
+                    .on_click(|value, _, cx| {
+                        InterfaceConfig::get_mut(cx).hide_server_addresses = *value;
+                    }))
+                )
+        );
+
         div
     }
 

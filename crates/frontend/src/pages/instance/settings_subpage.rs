@@ -5,12 +5,13 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectDelegate, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
+    ActiveTheme as _, Disableable, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectDelegate, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
 };
 use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
+use uuid::Uuid;
 
-use crate::{component::{horizontal_sections::HorizontalSections, path_label::PathLabel}, entity::{DataEntities, account::{AccountEntries, AccountList}, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
+use crate::{component::{horizontal_sections::HorizontalSections, named_dropdown::{NamedDropdown, NamedDropdownItem}, path_label::PathLabel}, entity::{DataEntities, account::AccountEntries, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
 
 #[derive(PartialEq, Eq)]
 enum NewNameChangeState {
@@ -26,7 +27,7 @@ pub struct InstanceSettingsSubpage {
     new_name_input_state: Entity<InputState>,
     version_state: TypelessFrontendMetadataResult,
     version_select_state: Entity<SelectState<VersionList>>,
-    account_select_state: Entity<SelectState<AccountList>>,
+    account_items: Entity<SelectState<NamedDropdown<Uuid>>>,
     loader: Loader,
     loader_select_state: Entity<SelectState<Vec<&'static str>>>,
     loader_versions_state: TypelessFrontendMetadataResult,
@@ -107,18 +108,26 @@ impl InstanceSettingsSubpage {
         }).detach();
         cx.subscribe(&version_select_state, Self::on_minecraft_version_selected).detach();
 
-        let account_select_state = cx.new(|cx| {
-        	let accounts = data.accounts.read(cx);
-         	let list = AccountList::from(accounts);
-          	let selected = if let Some(preferred_account) = account {
-           		list.position(&preferred_account)
-           	} else { None };
-        	SelectState::new(list, selected, window, cx).searchable(true)
+        let account_items = cx.new(|cx| {
+       		let accounts = &data.accounts.read(cx).accounts;
+         	let mut account_items = Vec::with_capacity(accounts.len());
+          	let mut selected = None;
+          	for (index, loop_account) in accounts.iter().enumerate() {
+           		account_items.push(NamedDropdownItem {
+             		name: loop_account.username.clone().into(),
+             		item: loop_account.uuid,
+             	});
+             	if let Some(preferred_account) = account && loop_account.uuid == preferred_account {
+              		selected = Some(IndexPath::new(index));
+              	}
+           	}
+
+         	SelectState::new(NamedDropdown::new(account_items), selected, window, cx).searchable(true)
         });
         cx.observe_in(&data.accounts, window, |page, accounts, window, cx| {
         	page.update_account_list(accounts, window, cx);
         }).detach();
-        cx.subscribe(&account_select_state, Self::on_account_selected).detach();
+        cx.subscribe(&account_items, Self::on_account_selected).detach();
 
         let loader_select_state = cx.new(|cx| {
             let loaders = Loader::iter()
@@ -177,7 +186,7 @@ impl InstanceSettingsSubpage {
             new_name_input_state,
             version_state: TypelessFrontendMetadataResult::Loading,
             version_select_state,
-            account_select_state,
+            account_items,
             loader,
             loader_select_state,
             loader_version_select_state,
@@ -344,11 +353,15 @@ impl InstanceSettingsSubpage {
     }
 
     fn update_account_list(&mut self, accounts: Entity<AccountEntries>, window: &mut Window, cx: &mut Context<Self>) {
-    	let accounts = accounts.read(cx);
-     	let list = AccountList::from(accounts);
+  		let list = accounts.read(cx).accounts
+   			.iter().map(|account| NamedDropdownItem {
+	            name: account.username.clone().into(),
+	            item: account.uuid,
+    		}).collect::<Vec<NamedDropdownItem<Uuid>>>();
 
-    	self.account_select_state.update(cx, move |dropdown, cx| {
-     		dropdown.set_items(list, window, cx);
+
+    	self.account_items.update(cx, move |items, cx| {
+       		items.set_items(NamedDropdown::new(list), window, cx);
      	})
     }
 
@@ -400,15 +413,15 @@ impl InstanceSettingsSubpage {
 
     pub fn on_account_selected(
     	&mut self,
-     	_state: Entity<SelectState<AccountList>>,
-      	event: &SelectEvent<AccountList>,
+     	_state: Entity<SelectState<NamedDropdown<Uuid>>>,
+     	event: &SelectEvent<NamedDropdown<Uuid>>,
        	_cx: &mut Context<Self>,
     ) {
 	   	let SelectEvent::Confirm(value) = event;
 
 		self.backend_handle.send(MessageToBackend::SetInstancePreferredAccount {
 			id: self.instance_id,
-			account: *value,
+			account: value.as_ref().map(|value| value.item),
 		});
     }
 
@@ -690,7 +703,7 @@ impl Render for InstanceSettingsSubpage {
             	ts!("account.single"),
              	h_flex()
                 .gap_2()
-                .child(Select::new(&self.account_select_state).placeholder("Using current launcher account").cleanable(true))
+                .child(Select::new(&self.account_items).placeholder("Using current launcher account").cleanable(true))
             ));
 
         let mut version_content = v_flex().gap_2();

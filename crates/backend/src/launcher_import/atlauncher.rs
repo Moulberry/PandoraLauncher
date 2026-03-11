@@ -274,7 +274,7 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, account_path: &
     modal_action.trackers.push(tracker.clone());
     tracker.notify();
 
-    let Ok(accounts_bytes) = std::fs::read(&accounts_path) else {
+    let Ok(accounts_bytes) = std::fs::read(&account_path) else {
         return;
     };
 

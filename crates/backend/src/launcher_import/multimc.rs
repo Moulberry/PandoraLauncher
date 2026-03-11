@@ -1,7 +1,7 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc};
 
 use auth::{credentials::AccountCredentials, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
-use bridge::modal_action::{ModalAction, ProgressTracker};
+use bridge::{import::ImportStatus, modal_action::{ModalAction, ProgressTracker}};
 use chrono::DateTime;
 use schema::{instance::{InstanceConfiguration, LwjglLibraryPath}, loader::Loader};
 use serde::Deserialize;
@@ -232,7 +232,7 @@ struct MultiMCAccountTokenExtra {
     uhs: Option<Arc<str>>,
 }
 
-pub async fn import_from_multimc(backend: &BackendState, path: &Path, import_accounts: bool, import_instances: Vec<PathBuf>, modal_action: ModalAction) {
+pub async fn import_from_multimc(backend: &BackendState, path: &Path, import_accounts: bool, import_instances: HashMap<PathBuf, ImportStatus>, modal_action: ModalAction) {
     if import_accounts {
         import_accounts_from_multimc(backend, path, &modal_action).await;
     }
@@ -378,14 +378,18 @@ struct MultiMCInstanceToImport {
     folder: PathBuf,
 }
 
-fn import_instances_from_multimc(backend: &BackendState, instances: Vec<PathBuf>, modal_action: &ModalAction) {
+fn import_instances_from_multimc(backend: &BackendState, instances: HashMap<PathBuf, ImportStatus>, modal_action: &ModalAction) {
     let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
 
     let mut to_import = Vec::new();
 
-    for entry in instances {
+    for (entry, status) in instances {
+        if status != ImportStatus::Importing {
+            continue;
+        }
+
     	if !entry.exists() {
 	        continue;
 	    };

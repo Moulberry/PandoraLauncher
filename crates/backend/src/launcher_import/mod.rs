@@ -52,7 +52,7 @@ pub fn discover_instances_from_other_launchers(backend: &BackendState) -> Import
     }
 
     let atlauncher_instances = data_dir.join("atlauncher").join("instances");
-    imports.imports[OtherLauncher::AtLauncher] = from_subfolders(OtherLauncher::AtLauncher, &atlauncher_instances, &pandora_dir, &|path| {
+    imports.imports[OtherLauncher::ATLauncher] = from_subfolders(OtherLauncher::ATLauncher, &atlauncher_instances, &pandora_dir, &|path| {
      	path.join("instance.json").exists()
     });
 
@@ -117,7 +117,7 @@ pub async fn import_from_other_launcher(backend: &BackendState, details: ImportF
         OtherLauncher::Modrinth => {
         	// bit harder to say to modrithn, "hey here are the paths.", so just going to ignore this for now.
          	// TODO: The above is possible, it just needs some work. THIS PR SHOULD NOT BE MERGED UNTIL THIS IS RESOLVED.
-            if !import_instances.is_empty() {
+            if details.instances.iter().any(|(_, status)| *status == ImportStatus::Importing) {
                 let modrinth = data_dir.join("ModrinthApp");
                 if let Err(err) = import_instances_from_modrinth(backend, &modrinth, &modal_action) {
                     log::error!("Sqlite error while importing from modrinth: {err}");
@@ -127,11 +127,11 @@ pub async fn import_from_other_launcher(backend: &BackendState, details: ImportF
         },
         OtherLauncher::MultiMC => {
             let multimc = data_dir.join("multimc");
-            import_from_multimc(backend, &multimc, import_accounts, import_instances, modal_action).await;
+            import_from_multimc(backend, &multimc, details.account.is_some(), details.instances, modal_action).await;
         },
-         OtherLauncher::AtLauncher => {
+         OtherLauncher::ATLauncher => {
          	let atlauncher = data_dir.join("atlauncher");
-          	import_from_atlauncher(backend, &atlauncher, import_accounts, import_instances, modal_action).await;
+          	import_from_atlauncher(backend, &atlauncher, details, modal_action).await;
         }
     }
 }

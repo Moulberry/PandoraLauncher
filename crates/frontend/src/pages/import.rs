@@ -9,7 +9,7 @@ use log::debug;
 use schema::{content::ContentSource, loader::Loader};
 use strum::IntoEnumIterator;
 
-use crate::{component::responsive_grid::ResponsiveGrid, entity::DataEntities, icon::PandoraIcon, pages::page::Page, root};
+use crate::{component::responsive_grid::ResponsiveGrid, entity::DataEntities, icon::PandoraIcon, pages::page::Page, root, ts};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
@@ -159,6 +159,9 @@ impl Render for ImportPage {
            	let mut list = import.instances.iter().collect::<Vec<_>>();
             list.sort_by(|a, b| a.0.cmp(b.0));
 
+            let can_import = import_accounts ||
+                (self.import_instances && self.import_from_other_launchers.as_ref().unwrap().imports[import_from].as_ref().unwrap().instances.iter().any(|(_, status)| *status == ImportStatus::Importing));
+
             content = content.child(v_flex()
                 .w_full()
                 .border_1()
@@ -236,22 +239,30 @@ impl Render for ImportPage {
                         })
                     })))
                 )
-                .child(Button::new("doimport").disabled(!import_accounts && !self.import_instances).success().label(label.clone()).on_click(cx.listener(move |page, _, window, cx| {
-                    let modal_action = ModalAction::default();
-                    debug!("{:?}", page.import_from_other_launchers);
+                .child(Button::new("doimport").disabled(!can_import).success().label(label.clone())
+                    .tooltip({
+                        match can_import {
+                            true => ts!("import.enabled", launcher = import_from.to_string()),
+                            false => ts!("import.disabled", launcher = import_from.to_string()),
+                        }
+                    })
+                    .on_click(cx.listener(move |page, _, window, cx| {
+                        let modal_action = ModalAction::default();
+                        debug!("{:?}", page.import_from_other_launchers);
 
-                    let mut details = page.import_from_other_launchers.as_ref().unwrap().imports[import_from].as_ref().unwrap().clone();
-                    details.account = if import_accounts { details.account } else { None };
-                    if !page.import_instances { details.instances.clear(); }
+                        let mut details = page.import_from_other_launchers.as_ref().unwrap().imports[import_from].as_ref().unwrap().clone();
+                        details.account = if import_accounts { details.account } else { None };
+                        if !page.import_instances { details.instances.clear(); }
 
-                    page.backend_handle.send(MessageToBackend::ImportFromOtherLauncher {
-                    	details,
-                        modal_action: modal_action.clone()
-                    });
+                        page.backend_handle.send(MessageToBackend::ImportFromOtherLauncher {
+                       	details,
+                            modal_action: modal_action.clone()
+                        });
 
-                    let title = SharedString::new(label.clone());
-                    crate::modals::generic::show_modal(window, cx, title, "Error importing".into(), modal_action);
-                })))
+                        let title = SharedString::new(label.clone());
+                        crate::modals::generic::show_modal(window, cx, title, "Error importing".into(), modal_action);
+                    }))
+                )
             )
         }
 

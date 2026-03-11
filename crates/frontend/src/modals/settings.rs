@@ -287,16 +287,16 @@ impl Settings {
         if let Some(backend_config) = &self.backend_config {
             div = div
                 .child(crate::labelled(
-                    ts!("settings.launch.title"),
+                    ts!("settings.windows.title"),
                     v_flex().gap_2()
                         .child(Checkbox::new("hide-on-launch")
-                            .label(ts!("settings.launch.hide_main_window"))
+                            .label(ts!("settings.windows.hide_main_window"))
                             .checked(interface_config.hide_main_window_on_launch)
                             .on_click(|value, _, cx| {
                                 InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
                             }))
                         .child(Checkbox::new("open-game-output")
-                            .label(ts!("settings.launch.open_game_output"))
+                            .label(ts!("settings.windows.open_game_output"))
                             .checked(!backend_config.dont_open_game_output_when_launching)
                             .on_click(cx.listener({
                                 let backend_handle = self.backend_handle.clone();
@@ -307,10 +307,27 @@ impl Settings {
                                     settings.update_backend_configuration(window, cx);
                                 }
                             })))
+                        .child(Checkbox::new("quit-on-main-close")
+                            .label(ts!("settings.windows.close_all_when_main_closed"))
+                            .checked(interface_config.quit_on_main_closed)
+                            .on_click(|value, _, cx| {
+                                InterfaceConfig::get_mut(cx).quit_on_main_closed = *value;
+                            }))
                 ))
         } else {
             div = div.child(Spinner::new().large());
         }
+
+        div = div.child(crate::labelled(ts!("settings.privacy.title"),
+            v_flex().gap_2()
+                .child(Checkbox::new("hide-server-addresses")
+                    .label(ts!("settings.privacy.hide_server_addresses"))
+                    .checked(interface_config.hide_server_addresses)
+                    .on_click(|value, _, cx| {
+                        InterfaceConfig::get_mut(cx).hide_server_addresses = *value;
+                    }))
+                )
+        );
 
         div
     }

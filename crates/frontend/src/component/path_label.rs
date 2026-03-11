@@ -1,6 +1,6 @@
 use std::{cell::RefCell, ops::Range, path::{Component, Path}, rc::Rc, sync::{Arc, atomic::AtomicU32}};
 
-use gpui::{AvailableSpace, Element, ElementId, IntoElement, ParentElement, ShapedLine, SharedString, Size, Style, TextStyle, px};
+use gpui::{AvailableSpace, ContentMask, Element, ElementId, IntoElement, ParentElement, ShapedLine, SharedString, Size, Style, Styled, TextStyle, div, px};
 use gpui_component::button::{Button, ButtonVariants};
 
 use crate::{icon::PandoraIcon, ts};
@@ -28,14 +28,14 @@ impl PathLabel {
         } else {
             PandoraIcon::File
         };
-        Button::new(id).success().icon(icon).child(self.clone()).tooltip(state.lossy_path_name.clone())
+        Button::new(id).success().icon(icon).child(self.clone()).overflow_x_hidden().tooltip(state.lossy_path_name.clone())
     }
 
     pub fn button_opt(label: &Option<Self>, id: impl Into<ElementId>) -> Button {
         if let Some(label) = label {
             label.button(id)
         } else {
-            Button::new(id).success().icon(PandoraIcon::File).label(ts!("common.unset"))
+            Button::new(id).success().icon(PandoraIcon::File).overflow_x_hidden().label(ts!("common.unset"))
         }
     }
 }
@@ -246,7 +246,7 @@ impl Element for PathLabel {
                 state.shaped_ellipsis = Some(shaped_ellipsis);
                 state.shaped_divider = Some(shaped_divider);
                 state.full_width = full_width;
-                state.min_truncation_info = None;
+                state.min_truncation_info = Some(state.compute_truncation(0.0));
                 state.last_truncation_info = None;
                 state.last_text_style = Some(text_style);
             }
@@ -280,19 +280,17 @@ impl Element for PathLabel {
                 };
 
                 if width == 0.0 {
-                    if let Some(min_truncation_info) = &state.min_truncation_info {
-                        Size { width: px(min_truncation_info.total_width.ceil()), height: line_height }
-                    } else {
-                        let truncation = state.compute_truncation(0.0);
-                        let width = truncation.total_width;
-                        state.min_truncation_info = Some(truncation);
-                        Size { width: px(width.ceil()), height: line_height }
-                    }
+                    Size { width: gpui::Pixels::ZERO, height: line_height }
                 } else if width >= state.full_width {
                     Size { width: px(state.full_width.ceil()), height: line_height }
                 } else {
-                    let truncation = state.compute_truncation_cached(width);
-                    Size { width: px(truncation.total_width.ceil()), height: line_height }
+                    let min_width = state.min_truncation_info.as_ref().unwrap().total_width;
+                    if width <= min_width {
+                        Size { width: px(min_width.ceil()), height: line_height }
+                    } else {
+                        let truncation = state.compute_truncation_cached(width);
+                        Size { width: px(truncation.total_width.ceil()), height: line_height }
+                    }
                 }
             }
         });
@@ -328,7 +326,13 @@ impl Element for PathLabel {
 
         let mut state = self.state.borrow_mut();
 
-        let truncation = state.compute_truncation_cached(bounds.size.width.as_f32().ceil());
+        let min_truncation_info = state.min_truncation_info.as_ref().unwrap();
+        let truncation = if bounds.size.width.as_f32() <= min_truncation_info.total_width {
+            min_truncation_info
+        } else {
+            state.compute_truncation_cached(bounds.size.width.as_f32().ceil())
+        };
+
         let skip_range = truncation.ignored_range.clone().unwrap_or(usize::MAX..usize::MAX);
 
         let divider = state.shaped_divider.as_ref().unwrap();

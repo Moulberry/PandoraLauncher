@@ -19,10 +19,10 @@ pub struct ImportFromOtherLauncher {
 
 #[derive(Debug, Display, Clone, Copy, enum_map::Enum, EnumIter, PartialEq, Eq)]
 pub enum OtherLauncher {
-	AtLauncher,
     Prism,
     Modrinth,
     MultiMC,
+    ATLauncher,
 }
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone)]

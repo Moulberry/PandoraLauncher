@@ -5,12 +5,17 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex, ActiveTheme as _, Disableable, Sizable, WindowExt
+    ActiveTheme as _, Disableable, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
 };
 use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
+use uuid::Uuid;
 
-use crate::{component::{horizontal_sections::HorizontalSections, path_label::PathLabel}, entity::{DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, ts};
+use crate::{
+	component::{horizontal_sections::HorizontalSections, named_dropdown::{NamedDropdown, NamedDropdownItem}, path_label::PathLabel},
+	entity::{DataEntities, account::AccountEntries, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}},
+	interface_config::InterfaceConfig, pages::instances_page::VersionList, ts
+};
 
 #[derive(PartialEq, Eq)]
 enum NewNameChangeState {
@@ -26,6 +31,7 @@ pub struct InstanceSettingsSubpage {
     new_name_input_state: Entity<InputState>,
     version_state: TypelessFrontendMetadataResult,
     version_select_state: Entity<SelectState<VersionList>>,
+    account_items: Entity<SelectState<NamedDropdown<Uuid>>>,
     loader: Loader,
     loader_select_state: Entity<SelectState<Vec<&'static str>>>,
     loader_versions_state: TypelessFrontendMetadataResult,
@@ -77,8 +83,10 @@ impl InstanceSettingsSubpage {
     ) -> Self {
         let entry = instance.read(cx);
         let instance_id = entry.id;
+        let instance_name = entry.name.clone();
         let loader = entry.configuration.loader;
         let preferred_loader_version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+        let account = entry.configuration.preferred_account;
         let disable_file_syncing = entry.configuration.disable_file_syncing;
 
         let memory = entry.configuration.memory.unwrap_or_default();
@@ -94,7 +102,9 @@ impl InstanceSettingsSubpage {
         let glfw_path = system_libraries.glfw.get_or_auto(&*AUTO_LIBRARY_PATH_GLFW);
         let openal_path = system_libraries.openal.get_or_auto(&*AUTO_LIBRARY_PATH_OPENAL);
 
-        let new_name_input_state = cx.new(|cx| InputState::new(window, cx));
+        let new_name_input_state = cx.new(|cx| {
+            InputState::new(window, cx).default_value(instance_name)
+        });
         cx.subscribe(&new_name_input_state, Self::on_new_name_input).detach();
 
         let minecraft_versions = FrontendMetadata::request(&data.metadata, MetadataRequest::MinecraftVersionManifest, cx);
@@ -104,6 +114,27 @@ impl InstanceSettingsSubpage {
             page.update_minecraft_versions(versions, window, cx);
         }).detach();
         cx.subscribe(&version_select_state, Self::on_minecraft_version_selected).detach();
+
+        let account_items = cx.new(|cx| {
+       		let accounts = &data.accounts.read(cx).accounts;
+         	let mut account_items = Vec::with_capacity(accounts.len());
+          	let mut selected = None;
+          	for (index, loop_account) in accounts.iter().enumerate() {
+           		account_items.push(NamedDropdownItem {
+             		name: loop_account.username.clone().into(),
+             		item: loop_account.uuid,
+             	});
+             	if let Some(preferred_account) = account && loop_account.uuid == preferred_account {
+              		selected = Some(IndexPath::new(index));
+              	}
+           	}
+
+         	SelectState::new(NamedDropdown::new(account_items), selected, window, cx).searchable(true)
+        });
+        cx.observe_in(&data.accounts, window, |page, accounts, window, cx| {
+        	page.update_account_list(accounts, window, cx);
+        }).detach();
+        cx.subscribe(&account_items, Self::on_account_selected).detach();
 
         let loader_select_state = cx.new(|cx| {
             let loaders = Loader::iter()
@@ -162,6 +193,7 @@ impl InstanceSettingsSubpage {
             new_name_input_state,
             version_state: TypelessFrontendMetadataResult::Loading,
             version_select_state,
+            account_items,
             loader,
             loader_select_state,
             loader_version_select_state,
@@ -327,6 +359,19 @@ impl InstanceSettingsSubpage {
         items
     }
 
+    fn update_account_list(&mut self, accounts: Entity<AccountEntries>, window: &mut Window, cx: &mut Context<Self>) {
+  		let list = accounts.read(cx).accounts
+   			.iter().map(|account| NamedDropdownItem {
+	            name: account.username.clone().into(),
+	            item: account.uuid,
+    		}).collect::<Vec<NamedDropdownItem<Uuid>>>();
+
+
+    	self.account_items.update(cx, move |items, cx| {
+       		items.set_items(NamedDropdown::new(list), window, cx);
+     	})
+    }
+
     pub fn on_new_name_input(
         &mut self,
         state: Entity<InputState>,
@@ -371,6 +416,20 @@ impl InstanceSettingsSubpage {
             id: self.instance_id,
             version: value.as_str().into(),
         });
+    }
+
+    pub fn on_account_selected(
+    	&mut self,
+     	_state: Entity<SelectState<NamedDropdown<Uuid>>>,
+     	event: &SelectEvent<NamedDropdown<Uuid>>,
+       	_cx: &mut Context<Self>,
+    ) {
+	   	let SelectEvent::Confirm(value) = event;
+
+		self.backend_handle.send(MessageToBackend::SetInstancePreferredAccount {
+			id: self.instance_id,
+			account: value.as_ref().map(|value| value.item),
+		});
     }
 
     pub fn on_loader_selected(
@@ -646,7 +705,13 @@ impl Render for InstanceSettingsSubpage {
                         }
                     })
                 )
-            );
+            )
+           	.child(crate::labelled(
+            	ts!("account.single"),
+             	h_flex()
+                .gap_2()
+                .child(Select::new(&self.account_items).placeholder("Using current launcher account").cleanable(true))
+            ));
 
         let mut version_content = v_flex().gap_2();
 
@@ -872,7 +937,7 @@ impl Render for InstanceSettingsSubpage {
             .size_full()
             .child(crate::labelled(
                 "Instance Folder",
-                Button::new("relocate").icon(PandoraIcon::Folder).child(self.instance_root_label.clone()).success().on_click({
+               self.instance_root_label.button("relocate").on_click({
                     let instance = self.instance.clone();
                     let backend_handle = self.backend_handle.clone();
                     move |_: &ClickEvent, _, cx| {
@@ -894,7 +959,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })
             ))
-            .child(Button::new("shortcut").label(ts!("instance.create_shortcut")).success().on_click({
+            .child(Button::new("shortcut").label(ts!("instance.create_shortcut")).overflow_x_hidden().success().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |_: &ClickEvent, _, cx| {
@@ -922,7 +987,7 @@ impl Render for InstanceSettingsSubpage {
                     }).detach();
                 }
             }))
-            .child(Button::new("delete").label(ts!("instance.delete")).danger().on_click({
+            .child(Button::new("delete").label(ts!("instance.delete")).overflow_x_hidden().danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |click: &ClickEvent, window, cx| {

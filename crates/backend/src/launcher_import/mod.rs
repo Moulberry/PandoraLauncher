@@ -3,9 +3,12 @@ use std::{collections::HashMap, path::{Path, PathBuf}};
 use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, ImportStatus, OtherLauncher}, modal_action::ModalAction};
 use log::debug;
 use schema::instance::InstanceConfiguration;
-use crate::{BackendState, backend, launcher_import::{
-		atlauncher::import_from_atlauncher, modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db}, multimc::{import_from_multimc, try_load_from_multimc}
-	}
+use crate::{BackendState,
+    launcher_import::{
+        modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db},
+	    multimc::{import_from_multimc, try_load_from_multimc},
+	    atlauncher::import_from_atlauncher
+    }
 };
 
 mod multimc;
@@ -50,7 +53,7 @@ pub fn discover_instances_from_other_launchers(backend: &BackendState) -> Import
 
     let atlauncher_instances = data_dir.join("atlauncher").join("instances");
     imports.imports[OtherLauncher::AtLauncher] = from_subfolders(OtherLauncher::AtLauncher, &atlauncher_instances, &pandora_dir, &|path| {
-    	path.join("instance.json").exists()
+     	path.join("instance.json").exists()
     });
 
     imports
@@ -109,7 +112,7 @@ pub async fn import_from_other_launcher(backend: &BackendState, details: ImportF
     match details.launcher {
         OtherLauncher::Prism => {
             let prism = data_dir.join("PrismLauncher");
-            import_from_multimc(backend, &prism, import_accounts, import_instances, modal_action).await;
+            import_from_multimc(backend, &prism, details.account.is_some(), details.instances, modal_action).await;
         },
         OtherLauncher::Modrinth => {
         	// bit harder to say to modrithn, "hey here are the paths.", so just going to ignore this for now.
@@ -126,9 +129,9 @@ pub async fn import_from_other_launcher(backend: &BackendState, details: ImportF
             let multimc = data_dir.join("multimc");
             import_from_multimc(backend, &multimc, import_accounts, import_instances, modal_action).await;
         },
-        OtherLauncher::AtLauncher => {
-        	let atlauncher = data_dir.join("atlauncher");
-         	import_from_atlauncher(backend, &atlauncher, import_accounts, import_instances, modal_action).await;
-        },
+         OtherLauncher::AtLauncher => {
+         	let atlauncher = data_dir.join("atlauncher");
+          	import_from_atlauncher(backend, &atlauncher, import_accounts, import_instances, modal_action).await;
+        }
     }
 }

@@ -213,6 +213,9 @@ impl Processor {
             MessageToFrontend::MetadataResult { request, result, keep_alive_handle } => {
                 FrontendMetadata::set(&self.data.metadata, request, result, keep_alive_handle, cx);
             },
+            MessageToFrontend::SkinLibraryUpdated { skin_library } => {
+                self.data.set_skin_library(skin_library, cx);
+            },
             MessageToFrontend::UpdateAvailable { .. } => {
                 self.with_main_window(message, cx, |this, message, window, cx| {
                     let MessageToFrontend::UpdateAvailable { update } = message else {

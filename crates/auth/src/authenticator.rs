@@ -10,12 +10,13 @@ use oauth2::{
         BasicTokenResponse,
     },
 };
+use schema::minecraft_profile::MinecraftProfileResponse;
 
 use crate::{
     constants,
     models::{
         FinishedAuthorization, MinecraftAccessToken, MinecraftLoginWithXboxRequest, MinecraftLoginWithXboxResponse,
-        MinecraftProfileResponse, MsaTokens, PendingAuthorization, TokenWithExpiry, XboxLiveAuthenticateRequest,
+        MsaTokens, PendingAuthorization, TokenWithExpiry, XboxLiveAuthenticateRequest,
         XboxLiveAuthenticateRequestProperties, XboxLiveAuthenticateResponse, XboxLiveSecurityTokenRequest,
         XboxLiveSecurityTokenRequestProperties, XboxLiveSecurityTokenResponse, XstsToken,
     },

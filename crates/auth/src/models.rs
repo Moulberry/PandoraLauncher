@@ -4,7 +4,6 @@ use chrono::{DateTime, Utc};
 use oauth2::{CsrfToken, PkceCodeVerifier};
 use serde::{Deserialize, Serialize};
 use url::Url;
-use uuid::Uuid;
 
 pub struct MinecraftAccessToken(pub(crate) Arc<str>);
 
@@ -108,35 +107,4 @@ pub struct MinecraftLoginWithXboxResponse {
     pub username: Arc<str>,
     pub access_token: Arc<str>,
     pub expires_in: usize,
-}
-
-#[derive(Deserialize)]
-pub struct MinecraftProfileResponse {
-    pub id: Uuid,
-    pub name: Arc<str>,
-    pub skins: Vec<MinecraftProfileSkin>,
-}
-
-#[derive(Clone, Deserialize)]
-pub struct MinecraftProfileSkin {
-    pub url: Arc<str>,
-    pub state: SkinState,
-    pub variant: SkinVariant,
-}
-
-#[derive(Clone, Copy, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum SkinState {
-    Active,
-    #[serde(other)]
-    Inactive,
-}
-
-#[derive(Clone, Copy, Eq, PartialEq, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum SkinVariant {
-    Classic,
-    Slim,
-    #[serde(other)]
-    Other,
 }

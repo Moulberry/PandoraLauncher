@@ -8,3 +8,13 @@ impl RenderOnce for PandoraIcon {
         Icon::new(self)
     }
 }
+
+impl PandoraIcon {
+    pub fn pause_play(pause: bool) -> Self {
+        if pause {
+            Self::Pause
+        } else {
+            Self::Play
+        }
+    }
+}

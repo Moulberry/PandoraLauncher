@@ -8,7 +8,7 @@ use gpui_component::{
     button::{Button, ButtonVariants}, h_flex, select::{Select, SelectEvent, SelectState}, spinner::Spinner, v_flex, ActiveTheme as _, Sizable
 };
 
-use crate::{component::{named_dropdown::{NamedDropdown, NamedDropdownItem}, readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls}}, entity::instance::InstanceEntry, root, ts};
+use crate::{component::{named_dropdown::{NamedDropdown, NamedDropdownItem}, readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls}}, entity::instance::InstanceEntry, icon::PandoraIcon, root, ts};
 
 pub struct InstanceLogsSubpage {
     instance: InstanceID,
@@ -182,7 +182,11 @@ impl Render for InstanceLogsSubpage {
             if let Some(log_content) = self.log_content.clone() {
                 content = content.child(log_content);
             } else if self.available_logs.is_some() {
-                content = content.child(h_flex().justify_center().size_full().text_lg().child(ts!("instance.logs.select_file")));
+                content = content.child(h_flex().justify_center().size_full().text_lg()
+                    .gap_2()
+                    .child(PandoraIcon::ArrowUp)
+                    .child(ts!("instance.logs.select_file"))
+                    .child(PandoraIcon::ArrowUp));
             }
         }
 

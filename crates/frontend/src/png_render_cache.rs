@@ -16,6 +16,16 @@ pub enum ImageTransformation {
     Resize {
         width: u32,
         height: u32,
+    },
+    ResizeToWidth {
+        width: u32,
+    },
+    CropAndScale {
+        min_x: u32,
+        min_y: u32,
+        width: u32,
+        height: u32,
+        scale: u32,
     }
 }
 
@@ -131,6 +141,24 @@ impl PngRenderCache {
                         image = image.resize(width, height, filter);
                     }
                 },
+                ImageTransformation::ResizeToWidth { width } => {
+                    let old_width = image.width();
+                    let old_height = image.height();
+                    let ratio = width as f64 / old_width as f64;
+                    let height = ((old_height as f64 * ratio).round() as u32).max(1);
+                    if old_width != width || old_height != height {
+                        let filter = if old_width > width || old_height > height {
+                            FilterType::Lanczos3
+                        } else {
+                            FilterType::Nearest
+                        };
+                        image = image.resize_exact(width, height, filter);
+                    }
+                },
+                ImageTransformation::CropAndScale { min_x, min_y, width, height, scale } => {
+                    let cropped = image.crop_imm(min_x, min_y, width, height);
+                    image = cropped.resize_exact(width*scale, height*scale, FilterType::Nearest);
+                }
             }
 
             let mut data = image.into_rgba8();

@@ -623,7 +623,7 @@ impl ModrinthSearchPage {
                                     .children(std::iter::once(environment).chain(categories)),
                             ),
                     )
-                    .child(v_flex().gap_2().child(downloads).child(install_button));
+                    .child(v_flex().items_end().child(downloads).child(install_button));
 
                 div().pl_3().pt_3().child(item)
             })
@@ -711,7 +711,7 @@ impl Render for ModrinthSearchPage {
             && let Some(install_for) = self.install_for
         {
             let state = mods_state.load(std::sync::atomic::Ordering::SeqCst);
-            if state.should_send_load_request() {
+            if state.should_load() {
                 self.data.backend_handle.send_with_serial(MessageToBackend::RequestLoadMods { id: install_for }, load_serial);
             }
         }

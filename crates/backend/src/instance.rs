@@ -126,7 +126,7 @@ impl ContentFolderState {
             self.all_dirty = true;
         }
 
-        cas_update(&self.load_state, |state| match state {
+        crate::cas_update(&self.load_state, |state| match state {
             BridgeDataLoadState::Loading => BridgeDataLoadState::LoadingDirty,
             BridgeDataLoadState::Loaded => BridgeDataLoadState::LoadedDirty,
             _ => state,
@@ -274,7 +274,7 @@ impl Instance {
             let keep_alive = KeepAliveNotifySignal::new();
             this.pending_worlds_load = Some(keep_alive.create_handle());
 
-            this.worlds_state.store(BridgeDataLoadState::Loading, Ordering::Release);
+            this.worlds_state.store(BridgeDataLoadState::Loading, Ordering::SeqCst);
             this.all_worlds_dirty = false;
             this.dirty_worlds.clear();
 
@@ -286,7 +286,7 @@ impl Instance {
         let mut guard = instances.write();
         let this = guard.instances.get_mut(id)?;
 
-        cas_update(&this.worlds_state, |old_state| match old_state {
+        crate::cas_update(&this.worlds_state, |old_state| match old_state {
             BridgeDataLoadState::LoadingDirty => BridgeDataLoadState::LoadedDirty,
             BridgeDataLoadState::Loading => BridgeDataLoadState::Loaded,
             _ => unreachable!(),
@@ -413,7 +413,7 @@ impl Instance {
             let keep_alive = KeepAliveNotifySignal::new();
             this.pending_servers_load = Some(keep_alive.create_handle());
 
-            this.servers_state.store(BridgeDataLoadState::Loading, Ordering::Release);
+            this.servers_state.store(BridgeDataLoadState::Loading, Ordering::SeqCst);
             this.dirty_servers = false;
 
             break (future, keep_alive);
@@ -424,7 +424,7 @@ impl Instance {
         let mut guard = instances.write();
         let this = guard.instances.get_mut(id)?;
 
-        cas_update(&this.servers_state, |old_state| match old_state {
+        crate::cas_update(&this.servers_state, |old_state| match old_state {
             BridgeDataLoadState::LoadingDirty => BridgeDataLoadState::LoadedDirty,
             BridgeDataLoadState::Loading => BridgeDataLoadState::Loaded,
             _ => unreachable!(),
@@ -503,7 +503,7 @@ impl Instance {
             let keep_alive = KeepAliveNotifySignal::new();
             state.pending_load = Some(keep_alive.create_handle());
 
-            state.load_state.store(BridgeDataLoadState::Loading, Ordering::Release);
+            state.load_state.store(BridgeDataLoadState::Loading, Ordering::SeqCst);
             state.all_dirty = false;
             state.dirty_paths.clear();
 
@@ -516,7 +516,7 @@ impl Instance {
         let this = guard.instances.get_mut(id)?;
         let state = &mut this.content_state[content_folder];
 
-        cas_update(&state.load_state, |old_state| match old_state {
+        crate::cas_update(&state.load_state, |old_state| match old_state {
             BridgeDataLoadState::LoadingDirty => BridgeDataLoadState::LoadedDirty,
             BridgeDataLoadState::Loading => BridgeDataLoadState::Loaded,
             _ => unreachable!(),
@@ -739,7 +739,7 @@ impl Instance {
             self.all_worlds_dirty = true;
         }
 
-        cas_update(&self.worlds_state, |state| match state {
+        crate::cas_update(&self.worlds_state, |state| match state {
             BridgeDataLoadState::Loading => BridgeDataLoadState::LoadingDirty,
             BridgeDataLoadState::Loaded => BridgeDataLoadState::LoadedDirty,
             _ => state,
@@ -752,7 +752,7 @@ impl Instance {
         }
         self.dirty_servers = true;
 
-        cas_update(&self.servers_state, |state| match state {
+        crate::cas_update(&self.servers_state, |state| match state {
             BridgeDataLoadState::Loading => BridgeDataLoadState::LoadingDirty,
             BridgeDataLoadState::Loaded => BridgeDataLoadState::LoadedDirty,
             _ => state,
@@ -980,20 +980,4 @@ fn load_servers_summary(server_dat_path: &Path) -> anyhow::Result<Vec<InstanceSe
     }
 
     Ok(summaries)
-}
-
-fn cas_update(state: &Arc<AtomicBridgeDataLoadState>, func: impl Fn(BridgeDataLoadState) -> BridgeDataLoadState) {
-    let mut old_state = state.load(Ordering::Acquire);
-    loop {
-        let new_state = (func)(old_state);
-        if new_state == old_state {
-            return;
-        }
-        let ex = state.compare_exchange(old_state, new_state, Ordering::Release, Ordering::Acquire);
-        if let Err(changed_state) = ex {
-            old_state = changed_state;
-        } else {
-            return;
-        }
-    }
 }

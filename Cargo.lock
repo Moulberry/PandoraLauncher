@@ -537,6 +537,7 @@ dependencies = [
  "p256",
  "rand 0.8.5",
  "reqwest",
+ "schema",
  "security-framework 3.7.0",
  "security-framework-sys",
  "serde",
@@ -2538,6 +2539,7 @@ dependencies = [
  "directories",
  "enumset",
  "ftree",
+ "futures",
  "gpui",
  "gpui-component",
  "gpui_platform",
@@ -6327,6 +6329,7 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
+ "mime_guess",
  "native-tls",
  "percent-encoding",
  "pin-project-lite",
@@ -6782,6 +6785,7 @@ dependencies = [
  "thiserror 2.0.18",
  "urlencoding",
  "ustr",
+ "uuid",
 ]
 
 [[package]]

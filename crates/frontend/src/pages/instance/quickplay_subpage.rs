@@ -17,7 +17,7 @@ use gpui_component::{
     v_flex,
 };
 
-use crate::{entity::instance::InstanceEntry, icon::PandoraIcon, png_render_cache, root, ts};
+use crate::{entity::instance::InstanceEntry, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, root, ts};
 
 pub struct InstanceQuickplaySubpage {
     instance: InstanceID,
@@ -105,12 +105,12 @@ impl Render for InstanceQuickplaySubpage {
         let theme = cx.theme();
 
         let state = self.worlds_state.load(Ordering::SeqCst);
-        if state.should_send_load_request() {
+        if state.should_load() {
             self.backend_handle.send_with_serial(MessageToBackend::RequestLoadWorlds { id: self.instance }, &self.worlds_serial);
         }
 
         let state = self.servers_state.load(Ordering::SeqCst);
-        if state.should_send_load_request() {
+        if state.should_load() {
             self.backend_handle.send_with_serial(MessageToBackend::RequestLoadServers { id: self.instance }, &self.servers_serial);
         }
 
@@ -236,6 +236,10 @@ impl ListDelegate for ServersListDelegate {
     }
 
     fn render_item(&mut self, ix: IndexPath, _window: &mut Window, cx: &mut Context<ListState<Self>>) -> Option<Self::Item> {
+        let interface_config = InterfaceConfig::get(cx);
+
+        let interface_config_hide_server_addresses = interface_config.hide_server_addresses;
+
         let summary = self.searched.get(ix.row)?;
 
         let icon = if let Some(png_icon) = summary.png_icon.as_ref() {
@@ -246,7 +250,9 @@ impl ListDelegate for ServersListDelegate {
 
         let description = v_flex()
             .child(SharedString::from(summary.name.clone()))
-            .child(div().text_color(cx.theme().muted_foreground).child(SharedString::from(summary.ip.clone())));
+            .when(!interface_config_hide_server_addresses, |parent| {
+                parent.child(div().text_color(cx.theme().muted_foreground).child(SharedString::from(summary.ip.clone())))
+            });
 
         let id = self.id;
         let name = self.name.clone();

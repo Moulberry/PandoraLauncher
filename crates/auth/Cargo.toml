@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 
 [dependencies]
+schema.workspace = true
 reqwest.workspace = true
 cvlib.workspace = true
 oauth2.workspace = true

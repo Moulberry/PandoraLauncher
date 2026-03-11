@@ -1,11 +1,12 @@
 #![deny(unused_must_use)]
 
 mod backend;
-use std::{ffi::OsString, io::Write, path::{Path, PathBuf}, sync::Arc};
+use std::{ffi::OsString, io::Write, path::{Path, PathBuf}, sync::{Arc, atomic::Ordering}};
 
 pub use backend::*;
-use bridge::instance::InstanceContentSummary;
+use bridge::{instance::InstanceContentSummary, message::{AtomicBridgeDataLoadState, BridgeDataLoadState}};
 use rand::RngCore;
+use rustc_hash::FxHashSet;
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
 
@@ -28,6 +29,7 @@ mod mod_metadata;
 mod id_slab;
 mod persistent;
 mod shortcut;
+mod skin_manager;
 mod syncing;
 mod update;
 
@@ -140,4 +142,74 @@ pub(crate) fn create_content_library_path(content_library_dir: &Path, expected_h
     }
 
     path
+}
+
+pub(crate) fn cas_update(state: &Arc<AtomicBridgeDataLoadState>, func: impl Fn(BridgeDataLoadState) -> BridgeDataLoadState) {
+    let mut old_state = state.load(Ordering::SeqCst);
+    loop {
+        let new_state = (func)(old_state);
+        if new_state == old_state {
+            return;
+        }
+        let ex = state.compare_exchange(old_state, new_state, Ordering::SeqCst, Ordering::SeqCst);
+        if let Err(changed_state) = ex {
+            old_state = changed_state;
+        } else {
+            return;
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct FolderChanges {
+    all_dirty: bool,
+    paths: FxHashSet<Arc<Path>>,
+}
+
+impl FolderChanges {
+    pub fn no_changes() -> Self {
+        Self { all_dirty: false, paths: Default::default() }
+    }
+
+    pub fn all_dirty() -> Self {
+        Self { all_dirty: true, paths: Default::default() }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        !self.all_dirty && self.paths.is_empty()
+    }
+
+    pub fn dirty_path(&mut self, path: Arc<Path>) {
+        if self.all_dirty {
+            return;
+        }
+        self.paths.insert(path);
+    }
+
+    pub fn take(&mut self) -> (bool, FxHashSet<Arc<Path>>) {
+        if self.all_dirty {
+            self.all_dirty = false;
+            self.paths.clear();
+            (true, Default::default())
+        } else {
+            (false, std::mem::take(&mut self.paths))
+        }
+    }
+
+    pub fn dirty_all(&mut self) {
+        self.all_dirty = true;
+        self.paths.clear();
+    }
+
+    pub fn apply_to(self, other: &mut FolderChanges) {
+        if other.all_dirty {
+            return;
+        }
+        if self.all_dirty {
+            other.all_dirty = true;
+            other.paths.clear();
+        } else {
+            other.paths.extend(self.paths);
+        }
+    }
 }

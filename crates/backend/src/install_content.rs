@@ -453,9 +453,9 @@ impl BackendState {
             path.set_extension(extension);
         }
 
-        let lockfile = Lockfile::create(path.with_added_extension("lock").into()).await;
-
         let _permit = semaphore.acquire().await.unwrap();
+
+        let lockfile = Lockfile::create(path.with_added_extension("lock").into()).await;
 
         let file_name = name.filename.clone();
 
@@ -487,11 +487,7 @@ impl BackendState {
             return Err(ContentInstallError::NotOK(response.status()));
         }
 
-        // Tokio doesn't have lock, so we use std temporarily to lock it
-        let file = std::fs::File::create(&path)?;
-        _ = file.lock();
-
-        let mut file = tokio::fs::File::from_std(file);
+        let mut file = std::fs::File::create(&path)?;
 
         use futures::StreamExt;
         let mut stream = response.bytes_stream();
@@ -507,7 +503,7 @@ impl BackendState {
             tracker.notify();
 
             hasher.write_all(&item)?;
-            file.write_all(&item).await?;
+            file.write_all(&item)?;
         }
 
         tracker.set_finished(ProgressTrackerFinishType::Fast);
@@ -518,9 +514,9 @@ impl BackendState {
         let wrong_size = total_bytes != size;
 
         if wrong_hash || wrong_size {
-            let _ = file.set_len(0).await;
+            let _ = file.set_len(0);
             drop(file);
-            let _ = tokio::fs::remove_file(&path).await;
+            let _ = std::fs::remove_file(&path);
 
             if wrong_hash {
                 return Err(ContentInstallError::WrongHash);

@@ -59,6 +59,15 @@ impl AuthStageWithData {
 }
 
 impl AccountCredentials {
+    pub fn access_token(&self) -> Option<MinecraftAccessToken> {
+        let now = Utc::now();
+        if let Some(access_token) = &self.access_token && now < access_token.expiry {
+            Some(MinecraftAccessToken(Arc::clone(&access_token.token)))
+        } else {
+            None
+        }
+    }
+
     pub fn stage(&mut self) -> AuthStageWithData {
         let now = Utc::now();
 

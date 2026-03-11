@@ -249,6 +249,10 @@ common:
     en: Custom
   cancel:
     en: Cancel
+  reset:
+    en: Reset
+  apply_changes:
+    en: Apply Changes
   ok:
     en: OK
   nav:
@@ -290,6 +294,8 @@ system:
 account:
   title:
     en: Accounts
+  single:
+    en: Account
   none:
     en: No Account
   name:
@@ -708,13 +714,20 @@ settings:
       en: Shift+Click to skip mod delete confirmation
     skip_instance_delete_confirmation:
       en: Shift+Click to skip instance delete confirmation
-  launch:
+  windows:
     title:
-      en: Launching
+      en: Windows
     hide_main_window:
       en: Hide main window on launch
     open_game_output:
       en: Open game output on launch
+    close_all_when_main_closed:
+      en: Close all other windows when main window closed
+  privacy:
+    title:
+      en: Privacy
+    hide_server_addresses:
+      en: Hide server addresses
   proxy:
     title:
       en: Proxy Settings
@@ -736,3 +749,21 @@ settings:
       en: Password
     launcher_only_note:
       en: Note - Proxy settings only apply to the launcher, not the game itself
+skins:
+  title:
+    en: Skins
+  capes:
+    en: Capes
+  login_to_view_edit:
+    en: Login to view/edit %{username}'s skin
+  unable_to_load:
+    en: Unable to load %{username}'s skin
+  loading:
+    en: Loading %{username}'s skin...
+  no_offline:
+    en: Skins cannot be applied to offline accounts
+login:
+  title:
+    en: Login
+  error:
+    en: Error while logging in

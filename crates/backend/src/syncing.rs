@@ -95,7 +95,7 @@ pub fn apply_to_instance(sync_targets: &SyncTargets, directories: &LauncherDirec
         let target_dir = path.to_path(&directories.synced_dir);
         let path = path.to_path(&dot_minecraft);
 
-        if !path.exists() {
+        if !path.exists() || std::fs::remove_dir(&path).is_ok() {
             _ = std::fs::create_dir_all(&target_dir);
             if let Some(parent) = path.parent() {
                 _ = std::fs::create_dir_all(parent);
@@ -286,7 +286,7 @@ pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateIn
 
             if linking::is_targeting(&target_dir, &path) {
                 sync_count += 1;
-            } else if path.exists() {
+            } else if path.exists() && !is_empty_dir(&path) {
                 cannot_sync_count += 1;
             }
         }
@@ -304,6 +304,18 @@ pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateIn
         targets: entries,
         total_count: total,
     })
+}
+
+fn is_empty_dir(path: &Path) -> bool {
+    // Check that this is a real directory
+    if !path.symlink_metadata().map(|m| m.is_dir()).unwrap_or(false) {
+        return false;
+    }
+
+    let Ok(mut read_dir) = path.read_dir() else {
+        return false;
+    };
+    read_dir.next().is_none()
 }
 
 static DEFAULT_FOLDERS: Lazy<Vec<Arc<str>>> = Lazy::new(|| {
@@ -347,7 +359,7 @@ pub fn enable_all(name: &str, is_file: bool, instances: &mut BackendStateInstanc
     });
 
     for path in &paths {
-        if path.exists() {
+        if path.exists() && std::fs::remove_dir(&path).is_err() {
             return Ok(false);
         }
     }

@@ -96,14 +96,13 @@ impl Render for ImportPage {
             .child(ResponsiveGrid::new(Size::new(AvailableSpace::MinContent, AvailableSpace::MinContent))
                 .gap_2()
                 .children({
-                	OtherLauncher::iter()
-	                 	.map(|launcher| {
-	                		Button::new(launcher.to_string())
-	                 			.label(format!("Import from {}", launcher))
-	                 			.w_full()
-	                  			.disabled(imports.imports[launcher].is_none())
-	                     		.on_click(cx.listener(move |page, _, _, _| page.import_from = Some(launcher)))
-	                 	})
+                    OtherLauncher::iter().map(|launcher| {
+                        Button::new(launcher.to_string())
+                             .label(format!("Import from {}", launcher))
+                             .w_full()
+                             .disabled(imports.imports[launcher].is_none())
+                             .on_click(cx.listener(move |page, _, _, _| page.import_from = Some(launcher)))
+                     })
                 })
                 .child(Button::new("mrpack")
                     .label("Import Modrinth Pack (.mrpack)")

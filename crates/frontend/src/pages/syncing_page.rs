@@ -241,6 +241,7 @@ static NAMED_SYNC_TARGETS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         "saves",
         "config",
         "screenshots",
+        "resourcepacks",
         "shaderpacks",
         "flashback",
         "Distant_Horizons_server_data",

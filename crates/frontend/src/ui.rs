@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::{instance::InstanceID, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, InteractiveElementExt, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, sidebar::SidebarFooter, tooltip::Tooltip, v_flex
+    ActiveTheme as _, Disableable, Icon, InteractiveElementExt, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, resizable::{ResizablePanelEvent, ResizableState, h_resizable, resizable_panel}, scroll::ScrollableElement, tooltip::Tooltip, v_flex
 };
 use rand::Rng;
 use rustc_hash::FxHashMap;
@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath, title_bar::TitleBar}, entity::{
+    component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath, shrinking_text::ShrinkingText, title_bar::TitleBar}, entity::{
         DataEntities, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, page::Page, syncing_page::SyncingPage}, png_render_cache, ts
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, page::Page, skins_page::SkinsPage, syncing_page::SyncingPage}, png_render_cache, ts
 };
 
 pub struct LauncherUI {
@@ -34,6 +34,7 @@ pub struct LauncherUI {
 pub enum PageType {
     #[default]
     Instances,
+    Skins,
     Modrinth {
         installing_for: Option<SharedString>,
     },
@@ -50,9 +51,10 @@ pub enum PageType {
 }
 
 impl PageType {
-    pub fn title(&self) -> SharedString {
+    pub fn title(&self, data: &DataEntities, cx: &App) -> SharedString {
         match self {
             PageType::Instances => ts!("instance.title"),
+            PageType::Skins => ts!("skins.title"),
             PageType::Modrinth { installing_for } => {
                 if installing_for.is_some() {
                     ts!("instance.content.install.from_modrinth")
@@ -63,14 +65,18 @@ impl PageType {
             PageType::Import => "Import".into(),
             PageType::Syncing => ts!("instance.sync.label"),
             PageType::ModrinthProject { project_title, .. } => project_title.clone(),
-            PageType::InstancePage { name } => name.clone(),
+            PageType::InstancePage { name } => {
+                InstanceEntries::find_title_by_name(&data.instances, name, cx)
+                    .unwrap_or_else(|| name.clone())
+            },
         }
     }
 }
 
-#[derive(IntoElement, Clone)]
+#[derive(Clone)]
 pub enum LauncherPage {
     Instances(Entity<InstancesPage>),
+    Skins(Entity<SkinsPage>),
     Modrinth(Entity<ModrinthSearchPage>),
     Import(Entity<ImportPage>),
     Syncing(Entity<SyncingPage>),
@@ -78,8 +84,8 @@ pub enum LauncherPage {
     InstancePage(Entity<InstancePage>),
 }
 
-impl RenderOnce for LauncherPage {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl LauncherPage {
+    fn render(self, data: &DataEntities, window: &mut Window, cx: &mut App) -> impl IntoElement {
         fn process(entity: Entity<impl Page>, window: &mut Window, cx: &mut App) -> (bool, AnyElement, AnyElement) {
             entity.update(cx, |page, cx| {
                 (page.scrollable(cx), page.controls(window, cx).into_any_element(), page.render(window, cx).into_any_element())
@@ -88,6 +94,7 @@ impl RenderOnce for LauncherPage {
 
         let (scrollable, controls, page) = match self {
             LauncherPage::Instances(entity) => process(entity, window, cx),
+            LauncherPage::Skins(entity) => process(entity, window, cx),
             LauncherPage::Modrinth(entity) => process(entity, window, cx),
             LauncherPage::Import(entity) => process(entity, window, cx),
             LauncherPage::Syncing(entity) => process(entity, window, cx),
@@ -96,7 +103,7 @@ impl RenderOnce for LauncherPage {
         };
 
         let config = InterfaceConfig::get(cx);
-        let page_path = PagePath::new(config.main_page.clone(), config.page_path.clone());
+        let page_path = PagePath::new(data.clone(), config.main_page.clone(), config.page_path.clone());
         let title_bar = TitleBar::new(page_path, controls);
 
         if scrollable {
@@ -148,10 +155,16 @@ impl LauncherUI {
                 cx.notify();
             });
         let _instance_modified_subscription =
-            cx.subscribe::<_, InstanceModifiedEvent>(&data.instances, |this, _, event, cx| {
+            cx.subscribe_in::<_, InstanceModifiedEvent>(&data.instances, window, |this, _, event, window, cx| {
                 if let Some((_, name)) = this.recent_instances.iter_mut().find(|(id, _)| *id == event.instance.id) {
                     *name = event.instance.name.clone();
                     cx.notify();
+                }
+                if let LauncherPage::InstancePage(page) = &this.page
+                    && page.read(cx).instance.read(cx).id == event.instance.id
+                {
+                    let page_path = InterfaceConfig::get_mut(cx).page_path.clone();
+                    this.switch_page(PageType::InstancePage { name: event.instance.name.clone() }, &*page_path, window, cx);
                 }
                 cx.notify();
             });
@@ -219,6 +232,9 @@ impl LauncherUI {
         match page {
             PageType::Instances => {
                 Ok(LauncherPage::Instances(cx.new(|cx| InstancesPage::new(data, window, cx))))
+            },
+            PageType::Skins => {
+                Ok(LauncherPage::Skins(cx.new(|cx| SkinsPage::new(data, window, cx))))
             },
             PageType::Modrinth { installing_for } => {
                 let installing_for = installing_for.as_ref().and_then(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
@@ -293,14 +309,19 @@ impl LauncherUI {
 }
 
 impl Render for LauncherUI {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let page_type = InterfaceConfig::get(cx).main_page.clone();
 
-        let library_group = MenuGroup::new(ts!("instance.play"))
+        let library_group = MenuGroup::new("Minecraft")
             .child(MenuGroupItem::new(ts!("instance.title"))
                 .active(page_type == PageType::Instances)
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Instances, &[], window, cx);
+                })))
+            .child(MenuGroupItem::new(ts!("skins.title"))
+                .active(page_type == PageType::Skins)
+                .on_click(cx.listener(|launcher, _, window, cx| {
+                    launcher.switch_page(PageType::Skins, &[], window, cx);
                 })));
 
         let content_group = MenuGroup::new(ts!("instance.content.title"))
@@ -362,12 +383,22 @@ impl Render for LauncherUI {
             )
         };
 
-        let account_button = div().max_w_full().flex_grow().id("account-button").child(SidebarFooter::new()
-            .w_full()
+        let account_button = h_flex()
+            .id("account-button")
+            .flex_1()
+            .p_2()
+            .max_w_full()
+            .gap_2()
             .justify_center()
             .text_size(rems(0.9375))
+            .line_height(rems(1.0))
+            .rounded(cx.theme().radius)
+            .hover(|this| {
+                this.bg(cx.theme().sidebar_accent)
+                    .text_color(cx.theme().sidebar_accent_foreground)
+            })
             .child(account_head.size_8().min_w_8().min_h_8())
-            .child(v_flex().w_full().child(account_name)))
+            .child(ShrinkingText::new(account_name))
             .on_click({
                 let accounts = self.data.accounts.clone();
                 let backend_handle = self.data.backend_handle.clone();
@@ -400,13 +431,14 @@ impl Render for LauncherUI {
                                 .gap_2()
                                 .w_full()
                                 .child(Button::new(account_name.clone())
-                                    .flex_grow()
+                                    .min_w_0()
+                                    .flex_1()
                                     .when(selected, |this| {
                                         this.info()
                                     })
                                     .h_10()
                                     .child(head.size_8().min_w_8().min_h_8())
-                                    .child(account_name.clone())
+                                    .child(div().pt_0p5().line_clamp(2).line_height(rems(1.0)).child(account_name.clone()))
                                     .when(!selected, |this| {
                                         this.on_click({
                                             let backend_handle = backend_handle.clone();
@@ -544,7 +576,7 @@ impl Render for LauncherUI {
             .child(Icon::new(PandoraIcon::Pandora).size_8().min_w_8().min_h_8())
             .child(ts!("common.app_name"));
         let footer_buttons = h_flex().child(settings_button).child(bug_report_button);
-        let footer = v_flex().pb_3().px_3().items_center().w_full().child(footer_buttons).child(account_button);
+        let footer = v_flex().pb_2().px_2().items_center().w_full().child(footer_buttons).child(account_button);
         let sidebar = v_flex()
             .w_full()
             .bg(cx.theme().sidebar)
@@ -569,8 +601,8 @@ impl Render for LauncherUI {
 
         h_resizable("container")
             .with_state(&self.sidebar_state)
-            .child(resizable_panel().size(px(self.default_sidebar_width)).size_range(px(130.)..px(200.)).child(sidebar))
-            .child(self.page.clone().into_any_element())
+            .child(resizable_panel().size(px(self.default_sidebar_width)).size_range(px(150.)..px(225.)).child(sidebar))
+            .child(self.page.clone().render(&self.data, window, cx).into_any_element())
     }
 }
 

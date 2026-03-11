@@ -3,6 +3,7 @@ use std::{path::Path, sync::Arc};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use ustr::Ustr;
+use uuid::Uuid;
 
 use crate::loader::Loader;
 
@@ -12,6 +13,8 @@ pub struct InstanceConfiguration {
     pub loader: Loader,
     #[serde(default, skip_serializing_if = "crate::skip_if_none")]
     pub preferred_loader_version: Option<Ustr>,
+    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "crate::skip_if_none")]
+    pub preferred_account: Option<Uuid>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_memory_configuration")]
     pub memory: Option<InstanceMemoryConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_wrapper_command_configuration")]
@@ -36,6 +39,7 @@ impl InstanceConfiguration {
             minecraft_version,
             loader,
             preferred_loader_version: None,
+            preferred_account: None,
             memory: None,
             wrapper_command: None,
             jvm_flags: None,

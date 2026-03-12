@@ -774,3 +774,5 @@ import:
     en: "Please select one of the above to import from %{launcher}"
   enabled:
     en: "Import the above selected from %{launcher}"
+  duplicated:
+    en: "Unable to Import. An instance with the name \"%{name}\" already exists."

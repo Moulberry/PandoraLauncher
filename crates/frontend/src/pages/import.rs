@@ -212,7 +212,7 @@ impl Render for ImportPage {
                     ]))
                     .child(v_flex().overflow_y_scrollbar().children({
                         list.iter().map(|(path, checked)| {
-                        	let mut line = h_flex().child(Checkbox::new(SharedString::new(path.to_string_lossy()))
+                        	let mut line = v_flex().child(Checkbox::new(SharedString::new(path.to_string_lossy()))
 	                         	.label(SharedString::new(path.to_string_lossy()))
 	                           	.checked(**checked == ImportStatus::Importing)
 	                            .disabled(**checked == ImportStatus::Duplicate)
@@ -230,9 +230,9 @@ impl Render for ImportPage {
 	                                })
 	                            }));
                          	if **checked == ImportStatus::Duplicate {
-                         		line = line.child(h_flex().text_color(cx.theme().red)
+                         		line = line.child(h_flex().text_color(cx.theme().red).pl_8()
                            			.child(PandoraIcon::TriangleAlert)
-                            		.child("Unable to import, an instance with this name already exists.")
+                            		.child(ts!("import.duplicated", name = path.file_name().unwrap().to_string_lossy()))
                            		);
                           	}
                            	line

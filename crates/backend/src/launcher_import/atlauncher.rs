@@ -244,6 +244,16 @@ struct AtLauncherDisplayClaim {
     uhs: String,
 }
 
+// assuming in instance folder
+pub fn is_valid_atinstance(path: &Path) -> bool {
+    path.join("instance.json").exists()
+}
+// assuming in main folder
+pub fn is_valid_ataccount(path: &Path) -> Option<PathBuf> {
+    let account_path = path.join("configs/accounts.json");
+    account_path.exists().then(|| account_path)
+}
+
 
 pub async fn import_from_atlauncher(backend: &BackendState, path: &Path, details: ImportFromOtherLauncher, modal_action: ModalAction) {
  	// probably a better way of doing this mess...
@@ -254,13 +264,6 @@ pub async fn import_from_atlauncher(backend: &BackendState, path: &Path, details
  		}
  	};
  	// log::debug!("Launcher config: {}", launcher_config.is_some());
-
-  let Ok(launcher_config_bytes) = std::fs::read(path.join("configs/ATLauncher.json")) else {
-        return;
-    };
-    let launcher_config = serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json");
-    // log::debug!("Launcher config: {}", launcher_config.is_some());
-
     if let Some(account_path) = details.account {
 		import_accounts_from_atlauncher(backend, &account_path, &launcher_config, &modal_action).await;
 	}

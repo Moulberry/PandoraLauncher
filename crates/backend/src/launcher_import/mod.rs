@@ -1,8 +1,9 @@
 use std::{collections::HashMap, path::{Path, PathBuf}};
 
-use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, ImportStatus, OtherLauncher}, modal_action::ModalAction};
+use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, ImportStatus, OtherLauncher, OtherLauncherIter}, modal_action::ModalAction};
 use log::debug;
 use schema::instance::InstanceConfiguration;
+use strum::IntoEnumIterator;
 use crate::{BackendState,
     launcher_import::{
         modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db},
@@ -51,27 +52,71 @@ pub fn discover_instances_from_other_launchers(backend: &BackendState) -> Import
         imports.imports[OtherLauncher::Modrinth] = import;
     }
 
-    let atlauncher_instances = data_dir.join("atlauncher").join("instances");
-    imports.imports[OtherLauncher::ATLauncher] = from_subfolders(OtherLauncher::ATLauncher, &atlauncher_instances, &pandora_dir, &|path| {
-     	path.join("instance.json").exists()
-    });
+    let atlauncher_instances = data_dir.join("atlauncher");
+    imports.imports[OtherLauncher::ATLauncher] = get_launcher_details(backend, OtherLauncher::ATLauncher, &atlauncher_instances);
 
     imports
 }
 
-// pub fn discover_instances_from_path(path: PathBuf) -> Option<ImportFromOtherLauncher> {
-//  	debug!("Received request to update data w/path: {:?}", path);
+pub fn discover_instances_from_path(backend: &BackendState, path: PathBuf) -> Option<ImportFromOtherLauncher> {
+ 	debug!("Received request to update data w/path: {:?}", path);
 
-//   	from_subfolders(path.as_path(), &|path| {
-//    		path.join("instance.json").exists()
-//    	})
-// }
+  	for launcher in OtherLauncher::iter() {
+        let details = get_launcher_details(backend, launcher, &path);
+        if details.is_some() {
+            debug!("Returning data from {}", launcher);
+            return details;
+        }
+    }
 
-fn from_subfolders(launcher: OtherLauncher, folder: &Path, pandora: &Path, check: &dyn Fn(&Path) -> bool) -> Option<ImportFromOtherLauncher> {
-    let Ok(read_dir) = std::fs::read_dir(folder) else {
-        return None;
+    debug!("Backend found nothing");
+    None
+}
+
+fn instance_check(launcher: OtherLauncher, path: &PathBuf) -> bool {
+    match launcher {
+        OtherLauncher::MultiMC | OtherLauncher::Prism => false,
+        OtherLauncher::Modrinth => false,
+        OtherLauncher::ATLauncher => atlauncher::is_valid_atinstance(path),
+    }
+}
+
+fn get_launcher_details(backend: &BackendState, launcher: OtherLauncher, path: &PathBuf) -> Option<ImportFromOtherLauncher> {
+    let mut import_data = ImportFromOtherLauncher::new_launcher(launcher);
+
+    let is_instance = instance_check(launcher, &path);
+    if is_instance {
+        import_data.instances.insert(path.clone(), ImportStatus::Importing);
+    } else {
+        for path in loop_subfolders(&path, &|path| instance_check(launcher, &path.to_path_buf())) {
+            import_data.instances.insert(path, ImportStatus::Importing);
+        }
+        for path in loop_subfolders(&path.join("instances"), &|path| instance_check(launcher, &path.to_path_buf())) {
+            import_data.instances.insert(path, ImportStatus::Importing);
+        }
+    }
+
+    import_data.instances.iter_mut().for_each(|(instance, status)| {
+        if backend.directories.instances_dir.join(instance.file_name().unwrap()).exists() {
+            *status = ImportStatus::Duplicate;
+        }
+    });
+
+    import_data.account = match launcher {
+        OtherLauncher::MultiMC | OtherLauncher::Prism => None,
+        OtherLauncher::Modrinth => None,
+        OtherLauncher::ATLauncher => atlauncher::is_valid_ataccount(&path),
     };
-    let mut paths = HashMap::new();
+
+    let valid_details = import_data.account.is_some() && !import_data.instances.is_empty();
+    valid_details.then(|| import_data)
+}
+
+fn loop_subfolders(folder: &Path, check: &dyn Fn(&Path) -> bool) -> Vec<PathBuf> {
+    let Ok(read_dir) = std::fs::read_dir(folder) else {
+        return vec![]
+    };
+    let mut paths = vec![];
     for entry in read_dir {
         let Ok(entry) = entry else {
             continue;
@@ -83,9 +128,19 @@ fn from_subfolders(launcher: OtherLauncher, folder: &Path, pandora: &Path, check
         if !(check)(&path) {
             continue;
         }
-        let state = if pandora.join(path.file_name().unwrap()).exists() { ImportStatus::Duplicate } else { ImportStatus::Importing };
-        paths.insert(path, state);
+        paths.push(path);
     }
+    paths
+}
+
+fn from_subfolders(launcher: OtherLauncher, folder: &Path, pandora: &Path, check: &dyn Fn(&Path) -> bool) -> Option<ImportFromOtherLauncher> {
+    let subfolders = loop_subfolders(folder, check);
+    if subfolders.is_empty() { return None; }
+
+    let paths = subfolders.iter().map(|path| {
+        let state = if pandora.join(path.file_name().unwrap()).exists() { ImportStatus::Duplicate } else { ImportStatus::Importing };
+        (path.to_path_buf(), state)
+    }).collect::<HashMap<PathBuf, ImportStatus>>();
     Some(ImportFromOtherLauncher {
     	launcher,
     	instances: paths,

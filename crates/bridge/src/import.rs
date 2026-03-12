@@ -17,6 +17,16 @@ pub struct ImportFromOtherLauncher {
 	// pub can_deduplicate: bool,
 }
 
+impl ImportFromOtherLauncher {
+    pub fn new_launcher(launcher: OtherLauncher) -> ImportFromOtherLauncher {
+        ImportFromOtherLauncher {
+            launcher,
+            instances: HashMap::new(),
+            account: None,
+        }
+    }
+}
+
 #[derive(Debug, Display, Clone, Copy, enum_map::Enum, EnumIter, PartialEq, Eq)]
 pub enum OtherLauncher {
     Prism,

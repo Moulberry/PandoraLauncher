@@ -173,7 +173,10 @@ impl Render for ImportPage {
 
         if let Some(import) = &self.import_details {
             let import_from = import.launcher;
-        	let label = format!("Import From {}", import_from);
+           	let label = match import.custom_import {
+                true => ts!("import.dir.custom", launcher = import_from),
+                false => ts!("import.dir.normal", launcher = import_from),
+            };
             let import_accounts = self.import_accounts && import.account.is_some();
 
             // this is just to always make sure it's in alphabetical order.

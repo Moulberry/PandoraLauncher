@@ -14,7 +14,7 @@ struct ModrinthInstanceToImport {
     minecraft_folder: PathBuf,
 }
 
-pub fn import_instances_from_modrinth(backend: &BackendState, modrinth: &Path, modal_action: &ModalAction) -> rusqlite::Result<()> {
+pub fn import_instances_from_modrinth(backend: &BackendState, modrinth: &Path, instances: &HashMap<PathBuf, ImportStatus>, modal_action: &ModalAction) -> rusqlite::Result<()> {
     let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
@@ -43,6 +43,9 @@ pub fn import_instances_from_modrinth(backend: &BackendState, modrinth: &Path, m
 
         let profile = profiles.join(&path);
         if !profile.is_dir() {
+            continue;
+        }
+        if *instances.get(&profile).unwrap() != ImportStatus::Importing {
             continue;
         }
 
@@ -128,9 +131,8 @@ pub fn import_instances_from_modrinth(backend: &BackendState, modrinth: &Path, m
 }
 
 pub fn read_profiles_from_modrinth_db(data_dir: &Path, pandora_dir: &Path) -> rusqlite::Result<Option<ImportFromOtherLauncher>> {
-    let modrinth = data_dir.join("ModrinthApp");
-    let profiles = modrinth.join("profiles");
-    let app_db = modrinth.join("app.db");
+    let profiles = data_dir.join("profiles");
+    let app_db = data_dir.join("app.db");
 
     if !app_db.exists() {
         return Ok(None);
@@ -152,9 +154,5 @@ pub fn read_profiles_from_modrinth_db(data_dir: &Path, pandora_dir: &Path) -> ru
         }
     }
 
-    Ok(Some(ImportFromOtherLauncher {
-    	launcher: OtherLauncher::Modrinth,
-     	account: None,
-      	instances: paths,
-    }))
+    Ok(Some(ImportFromOtherLauncher::new(OtherLauncher::Modrinth, paths)))
 }

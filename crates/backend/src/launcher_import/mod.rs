@@ -29,6 +29,7 @@ mod atlauncher;
 // 		- Options between: accounts (specific account?), instances, deduplication (if possible)
 // - The backend then processes each launcher like we currently do. (in parallel?)
 
+// Basic instance discover program. Finds them one by one and generates a list of them.
 pub fn discover_instances_from_other_launchers(backend: &BackendState) -> ImportFromOtherLaunchers {
     let mut imports = ImportFromOtherLaunchers::default();
 
@@ -39,29 +40,34 @@ pub fn discover_instances_from_other_launchers(backend: &BackendState) -> Import
     let pandora_dir = &backend.directories.instances_dir;
 
     let prism_instances = data_dir.join("PrismLauncher").join("instances");
-    imports.imports[OtherLauncher::Prism] = from_subfolders(OtherLauncher::Prism, &prism_instances, &pandora_dir, &|path| {
-        path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
-    });
+    imports.imports[OtherLauncher::Prism] = get_launcher_details(backend, OtherLauncher::Prism, &prism_instances);
 
     let multimc_instances = data_dir.join("multimc").join("instances");
-    imports.imports[OtherLauncher::MultiMC] = from_subfolders(OtherLauncher::MultiMC, &multimc_instances, &pandora_dir, &|path| {
-        path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
-    });
+    imports.imports[OtherLauncher::MultiMC] = get_launcher_details(backend, OtherLauncher::MultiMC, &multimc_instances);
 
-    if let Ok(import) = read_profiles_from_modrinth_db(data_dir, &pandora_dir) {
+    let modrinth_dir = data_dir.join("ModrinthApp");
+    if let Ok(import) = read_profiles_from_modrinth_db(&modrinth_dir, &pandora_dir) {
         imports.imports[OtherLauncher::Modrinth] = import;
     }
 
     let atlauncher_instances = data_dir.join("atlauncher");
     imports.imports[OtherLauncher::ATLauncher] = get_launcher_details(backend, OtherLauncher::ATLauncher, &atlauncher_instances);
 
-    imports
+  imports
 }
 
+/// Loop through all potential instances and returns the first one found.
 pub fn discover_instances_from_path(backend: &BackendState, path: PathBuf) -> Option<ImportFromOtherLauncher> {
  	debug!("Received request to update data w/path: {:?}", path);
 
-  	for launcher in OtherLauncher::iter() {
+    // modrith doesn't conform to standards, hence we deal with it seperatelly...
+    if let Ok(modrinth) = read_profiles_from_modrinth_db(&path, &backend.directories.instances_dir) {
+        if modrinth.is_some() { return modrinth; }
+    }
+
+  	for launcher in OtherLauncher::iter()
+        .filter(|launcher| *launcher != OtherLauncher::Modrinth)
+    {
         let details = get_launcher_details(backend, launcher, &path);
         if details.is_some() {
             debug!("Returning data from {}", launcher);
@@ -73,41 +79,59 @@ pub fn discover_instances_from_path(backend: &BackendState, path: PathBuf) -> Op
     None
 }
 
+/// Checks to see if the provided path is a valid instance.
+///
+/// Path could be one of the following:
+/// - `{dir}`
+/// - `{dir}/{some_dir}`
+/// - `{dir}/instances/{some_instance}`
+/// where `dir` is the launcher default dir or the dir provided by the user.
 fn instance_check(launcher: OtherLauncher, path: &PathBuf) -> bool {
     match launcher {
-        OtherLauncher::MultiMC | OtherLauncher::Prism => false,
+        OtherLauncher::MultiMC | OtherLauncher::Prism => multimc::is_valid_mmcinstance(path),
         OtherLauncher::Modrinth => false,
         OtherLauncher::ATLauncher => atlauncher::is_valid_atinstance(path),
     }
 }
+/// Checks to see if the provided path is a valid instance.
+///
+/// Path could be one of the following:
+///
 
+/// Attempts to get all the information for that specific launcher.
 fn get_launcher_details(backend: &BackendState, launcher: OtherLauncher, path: &PathBuf) -> Option<ImportFromOtherLauncher> {
     let mut import_data = ImportFromOtherLauncher::new_launcher(launcher);
 
+    // we take the best case scenario and check the current folder.
     let is_instance = instance_check(launcher, &path);
     if is_instance {
         import_data.instances.insert(path.clone(), ImportStatus::Importing);
     } else {
+        // otherwise we check one level deep
         for path in loop_subfolders(&path, &|path| instance_check(launcher, &path.to_path_buf())) {
             import_data.instances.insert(path, ImportStatus::Importing);
         }
+        // and we check the instances folder just in case we're in the main directory.
         for path in loop_subfolders(&path.join("instances"), &|path| instance_check(launcher, &path.to_path_buf())) {
             import_data.instances.insert(path, ImportStatus::Importing);
         }
     }
 
+    // cross-check the instances to be imported with the current imported instances to alert of dupes.
     import_data.instances.iter_mut().for_each(|(instance, status)| {
         if backend.directories.instances_dir.join(instance.file_name().unwrap()).exists() {
             *status = ImportStatus::Duplicate;
         }
     });
 
+    // check for accounts info.
     import_data.account = match launcher {
-        OtherLauncher::MultiMC | OtherLauncher::Prism => None,
+        OtherLauncher::MultiMC | OtherLauncher::Prism => multimc::is_valid_mmcaccount(&path),
         OtherLauncher::Modrinth => None,
         OtherLauncher::ATLauncher => atlauncher::is_valid_ataccount(&path),
     };
 
+    // only if we have something, then the details are valid.
     let valid_details = import_data.account.is_some() && !import_data.instances.is_empty();
     valid_details.then(|| import_data)
 }
@@ -141,11 +165,7 @@ fn from_subfolders(launcher: OtherLauncher, folder: &Path, pandora: &Path, check
         let state = if pandora.join(path.file_name().unwrap()).exists() { ImportStatus::Duplicate } else { ImportStatus::Importing };
         (path.to_path_buf(), state)
     }).collect::<HashMap<PathBuf, ImportStatus>>();
-    Some(ImportFromOtherLauncher {
-    	launcher,
-    	instances: paths,
-        account: None,
-    })
+    Some(ImportFromOtherLauncher::new(launcher, paths))
 }
 
 pub fn try_load_from_other_launcher_formats(folder: &Path) -> Option<InstanceConfiguration> {
@@ -167,14 +187,14 @@ pub async fn import_from_other_launcher(backend: &BackendState, details: ImportF
     match details.launcher {
         OtherLauncher::Prism => {
             let prism = data_dir.join("PrismLauncher");
-            import_from_multimc(backend, &prism, details.account.is_some(), details.instances, modal_action).await;
+            import_from_multimc(backend, &prism, details, modal_action).await;
         },
         OtherLauncher::Modrinth => {
-        	// bit harder to say to modrithn, "hey here are the paths.", so just going to ignore this for now.
-         	// TODO: The above is possible, it just needs some work. THIS PR SHOULD NOT BE MERGED UNTIL THIS IS RESOLVED.
             if details.instances.iter().any(|(_, status)| *status == ImportStatus::Importing) {
-                let modrinth = data_dir.join("ModrinthApp");
-                if let Err(err) = import_instances_from_modrinth(backend, &modrinth, &modal_action) {
+                // In theory, (due to limitations) the parent, parent path of any instance should be our folder..
+                // if it's not, something went wrong. but at that point something else is probably completely broken...
+                let modrinth = (&details.instances).iter().nth(0).unwrap().0.parent().unwrap().parent().unwrap();
+                if let Err(err) = import_instances_from_modrinth(backend, &modrinth, &details.instances, &modal_action) {
                     log::error!("Sqlite error while importing from modrinth: {err}");
                     modal_action.set_error_message("Sqlite error while importing from modrinth, see logs for more info".into());
                 }
@@ -182,7 +202,7 @@ pub async fn import_from_other_launcher(backend: &BackendState, details: ImportF
         },
         OtherLauncher::MultiMC => {
             let multimc = data_dir.join("multimc");
-            import_from_multimc(backend, &multimc, details.account.is_some(), details.instances, modal_action).await;
+            import_from_multimc(backend, &multimc, details, modal_action).await;
         },
          OtherLauncher::ATLauncher => {
          	let atlauncher = data_dir.join("atlauncher");

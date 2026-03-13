@@ -12,6 +12,7 @@ pub struct ImportFromOtherLauncher {
 	pub launcher: OtherLauncher,
 	pub instances: HashMap<PathBuf, ImportStatus>,
 	pub account: Option<PathBuf>,
+	pub custom_import: bool,
 	// This is placeholder for a future update if we ever implement it.
 	// might remove it before releasing this PR though... (if i don't, then i forgot.)
 	// pub can_deduplicate: bool,
@@ -23,7 +24,11 @@ impl ImportFromOtherLauncher {
             launcher,
             instances: HashMap::new(),
             account: None,
+            custom_import: false,
         }
+    }
+    pub fn new(launcher: OtherLauncher, paths: HashMap<PathBuf, ImportStatus>) -> ImportFromOtherLauncher {
+        ImportFromOtherLauncher { launcher, instances: paths, account: None, custom_import: false }
     }
 }
 

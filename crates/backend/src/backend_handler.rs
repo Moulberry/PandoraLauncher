@@ -840,7 +840,10 @@ impl BackendState {
                 _ = channel.send(result);
             },
             MessageToBackend::GetImportFromCustomLauncherPath { channel, path } => {
-                let result = crate::launcher_import::discover_instances_from_path(&self, path);
+                let mut result = crate::launcher_import::discover_instances_from_path(&self, path);
+                if let Some(data) = &mut result {
+                    data.custom_import = true;
+                }
                 _ = channel.send(result);
             },
             MessageToBackend::GetSyncState { channel } => {

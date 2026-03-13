@@ -2,13 +2,13 @@ use std::{collections::HashMap, path::{Path, PathBuf}, str::FromStr};
 use auth::{credentials::AccountCredentials, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
 use bridge::{import::{ImportFromOtherLauncher, ImportStatus}, modal_action::{ModalAction, ProgressTracker}};
 use chrono::DateTime;
-use log::debug;
+use log::{debug, warn};
 use schema::{instance::{InstanceConfiguration, InstanceMemoryConfiguration,  InstanceWrapperCommandConfiguration}, loader::Loader};
 use serde::Deserialize;
 use uuid::Uuid;
 use crate::{BackendState, account::BackendAccount, write_safe};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct AtLauncherConfig {
     maximum_memory: Option<usize>,
@@ -255,13 +255,25 @@ pub fn is_valid_ataccount(path: &Path) -> Option<PathBuf> {
 }
 
 
-pub async fn import_from_atlauncher(backend: &BackendState, path: &Path, details: ImportFromOtherLauncher, modal_action: ModalAction) {
+pub async fn import_from_atlauncher(backend: &BackendState, details: ImportFromOtherLauncher, modal_action: ModalAction) {
+    let path =
+    if let Some(account_path) = &details.account {
+        Some(account_path.parent().unwrap().parent().unwrap())
+    } else if !details.instances.is_empty() {
+        Some((&details.instances).keys().nth(0).unwrap().parent().unwrap().parent().unwrap())
+    } else { None };
+
  	// probably a better way of doing this mess...
  	let launcher_config = {
- 		match std::fs::read(path.join("configs/ATLauncher.json")).ok() {
- 		    Some(launcher_config_bytes) => serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json"),
- 		    None => return,
- 		}
+        if let Some(config_path) = path {
+      		match std::fs::read(config_path.join("configs/ATLauncher.json")).ok() {
+      		    Some(launcher_config_bytes) => serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json"),
+      		    None => {
+                    warn!("Failed to read config path for ATLauncher.json!");
+                    return;
+                },
+      		}
+        } else { AtLauncherConfig::default() }
  	};
  	// log::debug!("Launcher config: {}", launcher_config.is_some());
     if let Some(account_path) = details.account {
@@ -301,15 +313,15 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, account_path: &
     backend.account_info.write().modify(|accounts| {
         let mut last_account_username = None;
         for account in &accounts_json {
-               tracker.add_count(1);
+            tracker.add_count(1);
              tracker.notify();
              accounts.accounts.insert(account.uuid, BackendAccount {
                 username: account.minecraft_username.clone().into(),
-                 offline: false,
-                  head: None,
-              });
+                offline: false,
+                head: None,
+            });
             if let Some(last_account) = launcher_config.last_account && account.username == last_account {
-                   last_account_username = Some(account.uuid);
+                last_account_username = Some(account.uuid);
             }
         }
         accounts.selected_account = last_account_username;
@@ -400,6 +412,7 @@ fn import_instances_from_atlauncher(backend: &BackendState, instances: HashMap<P
 
     for (entry, state) in instances {
 	    if state != ImportStatus::Importing {
+					println!("Not importing: {:?}", entry);
 		    continue;
 	    }
 

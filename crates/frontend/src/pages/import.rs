@@ -1,4 +1,4 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 
 use bridge::{handle::BackendHandle, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, ImportStatus, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
 use gpui::{prelude::*, *};
@@ -91,7 +91,7 @@ impl Render for ImportPage {
 
         if self.failed_details {
             self.failed_details = false;
-            let notification: Notification = (NotificationType::Error, "Unable to find a valid instance/instances/account in the provided path").into();
+            let notification: Notification = (NotificationType::Error, ts!("import.failed")).into();
             window.push_notification(notification.autohide(true), cx);
         }
 
@@ -275,6 +275,8 @@ impl Render for ImportPage {
                         let title = SharedString::new(label.clone());
                         crate::modals::generic::show_modal(window, cx, title, "Error importing".into(), modal_action);
                         page.import_details = None;
+                        // might be a tad bit over-the-top for what we technically need...
+                        page.update_launcher_paths(cx);
                     }))
                 )
             )

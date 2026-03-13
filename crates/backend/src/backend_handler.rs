@@ -943,6 +943,7 @@ impl BackendState {
             },
             MessageToBackend::GetImportFromCustomLauncherPath { channel, path } => {
                 let mut result = crate::launcher_import::discover_instances_from_path(&self, path);
+                // this is required to tell the front-end we have used the custom system. Easier done here than in the function itself.
                 if let Some(data) = &mut result {
                     data.custom_import = true;
                 }

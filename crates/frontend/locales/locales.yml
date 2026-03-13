@@ -789,9 +789,11 @@ import:
   enabled:
     en: "Import the above selected from %{launcher}"
   duplicated:
-    en: "Unable to Import. An instance with the name \"%{name}\" already exists."
+    en: "An instance with the name \"%{name}\" already exists."
   dir:
     normal:
       en: "Import from %{launcher}"
     custom:
       en: "Import from Custom Directory (Using %{launcher} import schema)"
+  failed:
+    en: "Unable to find a valid instance/instances/account in the provided path."

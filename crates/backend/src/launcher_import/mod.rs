@@ -1,6 +1,6 @@
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::path::{Path, PathBuf};
 
-use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, ImportStatus, OtherLauncher, OtherLauncherIter}, modal_action::ModalAction};
+use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, ImportStatus, OtherLauncher}, modal_action::ModalAction};
 use log::debug;
 use schema::instance::InstanceConfiguration;
 use strum::IntoEnumIterator;
@@ -17,19 +17,17 @@ mod modrinth;
 mod atlauncher;
 // Leaving this here as a note...
 //
-// Each launcher importer we support needs to:
-// - implement the below API.
+// Each launcher importer supported does the following:
 //
-// besides that, unpon requesting the files for a certain launcher we need to...
 // - Get every launcher to scan the directory to see which is valid.
 // 		(this might get expensive but i don't see any other way. Worst case scenario we just shove rayon at it?)
-// - If it is a valid launcher, we need to return an object of said launcher with the bsaic details.
-// 		- Alternatively, an generalised object in a vector? of all the launchers.
+// - If it is a valid launcher, we need to return an object of said launcher with the basic details.
 // - The user on the front-end selects what they want to import.
 // 		- Options between: accounts (specific account?), instances, deduplication (if possible)
 // - The backend then processes each launcher like we currently do. (in parallel?)
 
-// Basic instance discover program. Finds them one by one and generates a list of them.
+/// Basic instance discover program. Finds them one by one and generates a list of them.
+/// An extension in a way of the custom path version, but returns more information.
 pub fn discover_instances_from_other_launchers(backend: &BackendState) -> ImportFromOtherLaunchers {
     let mut imports = ImportFromOtherLaunchers::default();
 
@@ -60,7 +58,7 @@ pub fn discover_instances_from_other_launchers(backend: &BackendState) -> Import
 pub fn discover_instances_from_path(backend: &BackendState, path: PathBuf) -> Option<ImportFromOtherLauncher> {
  	debug!("Received request to update data w/path: {:?}", path);
 
-    // modrith doesn't conform to standards, hence we deal with it seperatelly...
+    // modrith doesn't conform to standards, hence we deal with it separately...
     if let Ok(modrinth) = read_profiles_from_modrinth_db(&path, &backend.directories.instances_dir) {
         if modrinth.is_some() { return modrinth; }
     }
@@ -85,6 +83,7 @@ pub fn discover_instances_from_path(backend: &BackendState, path: PathBuf) -> Op
 /// - `{dir}`
 /// - `{dir}/{some_dir}`
 /// - `{dir}/instances/{some_instance}`
+///
 /// where `dir` is the launcher default dir or the dir provided by the user.
 fn instance_check(launcher: OtherLauncher, path: &PathBuf) -> bool {
     match launcher {
@@ -93,10 +92,6 @@ fn instance_check(launcher: OtherLauncher, path: &PathBuf) -> bool {
         OtherLauncher::ATLauncher => atlauncher::is_valid_atinstance(path),
     }
 }
-/// Checks to see if the provided path is a valid instance.
-///
-/// Path could be one of the following:
-///
 
 /// Attempts to get all the information for that specific launcher.
 fn get_launcher_details(backend: &BackendState, launcher: OtherLauncher, path: &PathBuf) -> Option<ImportFromOtherLauncher> {
@@ -157,37 +152,11 @@ fn loop_subfolders(folder: &Path, check: &dyn Fn(&Path) -> bool) -> Vec<PathBuf>
     paths
 }
 
-fn from_subfolders(launcher: OtherLauncher, folder: &Path, pandora: &Path, check: &dyn Fn(&Path) -> bool) -> Option<ImportFromOtherLauncher> {
-    let subfolders = loop_subfolders(folder, check);
-    if subfolders.is_empty() { return None; }
-
-    let paths = subfolders.iter().map(|path| {
-        let state = if pandora.join(path.file_name().unwrap()).exists() { ImportStatus::Duplicate } else { ImportStatus::Importing };
-        (path.to_path_buf(), state)
-    }).collect::<HashMap<PathBuf, ImportStatus>>();
-    Some(ImportFromOtherLauncher::new(launcher, paths))
-}
-
-pub fn try_load_from_other_launcher_formats(folder: &Path) -> Option<InstanceConfiguration> {
-    let multimc_instance_cfg = folder.join("instance.cfg");
-    let multimc_mmc_pack = folder.join("mmc-pack.json");
-    if multimc_instance_cfg.exists() && multimc_mmc_pack.exists() {
-        return try_load_from_multimc(&multimc_instance_cfg, &multimc_mmc_pack);
-    }
-
-    None
-}
-
 pub async fn import_from_other_launcher(backend: &BackendState, details: ImportFromOtherLauncher, modal_action: ModalAction) {
-    let Some(base_dirs) = directories::BaseDirs::new() else {
-        return;
-    };
-    let data_dir = base_dirs.data_dir();
-
+    println!("Recieved import request with data: {:#?}", details);
     match details.launcher {
         OtherLauncher::Prism => {
-            let prism = data_dir.join("PrismLauncher");
-            import_from_multimc(backend, &prism, details, modal_action).await;
+            import_from_multimc(backend, details, modal_action).await;
         },
         OtherLauncher::Modrinth => {
             if details.instances.iter().any(|(_, status)| *status == ImportStatus::Importing) {
@@ -201,12 +170,20 @@ pub async fn import_from_other_launcher(backend: &BackendState, details: ImportF
             }
         },
         OtherLauncher::MultiMC => {
-            let multimc = data_dir.join("multimc");
-            import_from_multimc(backend, &multimc, details, modal_action).await;
+            import_from_multimc(backend, details, modal_action).await;
         },
          OtherLauncher::ATLauncher => {
-         	let atlauncher = data_dir.join("atlauncher");
-          	import_from_atlauncher(backend, &atlauncher, details, modal_action).await;
+          	import_from_atlauncher(backend, details, modal_action).await;
         }
     }
+}
+
+pub fn try_load_from_other_launcher_formats(folder: &Path) -> Option<InstanceConfiguration> {
+    let multimc_instance_cfg = folder.join("instance.cfg");
+    let multimc_mmc_pack = folder.join("mmc-pack.json");
+    if multimc_instance_cfg.exists() && multimc_mmc_pack.exists() {
+        return try_load_from_multimc(&multimc_instance_cfg, &multimc_mmc_pack);
+    }
+
+    None
 }

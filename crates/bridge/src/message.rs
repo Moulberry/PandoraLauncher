@@ -12,7 +12,7 @@ use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, OtherLauncher}, install::ContentInstall, instance::{
+    account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers}, install::ContentInstall, instance::{
         InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus,
         InstanceWorldSummary,
     }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction

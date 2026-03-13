@@ -240,7 +240,7 @@ struct MultiMCAccountTokenExtra {
     uhs: Option<Arc<str>>,
 }
 
-pub async fn import_from_multimc(backend: &BackendState, path: &Path, details: ImportFromOtherLauncher, modal_action: ModalAction) {
+pub async fn import_from_multimc(backend: &BackendState, details: ImportFromOtherLauncher, modal_action: ModalAction) {
     if let Some(path) = details.account {
         import_accounts_from_multimc(backend, &path, &modal_action).await;
     }

@@ -9,7 +9,7 @@ use parking_lot::{RwLock, RwLockReadGuard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rc_zip_sync::EntryHandle;
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{content::ContentSource, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, loader::Loader, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta};
+use schema::{content::ContentSource, curseforge::CurseforgeFile, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, loader::Loader, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DeserializeAs};
 use sha1::{Digest, Sha1};
@@ -25,6 +25,10 @@ pub enum ContentUpdateAction {
         file: ModrinthFile,
         project_id: Arc<str>,
     },
+    Curseforge {
+        file: CurseforgeFile,
+        project_id: u32,
+    }
 }
 
 impl ContentUpdateAction {
@@ -35,6 +39,7 @@ impl ContentUpdateAction {
             ContentUpdateAction::AlreadyUpToDate => ContentUpdateStatus::AlreadyUpToDate,
             ContentUpdateAction::ManualInstall => ContentUpdateStatus::ManualInstall,
             ContentUpdateAction::Modrinth { .. } => ContentUpdateStatus::Modrinth,
+            ContentUpdateAction::Curseforge { .. } => ContentUpdateStatus::Curseforge,
         }
     }
 }
@@ -231,6 +236,7 @@ impl ModMetadataManager {
             name: Some(name),
             authors,
             version_str: format!("v{}", fabric_mod_json.version).into(),
+            rich_description: None,
             png_icon,
             extra: ContentType::Fabric
         }))
@@ -282,6 +288,7 @@ impl ModMetadataManager {
             name: Some(name),
             authors,
             version_str: version.into(),
+            rich_description: None,
             png_icon,
             extra,
         }))
@@ -331,6 +338,7 @@ impl ModMetadataManager {
             name: Some(first.name.clone()),
             authors: authors.into(),
             version_str: version.into(),
+            rich_description: None,
             png_icon,
             extra: ContentType::LegacyForge,
         }))
@@ -428,6 +436,7 @@ impl ModMetadataManager {
             name: Some(modrinth_index_json.name),
             authors,
             version_str: format!("v{}", modrinth_index_json.version_id).into(),
+            rich_description: None,
             png_icon,
             extra: ContentType::ModrinthModpack {
                 downloads: modrinth_index_json.files,
@@ -501,6 +510,7 @@ impl ModMetadataManager {
             name: Some(name.clone()),
             authors: author.unwrap_or_default(),
             version_str: version.unwrap_or_default(),
+            rich_description: None,
             png_icon: None,
             extra: ContentType::JavaModule
         }))
@@ -525,7 +535,8 @@ impl ModMetadataManager {
             hash,
             name: None,
             authors: "".into(),
-            version_str: pack_mcmeta.pack.description,
+            version_str: "".into(),
+            rich_description: Some(Arc::new(pack_mcmeta.pack.description)),
             png_icon,
             extra: ContentType::ResourcePack
         }))
@@ -670,11 +681,10 @@ impl ContentSources {
             Ok(existing) => {
                 let old_source = &mut values[existing].1;
                 let skip = match old_source {
-                    ContentSource::Manual => value == ContentSource::Manual,
-                    ContentSource::ModrinthUnknown => value == ContentSource::ModrinthUnknown,
-                    ContentSource::ModrinthProject { project: _ } => {
+                    ContentSource::ModrinthProject { project_id: _ } => {
                         old_source == &value || value == ContentSource::ModrinthUnknown
                     },
+                    _ => old_source == &value
                 };
                 if skip {
                     return false;
@@ -729,14 +739,19 @@ impl ContentSources {
                 data.push(1_u8);
                 data.push(0_u8);
             },
-            ContentSource::ModrinthProject { project } => {
+            ContentSource::ModrinthProject { project_id } => {
                 data.push(2_u8);
-                if project.len() > 127 {
-                    panic!("modrinth project id was unexpectedly big: {:?}", &project);
+                if project_id.len() > 127 {
+                    panic!("modrinth project id was unexpectedly big: {:?}", &project_id);
                 }
-                data.push(project.len() as u8);
-                data.extend_from_slice(project.as_bytes());
+                data.push(project_id.len() as u8);
+                data.extend_from_slice(project_id.as_bytes());
             },
+            ContentSource::CurseforgeProject { project_id } => {
+                data.push(3_u8);
+                data.push(4_u8);
+                data.extend_from_slice(&project_id.to_le_bytes());
+            }
         }
     }
 
@@ -824,7 +839,17 @@ impl ContentSources {
                             continue;
                         };
 
-                        ContentSource::ModrinthProject { project: project_id.into() }
+                        ContentSource::ModrinthProject { project_id: project_id.into() }
+                    },
+                    3 => {
+                        debug_assert_eq!(type_and_size_buf[1], 4);
+                        let mut id_buf = [0_u8; 4];
+
+                        if cursor.read_exact(&mut id_buf).is_err() {
+                            break;
+                        }
+
+                        ContentSource::CurseforgeProject { project_id: u32::from_le_bytes(id_buf) }
                     },
                     _ => {
                         cursor.consume(type_and_size_buf[1] as usize);

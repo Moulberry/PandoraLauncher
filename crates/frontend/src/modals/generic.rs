@@ -30,7 +30,7 @@ pub fn show_notification_with_note(
     let notification = notification
         .autohide(false)
         .content(move |notification, window, cx| {
-            if let Some(error) = &*modal_action.error.read().unwrap() {
+            if let Some(error) = &*modal_action.error.read() {
                 let error_widget = ErrorAlert::new("error", error_title.clone(), error.clone().into());
                 return error_widget.into_any_element();
             }
@@ -39,8 +39,38 @@ pub fn show_notification_with_note(
                 notification.dismiss(window, cx);
             }
 
-            let trackers = modal_action.trackers.trackers.read().unwrap();
+            let mut trackers = modal_action.trackers.trackers.upgradable_read();
             let mut progress_entries = Vec::with_capacity(trackers.len());
+
+            let mut to_remove = Vec::new();
+
+            let mut finishing_tracker_slots = 8;
+            for (index, tracker) in trackers.iter().enumerate() {
+                if let Some(finished_at) = tracker.get_finished_at() {
+                    let finish_type = tracker.finish_type();
+                    if finish_type == ProgressTrackerFinishType::Fast {
+                        to_remove.push(index);
+                        continue;
+                    }
+
+                    let elapsed = finished_at.elapsed().as_secs_f32();
+                    if elapsed >= 2.0 {
+                        to_remove.push(index);
+                        continue;
+                    }
+                } else {
+                    finishing_tracker_slots -= 1;
+                }
+            }
+
+            if !to_remove.is_empty() {
+                trackers.with_upgraded(|trackers| {
+                    for index in to_remove.iter().rev() {
+                        trackers.remove(*index);
+                    }
+                });
+            }
+
             for tracker in &*trackers {
                 let mut opacity = 1.0;
 
@@ -50,19 +80,17 @@ pub fn show_notification_with_note(
                 }
 
                 if let Some(finished_at) = tracker.get_finished_at() {
-                    let finish_type = tracker.finish_type();
-
-                    if finish_type == ProgressTrackerFinishType::Fast {
+                    if finishing_tracker_slots <= 0 {
                         continue;
                     }
+                    finishing_tracker_slots -= 1;
 
                     let elapsed = finished_at.elapsed().as_secs_f32();
-                    if elapsed >= 2.0 {
-                        continue;
-                    } else if elapsed >= 1.0 {
-                        opacity = 2.0 - elapsed;
+                    if elapsed >= 1.0 {
+                        opacity = (2.0 - elapsed).max(0.0);
                     }
 
+                    let finish_type = tracker.finish_type();
                     if finish_type == ProgressTrackerFinishType::Error {
                         progress_bar.color = ProgressBarColor::Error;
                     } else {
@@ -80,7 +108,7 @@ pub fn show_notification_with_note(
             }
             drop(trackers);
 
-            if let Some(visit_url) = &*modal_action.visit_url.read().unwrap() {
+            if let Some(visit_url) = &*modal_action.visit_url.read() {
                 let message = SharedString::new(Arc::clone(&visit_url.message));
                 let url = Arc::clone(&visit_url.url);
                 progress_entries.push(div().p_3().child(Button::new("visit").success().label(message).on_click(
@@ -103,7 +131,7 @@ pub fn show_modal(
     modal_action: ModalAction,
 ) {
     window.open_dialog(cx, move |modal, window, cx| {
-        if let Some(error) = &*modal_action.error.read().unwrap() {
+        if let Some(error) = &*modal_action.error.read() {
             let error_widget = ErrorAlert::new("error", error_title.clone(), error.clone().into());
 
             return modal.title(title.clone()).child(v_flex().gap_3().child(error_widget))
@@ -119,7 +147,7 @@ pub fn show_modal(
         if let Some(finished_at) = modal_action.get_finished_at() {
             is_finishing = true;
 
-            let prevent_finish = modal_action.visit_url.read().unwrap().as_ref().map(|v| v.prevent_auto_finish).unwrap_or(false);
+            let prevent_finish = modal_action.visit_url.read().as_ref().map(|v| v.prevent_auto_finish).unwrap_or(false);
 
             if !prevent_finish {
                 let elapsed = finished_at.elapsed().as_secs_f32();
@@ -135,8 +163,38 @@ pub fn show_modal(
             }
         }
 
-        let trackers = modal_action.trackers.trackers.read().unwrap();
+        let mut trackers = modal_action.trackers.trackers.upgradable_read();
         let mut progress_entries = Vec::with_capacity(trackers.len());
+
+        let mut to_remove = Vec::new();
+
+        let mut finishing_tracker_slots = 8;
+        for (index, tracker) in trackers.iter().enumerate() {
+            if let Some(finished_at) = tracker.get_finished_at() {
+                let finish_type = tracker.finish_type();
+                if finish_type == ProgressTrackerFinishType::Fast {
+                    to_remove.push(index);
+                    continue;
+                }
+
+                let elapsed = finished_at.elapsed().as_secs_f32();
+                if elapsed >= 2.0 {
+                    to_remove.push(index);
+                    continue;
+                }
+            } else {
+                finishing_tracker_slots -= 1;
+            }
+        }
+
+        if !to_remove.is_empty() {
+            trackers.with_upgraded(|trackers| {
+                for index in to_remove.iter().rev() {
+                    trackers.remove(*index);
+                }
+            });
+        }
+
         for tracker in &*trackers {
             let mut opacity = 1.0;
 
@@ -146,19 +204,17 @@ pub fn show_modal(
             }
 
             if let Some(finished_at) = tracker.get_finished_at() {
-                let finish_type = tracker.finish_type();
-
-                if finish_type == ProgressTrackerFinishType::Fast {
+                if finishing_tracker_slots <= 0 {
                     continue;
                 }
+                finishing_tracker_slots -= 1;
 
                 let elapsed = finished_at.elapsed().as_secs_f32();
-                if elapsed >= 2.0 {
-                    continue;
-                } else if elapsed >= 1.0 {
-                    opacity = 2.0 - elapsed;
+                if elapsed >= 1.0 {
+                    opacity = (2.0 - elapsed).max(0.0);
                 }
 
+                let finish_type = tracker.finish_type();
                 if finish_type == ProgressTrackerFinishType::Error {
                     progress_bar.color = ProgressBarColor::Error;
                 } else {
@@ -176,7 +232,7 @@ pub fn show_modal(
         }
         drop(trackers);
 
-        if let Some(visit_url) = &*modal_action.visit_url.read().unwrap() {
+        if let Some(visit_url) = &*modal_action.visit_url.read() {
             let message = SharedString::new(Arc::clone(&visit_url.message));
             let url = Arc::clone(&visit_url.url);
             progress_entries.push(div().p_3().child(Button::new("visit").info().icon(PandoraIcon::Globe).label(message).on_click(

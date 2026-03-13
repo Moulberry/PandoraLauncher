@@ -1,12 +1,9 @@
-use std::{
-    ffi::OsString,
-    sync::{Arc, atomic::Ordering},
-};
+use std::{ffi::OsString, sync::Arc};
 
 use bridge::{
     handle::BackendHandle,
     instance::{InstanceID, InstanceServerSummary, InstanceWorldSummary},
-    message::{AtomicBridgeDataLoadState, MessageToBackend, QuickPlayLaunch}, serial::AtomicOptionSerial,
+    message::{BridgeDataLoadState, MessageToBackend, QuickPlayLaunch}, serial::AtomicOptionSerial,
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -22,9 +19,9 @@ use crate::{entity::instance::InstanceEntry, icon::PandoraIcon, interface_config
 pub struct InstanceQuickplaySubpage {
     instance: InstanceID,
     backend_handle: BackendHandle,
-    worlds_state: Arc<AtomicBridgeDataLoadState>,
+    worlds_state: BridgeDataLoadState,
     world_list: Entity<ListState<WorldsListDelegate>>,
-    servers_state: Arc<AtomicBridgeDataLoadState>,
+    servers_state: BridgeDataLoadState,
     server_list: Entity<ListState<ServersListDelegate>>,
     worlds_serial: AtomicOptionSerial,
     servers_serial: AtomicOptionSerial,
@@ -40,8 +37,8 @@ impl InstanceQuickplaySubpage {
         let instance = instance.read(cx);
         let instance_id = instance.id;
 
-        let worlds_state = Arc::clone(&instance.worlds_state);
-        let servers_state = Arc::clone(&instance.servers_state);
+        let worlds_state = instance.worlds_state.clone();
+        let servers_state = instance.servers_state.clone();
 
         let worlds_list_delegate = WorldsListDelegate {
             id: instance_id,
@@ -104,13 +101,13 @@ impl Render for InstanceQuickplaySubpage {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
         let theme = cx.theme();
 
-        let state = self.worlds_state.load(Ordering::SeqCst);
-        if state.should_load() {
+        self.worlds_state.set_observed();
+        if self.worlds_state.should_load() {
             self.backend_handle.send_with_serial(MessageToBackend::RequestLoadWorlds { id: self.instance }, &self.worlds_serial);
         }
 
-        let state = self.servers_state.load(Ordering::SeqCst);
-        if state.should_load() {
+        self.servers_state.set_observed();
+        if self.servers_state.should_load() {
             self.backend_handle.send_with_serial(MessageToBackend::RequestLoadServers { id: self.instance }, &self.servers_serial);
         }
 

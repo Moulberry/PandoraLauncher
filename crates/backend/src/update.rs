@@ -342,11 +342,7 @@ fn move_new_exe_into(old_exe_path: PathBuf, new_exe_path: PathBuf, new_exe_data:
 
                 log::info!("Running with powershell.exe: {}", command.to_string_lossy());
 
-                runas::Command::new("powershell.exe")
-                    .arg("-Command")
-                    .arg(command)
-                    .gui(true)
-                    .status()
+                std::io::Result::Ok(run_admin_powershell(&command))
             };
 
             match result {
@@ -464,6 +460,44 @@ fn install_app_update(current_app_folder: PathBuf, bytes: &[u8], temp_extract: &
     }
 
     Ok(())
+}
+
+
+#[cfg(windows)]
+fn run_admin_powershell(script: &OsStr) -> std::process::ExitStatus {
+    unsafe {
+        let mut sei: windows::Win32::UI::Shell::SHELLEXECUTEINFOW = std::mem::zeroed();
+        _ = windows::Win32::System::Com::CoInitializeEx(
+            None,
+            windows::Win32::System::Com::COINIT_APARTMENTTHREADED |  windows::Win32::System::Com::COINIT_DISABLE_OLE1DDE,
+        );
+
+        use std::os::windows::ffi::OsStrExt;
+        let encoded = OsStr::new("-Command \"").encode_wide()
+            .chain(script.encode_wide())
+            .chain(OsStr::new("\"\0").encode_wide())
+            .collect::<Vec<_>>();
+
+        sei.fMask = windows::Win32::UI::Shell::SEE_MASK_NOASYNC | windows::Win32::UI::Shell::SEE_MASK_NOCLOSEPROCESS;
+        sei.cbSize = std::mem::size_of::<windows::Win32::UI::Shell::SHELLEXECUTEINFOW>() as _;
+        sei.lpVerb = windows::core::w!("runas");
+        sei.lpFile = windows::core::w!("powershell.exe");
+        sei.lpParameters = windows::core::PCWSTR::from_raw(encoded.as_ptr());
+        sei.nShow = windows::Win32::UI::WindowsAndMessaging::SW_NORMAL.0;
+
+        if windows::Win32::UI::Shell::ShellExecuteExW(&mut sei).is_err() || sei.hProcess.is_invalid() {
+            return std::mem::transmute(!0);
+        }
+
+        windows::Win32::System::Threading::WaitForSingleObject(sei.hProcess, windows::Win32::System::Threading::INFINITE);
+
+        let mut code = 0;
+        if windows::Win32::System::Threading::GetExitCodeProcess(sei.hProcess, &mut code).is_err() {
+            std::mem::transmute(!0)
+        } else {
+            std::mem::transmute(code)
+        }
+    }
 }
 
 fn replace_os_str(input: &OsStr, from: &str, to: &str) -> OsString {

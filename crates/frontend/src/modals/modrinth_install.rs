@@ -592,10 +592,10 @@ impl InstallDialog {
                     let mut existing_projects = FxHashSet::default();
                     let existing_mods = instance.read(cx).mods.read(cx);
                     for summary in existing_mods.iter() {
-                        let ContentSource::ModrinthProject { project } = &summary.content_source else {
+                        let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
                             continue;
                         };
-                        existing_projects.insert(project.clone());
+                        existing_projects.insert(project_id.clone());
                     }
                     required.retain(|dep| !existing_projects.contains(dep.project_id.as_ref().unwrap()));
                 }
@@ -688,9 +688,10 @@ impl InstallDialog {
                                         path: bridge::install::ContentInstallPath::Automatic,
                                         download: ContentDownload::Modrinth {
                                             project_id: dep.project_id.clone().unwrap(),
-                                            version_id: dep.version_id.clone()
+                                            version_id: dep.version_id.clone(),
+                                            install_dependencies: true,
                                         },
-                                        content_source: ContentSource::ModrinthProject { project: dep.project_id.clone().unwrap() },
+                                        content_source: ContentSource::ModrinthProject { project_id: dep.project_id.clone().unwrap() },
                                     })
                                 }
                             }
@@ -704,7 +705,7 @@ impl InstallDialog {
                                     size: install_file.size,
                                 },
                                 content_source: ContentSource::ModrinthProject {
-                                    project: this.project_id.clone()
+                                    project_id: this.project_id.clone()
                                 },
                             });
 

@@ -28,7 +28,6 @@ impl RenderOnce for MenuGroup {
         let title = div()
             .px_2()
             .text_xs()
-            .font_bold()
             .text_color(cx.theme().sidebar_foreground.opacity(0.7))
             .child(self.title);
 

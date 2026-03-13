@@ -63,3 +63,4 @@ walkdir.workspace = true
 [target.'cfg(target_os = "windows")'.dependencies]
 junction = "1.3.0"
 mslnk.workspace = true
+windows.workspace = true

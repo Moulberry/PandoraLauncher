@@ -10,13 +10,13 @@ use auth::{
     serve_redirect::{self, ProcessAuthorizationError},
 };
 use bridge::{
-    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceWorldSummary}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, InstanceID}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
 use image::ImageFormat;
 use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, ProxyConfig, SyncTargets}, instance::InstanceConfiguration, loader::Loader, minecraft_profile::MinecraftProfileResponse, modrinth::ModrinthSideRequirement};
 use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
@@ -112,7 +112,6 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     let state_instances = BackendStateInstances {
         instances: IdSlab::default(),
         instances_generation: 0,
-        reload_immediately: Default::default(),
     };
 
     let mut state_file_watching = BackendStateFileWatching {
@@ -177,7 +176,6 @@ pub enum WatchTarget {
 pub struct BackendStateInstances {
     pub instances: IdSlab<Instance>,
     pub instances_generation: usize,
-    pub reload_immediately: FxHashSet<(InstanceID, ContentFolder)>,
 }
 
 pub struct BackendStateFileWatching {
@@ -254,8 +252,18 @@ impl BackendState {
 
             let path = entry.path();
 
+            let Some(file_name) = path.file_name() else {
+                continue;
+            };
+            if file_name.as_encoded_bytes()[0] == b'.' {
+                continue;
+            }
+
             let mut time = SystemTime::UNIX_EPOCH;
-            if let Ok(metadata) = path.metadata() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() {
+                    return;
+                }
                 if let Ok(created) = metadata.created() {
                     time = time.max(created);
                 }
@@ -365,10 +373,10 @@ impl BackendState {
                 root_path: instance.resolve_real_root_path(),
                 dot_minecraft_folder: instance.dot_minecraft_path.clone(),
                 configuration: instance.configuration.get().clone(),
-                worlds_state: Arc::clone(&instance.worlds_state),
-                servers_state: Arc::clone(&instance.servers_state),
-                mods_state: Arc::clone(&instance.content_state[ContentFolder::Mods].load_state),
-                resource_packs_state: Arc::clone(&instance.content_state[ContentFolder::ResourcePacks].load_state),
+                worlds_state: instance.worlds_state.clone(),
+                servers_state: instance.servers_state.clone(),
+                mods_state: instance.content_state[ContentFolder::Mods].load_state.clone(),
+                resource_packs_state: instance.content_state[ContentFolder::ResourcePacks].load_state.clone(),
             };
             self.send.send(message);
 
@@ -414,11 +422,17 @@ impl BackendState {
 
         let mut instance_state = self.instance_state.write();
         for instance in instance_state.instances.iter_mut() {
-            if let Some(child) = &mut instance.child
-                && !matches!(child.try_wait(), Ok(None))
-            {
-                log::debug!("Child process is no longer alive");
-                instance.child = None;
+            let mut changed = false;
+            instance.processes.retain_mut(|child| {
+                if matches!(child.try_wait(), Ok(None)) {
+                    true
+                } else {
+                    log::debug!("Child process {} is no longer alive", child.id());
+                    changed = true;
+                    false
+                }
+            });
+            if changed {
                 self.send.send(instance.create_modify_message());
             }
         }
@@ -645,7 +659,7 @@ impl BackendState {
             return Vec::new();
         }
 
-        let Some(mods) = self.clone().load_instance_content(id, ContentFolder::Mods).await else {
+        let Some(mods) = Instance::load_content(self.clone(), id, ContentFolder::Mods).await else {
             return Vec::new();
         };
 
@@ -880,92 +894,6 @@ impl BackendState {
         add_mods
     }
 
-    pub async fn load_instance_servers(self: Arc<Self>, id: InstanceID) -> Option<Arc<[InstanceServerSummary]>> {
-        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let mut file_watching = self.file_watching.write();
-            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                id: instance.id,
-            });
-        }
-
-        let result = Instance::load_servers(self.instance_state.clone(), id).await;
-
-        if let Some((servers, newly_loaded)) = result.clone() && newly_loaded {
-            self.send.send(MessageToFrontend::InstanceServersUpdated {
-                id,
-                servers: Arc::clone(&servers)
-            });
-        }
-
-        result.map(|(servers, _)| servers)
-
-    }
-
-    pub async fn load_instance_content(self: Arc<Self>, id: InstanceID, folder: ContentFolder) -> Option<Arc<[InstanceContentSummary]>> {
-        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let mut file_watching = self.file_watching.write();
-            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                id: instance.id,
-            });
-            let content_state = &mut instance.content_state[folder];
-            file_watching.watch_filesystem(content_state.path.clone(), WatchTarget::InstanceContentDir {
-                id: instance.id,
-                folder
-            });
-        }
-
-        let result = Instance::load_content(self.instance_state.clone(), id, &self.mod_metadata_manager, folder).await;
-
-        if let Some((content, newly_loaded)) = result.clone() && newly_loaded {
-            match folder {
-                ContentFolder::Mods => {
-                    self.send.send(MessageToFrontend::InstanceModsUpdated {
-                        id,
-                        mods: Arc::clone(&content)
-                    });
-                },
-                ContentFolder::ResourcePacks => {
-                    self.send.send(MessageToFrontend::InstanceResourcePacksUpdated {
-                        id,
-                        resource_packs: Arc::clone(&content)
-                    });
-                },
-            }
-        }
-
-        result.map(|(content, _)| content)
-    }
-
-    pub async fn load_instance_worlds(self: Arc<Self>, id: InstanceID) -> Option<Arc<[InstanceWorldSummary]>> {
-        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let mut file_watching = self.file_watching.write();
-            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                id: instance.id,
-            });
-            file_watching.watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir {
-                id: instance.id,
-            });
-        }
-
-        let result = Instance::load_worlds(self.instance_state.clone(), id).await;
-
-        if let Some((worlds, newly_loaded)) = result.clone() && newly_loaded {
-            self.send.send(MessageToFrontend::InstanceWorldsUpdated {
-                id,
-                worlds: Arc::clone(&worlds)
-            });
-
-            let mut file_watching = self.file_watching.write();
-            for summary in worlds.iter() {
-                file_watching.watch_filesystem(summary.level_path.clone(), WatchTarget::InstanceWorldDir {
-                    id,
-                });
-            }
-        }
-
-        result.map(|(worlds, _)| worlds)
-    }
-
     pub async fn create_instance_sanitized(&self, name: &str, version: &str, loader: Loader, icon: Option<EmbeddedOrRaw>) -> Option<PathBuf> {
         let mut name = sanitize_filename::sanitize_with_options(name, sanitize_filename::Options { windows: true, ..Default::default() });
 
@@ -1035,7 +963,7 @@ impl BackendState {
         Some(instance_dir.clone())
     }
 
-    pub async fn rename_instance(&self, id: InstanceID, name: &str) {
+    pub async fn rename_instance(self: &Arc<Self>, id: InstanceID, name: &str) {
         if !crate::is_single_component_path_str(&name) {
             self.send.send_warning(format!("Unable to rename instance, name must not be a path: {}", name));
             return;
@@ -1052,7 +980,7 @@ impl BackendState {
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             if cfg!(windows) {
                 self.file_watching.write().unwatch_subdirectories_of_instance(id);
-                instance.mark_all_dirty();
+                instance.mark_all_dirty(self, false);
             }
 
             let new_instance_dir = self.directories.instances_dir.join(name);

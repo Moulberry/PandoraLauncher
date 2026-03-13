@@ -2,7 +2,7 @@ use std::{io::Write, path::Path, sync::Arc, time::Duration};
 
 use gpui::{App, SharedString, Task};
 use rand::RngCore;
-use schema::modrinth::ModrinthProjectType;
+use schema::{curseforge::CurseforgeClassId, modrinth::ModrinthProjectType};
 use serde::{Deserialize, Serialize};
 
 use crate::{pages::instance::instance_page::InstanceSubpageType, ts, ui::PageType};
@@ -15,7 +15,7 @@ struct InterfaceConfigHolder {
 
 impl gpui::Global for InterfaceConfigHolder {}
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub active_theme: SharedString,
@@ -31,12 +31,14 @@ pub struct InterfaceConfig {
     pub quick_delete_mods: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub quick_delete_instance: bool,
+    #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
+    pub content_install_latest: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub modrinth_install_normally: bool,
-    #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub modrinth_filter_version: bool,
-    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub content_filter_version: bool,
+    #[serde(default = "default_modrinth_project_type", deserialize_with = "schema::try_deserialize")]
     pub modrinth_page_project_type: ModrinthProjectType,
+    #[serde(default = "default_curseforge_class_id", deserialize_with = "schema::try_deserialize")]
+    pub curseforge_page_class_id: CurseforgeClassId,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -49,6 +51,38 @@ pub struct InterfaceConfig {
     pub instances_view_mode: InstancesViewMode,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub instance_subpage: InstanceSubpageType,
+}
+
+fn default_modrinth_project_type() -> ModrinthProjectType {
+    ModrinthProjectType::Mod
+}
+
+fn default_curseforge_class_id() -> CurseforgeClassId {
+    CurseforgeClassId::Mod
+}
+
+impl Default for InterfaceConfig {
+    fn default() -> Self {
+        Self {
+            active_theme: Default::default(),
+            main_window_bounds: Default::default(),
+            sidebar_width: Default::default(),
+            main_page: Default::default(),
+            page_path: Default::default(),
+            quick_delete_mods: Default::default(),
+            quick_delete_instance: Default::default(),
+            content_install_latest: true,
+            content_filter_version: Default::default(),
+            modrinth_page_project_type: default_modrinth_project_type(),
+            curseforge_page_class_id: default_curseforge_class_id(),
+            hide_main_window_on_launch: Default::default(),
+            quit_on_main_closed: Default::default(),
+            hide_server_addresses: Default::default(),
+            show_snapshots_in_create_instance: Default::default(),
+            instances_view_mode: Default::default(),
+            instance_subpage: Default::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

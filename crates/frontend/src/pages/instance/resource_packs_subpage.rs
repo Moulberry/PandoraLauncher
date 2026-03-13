@@ -1,15 +1,13 @@
-use std::{path::{Path, PathBuf}, sync::{
-    atomic::Ordering, Arc
-}};
+use std::path::{Path, PathBuf};
 
 use bridge::{
-    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::InstanceID, message::{AtomicBridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
+    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::InstanceID, message::{BridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
     ActiveTheme as _, Sizable, WindowExt, button::{Button, ButtonVariants}, h_flex, input::SelectAll, list::ListState, notification::{Notification, NotificationType}, v_flex
 };
-use schema::{content::ContentSource, loader::Loader, modrinth::ModrinthProjectType};
+use schema::{content::ContentSource, curseforge::CurseforgeClassId, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
 use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, root, ts, ui::PageType};
@@ -20,7 +18,7 @@ pub struct InstanceResourcePacksSubpage {
     instance_version: Ustr,
     instance_name: SharedString,
     backend_handle: BackendHandle,
-    resource_packs_state: Arc<AtomicBridgeDataLoadState>,
+    resource_packs_state: BridgeDataLoadState,
     resource_pack_list: Entity<ListState<ContentListDelegate>>,
     load_serial: AtomicOptionSerial,
     _add_from_file_task: Option<Task<()>>,
@@ -39,7 +37,7 @@ impl InstanceResourcePacksSubpage {
         let instance_id = instance.id;
         let instance_name = instance.name.clone();
 
-        let resource_packs_state = Arc::clone(&instance.resource_packs_state);
+        let resource_packs_state = instance.resource_packs_state.clone();
 
         let mut resource_packs_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone(), instance_loader, instance_version);
         resource_packs_list_delegate.set_content(instance.resource_packs.read(cx));
@@ -92,8 +90,8 @@ impl Render for InstanceResourcePacksSubpage {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
         let theme = cx.theme();
 
-        let state = self.resource_packs_state.load(Ordering::SeqCst);
-        if state.should_load() {
+        self.resource_packs_state.set_observed();
+        if self.resource_packs_state.should_load() {
             self.backend_handle.send_with_serial(MessageToBackend::RequestLoadResourcePacks { id: self.instance }, &self.load_serial);
         }
 
@@ -114,6 +112,15 @@ impl Render for InstanceResourcePacksSubpage {
                 move |_, window, cx| {
                     let page = crate::ui::PageType::Modrinth { installing_for: Some(instance_name.clone()) };
                     InterfaceConfig::get_mut(cx).modrinth_page_project_type = ModrinthProjectType::Resourcepack;
+                    let path = &[PageType::Instances, PageType::InstancePage { name: instance_name.clone() }];
+                    root::switch_page(page, path, window, cx);
+                }
+            }))
+            .child(Button::new("addcf").label(ts!("instance.content.install.from_curseforge")).success().compact().small().on_click({
+                let instance_name = self.instance_name.clone();
+                move |_, window, cx| {
+                    let page = crate::ui::PageType::Curseforge { installing_for: Some(instance_name.clone()) };
+                    InterfaceConfig::get_mut(cx).curseforge_page_class_id = CurseforgeClassId::Resourcepack;
                     let path = &[PageType::Instances, PageType::InstancePage { name: instance_name.clone() }];
                     root::switch_page(page, path, window, cx);
                 }

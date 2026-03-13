@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use indexmap::IndexMap;
-use schema::{auxiliary::AuxDisabledChildren, content::ContentSource, loader::Loader, modification::ModrinthModpackFileDownload};
+use schema::{auxiliary::AuxDisabledChildren, content::ContentSource, loader::Loader, modification::ModrinthModpackFileDownload, text_component::FlatTextComponent};
 use ustr::Ustr;
 
 use crate::safe_path::SafePath;
@@ -79,6 +79,7 @@ pub struct ContentSummary {
     pub hash: [u8; 20],
     pub name: Option<Arc<str>>,
     pub version_str: Arc<str>,
+    pub rich_description: Option<Arc<FlatTextComponent>>,
     pub authors: Arc<str>,
     pub png_icon: Option<Arc<[u8]>>,
     pub extra: ContentType,
@@ -100,6 +101,25 @@ pub enum ContentType {
     ResourcePack,
 }
 
+impl ContentType {
+    pub fn is_strict_minecraft_version(&self) -> bool {
+        match self {
+            Self::ResourcePack => false,
+            _ => true,
+        }
+    }
+
+    pub fn is_strict_loader(&self) -> bool {
+        match self {
+            Self::Fabric => true,
+            Self::LegacyForge => true,
+            Self::Forge => true,
+            Self::NeoForge => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContentUpdateStatus {
     Unknown,
@@ -108,6 +128,7 @@ pub enum ContentUpdateStatus {
     ErrorInvalidHash,
     AlreadyUpToDate,
     Modrinth,
+    Curseforge
 }
 
 impl ContentUpdateStatus {

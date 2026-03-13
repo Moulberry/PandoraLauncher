@@ -1,6 +1,6 @@
 use std::{cell::RefCell, ops::Range, path::{Component, Path}, rc::Rc, sync::{Arc, atomic::AtomicU32}};
 
-use gpui::{AvailableSpace, ContentMask, Element, ElementId, IntoElement, ParentElement, ShapedLine, SharedString, Size, Style, Styled, TextStyle, div, px};
+use gpui::{AvailableSpace, Element, ElementId, IntoElement, ParentElement, ShapedLine, SharedString, Size, Style, Styled, TextStyle, px};
 use gpui_component::button::{Button, ButtonVariants};
 
 use crate::{icon::PandoraIcon, ts};

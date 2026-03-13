@@ -1,6 +1,6 @@
-use std::sync::Arc;
-
 use serde::Deserialize;
+
+use crate::text_component::FlatTextComponent;
 
 #[derive(Deserialize, Debug)]
 pub struct PackMcmeta {
@@ -8,5 +8,6 @@ pub struct PackMcmeta {
 }
 #[derive(Deserialize, Debug)]
 pub struct PackMcmetaPack {
-    pub description: Arc<str>,
+    #[serde(deserialize_with = "crate::text_component::deserialize_flat_text_component_json")]
+    pub description: FlatTextComponent,
 }

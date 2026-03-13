@@ -1,10 +1,10 @@
 #![deny(unused_must_use)]
 
 mod backend;
-use std::{ffi::OsString, io::Write, path::{Path, PathBuf}, sync::{Arc, atomic::Ordering}};
+use std::{ffi::OsString, io::Write, path::{Path, PathBuf}, sync::Arc};
 
 pub use backend::*;
-use bridge::{instance::InstanceContentSummary, message::{AtomicBridgeDataLoadState, BridgeDataLoadState}};
+use bridge::instance::InstanceContentSummary;
 use rand::RngCore;
 use rustc_hash::FxHashSet;
 use serde::Deserialize;
@@ -144,24 +144,8 @@ pub(crate) fn create_content_library_path(content_library_dir: &Path, expected_h
     path
 }
 
-pub(crate) fn cas_update(state: &Arc<AtomicBridgeDataLoadState>, func: impl Fn(BridgeDataLoadState) -> BridgeDataLoadState) {
-    let mut old_state = state.load(Ordering::SeqCst);
-    loop {
-        let new_state = (func)(old_state);
-        if new_state == old_state {
-            return;
-        }
-        let ex = state.compare_exchange(old_state, new_state, Ordering::SeqCst, Ordering::SeqCst);
-        if let Err(changed_state) = ex {
-            old_state = changed_state;
-        } else {
-            return;
-        }
-    }
-}
-
 #[derive(Debug)]
-pub(crate) struct FolderChanges {
+pub struct FolderChanges {
     all_dirty: bool,
     paths: FxHashSet<Arc<Path>>,
 }

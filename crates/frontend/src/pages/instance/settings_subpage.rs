@@ -705,13 +705,7 @@ impl Render for InstanceSettingsSubpage {
                         }
                     })
                 )
-            )
-           	.child(crate::labelled(
-            	ts!("account.single"),
-             	h_flex()
-                .gap_2()
-                .child(Select::new(&self.account_items).placeholder("Using current launcher account").cleanable(true))
-            ));
+            );
 
         let mut version_content = v_flex().gap_2();
 
@@ -752,6 +746,12 @@ impl Render for InstanceSettingsSubpage {
             .child(crate::labelled(
                 ts!("instance.version"),
                 version_content,
+            ))
+            .child(crate::labelled(
+                ts!("account.override_account"),
+                h_flex()
+                .gap_2()
+                .child(Select::new(&self.account_items).placeholder("No override").cleanable(true))
             ))
             .child(crate::labelled(
                 ts!("instance.sync.label"),

@@ -1,13 +1,13 @@
 use std::{path::Path, sync::Arc};
 
 use bridge::{
-    instance::{InstanceID, InstanceContentSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary},
-    message::AtomicBridgeDataLoadState,
+    instance::{InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus, InstanceWorldSummary},
+    message::BridgeDataLoadState,
 };
 use gpui::{prelude::*, *};
 use gpui_component::select::SelectItem;
 use indexmap::IndexMap;
-use schema::{instance::InstanceConfiguration, loader::Loader};
+use schema::instance::InstanceConfiguration;
 
 pub struct InstanceEntries {
     pub entries: IndexMap<InstanceID, Entity<InstanceEntry>>,
@@ -22,10 +22,10 @@ impl InstanceEntries {
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
-        worlds_state: Arc<AtomicBridgeDataLoadState>,
-        servers_state: Arc<AtomicBridgeDataLoadState>,
-        mods_state: Arc<AtomicBridgeDataLoadState>,
-        resource_packs_state: Arc<AtomicBridgeDataLoadState>,
+        worlds_state: BridgeDataLoadState,
+        servers_state: BridgeDataLoadState,
+        mods_state: BridgeDataLoadState,
+        resource_packs_state: BridgeDataLoadState,
         cx: &mut App,
     ) {
         entity.update(cx, |entries, cx| {
@@ -204,13 +204,13 @@ pub struct InstanceEntry {
     pub dot_minecraft_folder: Arc<Path>,
     pub configuration: InstanceConfiguration,
     pub status: InstanceStatus,
-    pub worlds_state: Arc<AtomicBridgeDataLoadState>,
+    pub worlds_state: BridgeDataLoadState,
     pub worlds: Entity<Arc<[InstanceWorldSummary]>>,
-    pub servers_state: Arc<AtomicBridgeDataLoadState>,
+    pub servers_state: BridgeDataLoadState,
     pub servers: Entity<Arc<[InstanceServerSummary]>>,
-    pub mods_state: Arc<AtomicBridgeDataLoadState>,
+    pub mods_state: BridgeDataLoadState,
     pub mods: Entity<Arc<[InstanceContentSummary]>>,
-    pub resource_packs_state: Arc<AtomicBridgeDataLoadState>,
+    pub resource_packs_state: BridgeDataLoadState,
     pub resource_packs: Entity<Arc<[InstanceContentSummary]>>,
 }
 

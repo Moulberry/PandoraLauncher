@@ -41,6 +41,11 @@ pub enum ContentDownload {
     Modrinth {
         project_id: Arc<str>,
         version_id: Option<Arc<str>>,
+        install_dependencies: bool,
+    },
+    Curseforge {
+        project_id: u32,
+        install_dependencies: bool,
     },
     Url {
         url: Arc<str>,

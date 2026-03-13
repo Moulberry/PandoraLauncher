@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use gpui_component::{ActiveTheme as _, StyledExt, h_flex, v_flex};
+use gpui_component::{ActiveTheme as _, h_flex, v_flex};
 
 use crate::icon::PandoraIcon;
 
@@ -56,7 +56,7 @@ impl RenderOnce for ErrorAlert {
                     .child(
                         v_flex()
                             .overflow_hidden()
-                            .child(div().w_full().text_base().truncate().font_semibold().child(self.title))
+                            .child(div().w_full().text_base().truncate().child(self.title))
                             .child(self.message),
                     ),
             )

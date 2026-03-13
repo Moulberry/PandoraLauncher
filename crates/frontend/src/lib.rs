@@ -9,13 +9,13 @@ use bridge::
 ;
 use gpui::*;
 use gpui_component::{
-    notification::{Notification, NotificationType}, Root, StyledExt, WindowExt
+    Root, StyledExt, WindowExt, button::Button, notification::{Notification, NotificationType}
 };
 use indexmap::IndexMap;
 use parking_lot::RwLock;
 
 use crate::{
-    entity::{
+    component::error_alert::ErrorAlert, entity::{
         DataEntities, PanicMessages, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata
     }, interface_config::InterfaceConfig, processor::Processor, root::{LauncherRoot, LauncherRootGlobal}
 };
@@ -201,6 +201,37 @@ pub fn start(
 
         let main_window = open_main_window(&data, cx);
         processor.set_main_window_handle(main_window, cx);
+
+        if cfg!(target_os = "linux") && std::env::var_os("DISPLAY").is_none() {
+            if std::env::var_os("FLATPAK_ID").is_some() {
+                _ = main_window.update(cx, |_, window, cx| {
+                    window.open_dialog(cx, move |modal, _, _| {
+                        let error = "Pandora was downloaded through Flathub, which has a policy disallowing software from accessing both X11 and Wayland.\n\nMinecraft will be forced to run under Wayland, which may cause issues.\n\nhttps://github.com/flathub-infra/flatpak-builder-lint/pull/935";
+                        let error_widget = ErrorAlert::new("error", "Flatpak Permission Warning".into(), error.into());
+
+                        return modal
+                            .child(error_widget)
+                            .overlay_closable(false)
+                            .close_button(false)
+                            .footer(Button::new("ok").label(ts!("common.ok")).on_click(|_, window, cx| window.close_dialog(cx)));
+                    });
+                });
+            } else {
+                _ = main_window.update(cx, |_, window, cx| {
+                    window.open_dialog(cx, move |modal, _, _| {
+                        let error = "It seems that X11/Xwayland is not available.\n\nMinecraft will be forced to run under Wayland, which may cause issues.";
+                        let error_widget = ErrorAlert::new("error", "X11 Unavailable".into(), error.into());
+
+                        return modal
+                            .child(error_widget)
+                            .overlay_closable(false)
+                            .close_button(false)
+                            .footer(Button::new("ok").label(ts!("common.ok")).on_click(|_, window, cx| window.close_dialog(cx)));
+                    });
+                });
+            }
+        }
+
 
         cx.spawn(async move |cx| {
             while let Some(message) = recv.recv().await {

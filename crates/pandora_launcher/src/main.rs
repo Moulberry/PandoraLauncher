@@ -106,7 +106,7 @@ fn run_modal_action(modal_action: ModalAction) {
     loop {
         std::thread::sleep(std::time::Duration::from_millis(100));
 
-        if let Some(error) = &*modal_action.error.read().unwrap() {
+        if let Some(error) = &*modal_action.error.read() {
             show_error(error.to_string());
             return;
         }
@@ -119,7 +119,7 @@ fn run_modal_action(modal_action: ModalAction) {
             return;
         }
 
-        if let Some(visit_url) = &*modal_action.visit_url.write().unwrap() {
+        if let Some(visit_url) = &*modal_action.visit_url.write() {
             if opened.insert(visit_url.url.clone()) {
                 _ = m.println(format!("Open this URL in your browser to continue: {}", visit_url.url));
                 let open = DialogBuilder::message()
@@ -136,7 +136,7 @@ fn run_modal_action(modal_action: ModalAction) {
             }
         }
 
-        let trackers = modal_action.trackers.trackers.read().unwrap();
+        let trackers = modal_action.trackers.trackers.read();
         for tracker in &*trackers {
             let id = tracker.id();
 
@@ -212,6 +212,7 @@ fn setup_logging(level: log::LevelFilter) -> Result<(), fern::InitError> {
         .level_for("backend", level)
         .level_for("frontend", level)
         .level_for("bridge", level)
+        .level_for("gpui_component::text", log::LevelFilter::Off)
         .level(log::LevelFilter::Warn);
 
     let colors_line = ColoredLevelConfig::new().info(fern::colors::Color::BrightWhite);

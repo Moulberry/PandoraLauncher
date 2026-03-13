@@ -682,6 +682,7 @@ dependencies = [
  "ustr",
  "uuid",
  "walkdir",
+ "windows 0.62.2",
  "xmlparser",
 ]
 
@@ -847,6 +848,7 @@ dependencies = [
  "enum-map",
  "enumset",
  "indexmap 2.13.0",
+ "parking_lot",
  "relative-path",
  "rustc-hash 2.1.1",
  "sanitize-filename",
@@ -2548,6 +2550,7 @@ dependencies = [
  "image",
  "indexmap 2.13.0",
  "intrusive-collections",
+ "itertools 0.14.0",
  "lexical-sort",
  "log",
  "lru",
@@ -2984,18 +2987,22 @@ dependencies = [
 [[package]]
 name = "gpui-component"
 version = "0.5.1"
-source = "git+https://github.com/longbridge/gpui-component.git?rev=59c527bfa6bd208f151efc15c9201ac04a1d5df5#59c527bfa6bd208f151efc15c9201ac04a1d5df5"
+source = "git+https://github.com/longbridge/gpui-component.git?rev=4ab817931f5ce946233c4e2dc38774f3c266a9bb#4ab817931f5ce946233c4e2dc38774f3c266a9bb"
 dependencies = [
  "aho-corasick",
  "anyhow",
+ "async-channel 2.5.0",
  "chrono",
  "core-text",
  "enum-iterator",
+ "futures",
  "gpui",
  "gpui-component-macros",
  "gpui_macros",
  "html5ever",
+ "instant",
  "itertools 0.13.0",
+ "log",
  "lsp-types",
  "markdown",
  "markup5ever_rcdom",
@@ -3023,7 +3030,7 @@ dependencies = [
 [[package]]
 name = "gpui-component-macros"
 version = "0.5.1"
-source = "git+https://github.com/longbridge/gpui-component.git?rev=59c527bfa6bd208f151efc15c9201ac04a1d5df5#59c527bfa6bd208f151efc15c9201ac04a1d5df5"
+source = "git+https://github.com/longbridge/gpui-component.git?rev=4ab817931f5ce946233c4e2dc38774f3c266a9bb#4ab817931f5ce946233c4e2dc38774f3c266a9bb"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3817,6 +3824,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
 dependencies = [
  "cfg-if",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

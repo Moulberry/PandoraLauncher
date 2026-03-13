@@ -1,4 +1,4 @@
-use bridge::handle::BackendHandle;
+use bridge::{handle::BackendHandle, instance::InstanceStatus, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants}, h_flex, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex, ActiveTheme, Icon, Sizable
@@ -91,6 +91,8 @@ impl InstanceList {
             Icon::default().path(icon_path).size_16().min_w_16().min_h_16().into_any_element()
         };
 
+        let play_button = render_play_button(item, self.backend_handle.clone());
+
         let theme = cx.theme();
         v_flex()
             .flex_1()
@@ -113,15 +115,8 @@ impl InstanceList {
                 )
             ).child(h_flex()
                 .gap_2()
-                .child(Button::new(("start", index)).flex_grow().small().success().label(ts!("instance.start.label")).on_click({
-                    let name = item.name.clone();
-                    let id = item.id;
-                    let backend_handle = self.backend_handle.clone();
-                    move |_, window, cx| {
-                        root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
-                    }
-                }))
-                .child(Button::new(("view", index)).flex_grow().small().info().label(ts!("instance.view")).on_click({
+                .child(play_button.flex_1().small())
+                .child(Button::new(("view", index)).flex_1().small().info().label(ts!("instance.view")).on_click({
                     let name = item.name.clone();
                     move |_, window, cx| {
                         root::switch_page(ui::PageType::InstancePage { name: name.clone() },
@@ -174,19 +169,14 @@ impl TableDelegate for InstanceList {
                 "name" => item.name.clone().into_any_element(),
                 "version" => item.configuration.minecraft_version.as_str().into_any_element(),
                 "controls" => {
-                    let backend_handle = self.backend_handle.clone();
+                    let play_button = render_play_button(item, self.backend_handle.clone());
+
                     h_flex()
                         .size_full()
                         .gap_2()
                         .border_r_4()
-                        .child(Button::new("start").w(relative(0.5)).small().success().label(ts!("instance.start.label")).on_click({
-                            let name = item.name.clone();
-                            let id = item.id;
-                            move |_, window, cx| {
-                                root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
-                            }
-                        }))
-                        .child(Button::new("view").w(relative(0.5)).small().info().label(ts!("instance.view")).on_click({
+                        .child(play_button.w_1_2().small())
+                        .child(Button::new("view").w_1_2().small().info().label(ts!("instance.view")).on_click({
                             let name = item.name.clone();
                             move |_, window, cx| {
                                 root::switch_page(ui::PageType::InstancePage { name: name.clone() },
@@ -201,5 +191,38 @@ impl TableDelegate for InstanceList {
         } else {
             ts!("common.unknown").into_any_element()
         }
+    }
+}
+
+fn render_play_button(item: &InstanceEntry, backend_handle: BackendHandle) -> Button {
+    let name = item.name.clone();
+    let id = item.id;
+    match item.status {
+        InstanceStatus::NotRunning => {
+            Button::new("start_instance")
+                .success()
+                .label(ts!("instance.start.label"))
+                .on_click(
+                move |_, window, cx| {
+                    root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
+                },
+            )
+        },
+        InstanceStatus::Launching => {
+            Button::new("launching")
+                .warning()
+                .label("...")
+        },
+        InstanceStatus::Running => {
+            Button::new("kill_instance")
+                .danger()
+                .label(ts!("instance.kill"))
+                .on_click({
+                    let backend_handle = backend_handle.clone();
+                    move |_, _, _| {
+                        backend_handle.send(MessageToBackend::KillInstance { id });
+                    }
+                })
+        },
     }
 }

@@ -1,7 +1,5 @@
 use std::{
-    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::{
-        Arc, atomic::Ordering
-    }
+    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::Arc
 };
 
 use anyhow::Context;
@@ -9,17 +7,18 @@ use base64::Engine;
 use bridge::{
     instance::{
         ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
-    }, message::{AtomicBridgeDataLoadState, BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle}
+    }, keep_alive::KeepAliveHandle, message::{BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle}
 };
-use parking_lot::RwLock;
+use futures::FutureExt;
 use relative_path::RelativePath;
+use rustc_hash::FxHashSet;
 use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration, loader::Loader};
 use strum::IntoEnumIterator;
 use thiserror::Error;
 
 use ustr::Ustr;
 
-use crate::{BackendStateFileWatching, BackendStateInstances, IoOrSerializationError, WatchTarget, id_slab::{GetId, Id}, launcher_import, mod_metadata::{ContentUpdateAction, ContentUpdateKey, ModMetadataManager}, persistent::Persistent};
+use crate::{BackendState, BackendStateFileWatching, FolderChanges, IoOrSerializationError, WatchTarget, id_slab::{GetId, Id}, launcher_import, mod_metadata::{ContentUpdateAction, ContentUpdateKey, ModMetadataManager}, persistent::Persistent};
 
 #[derive(Debug)]
 pub struct Instance {
@@ -32,15 +31,15 @@ pub struct Instance {
     pub icon: Option<Arc<[u8]>>,
     pub configuration: Persistent<InstanceConfiguration>,
 
-    pub child: Option<Child>,
+    pub launch_keepalive: Option<KeepAliveHandle>,
+    pub processes: Vec<Child>,
 
-    pub worlds_state: Arc<AtomicBridgeDataLoadState>,
-    dirty_worlds: HashSet<Arc<Path>>,
-    all_worlds_dirty: bool,
+    pub worlds_state: BridgeDataLoadState,
+    dirty_worlds: FolderChanges,
     pending_worlds_load: Option<KeepAliveNotifySignalHandle>,
     worlds: Option<Arc<[InstanceWorldSummary]>>,
 
-    pub servers_state: Arc<AtomicBridgeDataLoadState>,
+    pub servers_state: BridgeDataLoadState,
     dirty_servers: bool,
     pending_servers_load: Option<KeepAliveNotifySignalHandle>,
     servers: Option<Arc<[InstanceServerSummary]>>,
@@ -53,9 +52,8 @@ pub struct Instance {
 #[derive(Debug)]
 pub struct ContentFolderState {
     pub path: Arc<Path>,
-    pub load_state: Arc<AtomicBridgeDataLoadState>,
-    dirty_paths: HashSet<Arc<Path>>,
-    all_dirty: bool,
+    pub load_state: BridgeDataLoadState,
+    dirty_paths: FolderChanges,
     generation: usize,
     pending_load: Option<KeepAliveNotifySignalHandle>,
     summaries: Option<Arc<[InstanceContentSummary]>>,
@@ -80,57 +78,12 @@ impl ContentFolderState {
     pub fn new(path: Arc<Path>) -> Self {
         Self {
             path,
-            load_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
-            dirty_paths: HashSet::new(),
-            all_dirty: true,
+            load_state: BridgeDataLoadState::default(),
+            dirty_paths: FolderChanges::all_dirty(),
             generation: 0,
             pending_load: None,
             summaries: None,
         }
-    }
-
-
-    pub fn mark_dirty(&mut self, mut path: Option<Arc<Path>>) {
-        if self.all_dirty {
-            return;
-        }
-
-        if let Some(ref current_path) = path {
-            if let Some(filename) = current_path.file_name() {
-                if filename.as_encoded_bytes().ends_with(b".aux.json") {
-                    let mut found = false;
-                    if let Some(summaries) = &self.summaries {
-                        for summary in summaries.iter() {
-                            let Some(aux_path) = crate::pandora_aux_path_for_content(&summary) else {
-                                continue;
-                            };
-                            if &**current_path == aux_path.as_path() {
-                                path = Some(summary.path.clone());
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-                    if !found {
-                        path = None;
-                    }
-                }
-            }
-        }
-
-        if let Some(path) = path {
-            if !self.dirty_paths.insert(path) {
-                return;
-            }
-        } else {
-            self.all_dirty = true;
-        }
-
-        crate::cas_update(&self.load_state, |state| match state {
-            BridgeDataLoadState::Loading => BridgeDataLoadState::LoadingDirty,
-            BridgeDataLoadState::Loaded => BridgeDataLoadState::LoadedDirty,
-            _ => state,
-        });
     }
 }
 
@@ -168,7 +121,7 @@ impl From<IoOrSerializationError> for InstanceLoadError {
 }
 
 impl Instance {
-    pub fn on_root_renamed(&mut self, path: &Path) {
+    pub fn on_root_renamed(&mut self, backend: &Arc<BackendState>, path: &Path) {
         log::info!("Instance {:?} has been moved to {:?}", self.root_path, path);
 
         self.name = path.file_name().unwrap().to_string_lossy().into_owned().into();
@@ -179,15 +132,15 @@ impl Instance {
         dot_minecraft_path.push(".minecraft");
 
         for content_folder in ContentFolder::iter() {
-            self.content_state[content_folder].mark_dirty(None);
             self.content_state[content_folder].path = content_folder.path().to_path(&dot_minecraft_path).into();
+            self.mark_content_dirty(backend, content_folder, FolderChanges::all_dirty(), true);
         }
 
         self.server_dat_path = dot_minecraft_path.join("servers.dat").into();
-        self.mark_servers_dirty();
+        self.mark_servers_dirty(backend, true);
 
         self.saves_path = dot_minecraft_path.join("saves").into();
-        self.mark_world_dirty(None);
+        self.mark_world_dirty(backend, FolderChanges::all_dirty(), true);
 
         self.dot_minecraft_path = dot_minecraft_path.into();
     }
@@ -195,17 +148,17 @@ impl Instance {
     pub fn rewatch_directories(&mut self, file_watching: &mut BackendStateFileWatching) {
         let mut watch_dot_minecraft = false;
 
-        if self.servers_state.load(Ordering::SeqCst).is_not_unloaded() {
+        if self.servers_state.is_not_unloaded() {
             watch_dot_minecraft = true;
         }
 
-        if self.worlds_state.load(Ordering::SeqCst).is_not_unloaded() {
+        if self.worlds_state.is_not_unloaded() {
             file_watching.watch_filesystem(self.saves_path.clone(), WatchTarget::InstanceSavesDir { id: self.id });
             watch_dot_minecraft = true;
         }
 
         for folder in ContentFolder::iter() {
-            if self.content_state[folder].load_state.load(Ordering::SeqCst).is_not_unloaded() {
+            if self.content_state[folder].load_state.is_not_unloaded() {
                 file_watching.watch_filesystem(self.content_state[folder].path.clone(), WatchTarget::InstanceContentDir { id: self.id, folder });
                 watch_dot_minecraft = true;
             }
@@ -216,12 +169,12 @@ impl Instance {
         }
     }
 
-    pub fn mark_all_dirty(&mut self) {
+    pub fn mark_all_dirty(&mut self, backend: &Arc<BackendState>, reload: bool) {
         for content_folder in ContentFolder::iter() {
-            self.content_state[content_folder].mark_dirty(None);
+            self.mark_content_dirty(backend, content_folder, FolderChanges::all_dirty(), reload);
         }
-        self.mark_servers_dirty();
-        self.mark_world_dirty(None);
+        self.mark_servers_dirty(backend, reload);
+        self.mark_world_dirty(backend, FolderChanges::all_dirty(), reload);
     }
 
     pub fn try_get_content(&self, id: InstanceContentID) -> Option<(&InstanceContentSummary, ContentFolder)> {
@@ -236,65 +189,93 @@ impl Instance {
     }
 
     pub async fn load_worlds(
-        instances: Arc<RwLock<BackendStateInstances>>,
+        backend: Arc<BackendState>,
         id: InstanceID,
-    ) -> Option<(Arc<[InstanceWorldSummary]>, bool)> {
-        let mut await_pending: Option<KeepAliveNotifySignalHandle> = None;
+    ) -> Option<Arc<[InstanceWorldSummary]>> {
+        Self::load_worlds_inner(backend, id).await
+    }
 
-        let (future, keep_alive) = loop {
-            if let Some(pending) = await_pending {
-                pending.await_notification().await;
-            }
+    fn load_worlds_inner(
+        backend: Arc<BackendState>,
+        id: InstanceID,
+    ) -> futures::future::BoxFuture<'static, Option<Arc<[InstanceWorldSummary]>>> {
+        async move {
+            let mut await_pending: Option<KeepAliveNotifySignalHandle> = None;
 
-            let mut guard = instances.write();
-            let this = guard.instances.get_mut(id)?;
-
-            if let Some(pending) = &this.pending_worlds_load && !pending.is_notified() {
-                await_pending = Some(pending.clone());
-                continue;
-            }
-
-            let future = if let Some(last) = &this.worlds && !this.all_worlds_dirty {
-                if !this.dirty_worlds.is_empty() {
-                    let dirty_worlds = std::mem::take(&mut this.dirty_worlds);
-                    let last = last.clone();
-                    tokio::task::spawn_blocking(move || {
-                        Self::load_worlds_dirty(dirty_worlds, last)
-                    })
-                } else {
-                    return Some((last.clone(), false));
+            let (future, keep_alive) = loop {
+                if let Some(pending) = await_pending {
+                    pending.await_notification().await;
                 }
-            } else {
-                let saves_path = this.saves_path.clone();
-                tokio::task::spawn_blocking(move || {
-                    Self::load_worlds_all(&saves_path)
-                })
+
+                let mut guard = backend.instance_state.write();
+                let this = guard.instances.get_mut(id)?;
+
+                if let Some(pending) = &this.pending_worlds_load && !pending.is_notified() {
+                    await_pending = Some(pending.clone());
+                    continue;
+                }
+
+                let mut file_watching = backend.file_watching.write();
+                file_watching.watch_filesystem(this.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                    id: this.id,
+                });
+                file_watching.watch_filesystem(this.saves_path.clone(), WatchTarget::InstanceSavesDir {
+                    id: this.id,
+                });
+
+                let (all_dirty, dirty_paths) = this.dirty_worlds.take();
+                let future = if let Some(last) = &this.worlds && !all_dirty {
+                    if !dirty_paths.is_empty() {
+                        let last = last.clone();
+                        tokio::task::spawn_blocking(move || {
+                            Self::load_worlds_dirty(dirty_paths, last)
+                        })
+                    } else {
+                        return Some(last.clone());
+                    }
+                } else {
+                    let saves_path = this.saves_path.clone();
+                    tokio::task::spawn_blocking(move || {
+                        Self::load_worlds_all(&saves_path)
+                    })
+                };
+
+                let keep_alive = KeepAliveNotifySignal::new();
+                this.pending_worlds_load = Some(keep_alive.create_handle());
+                this.worlds_state.load_started();
+
+                break (future, keep_alive);
             };
 
-            let keep_alive = KeepAliveNotifySignal::new();
-            this.pending_worlds_load = Some(keep_alive.create_handle());
+            let worlds = future.await.unwrap();
 
-            this.worlds_state.store(BridgeDataLoadState::Loading, Ordering::SeqCst);
-            this.all_worlds_dirty = false;
-            this.dirty_worlds.clear();
+            let mut guard = backend.instance_state.write();
+            let this = guard.instances.get_mut(id)?;
 
-            break (future, keep_alive);
-        };
+            this.worlds = Some(worlds.clone());
+            this.worlds_state.load_finished();
+            let should_load = this.worlds_state.should_load();
+            drop(guard);
 
-        let result = future.await.unwrap();
+            backend.send.send(MessageToFrontend::InstanceWorldsUpdated {
+                id,
+                worlds: Arc::clone(&worlds)
+            });
 
-        let mut guard = instances.write();
-        let this = guard.instances.get_mut(id)?;
+            let mut file_watching = backend.file_watching.write();
+            for summary in worlds.iter() {
+                file_watching.watch_filesystem(summary.level_path.clone(), WatchTarget::InstanceWorldDir {
+                    id,
+                });
+            }
+            drop(file_watching);
 
-        crate::cas_update(&this.worlds_state, |old_state| match old_state {
-            BridgeDataLoadState::LoadingDirty => BridgeDataLoadState::LoadedDirty,
-            BridgeDataLoadState::Loading => BridgeDataLoadState::Loaded,
-            _ => unreachable!(),
-        });
-
-        this.worlds = Some(result.clone());
-        keep_alive.notify();
-        Some((result, true))
+            keep_alive.notify();
+            if should_load {
+                tokio::task::spawn(Self::load_worlds_inner(backend.clone(), id));
+            }
+            Some(worlds)
+        }.boxed()
     }
 
     fn load_worlds_all(saves_path: &Path) -> Arc<[InstanceWorldSummary]> {
@@ -338,7 +319,7 @@ impl Instance {
         summaries.into()
     }
 
-    fn load_worlds_dirty(dirty: HashSet<Arc<Path>>, last: Arc<[InstanceWorldSummary]>) -> Arc<[InstanceWorldSummary]> {
+    fn load_worlds_dirty(dirty: FxHashSet<Arc<Path>>, last: Arc<[InstanceWorldSummary]>) -> Arc<[InstanceWorldSummary]> {
         log::debug!("Loading changed worlds");
         log::trace!("Changed worlds: {:?}", dirty);
 
@@ -383,56 +364,76 @@ impl Instance {
     }
 
     pub async fn load_servers(
-        instances: Arc<RwLock<BackendStateInstances>>,
+        backend: Arc<BackendState>,
         id: InstanceID,
-    ) -> Option<(Arc<[InstanceServerSummary]>, bool)> {
-        let mut await_pending: Option<KeepAliveNotifySignalHandle> = None;
+    ) -> Option<Arc<[InstanceServerSummary]>> {
+        Self::load_servers_inner(backend, id).await
+    }
 
-        let (future, keep_alive) = loop {
-            if let Some(pending) = await_pending {
-                pending.await_notification().await;
-            }
+    fn load_servers_inner(
+        backend: Arc<BackendState>,
+        id: InstanceID,
+    ) -> futures::future::BoxFuture<'static, Option<Arc<[InstanceServerSummary]>>> {
+        async move {
+            let mut await_pending: Option<KeepAliveNotifySignalHandle> = None;
 
-            let mut guard = instances.write();
-            let this = guard.instances.get_mut(id)?;
+            let (future, keep_alive) = loop {
+                if let Some(pending) = await_pending {
+                    pending.await_notification().await;
+                }
 
-            if let Some(pending) = &this.pending_servers_load && !pending.is_notified() {
-                await_pending = Some(pending.clone());
-                continue;
-            }
+                let mut guard = backend.instance_state.write();
+                let this = guard.instances.get_mut(id)?;
 
-            let future = if let Some(last) = &this.servers && !this.dirty_servers {
-                return Some((last.clone(), false));
-            } else {
-                let server_dat_path = this.server_dat_path.clone();
-                tokio::task::spawn_blocking(move || {
-                    Self::load_servers_all(&server_dat_path)
-                })
+                if let Some(pending) = &this.pending_servers_load && !pending.is_notified() {
+                    await_pending = Some(pending.clone());
+                    continue;
+                }
+
+                let mut file_watching = backend.file_watching.write();
+                file_watching.watch_filesystem(this.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                    id: this.id,
+                });
+
+                let future = if let Some(last) = &this.servers && !this.dirty_servers {
+                    return Some(last.clone());
+                } else {
+                    let server_dat_path = this.server_dat_path.clone();
+                    tokio::task::spawn_blocking(move || {
+                        Self::load_servers_all(&server_dat_path)
+                    })
+                };
+
+                let keep_alive = KeepAliveNotifySignal::new();
+                this.pending_servers_load = Some(keep_alive.create_handle());
+                this.servers_state.load_started();
+
+                this.dirty_servers = false;
+
+                break (future, keep_alive);
             };
 
-            let keep_alive = KeepAliveNotifySignal::new();
-            this.pending_servers_load = Some(keep_alive.create_handle());
+            let servers = future.await.unwrap();
 
-            this.servers_state.store(BridgeDataLoadState::Loading, Ordering::SeqCst);
-            this.dirty_servers = false;
+            let mut guard = backend.instance_state.write();
+            let this = guard.instances.get_mut(id)?;
 
-            break (future, keep_alive);
-        };
+            this.servers = Some(servers.clone());
+            this.servers_state.load_finished();
+            let should_load = this.servers_state.should_load();
+            drop(guard);
 
-        let result = future.await.unwrap();
+            backend.send.send(MessageToFrontend::InstanceServersUpdated {
+                id,
+                servers: Arc::clone(&servers)
+            });
 
-        let mut guard = instances.write();
-        let this = guard.instances.get_mut(id)?;
-
-        crate::cas_update(&this.servers_state, |old_state| match old_state {
-            BridgeDataLoadState::LoadingDirty => BridgeDataLoadState::LoadedDirty,
-            BridgeDataLoadState::Loading => BridgeDataLoadState::Loaded,
-            _ => unreachable!(),
-        });
-
-        this.servers = Some(result.clone());
-        keep_alive.notify();
-        Some((result, true))
+            keep_alive.notify();
+            if should_load {
+                tokio::task::spawn(Self::load_servers_inner(backend, id));
+            }
+            Some(servers)
+        }.boxed()
     }
 
     fn load_servers_all(server_dat_path: &Path) -> Arc<[InstanceServerSummary]> {
@@ -454,88 +455,119 @@ impl Instance {
     }
 
     pub async fn load_content(
-        instances: Arc<RwLock<BackendStateInstances>>,
+        backend: Arc<BackendState>,
         id: InstanceID,
-        mod_metadata_manager: &Arc<ModMetadataManager>,
         content_folder: ContentFolder,
-    ) -> Option<(Arc<[InstanceContentSummary]>, bool)> {
-        let mut await_pending: Option<KeepAliveNotifySignalHandle> = None;
+    ) -> Option<Arc<[InstanceContentSummary]>> {
+        Self::load_content_inner(backend, id, content_folder).await
+    }
 
-        let (future, keep_alive) = loop {
-            if let Some(pending) = await_pending {
-                pending.await_notification().await;
-            }
+    fn load_content_inner(
+        backend: Arc<BackendState>,
+        id: InstanceID,
+        content_folder: ContentFolder,
+    ) -> futures::future::BoxFuture<'static, Option<Arc<[InstanceContentSummary]>>> {
+        async move {
+            let mut await_pending: Option<KeepAliveNotifySignalHandle> = None;
 
-            let mut guard = instances.write();
-            let this = guard.instances.get_mut(id)?;
-            let state = &mut this.content_state[content_folder];
+            let (future, keep_alive) = loop {
+                if let Some(pending) = await_pending {
+                    pending.await_notification().await;
+                }
 
-            if let Some(pending) = &state.pending_load && !pending.is_notified() {
-                await_pending = Some(pending.clone());
-                continue;
-            }
+                let mut guard = backend.instance_state.write();
+                let this = guard.instances.get_mut(id)?;
+                let state = &mut this.content_state[content_folder];
 
-            let future = if let Some(last) = &state.summaries && !state.all_dirty {
-                if !state.dirty_paths.is_empty() {
-                    let dirty_paths = std::mem::take(&mut state.dirty_paths);
-                    let mod_metadata_manager = mod_metadata_manager.clone();
-                    let last = last.clone();
+                if let Some(pending) = &state.pending_load && !pending.is_notified() {
+                    await_pending = Some(pending.clone());
+                    continue;
+                }
+
+                let mut file_watching = backend.file_watching.write();
+                file_watching.watch_filesystem(this.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                    id: this.id,
+                });
+                file_watching.watch_filesystem(state.path.clone(), WatchTarget::InstanceContentDir {
+                    id: this.id,
+                    folder: content_folder
+                });
+
+                let (all_dirty, dirty_paths) = state.dirty_paths.take();
+                let future = if let Some(last) = &state.summaries && !all_dirty {
+                    if !dirty_paths.is_empty() {
+                        let mod_metadata_manager = backend.mod_metadata_manager.clone();
+                        let last = last.clone();
+                        let config = this.configuration.get();
+                        let for_loader = config.loader;
+                        let for_version = config.minecraft_version;
+                        tokio::task::spawn_blocking(move || {
+                            Self::load_content_dirty(dirty_paths, mod_metadata_manager, last, for_loader, for_version)
+                        })
+                    } else {
+                        return Some(last.clone());
+                    }
+                } else {
+                    let path = state.path.clone();
+                    let mod_metadata_manager = backend.mod_metadata_manager.clone();
                     let config = this.configuration.get();
                     let for_loader = config.loader;
                     let for_version = config.minecraft_version;
                     tokio::task::spawn_blocking(move || {
-                        Self::load_content_dirty(dirty_paths, mod_metadata_manager, last, for_loader, for_version)
+                        Self::load_content_all(&path, mod_metadata_manager, for_loader, for_version)
                     })
-                } else {
-                    return Some((last.clone(), false));
-                }
-            } else {
-                let path = state.path.clone();
-                let mod_metadata_manager = mod_metadata_manager.clone();
-                let config = this.configuration.get();
-                let for_loader = config.loader;
-                let for_version = config.minecraft_version;
-                tokio::task::spawn_blocking(move || {
-                    Self::load_content_all(&path, mod_metadata_manager, for_loader, for_version)
-                })
+                };
+
+                let keep_alive = KeepAliveNotifySignal::new();
+                state.pending_load = Some(keep_alive.create_handle());
+                state.load_state.load_started();
+
+                break (future, keep_alive);
             };
 
-            let keep_alive = KeepAliveNotifySignal::new();
-            state.pending_load = Some(keep_alive.create_handle());
+            let mut result = future.await.unwrap();
 
-            state.load_state.store(BridgeDataLoadState::Loading, Ordering::SeqCst);
-            state.all_dirty = false;
-            state.dirty_paths.clear();
+            let mut guard = backend.instance_state.write();
+            let this = guard.instances.get_mut(id)?;
+            let state = &mut this.content_state[content_folder];
 
-            break (future, keep_alive);
-        };
+            this.content_generation = this.content_generation.wrapping_add(1);
+            state.generation = this.content_generation;
+            for (index, summary) in result.iter_mut().enumerate() {
+                summary.id = InstanceContentID {
+                    index,
+                    generation: state.generation,
+                };
+            }
 
-        let mut result = future.await.unwrap();
+            let result: Arc<[InstanceContentSummary]> = result.into();
+            state.summaries = Some(result.clone());
+            state.pending_load = None;
+            state.load_state.load_finished();
+            let should_load = state.load_state.should_load();
+            drop(guard);
 
-        let mut guard = instances.write();
-        let this = guard.instances.get_mut(id)?;
-        let state = &mut this.content_state[content_folder];
+            match content_folder {
+                ContentFolder::Mods => {
+                    backend.send.send(MessageToFrontend::InstanceModsUpdated {
+                        id,
+                        mods: Arc::clone(&result)
+                    });
+                },
+                ContentFolder::ResourcePacks => {
+                    backend.send.send(MessageToFrontend::InstanceResourcePacksUpdated {
+                        id,
+                        resource_packs: Arc::clone(&result)
+                    });
+                },
+            }
 
-        crate::cas_update(&state.load_state, |old_state| match old_state {
-            BridgeDataLoadState::LoadingDirty => BridgeDataLoadState::LoadedDirty,
-            BridgeDataLoadState::Loading => BridgeDataLoadState::Loaded,
-            _ => unreachable!(),
-        });
-
-        this.content_generation = this.content_generation.wrapping_add(1);
-        state.generation = this.content_generation;
-        for (index, summary) in result.iter_mut().enumerate() {
-            summary.id = InstanceContentID {
-                index,
-                generation: state.generation,
-            };
-        }
-
-        let result: Arc<[InstanceContentSummary]> = result.into();
-        state.summaries = Some(result.clone());
-        state.pending_load = None;
-        keep_alive.notify();
-        Some((result, true))
+            keep_alive.notify();
+            if should_load {
+                tokio::task::spawn(Self::load_content_inner(backend, id, content_folder));
+            }
+            Some(result)
+        }.boxed()
     }
 
     fn load_content_all(
@@ -574,7 +606,7 @@ impl Instance {
     }
 
     fn load_content_dirty(
-        dirty: HashSet<Arc<Path>>,
+        dirty: FxHashSet<Arc<Path>>,
         mod_metadata_manager: Arc<ModMetadataManager>,
         last: Arc<[InstanceContentSummary]>,
         for_loader: Loader,
@@ -707,15 +739,15 @@ impl Instance {
             icon,
             configuration: instance_info,
 
-            child: None,
+            launch_keepalive: None,
+            processes: Vec::new(),
 
-            worlds_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
-            dirty_worlds: HashSet::new(),
-            all_worlds_dirty: true,
+            worlds_state: BridgeDataLoadState::default(),
+            dirty_worlds: FolderChanges::all_dirty(),
             pending_worlds_load: None,
             worlds: None,
 
-            servers_state: Arc::new(AtomicBridgeDataLoadState::new(BridgeDataLoadState::Unloaded)),
+            servers_state: BridgeDataLoadState::default(),
             dirty_servers: true,
             pending_servers_load: None,
             servers: None,
@@ -726,37 +758,77 @@ impl Instance {
         })
     }
 
-    pub fn mark_world_dirty(&mut self, path: Option<Arc<Path>>) {
-        if self.all_worlds_dirty {
+    pub fn mark_world_dirty(&mut self, backend: &Arc<BackendState>, changes: FolderChanges, reload: bool) {
+        if changes.is_empty() {
             return;
         }
 
-        if let Some(path) = path {
-            if !self.dirty_worlds.insert(path) {
-                return;
-            }
-        } else {
-            self.all_worlds_dirty = true;
-        }
+        changes.apply_to(&mut self.dirty_worlds);
 
-        crate::cas_update(&self.worlds_state, |state| match state {
-            BridgeDataLoadState::Loading => BridgeDataLoadState::LoadingDirty,
-            BridgeDataLoadState::Loaded => BridgeDataLoadState::LoadedDirty,
-            _ => state,
-        });
+        self.worlds_state.set_dirty();
+        if reload && self.worlds_state.should_load() {
+            tokio::task::spawn(Self::load_worlds_inner(backend.clone(), self.id));
+        }
     }
 
-    pub fn mark_servers_dirty(&mut self) {
+    pub fn mark_servers_dirty(&mut self, backend: &Arc<BackendState>, reload: bool) {
         if self.dirty_servers {
             return;
         }
         self.dirty_servers = true;
 
-        crate::cas_update(&self.servers_state, |state| match state {
-            BridgeDataLoadState::Loading => BridgeDataLoadState::LoadingDirty,
-            BridgeDataLoadState::Loaded => BridgeDataLoadState::LoadedDirty,
-            _ => state,
-        });
+        self.servers_state.set_dirty();
+        if reload && self.servers_state.should_load() {
+            tokio::task::spawn(Self::load_servers_inner(backend.clone(), self.id));
+        }
+    }
+
+    pub fn mark_content_dirty(&mut self, backend: &Arc<BackendState>, content_folder: ContentFolder, mut changes: FolderChanges, reload: bool) {
+        if changes.is_empty() {
+            return;
+        }
+        let state = &mut self.content_state[content_folder];
+
+        let (all_dirty, paths) = changes.take();
+
+        if all_dirty {
+            state.dirty_paths.dirty_all();
+        } else {
+            let mut total_aux_paths = 0;
+            for path in &paths {
+                if let Some(filename) = path.file_name() {
+                    if filename.as_encoded_bytes().ends_with(b".aux.json") {
+                        total_aux_paths += 1;
+                        continue;
+                    }
+                }
+
+                state.dirty_paths.dirty_path(path.clone());
+            }
+
+            if total_aux_paths > 0 {
+                let mut used_aux_paths = FxHashSet::default();
+                if let Some(summaries) = &state.summaries {
+                    for summary in summaries.iter() {
+                        let Some(aux_path) = crate::pandora_aux_path_for_content(&summary) else {
+                            continue;
+                        };
+                        if paths.contains(aux_path.as_path()) {
+                            used_aux_paths.insert(aux_path);
+                            state.dirty_paths.dirty_path(summary.path.clone());
+                        }
+                    }
+                }
+                if used_aux_paths.len() < total_aux_paths {
+                    state.dirty_paths.dirty_all();
+                }
+            }
+        }
+
+        state.load_state.set_dirty();
+        if reload && state.load_state.should_load() {
+            tokio::task::spawn(Self::load_content_inner(backend.clone(), self.id, content_folder));
+        }
     }
 
     pub fn copy_basic_attributes_from(&mut self, new: Self) {
@@ -768,15 +840,25 @@ impl Instance {
     }
 
     pub fn status(&self) -> InstanceStatus {
-        if self.child.is_some() {
+        if !self.processes.is_empty() {
             InstanceStatus::Running
+        } else if let Some(keepalive) = &self.launch_keepalive && keepalive.is_alive() {
+            InstanceStatus::Launching
         } else {
             InstanceStatus::NotRunning
         }
     }
 
     pub fn create_modify_message(&mut self) -> MessageToFrontend {
-        self.create_modify_message_with_status(self.status())
+        MessageToFrontend::InstanceModified {
+            id: self.id,
+            name: self.name,
+            icon: self.icon.clone(),
+            root_path: self.resolve_real_root_path(),
+            dot_minecraft_folder: self.dot_minecraft_path.clone(),
+            configuration: self.configuration.get().clone(),
+            status: self.status(),
+        }
     }
 
     pub fn resolve_real_root_path(&self) -> Arc<Path> {
@@ -789,18 +871,6 @@ impl Instance {
             target.into()
         } else {
             self.root_path.clone()
-        }
-    }
-
-    pub fn create_modify_message_with_status(&mut self, status: InstanceStatus) -> MessageToFrontend {
-        MessageToFrontend::InstanceModified {
-            id: self.id,
-            name: self.name,
-            icon: self.icon.clone(),
-            root_path: self.resolve_real_root_path(),
-            dot_minecraft_folder: self.dot_minecraft_path.clone(),
-            configuration: self.configuration.get().clone(),
-            status,
         }
     }
 }

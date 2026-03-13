@@ -223,7 +223,9 @@ modrinth:
       en: "%{name} (Alpha)"
     beta:
       en: "%{name} (Beta)"
-
+curseforge:
+  name:
+    en: Curseforge
 common:
   app_name:
     en: Pandora
@@ -294,8 +296,8 @@ system:
 account:
   title:
     en: Accounts
-  single:
-    en: Account
+  override_account:
+    en: Override Account
   none:
     en: No Account
   name:
@@ -356,6 +358,8 @@ instance:
   view:
     en: View
   kill:
+    en: Kill
+  kill_instance:
     en: Kill Instance
   delete:
     en: Delete this instance
@@ -481,6 +485,8 @@ instance:
       en: Resourcepacks
     shaders:
       en: Shaders
+    filename_prefix:
+      en: "Filename: "
     version:
       mod:
         en: "Mod Version"
@@ -563,12 +569,18 @@ instance:
         en: Always install the latest version. Untick to be able to choose older versions of content to install
       from_modrinth:
         en: Add from Modrinth
+      from_curseforge:
+        en: Add from Curseforge
       from_file:
         en: Add from file
       unable_other_type:
         en: Unable to install 'other' project type
       invalid_filename:
         en: Invalid/dangerous filename
+      missing_sha1_hash:
+        en: Missing sha1 hash
+      no_third_party_downloads:
+        en: The mod author has blocked downloads from third-party launchers
       select_mods:
         en: Select mods to install
       new_instance_with:
@@ -623,6 +635,8 @@ instance:
           en: Error downloading update
         from_modrinth:
           en: Download update from Modrinth
+        from_curseforge:
+          en: Download update from Curseforge
       error:
         en: Error updating mod
       installed_manually:

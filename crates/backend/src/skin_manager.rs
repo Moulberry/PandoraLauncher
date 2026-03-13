@@ -1,7 +1,6 @@
 use std::{collections::HashMap, io::Cursor, path::Path, sync::Arc, time::SystemTime};
 
-use bridge::message::{AccountSkinResult, BridgeDataLoadState2, MessageToFrontend, SkinLibrary};
-use futures::SinkExt;
+use bridge::message::{AccountSkinResult, BridgeDataLoadState, MessageToFrontend, SkinLibrary};
 use image::DynamicImage;
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
@@ -13,7 +12,7 @@ use crate::{BackendState, FolderChanges};
 pub struct SkinManager {
     skin_cache: HashMap<Arc<[u8]>, Arc<[u8]>>,
     skins_download: FxHashMap<Arc<str>, SkinEntry>,
-    pub skin_library_state: BridgeDataLoadState2,
+    pub skin_library_state: BridgeDataLoadState,
     skin_library_last: Vec<(SystemTime, Arc<Path>, Arc<[u8]>)>,
     skin_library: Arc<[Arc<[u8]>]>,
     skin_library_changes: FolderChanges,

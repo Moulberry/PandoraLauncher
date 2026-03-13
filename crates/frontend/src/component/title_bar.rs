@@ -1,19 +1,17 @@
+use bridge::handle::BackendHandle;
 use gpui::{prelude::FluentBuilder, *};
-use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, h_flex};
+use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, button::{Button, ButtonVariants}, h_flex};
 use once_cell::sync::Lazy;
+use schema::pandora_update::UpdatePrompt;
 
 use crate::{component::page_path::PagePath, icon::PandoraIcon};
 
 #[derive(IntoElement)]
 pub struct TitleBar {
-    path: PagePath,
-    controls: AnyElement
-}
-
-impl TitleBar {
-    pub fn new(path: PagePath, controls: AnyElement) -> Self {
-        Self { path, controls }
-    }
+    pub page_path: PagePath,
+    pub controls: AnyElement,
+    pub update: Option<UpdatePrompt>,
+    pub send: BackendHandle,
 }
 
 #[derive(Default)]
@@ -76,7 +74,7 @@ impl RenderOnce for TitleBar {
                 .child(h_flex()
                     .flex_1()
                     .overflow_hidden()
-                    .child(div().overflow_hidden().pr_8().child(self.path))
+                    .child(div().overflow_hidden().pr_8().child(self.page_path))
                     .child(div().flex_1().child(self.controls))
                 )
                 .when(!cfg!(target_os = "macos"), |this| {
@@ -89,13 +87,32 @@ impl RenderOnce for TitleBar {
                                 cx.stop_propagation();
                             }
                         })
-                        .when(window_controls.minimize, |this| this.child(WindowControl::Minimize))
-                        .when(window_controls.maximize, |this| this.child(if window.is_maximized() {
-                            WindowControl::Restore
-                        } else {
-                            WindowControl::Maximize
+                        .when_some(self.update, |this, update| {
+                            this.child(Button::new("update")
+                                .label("Update Available")
+                                .success()
+                                .compact()
+                                .small()
+                                .ml_2()
+                                .icon(PandoraIcon::Download)
+                                .on_click({
+                                    let send = self.send.clone();
+                                    move |_, window, cx| {
+                                        crate::modals::update_prompt::open_update_prompt(update.clone(), send.clone(), window, cx);
+                                    }
+                                })
+                            )
+                        })
+                        .when(!cfg!(target_os = "macos"), |this| {
+                            this
+                                .when(window_controls.minimize, |this| this.child(WindowControl::Minimize))
+                                .when(window_controls.maximize, |this| this.child(if window.is_maximized() {
+                                    WindowControl::Restore
+                                } else {
+                                    WindowControl::Maximize
+                                }))
+                                .child(WindowControl::Close)
                         }))
-                        .child(WindowControl::Close))
                 }))
     }
 }

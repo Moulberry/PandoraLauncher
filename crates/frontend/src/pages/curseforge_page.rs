@@ -4,37 +4,35 @@ use bridge::{install::{ContentDownload, ContentInstall, ContentInstallFile, Inst
 use enumset::EnumSet;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, Selectable, WindowExt, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, tooltip::Tooltip, v_flex
+    ActiveTheme, Selectable, WindowExt, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, tooltip::Tooltip, v_flex
 };
 use rustc_hash::FxHashMap;
-use schema::{content::ContentSource, loader::Loader, modrinth::{
-    ModrinthHit, ModrinthProjectType, ModrinthSearchRequest, ModrinthSearchResult, ModrinthSideRequirement
-}};
+use schema::{content::ContentSource, curseforge::{CurseforgeClassId, CurseforgeHit, CurseforgeSearchRequest, CurseforgeSearchResult}, loader::Loader};
 use ustr::Ustr;
 
 use crate::{
     component::error_alert::ErrorAlert, entity::{
         DataEntities, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, ts, ts_short, ui
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, ts
 };
 
-pub struct ModrinthSearchPage {
+pub struct CurseforgeSearchPage {
     data: DataEntities,
-    hits: Vec<ModrinthHit>,
+    hits: Vec<CurseforgeHit>,
     install_for: Option<InstanceID>,
     filter_version: Option<Ustr>,
     loading: Option<Subscription>,
     pending_reload: bool,
     pending_clear: bool,
-    total_hits: usize,
+    total_hits: u64,
     search_state: Entity<InputState>,
     _search_input_subscription: Subscription,
     _delayed_clear_task: Task<()>,
     filter_loaders: EnumSet<Loader>,
-    filter_categories: BTreeSet<&'static str>,
+    filter_categories: BTreeSet<u32>,
     show_categories: Arc<AtomicBool>,
     can_install_latest: bool,
-    installed_mods_by_project: FxHashMap<Arc<str>, Vec<InstalledMod>>,
+    installed_mods_by_project: FxHashMap<u32, Vec<InstalledMod>>,
     last_search: Arc<str>,
     scroll_handle: UniformListScrollHandle,
     search_error: Option<SharedString>,
@@ -48,13 +46,13 @@ pub struct InstalledMod {
 }
 
 pub fn get_primary_action(
-    project_id: &str,
+    project_id: u32,
     can_install_latest: bool,
-    installed_mods_by_project: &FxHashMap<Arc<str>, Vec<InstalledMod>>,
+    installed_mods_by_project: &FxHashMap<u32, Vec<InstalledMod>>,
     cx: &App,
 ) -> PrimaryAction {
     let install_latest = can_install_latest && InterfaceConfig::get(cx).content_install_latest;
-    let installed = installed_mods_by_project.get(project_id);
+    let installed = installed_mods_by_project.get(&project_id);
 
     if let Some(installed) = installed && !installed.is_empty() {
         if !install_latest {
@@ -70,7 +68,7 @@ pub fn get_primary_action(
                         action = PrimaryAction::UpToDate;
                     }
                 },
-                ContentUpdateStatus::Modrinth => {
+                ContentUpdateStatus::Curseforge => {
                     if let PrimaryAction::Update(vec) = &mut action {
                         vec.push(installed_mod.mod_id);
                     } else {
@@ -94,31 +92,27 @@ pub fn get_primary_action(
     }
 }
 
-pub fn env_display(client_side: ModrinthSideRequirement, server_side: ModrinthSideRequirement) -> (PandoraIcon, SharedString) {
-    match (client_side, server_side) {
-        (ModrinthSideRequirement::Required, ModrinthSideRequirement::Required) =>
-            (PandoraIcon::Globe, ts!("modrinth.environment.client_and_server")),
-        (ModrinthSideRequirement::Required, ModrinthSideRequirement::Unsupported) =>
-            (PandoraIcon::Computer, ts!("modrinth.environment.client_only")),
-        (ModrinthSideRequirement::Required, ModrinthSideRequirement::Optional) =>
-            (PandoraIcon::Computer, ts!("modrinth.environment.client_only_server_optional")),
-        (ModrinthSideRequirement::Unsupported, ModrinthSideRequirement::Required) =>
-            (PandoraIcon::Router, ts!("modrinth.environment.server_only")),
-        (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Required) =>
-            (PandoraIcon::Router, ts!("modrinth.environment.server_only_client_optional")),
-        (ModrinthSideRequirement::Optional, ModrinthSideRequirement::Optional) =>
-            (PandoraIcon::Globe, ts!("modrinth.environment.client_or_server")),
-        _ =>
-            (PandoraIcon::Cpu, ts!("modrinth.environment.unknown_environment")),
-    }
-}
-
-impl ModrinthSearchPage {
+impl CurseforgeSearchPage {
     pub fn new(install_for: Option<InstanceID>, data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(ts!("instance.content.search.mod")).clean_on_escape());
+        let mut project_type = InterfaceConfig::get(cx).curseforge_page_class_id;
+        if project_type == CurseforgeClassId::Other {
+            project_type = CurseforgeClassId::Mod;
+            InterfaceConfig::get_mut(cx).curseforge_page_class_id = CurseforgeClassId::Mod;
+        }
+
+        let search_state = cx.new(|cx| {
+            let placeholder = match project_type {
+                CurseforgeClassId::Mod => ts!("instance.content.search.mod"),
+                CurseforgeClassId::Modpack => ts!("instance.content.search.modpack"),
+                CurseforgeClassId::Resourcepack => ts!("instance.content.search.resourcepack"),
+                CurseforgeClassId::Shader => ts!("instance.content.search.shader"),
+                _ => ts!("instance.content.search.file"),
+            };
+            InputState::new(window, cx).placeholder(placeholder).clean_on_escape()
+        });
 
         let mut can_install_latest = false;
-        let mut installed_mods_by_project: FxHashMap<Arc<str>, Vec<InstalledMod>> = FxHashMap::default();
+        let mut installed_mods_by_project: FxHashMap<u32, Vec<InstalledMod>> = FxHashMap::default();
         let mut filter_version = None;
 
         let mut mods_load_state = None;
@@ -132,11 +126,11 @@ impl ModrinthSearchPage {
 
                 let mods = instance.mods.read(cx);
                 for summary in mods.iter() {
-                    let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
+                    let ContentSource::CurseforgeProject { project_id: project } = summary.content_source else {
                         continue;
                     };
 
-                    let installed = installed_mods_by_project.entry(project_id.clone()).or_default();
+                    let installed = installed_mods_by_project.entry(project).or_default();
                     installed.push(InstalledMod {
                         mod_id: summary.id,
                         status: summary.update.status_if_matches(loader, minecraft_version),
@@ -150,11 +144,11 @@ impl ModrinthSearchPage {
                     page.installed_mods_by_project.clear();
                     let mods = entity.read(cx);
                     for summary in mods.iter() {
-                        let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
+                        let ContentSource::CurseforgeProject { project_id: project } = summary.content_source else {
                             continue;
                         };
 
-                        let installed = page.installed_mods_by_project.entry(project_id.clone()).or_default();
+                        let installed = page.installed_mods_by_project.entry(project).or_default();
                         installed.push(InstalledMod {
                             mod_id: summary.id,
                             status: summary.update.status_if_matches(loader, minecraft_version),
@@ -216,19 +210,19 @@ impl ModrinthSearchPage {
         self.reload(cx);
     }
 
-    fn set_project_type(&mut self, project_type: ModrinthProjectType, window: &mut Window, cx: &mut Context<Self>) {
-        if InterfaceConfig::get(cx).modrinth_page_project_type == project_type {
+    fn set_project_type(&mut self, project_type: CurseforgeClassId, window: &mut Window, cx: &mut Context<Self>) {
+        if InterfaceConfig::get(cx).curseforge_page_class_id == project_type {
             return;
         }
-        InterfaceConfig::get_mut(cx).modrinth_page_project_type = project_type;
+        InterfaceConfig::get_mut(cx).curseforge_page_class_id = project_type;
         self.filter_categories.clear();
         self.search_state.update(cx, |state, cx| {
             let placeholder = match project_type {
-                ModrinthProjectType::Mod => ts!("instance.content.search.mod"),
-                ModrinthProjectType::Modpack => ts!("instance.content.search.modpack"),
-                ModrinthProjectType::Resourcepack => ts!("instance.content.search.resourcepack"),
-                ModrinthProjectType::Shader => ts!("instance.content.search.shader"),
-                ModrinthProjectType::Other => ts!("instance.content.search.file"),
+                CurseforgeClassId::Mod => ts!("instance.content.search.mod"),
+                CurseforgeClassId::Modpack => ts!("instance.content.search.modpack"),
+                CurseforgeClassId::Resourcepack => ts!("instance.content.search.resourcepack"),
+                CurseforgeClassId::Shader => ts!("instance.content.search.shader"),
+                _ => ts!("instance.content.search.file"),
             };
             state.set_placeholder(placeholder, window, cx)
         });
@@ -243,7 +237,7 @@ impl ModrinthSearchPage {
         self.reload(cx);
     }
 
-    fn set_filter_categories(&mut self, categories: BTreeSet<&'static str>, _window: &mut Window, cx: &mut Context<Self>) {
+    fn set_filter_categories(&mut self, categories: BTreeSet<u32>, _window: &mut Window, cx: &mut Context<Self>) {
         if self.filter_categories == categories {
             return;
         }
@@ -258,8 +252,6 @@ impl ModrinthSearchPage {
         }
 
         self.pending_clear = true;
-        self.loading = None;
-
         self._delayed_clear_task = cx.spawn(async |page, cx| {
             cx.background_executor().timer(Duration::from_millis(300)).await;
             let _ = page.update(cx, |page, cx| {
@@ -289,80 +281,70 @@ impl ModrinthSearchPage {
         };
 
         let config = InterfaceConfig::get(cx);
-        let filter_project_type = config.modrinth_page_project_type;
+        let class_id = config.curseforge_page_class_id;
         let modrinth_filter_version = config.content_filter_version;
-
-        let project_type = match filter_project_type {
-            ModrinthProjectType::Mod | ModrinthProjectType::Other => "mod",
-            ModrinthProjectType::Modpack => "modpack",
-            ModrinthProjectType::Resourcepack => "resourcepack",
-            ModrinthProjectType::Shader => "shader",
-        };
 
         let offset = if self.pending_clear { 0 } else { self.hits.len() };
 
-        let mut facets = format!("[[\"project_type={}\"]", project_type);
-
-        let is_mod = filter_project_type == ModrinthProjectType::Mod || filter_project_type == ModrinthProjectType::Modpack;
-        if is_mod && let Some(filter_version) = self.filter_version && modrinth_filter_version {
-            facets.push_str(",[\"versions=");
-            facets.push_str(&filter_version);
-            facets.push_str("\"]");
-        }
-
-        if !self.filter_loaders.is_empty() && is_mod {
-            facets.push_str(",[");
-
-            let mut first = true;
-            for loader in self.filter_loaders {
-                if first {
-                    first = false;
-                } else {
-                    facets.push(',');
-                }
-                facets.push_str("\"categories:");
-                facets.push_str(loader.as_modrinth_loader().id());
-                facets.push('"');
-            }
-            facets.push(']');
-        }
-
-        if !self.filter_categories.is_empty() {
-            facets.push_str(",[");
-
-            let mut first = true;
-            for category in &self.filter_categories {
-                if first {
-                    first = false;
-                } else {
-                    facets.push(',');
-                }
-                facets.push_str("\"categories:");
-                facets.push_str(*category);
-                facets.push('"');
-            }
-            facets.push(']');
-        }
-
-        facets.push(']');
-
-        let request = ModrinthSearchRequest {
-            query,
-            facets: Some(facets.into()),
-            index: schema::modrinth::ModrinthSearchIndex::Relevance,
-            offset,
-            limit: 20,
+        let is_mod = class_id == CurseforgeClassId::Mod || class_id == CurseforgeClassId::Modpack;
+        let game_version = if is_mod && let Some(filter_version) = self.filter_version && modrinth_filter_version {
+            Some(filter_version)
+        } else {
+            None
         };
 
-        let data = FrontendMetadata::request(&self.data.metadata, MetadataRequest::ModrinthSearch(request), cx);
+        let mod_loader_types = if !self.filter_loaders.is_empty() && is_mod {
+            let mut string = "[\"".to_string();
+            for (i, loader) in self.filter_loaders.iter().enumerate() {
+                if i > 0 {
+                    string.push_str("\",\"");
+                }
+                string.push_str(loader.name());
+            }
+            string.push_str("\"]");
+            let string: Arc<str> = string.into();
+            Some(string)
+        } else {
+            None
+        };
 
-        let result: FrontendMetadataResult<ModrinthSearchResult> = data.read(cx).result();
+        let category_ids = if !self.filter_categories.is_empty() {
+            let mut string = "[\"".to_string();
+            for (i, category_id) in self.filter_categories.iter().enumerate() {
+                if i > 0 {
+                    string.push_str("\",\"");
+                }
+                use std::fmt::Write;
+                _ = write!(&mut string, "{}", *category_id);
+            }
+            string.push_str("\"]");
+            let string: Arc<str> = string.into();
+            Some(string)
+        } else {
+            None
+        };
+
+        let request = CurseforgeSearchRequest {
+            search_filter: query,
+            class_id: class_id as u32,
+            category_ids,
+            game_version,
+            mod_loader_types,
+            index: offset as u32,
+            page_size: 20
+        };
+
+        let data = FrontendMetadata::request(&self.data.metadata, MetadataRequest::CurseforgeSearch(request), cx);
+
+        let result: FrontendMetadataResult<CurseforgeSearchResult> = data.read(cx).result();
         match result {
             FrontendMetadataResult::Loading => {
                 let subscription = cx.observe(&data, |page, data, cx| {
-                    let result: FrontendMetadataResult<ModrinthSearchResult> = data.read(cx).result();
+                    let result: FrontendMetadataResult<CurseforgeSearchResult> = data.read(cx).result();
                     match result {
-                        FrontendMetadataResult::Loading => {},
+                        FrontendMetadataResult::Loading => {
+                            return;
+                        },
                         FrontendMetadataResult::Loaded(result) => {
                             if !page.pending_reload {
                                 page.apply_search_data(result);
@@ -391,7 +373,7 @@ impl ModrinthSearchPage {
         }
     }
 
-    fn apply_search_data(&mut self, search_result: &ModrinthSearchResult) {
+    fn apply_search_data(&mut self, search_result: &CurseforgeSearchResult) {
         if self.pending_clear {
             self.pending_clear = false;
             self.hits.clear();
@@ -399,14 +381,12 @@ impl ModrinthSearchPage {
             self._delayed_clear_task = Task::ready(());
         }
 
-        self.hits.extend(search_result.hits.iter().map(|hit| {
+        self.hits.extend(search_result.data.iter().map(|hit| {
             let mut hit = hit.clone();
-            if let Some(description) = hit.description {
-                hit.description = Some(description.replace("\n", " ").into());
-            }
+            hit.summary = hit.summary.replace("\n", " ").into();
             hit
         }));
-        self.total_hits = search_result.total_hits;
+        self.total_hits = search_result.pagination.total_count;
     }
 
     fn render_items(&mut self, visible_range: Range<usize>, _window: &mut Window, cx: &mut Context<Self>) -> Vec<Div> {
@@ -429,10 +409,9 @@ impl ModrinthSearchPage {
                     }
                 };
 
-                let image = if let Some(icon_url) = &hit.icon_url
-                    && !icon_url.is_empty()
-                {
-                    gpui::img(SharedUri::from(icon_url))
+
+                let image = if let Some(logo) = &hit.logo && !logo.thumbnail_url.is_empty() {
+                    gpui::img(SharedUri::from(logo.thumbnail_url.clone()))
                         .with_fallback(|| Skeleton::new().rounded_lg().size_16().into_any_element())
                 } else {
                     gpui::img(ImageSource::Resource(Resource::Embedded(
@@ -440,77 +419,45 @@ impl ModrinthSearchPage {
                     )))
                 };
 
-                let name = hit
-                    .title
-                    .as_ref()
-                    .map(Arc::clone)
-                    .map(SharedString::new)
-                    .unwrap_or(ts!("instance.content.unnamed"));
-                let author = ts!("instance.content.by", name = hit.author.clone());
-                let description = hit
-                    .description
-                    .as_ref()
-                    .map(Arc::clone)
-                    .map(SharedString::new)
-                    .unwrap_or(ts!("instance.content.no_description"));
+                let author = if hit.authors.len() == 1 {
+                    let author = &*hit.authors[0].name;
+                    ts!("instance.content.by", name = author)
+                } else if hit.authors.is_empty() {
+                    ts!("instance.content.by", name = "Unknown")
+                } else {
+                    let mut authors_string = String::new();
+                    for (i, author) in hit.authors.iter().enumerate() {
+                        if i > 0 {
+                            authors_string.push_str(", ");
+                        }
+                        authors_string.push_str(&author.name);
+                    }
+                    ts!("instance.content.by", name = authors_string)
+                };
+
+                let name = SharedString::new(hit.name.clone());
+                let description = SharedString::new(hit.summary.clone());
 
                 let author_line = div().text_color(cx.theme().muted_foreground).text_sm().pb_px().child(author);
 
-                let client_side = hit.client_side.unwrap_or(ModrinthSideRequirement::Unknown);
-                let server_side = hit.server_side.unwrap_or(ModrinthSideRequirement::Unknown);
-
-                let (env_icon, env_name) = env_display(client_side, server_side);
-
-                let environment = h_flex().gap_1().child(env_icon).child(env_name);
-
-                let categories = hit.display_categories.iter().flat_map(|categories| {
-                    categories.iter().filter_map(|category| {
-                        if category == "minecraft" {
-                            return None;
-                        }
-
-                        let icon = icon_for(category).unwrap_or("icons/diamond.svg");
-                        let icon = Icon::empty().path(icon);
-                        let translated_category = ts!(format!("modrinth.category.{}", category));
-                        Some(h_flex().gap_0p5().child(icon).child(translated_category))
-                    })
+                let muted = cx.theme().muted_foreground;
+                let mut is_categories_empty = true;
+                let categories = hit.categories.iter().filter_map(|category| {
+                    if category.is_class {
+                        return None;
+                    }
+                    is_categories_empty = false;
+                    Some(SharedString::new(category.name.clone()).into_any_element())
                 });
+                let categories = itertools::Itertools::intersperse_with(categories,
+                    || div().flex_shrink_0().w_px().h_1_2().bg(muted).into_any_element());
 
                 let downloads = h_flex()
                     .gap_0p5()
                     .child(PandoraIcon::Download)
-                    .child(format_downloads(hit.downloads));
+                    .child(format_downloads(hit.download_count));
 
-                let open_project_page = {
-                    let project_id = hit.project_id.clone();
-                    let project_title = name.clone();
-                    let data = self.data.clone();
-                    let install_for = self.install_for;
-                    move |window: &mut Window, cx: &mut App| {
-                        let install_for_name = install_for.and_then(|id| {
-                            crate::entity::instance::InstanceEntries::find_name_by_id(
-                                &data.instances,
-                                id,
-                                cx,
-                            )
-                        });
-                        let config = InterfaceConfig::get(cx);
-                        let mut new_path: Vec<ui::PageType> = config.page_path.to_vec();
-                        new_path.push(config.main_page.clone());
-                        crate::root::switch_page(
-                            ui::PageType::ModrinthProject {
-                                project_id: SharedString::new(project_id.clone()),
-                                project_title: project_title.clone(),
-                                install_for: install_for_name,
-                            },
-                            &new_path,
-                            window,
-                            cx,
-                        );
-                    }
-                };
-
-                let primary_action = self.get_primary_action(&hit.project_id, cx);
+                let primary_action = self.get_primary_action(hit.id, cx);
 
                 let install_button = Button::new(("install", index))
                     .label(primary_action.text())
@@ -518,16 +465,83 @@ impl ModrinthSearchPage {
                     .with_variant(primary_action.button_variant())
                     .on_click({
                         let data = self.data.clone();
-                        let name = name.clone();
-                        let project_id = hit.project_id.clone();
+                        let hit = hit.clone();
                         let install_for = self.install_for.clone();
-                        let project_type = hit.project_type;
 
                         move |_, window, cx| {
                             cx.stop_propagation();
 
-                            if project_type != ModrinthProjectType::Other {
-                                primary_action.perform(name.as_str(), &project_id, project_type, install_for, &data, window, cx);
+                            if hit.class_id.is_some() && hit.class_id != Some(0) {
+                                match primary_action {
+                                    PrimaryAction::Install | PrimaryAction::Reinstall => {
+                                        crate::modals::curseforge_install::open(
+                                            hit.clone(),
+                                            install_for,
+                                            &data,
+                                            window,
+                                            cx
+                                        );
+                                    },
+                                    PrimaryAction::InstallLatest => {
+                                        let Some(install_for) = install_for else {
+                                            window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
+                                            return;
+                                        };
+
+                                        let Some(entry) = data.instances.read(cx).entries.get(&install_for) else {
+                                            window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
+                                            return;
+                                        };
+
+                                        let instance = entry.read(cx);
+                                        let loader = instance.configuration.loader;
+                                        let minecraft_version = instance.configuration.minecraft_version;
+
+                                        let content_install = ContentInstall {
+                                            target: InstallTarget::Instance(instance.id),
+                                            loader_hint: loader,
+                                            version_hint: Some(minecraft_version.into()),
+                                            files: [
+                                                ContentInstallFile {
+                                                    replace_old: None,
+                                                    path: bridge::install::ContentInstallPath::Automatic,
+                                                    download: ContentDownload::Curseforge {
+                                                        project_id: hit.id,
+                                                        install_dependencies: true,
+                                                    },
+                                                    content_source: ContentSource::CurseforgeProject {
+                                                        project_id: hit.id
+                                                    },
+                                                }
+                                            ].into(),
+                                        };
+
+                                        crate::root::start_install(content_install, &data.backend_handle, window, cx);
+                                    },
+                                    PrimaryAction::CheckForUpdates => {
+                                        let modal_action = ModalAction::default();
+                                        data.backend_handle.send(MessageToBackend::UpdateCheck {
+                                            instance: install_for.unwrap(),
+                                            modal_action: modal_action.clone()
+                                        });
+                                        crate::modals::generic::show_notification(window, cx,
+                                            ts!("instance.content.update.check.error"), modal_action);
+                                    },
+                                    PrimaryAction::ErrorCheckingForUpdates => {},
+                                    PrimaryAction::UpToDate => {},
+                                    PrimaryAction::Update(ref ids) => {
+                                        for id in ids {
+                                            let modal_action = ModalAction::default();
+                                            data.backend_handle.send(MessageToBackend::UpdateContent {
+                                                instance: install_for.unwrap(),
+                                                content_id: *id,
+                                                modal_action: modal_action.clone()
+                                            });
+                                            crate::modals::generic::show_notification(window, cx,
+                                                ts!("instance.content.update.error"), modal_action);
+                                        }
+                                    },
+                                }
                             } else {
                                 window.push_notification(
                                     (
@@ -553,19 +567,10 @@ impl ModrinthSearchPage {
                     .child(image.rounded_lg().size_16().min_w_16().min_h_16())
                     .child(
                         v_flex()
-                            .id(("open-project", index))
                             .h(px(104.0))
                             .flex_grow()
                             .gap_1()
                             .overflow_hidden()
-                            .cursor_pointer()
-                            .hover(|style| style.underline())
-                            .on_click({
-                                let open_project_page = open_project_page.clone();
-                                move |_, window, cx| {
-                                    open_project_page(window, cx);
-                                }
-                            })
                             .child(
                                 h_flex()
                                     .gap_1()
@@ -577,7 +582,6 @@ impl ModrinthSearchPage {
                             )
                             .child(
                                 div()
-                                    .text_decoration_0()
                                     .flex_auto()
                                     .line_height(px(20.0))
                                     .line_clamp(2)
@@ -585,9 +589,9 @@ impl ModrinthSearchPage {
                             )
                             .child(
                                 h_flex()
-                                    .text_decoration_0()
                                     .gap_2p5()
-                                    .children(std::iter::once(environment).chain(categories)),
+                                    .child(PandoraIcon::Tags)
+                                    .children(categories),
                             ),
                     )
                     .child(v_flex().items_end().child(downloads).child(install_button));
@@ -603,7 +607,7 @@ impl ModrinthSearchPage {
         items
     }
 
-    pub fn get_primary_action(&self, project_id: &str, cx: &App) -> PrimaryAction {
+    pub fn get_primary_action(&self, project_id: u32, cx: &App) -> PrimaryAction {
         get_primary_action(project_id, self.can_install_latest, &self.installed_mods_by_project, cx)
     }
 }
@@ -655,86 +659,9 @@ impl PrimaryAction {
             PrimaryAction::Update(..) => ButtonVariant::Success,
         }
     }
-
-    pub fn perform(&self, name: &str, project_id: &Arc<str>, project_type: ModrinthProjectType, install_for: Option<InstanceID>, data: &DataEntities, window: &mut Window, cx: &mut App) {
-        match self {
-            PrimaryAction::Install | PrimaryAction::Reinstall => {
-                crate::modals::modrinth_install::open(
-                    name,
-                    project_id.clone(),
-                    project_type,
-                    install_for,
-                    data,
-                    window,
-                    cx
-                );
-            },
-            PrimaryAction::InstallLatest => {
-                let Some(install_for) = install_for else {
-                    window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
-                    return;
-                };
-
-                let Some(entry) = data.instances.read(cx).entries.get(&install_for) else {
-                    window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
-                    return;
-                };
-
-                let instance = entry.read(cx);
-                let loader = instance.configuration.loader;
-                let minecraft_version = instance.configuration.minecraft_version;
-
-                let content_install = ContentInstall {
-                    target: InstallTarget::Instance(instance.id),
-                    loader_hint: loader,
-                    version_hint: Some(minecraft_version.into()),
-                    files: [
-                        ContentInstallFile {
-                            replace_old: None,
-                            path: bridge::install::ContentInstallPath::Automatic,
-                            download: ContentDownload::Modrinth {
-                                project_id: project_id.clone(),
-                                version_id: None,
-                                install_dependencies: true,
-                            },
-                            content_source: ContentSource::ModrinthProject {
-                                project_id: project_id.clone()
-                            },
-                        }
-                    ].into(),
-                };
-
-                crate::root::start_install(content_install, &data.backend_handle, window, cx);
-            },
-            PrimaryAction::CheckForUpdates => {
-                let modal_action = ModalAction::default();
-                data.backend_handle.send(MessageToBackend::UpdateCheck {
-                    instance: install_for.unwrap(),
-                    modal_action: modal_action.clone()
-                });
-                crate::modals::generic::show_notification(window, cx,
-                    ts!("instance.content.update.check.error"), modal_action);
-            },
-            PrimaryAction::ErrorCheckingForUpdates => {},
-            PrimaryAction::UpToDate => {},
-            PrimaryAction::Update(ids) => {
-                for id in ids {
-                    let modal_action = ModalAction::default();
-                    data.backend_handle.send(MessageToBackend::UpdateContent {
-                        instance: install_for.unwrap(),
-                        content_id: *id,
-                        modal_action: modal_action.clone()
-                    });
-                    crate::modals::generic::show_notification(window, cx,
-                        ts!("instance.content.update.error"), modal_action);
-                }
-
-            },
-        }
-    }
 }
 
-impl Page for ModrinthSearchPage {
+impl Page for CurseforgeSearchPage {
     fn controls(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         gpui::Empty
     }
@@ -744,9 +671,9 @@ impl Page for ModrinthSearchPage {
     }
 }
 
-impl Render for ModrinthSearchPage {
+impl Render for CurseforgeSearchPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let can_load_more = self.total_hits > self.hits.len();
+        let can_load_more = self.total_hits > self.hits.len() as u64;
         let scroll_handle = self.scroll_handle.clone();
 
         let item_count = self.hits.len() + if can_load_more || self.search_error.is_some() { 1 } else { 0 };
@@ -815,32 +742,32 @@ impl Render for ModrinthSearchPage {
             .child(div().size_full().rounded_lg().border_1().border_color(theme.border).child(list));
 
         let config = InterfaceConfig::get(cx);
-        let filter_project_type = config.modrinth_page_project_type;
+        let filter_project_type = config.curseforge_page_class_id;
 
         let type_button_group = ButtonGroup::new("type")
             .layout(Axis::Vertical)
             .outline()
-            .child(Button::new("mods").label(ts!("instance.content.mods")).selected(filter_project_type == ModrinthProjectType::Mod))
+            .child(Button::new("mods").label(ts!("instance.content.mods")).selected(filter_project_type == CurseforgeClassId::Mod))
             .child(
                 Button::new("modpacks")
                     .label(ts!("instance.content.modpacks"))
-                    .selected(filter_project_type == ModrinthProjectType::Modpack),
+                    .selected(filter_project_type == CurseforgeClassId::Modpack),
             )
             .child(
                 Button::new("resourcepacks")
                     .label(ts!("instance.content.resourcepacks"))
-                    .selected(filter_project_type == ModrinthProjectType::Resourcepack),
+                    .selected(filter_project_type == CurseforgeClassId::Resourcepack),
             )
-            .child(Button::new("shaders").label(ts!("instance.content.shaders")).selected(filter_project_type == ModrinthProjectType::Shader))
+            .child(Button::new("shaders").label(ts!("instance.content.shaders")).selected(filter_project_type == CurseforgeClassId::Shader))
             .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| match clicked[0] {
-                0 => page.set_project_type(ModrinthProjectType::Mod, window, cx),
-                1 => page.set_project_type(ModrinthProjectType::Modpack, window, cx),
-                2 => page.set_project_type(ModrinthProjectType::Resourcepack, window, cx),
-                3 => page.set_project_type(ModrinthProjectType::Shader, window, cx),
+                0 => page.set_project_type(CurseforgeClassId::Mod, window, cx),
+                1 => page.set_project_type(CurseforgeClassId::Modpack, window, cx),
+                2 => page.set_project_type(CurseforgeClassId::Resourcepack, window, cx),
+                3 => page.set_project_type(CurseforgeClassId::Shader, window, cx),
                 _ => {},
             }));
 
-        let loader_button_group = if filter_project_type == ModrinthProjectType::Mod || filter_project_type == ModrinthProjectType::Modpack {
+        let loader_button_group = if filter_project_type == CurseforgeClassId::Mod || filter_project_type == CurseforgeClassId::Modpack {
             Some(ButtonGroup::new("loader_group")
                 .layout(Axis::Vertical)
                 .outline()
@@ -861,11 +788,11 @@ impl Render for ModrinthSearchPage {
         };
 
         let categories = match filter_project_type {
-            ModrinthProjectType::Mod => FILTER_MOD_CATEGORIES,
-            ModrinthProjectType::Modpack => FILTER_MODPACK_CATEGORIES,
-            ModrinthProjectType::Resourcepack => FILTER_RESOURCEPACK_CATEGORIES,
-            ModrinthProjectType::Shader => FILTER_SHADERPACK_CATEGORIES,
-            ModrinthProjectType::Other => &[],
+            CurseforgeClassId::Mod => FILTER_MOD_CATEGORIES,
+            CurseforgeClassId::Modpack => FILTER_MODPACK_CATEGORIES,
+            CurseforgeClassId::Resourcepack => FILTER_RESOURCEPACK_CATEGORIES,
+            CurseforgeClassId::Shader => FILTER_SHADERPACK_CATEGORIES,
+            _ => &[],
         };
 
         let is_shown = self.show_categories.load(std::sync::atomic::Ordering::Relaxed);
@@ -887,26 +814,23 @@ impl Render for ModrinthSearchPage {
                     .layout(Axis::Vertical)
                     .outline()
                     .multiple(true)
-                    .children(categories.iter().map(|id| {
-                        Button::new(*id)
+                    .children(categories.iter().map(|(name, id)| {
+                        Button::new(("category", *id))
                             .child(
                                 h_flex().w_full().justify_start().gap_2()
-                                .when_some(icon_for(id), |this, icon| {
-                                    this.child(Icon::empty().path(icon))
-                                })
-                                .child(ts_short!(format!("modrinth.category.{}", id))))
+                                .child(SharedString::new(*name)))
                             .selected(self.filter_categories.contains(id))
                     }))
                     .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
                         page.set_filter_categories(clicked.iter()
-                            .filter_map(|index| categories.get(*index).map(|s| *s))
+                            .filter_map(|index| categories.get(*index).map(|(_, id)| *id))
                             .collect(), window, cx);
                     }))
                     .when(!is_shown, |this| this.invisible().h_0())
             )
             .into_any_element();
 
-        let is_mod = filter_project_type == ModrinthProjectType::Mod || filter_project_type == ModrinthProjectType::Modpack;
+        let is_mod = filter_project_type == CurseforgeClassId::Mod || filter_project_type == CurseforgeClassId::Modpack;
         let filter_version_toggle = if is_mod && let Some(filter_version) = self.filter_version {
             let title = format!("{}: {}", ts!("instance.version"), filter_version);
             Some(Button::new("filter_version").label(title)
@@ -937,7 +861,7 @@ impl Render for ModrinthSearchPage {
     }
 }
 
-pub fn format_downloads(downloads: usize) -> SharedString {
+pub fn format_downloads(downloads: u64) -> SharedString {
     if downloads >= 1_000_000_000 {
         ts!("instance.content.downloads", num = format!("{}B", (downloads / 10_000_000) as f64 / 100.0))
     } else if downloads >= 1_000_000 {
@@ -949,114 +873,67 @@ pub fn format_downloads(downloads: usize) -> SharedString {
     }
 }
 
-pub fn icon_for(str: &str) -> Option<&'static str> {
-    match str {
-        "forge" => Some("icons/anvil.svg"),
-        "fabric" => Some("icons/scroll.svg"),
-        "neoforge" => Some("icons/cat.svg"),
-        "quilt" => Some("icons/grid-2x2.svg"),
-        "adventure" => Some("icons/compass.svg"),
-        "cursed" => Some("icons/bug.svg"),
-        "decoration" => Some("icons/house.svg"),
-        "economy" => Some("icons/dollar-sign.svg"),
-        "equipment" | "combat" => Some("icons/swords.svg"),
-        "food" => Some("icons/carrot.svg"),
-        "game-mechanics" => Some("icons/sliders-vertical.svg"),
-        "library" | "items" => Some("icons/book.svg"),
-        "magic" => Some("icons/wand.svg"),
-        "management" => Some("icons/server.svg"),
-        "minigame" => Some("icons/award.svg"),
-        "mobs" | "entities" => Some("icons/cat.svg"),
-        "optimization" => Some("icons/zap.svg"),
-        "social" => Some("icons/message-circle.svg"),
-        "storage" => Some("icons/archive.svg"),
-        "technology" => Some("icons/hard-drive.svg"),
-        "transportation" => Some("icons/truck.svg"),
-        "utility" => Some("icons/briefcase.svg"),
-        "worldgen" | "locale" => Some("icons/globe.svg"),
-        "audio" => Some("icons/headphones.svg"),
-        "blocks" | "rift" => Some("icons/box.svg"),
-        "core-shaders" => Some("icons/cpu.svg"),
-        "fonts" => Some("icons/type.svg"),
-        "gui" => Some("icons/panels-top-left.svg"),
-        "models" => Some("icons/layers.svg"),
-        "cartoon" => Some("icons/brush.svg"),
-        "fantasy" => Some("icons/wand-sparkles.svg"),
-        "realistic" => Some("icons/camera.svg"),
-        "semi-realistic" => Some("icons/film.svg"),
-        "vanilla-like" => Some("icons/ice-cream-cone.svg"),
-        "atmosphere" => Some("icons/cloud-sun-rain.svg"),
-        "colored-lighting" => Some("icons/palette.svg"),
-        "foliage" => Some("icons/tree-pine.svg"),
-        "path-tracing" => Some("icons/waypoints.svg"),
-        "pbr" => Some("icons/lightbulb.svg"),
-        "reflections" => Some("icons/flip-horizontal-2.svg"),
-        "shadows" => Some("icons/mountain.svg"),
-        "challenging" => Some("icons/chart-no-axes-combined.svg"),
-        "kitchen-sink" => Some("icons/bath.svg"),
-        "lightweight" | "liteloader" => Some("icons/feather.svg"),
-        "multiplayer" => Some("icons/users.svg"),
-        "quests" => Some("icons/network.svg"),
-        "modded" => Some("icons/puzzle.svg"),
-        "simplistic" => Some("icons/box.svg"),
-        "themed" => Some("icons/palette.svg"),
-        "tweaks" => Some("icons/sliders-vertical.svg"),
-        _ => None,
-    }
-}
-
-const FILTER_MOD_CATEGORIES: &[&'static str] = &[
-    "adventure",
-    "cursed",
-    "decoration",
-    "economy",
-    "equipment",
-    "food",
-    "library",
-    "magic",
-    "management",
-    "minigame",
-    "mobs",
-    "optimization",
-    "social",
-    "storage",
-    "technology",
-    "transportation",
-    "utility",
-    "worldgen"
+const FILTER_MOD_CATEGORIES: &[(&'static str, u32)] = &[
+    ("Addons", 426),
+    ("Adventure & RPG", 422),
+    ("API and Library", 421),
+    ("Equipment", 434),
+    ("Bug Fixes", 6821),
+    ("Cosmetic", 424),
+    ("Education", 5299),
+    ("Food", 436),
+    ("Magic", 419),
+    ("Map & Information", 423),
+    ("Performance", 6814),
+    ("Redstone", 4558),
+    ("Server Utility", 435),
+    ("Storage", 420),
+    ("Technology", 412),
+    ("Utility & QoL", 5191),
+    ("World Gen", 406),
 ];
 
-const FILTER_MODPACK_CATEGORIES: &[&'static str] = &[
-    "adventure",
-    "challenging",
-    "combat",
-    "kitchen-sink",
-    "lightweight",
-    "magic",
-    "multiplayer",
-    "optimization",
-    "quests",
-    "technology",
+const FILTER_MODPACK_CATEGORIES: &[(&'static str, u32)] = &[
+    ("Adventure & RPG", 4475),
+    ("Combat / PvP", 4483),
+    ("Expert", 9243),
+    ("Exploration", 4476),
+    ("Extra Large", 4482),
+    ("FTB Official Pack", 4487),
+    ("Hardcore", 4479),
+    ("Horror", 7418),
+    ("Magic", 4473),
+    ("Map Based", 4480),
+    ("Mini Game", 4477),
+    ("Multiplayer", 4484),
+    ("Quests", 4478),
+    ("Sci-Fi", 4474),
+    ("Skyblock", 4736),
+    ("Small / Light", 4481),
+    ("Tech", 4472),
+    ("Vanilla+", 5128),
 ];
 
-const FILTER_RESOURCEPACK_CATEGORIES: &[&'static str] = &[
-    "combat",
-    "cursed",
-    "decoration",
-    "modded",
-    "realistic",
-    "simplistic",
-    "themed",
-    "tweaks",
-    "utility",
-    "vanilla-like",
+const FILTER_RESOURCEPACK_CATEGORIES: &[(&'static str, u32)] = &[
+    ("16x", 393),
+    ("32x", 394),
+    ("64x", 395),
+    ("128x", 396),
+    ("256x", 397),
+    ("512x and Higher", 398),
+    ("Animated", 404),
+    ("Data Packs", 5193),
+    ("Font Packs", 5244),
+    ("Medieval", 402),
+    ("Mod Support", 4465),
+    ("Modern", 401),
+    ("Photo Realistic", 400),
+    ("Steampunk", 399),
+    ("Traditional", 403),
 ];
 
-const FILTER_SHADERPACK_CATEGORIES: &[&'static str] = &[
-    "cartoon",
-    "cursed",
-    "fantasy",
-    "realistic",
-    "semi-realistic",
-    "vanilla-like",
+const FILTER_SHADERPACK_CATEGORIES: &[(&'static str, u32)] = &[
+    ("Fantasy", 6554),
+    ("Realistic", 6553),
+    ("Vanilla", 6555),
 ];

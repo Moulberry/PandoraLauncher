@@ -18,3 +18,4 @@ relative-path.workspace = true
 sanitize-filename.workspace = true
 rustc-hash.workspace = true
 indexmap.workspace = true
+parking_lot.workspace = true

@@ -1,7 +1,7 @@
 use enumset::EnumSetType;
 use serde::{Deserialize, Serialize};
 
-use crate::modrinth::ModrinthLoader;
+use crate::{curseforge::CurseforgeModLoaderType, modrinth::ModrinthLoader};
 
 #[derive(EnumSetType, Serialize, Deserialize, Debug, Hash, strum::EnumIter)]
 #[serde(rename_all = "lowercase")]
@@ -46,6 +46,16 @@ impl Loader {
             Loader::Forge => ModrinthLoader::Forge,
             Loader::NeoForge => ModrinthLoader::NeoForge,
             Loader::Unknown => ModrinthLoader::Unknown,
+        }
+    }
+
+    pub fn as_curseforge_loader(&self) -> CurseforgeModLoaderType {
+        match self {
+            Loader::Vanilla => CurseforgeModLoaderType::Any,
+            Loader::Fabric => CurseforgeModLoaderType::Fabric,
+            Loader::Forge => CurseforgeModLoaderType::Forge,
+            Loader::NeoForge => CurseforgeModLoaderType::NeoForge,
+            Loader::Unknown => CurseforgeModLoaderType::Any,
         }
     }
 }

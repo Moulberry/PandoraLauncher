@@ -1,13 +1,14 @@
 use std::{
     ops::Deref,
     sync::{
-        Arc, RwLock,
+        Arc,
         atomic::{AtomicUsize, Ordering},
     },
     time::Instant,
 };
 
 use atomic_time::AtomicOptionInstant;
+use parking_lot::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use crate::{handle::FrontendHandle, message::MessageToFrontend, serial::AtomicOptionSerial};
@@ -57,15 +58,15 @@ impl ModalActionInner {
     }
 
     pub fn set_error_message(&self, error: Arc<str>) {
-        *self.error.write().unwrap() = Some(error);
+        *self.error.write() = Some(error);
     }
 
     pub fn set_visit_url(&self, visit_url: ModalActionVisitUrl) {
-        *self.visit_url.write().unwrap() = Some(visit_url);
+        *self.visit_url.write() = Some(visit_url);
     }
 
     pub fn unset_visit_url(&self) {
-        *self.visit_url.write().unwrap() = None;
+        *self.visit_url.write() = None;
     }
 
     pub fn request_cancel(&self) {
@@ -96,11 +97,11 @@ pub struct ProgressTrackers {
 
 impl ProgressTrackers {
     pub fn push(&self, tracker: ProgressTracker) {
-        self.trackers.write().unwrap().push(tracker);
+        self.trackers.write().push(tracker);
     }
 
     pub fn clear(&self) {
-        self.trackers.write().unwrap().clear();
+        self.trackers.write().clear();
     }
 }
 
@@ -167,11 +168,11 @@ impl ProgressTracker {
     }
 
     pub fn get_title(&self) -> Arc<str> {
-        self.inner.title.read().unwrap().clone()
+        self.inner.title.read().clone()
     }
 
     pub fn set_title(&self, title: Arc<str>) {
-        *self.inner.title.write().unwrap() = title;
+        *self.inner.title.write() = title;
     }
 
     pub fn get_float(&self) -> Option<f32> {

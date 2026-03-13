@@ -7,18 +7,20 @@ use gpui_component::{
 };
 use rand::Rng;
 use rustc_hash::FxHashMap;
+use schema::pandora_update::UpdatePrompt;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
     component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath, shrinking_text::ShrinkingText, title_bar::TitleBar}, entity::{
         DataEntities, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, page::Page, skins_page::SkinsPage, syncing_page::SyncingPage}, png_render_cache, ts
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{curseforge_page::CurseforgeSearchPage, import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, page::Page, skins_page::SkinsPage, syncing_page::SyncingPage}, png_render_cache, ts
 };
 
 pub struct LauncherUI {
     data: DataEntities,
     page: LauncherPage,
+    pub update: Option<UpdatePrompt>,
     sidebar_state: Entity<ResizableState>,
     default_sidebar_width: f32,
     recent_instances: heapless::Vec<(InstanceID, SharedString), 3>,
@@ -36,6 +38,9 @@ pub enum PageType {
     Instances,
     Skins,
     Modrinth {
+        installing_for: Option<SharedString>,
+    },
+    Curseforge {
         installing_for: Option<SharedString>,
     },
     Import,
@@ -62,6 +67,13 @@ impl PageType {
                     ts!("modrinth.name")
                 }
             },
+            PageType::Curseforge { installing_for } => {
+                if installing_for.is_some() {
+                    ts!("instance.content.install.from_curseforge")
+                } else {
+                    ts!("curseforge.name")
+                }
+            },
             PageType::Import => "Import".into(),
             PageType::Syncing => ts!("instance.sync.label"),
             PageType::ModrinthProject { project_title, .. } => project_title.clone(),
@@ -78,6 +90,7 @@ pub enum LauncherPage {
     Instances(Entity<InstancesPage>),
     Skins(Entity<SkinsPage>),
     Modrinth(Entity<ModrinthSearchPage>),
+    Curseforge(Entity<CurseforgeSearchPage>),
     Import(Entity<ImportPage>),
     Syncing(Entity<SyncingPage>),
     ModrinthProject(Entity<ModrinthProjectPage>),
@@ -85,7 +98,7 @@ pub enum LauncherPage {
 }
 
 impl LauncherPage {
-    fn render(self, data: &DataEntities, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, ui: &LauncherUI, window: &mut Window, cx: &mut App) -> impl IntoElement {
         fn process(entity: Entity<impl Page>, window: &mut Window, cx: &mut App) -> (bool, AnyElement, AnyElement) {
             entity.update(cx, |page, cx| {
                 (page.scrollable(cx), page.controls(window, cx).into_any_element(), page.render(window, cx).into_any_element())
@@ -96,6 +109,7 @@ impl LauncherPage {
             LauncherPage::Instances(entity) => process(entity, window, cx),
             LauncherPage::Skins(entity) => process(entity, window, cx),
             LauncherPage::Modrinth(entity) => process(entity, window, cx),
+            LauncherPage::Curseforge(entity) => process(entity, window, cx),
             LauncherPage::Import(entity) => process(entity, window, cx),
             LauncherPage::Syncing(entity) => process(entity, window, cx),
             LauncherPage::ModrinthProject(entity) => process(entity, window, cx),
@@ -103,8 +117,13 @@ impl LauncherPage {
         };
 
         let config = InterfaceConfig::get(cx);
-        let page_path = PagePath::new(data.clone(), config.main_page.clone(), config.page_path.clone());
-        let title_bar = TitleBar::new(page_path, controls);
+        let page_path = PagePath::new(ui.data.clone(), config.main_page.clone(), config.page_path.clone());
+        let title_bar = TitleBar {
+            page_path,
+            controls,
+            update: ui.update.clone(),
+            send: ui.data.backend_handle.clone(),
+        };
 
         if scrollable {
             v_flex()
@@ -217,6 +236,7 @@ impl LauncherUI {
         Self {
             data: data.clone(),
             page,
+            update: None,
             sidebar_state,
             default_sidebar_width,
             recent_instances,
@@ -243,6 +263,14 @@ impl LauncherUI {
                     ModrinthSearchPage::new(installing_for, data, window, cx)
                 });
                 Ok(LauncherPage::Modrinth(page))
+            },
+            PageType::Curseforge { installing_for } => {
+                let installing_for = installing_for.as_ref().and_then(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
+
+                let page = cx.new(|cx| {
+                    CurseforgeSearchPage::new(installing_for, data, window, cx)
+                });
+                Ok(LauncherPage::Curseforge(page))
             },
             PageType::Import => {
                 Ok(LauncherPage::Import(cx.new(|cx| ImportPage::new(data, window, cx))))
@@ -329,6 +357,11 @@ impl Render for LauncherUI {
                 .active(matches!(page_type, PageType::Modrinth { installing_for: None } | PageType::ModrinthProject { install_for: None, .. }))
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Modrinth { installing_for: None }, &[], window, cx);
+                })))
+            .child(MenuGroupItem::new(ts!("curseforge.name"))
+                .active(matches!(page_type, PageType::Curseforge { installing_for: None }))
+                .on_click(cx.listener(|launcher, _, window, cx| {
+                    launcher.switch_page(PageType::Curseforge { installing_for: None }, &[], window, cx);
                 })));
 
         let files_group = MenuGroup::new("Files")
@@ -578,7 +611,7 @@ impl Render for LauncherUI {
         let footer_buttons = h_flex().child(settings_button).child(bug_report_button);
         let footer = v_flex().pb_2().px_2().items_center().w_full().child(footer_buttons).child(account_button);
         let sidebar = v_flex()
-            .w_full()
+            .size_full()
             .bg(cx.theme().sidebar)
             .text_color(cx.theme().sidebar_foreground)
             .when(cfg!(target_os = "macos"), |this| {
@@ -602,7 +635,7 @@ impl Render for LauncherUI {
         h_resizable("container")
             .with_state(&self.sidebar_state)
             .child(resizable_panel().size(px(self.default_sidebar_width)).size_range(px(150.)..px(225.)).child(sidebar))
-            .child(self.page.clone().render(&self.data, window, cx).into_any_element())
+            .child(self.page.clone().render(&self, window, cx).into_any_element())
     }
 }
 

@@ -53,6 +53,7 @@ pub fn open_update_prompt(
 
         dialog
             .title(title.clone())
+            .overlay_closable(false)
             .child(v_flex()
                 .gap_2()
                 .child(v_flex()

@@ -244,10 +244,10 @@ pub enum MessageToFrontend {
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
-        worlds_state: Arc<AtomicBridgeDataLoadState>,
-        servers_state: Arc<AtomicBridgeDataLoadState>,
-        mods_state: Arc<AtomicBridgeDataLoadState>,
-        resource_packs_state: Arc<AtomicBridgeDataLoadState>,
+        worlds_state: BridgeDataLoadState,
+        servers_state: BridgeDataLoadState,
+        mods_state: BridgeDataLoadState,
+        resource_packs_state: BridgeDataLoadState,
     },
     InstanceRemoved {
         id: InstanceID,
@@ -342,49 +342,16 @@ pub enum BridgeNotificationType {
     Warning,
 }
 
-#[atomic_enum::atomic_enum]
-#[derive(Default, PartialEq, Eq)]
-pub enum BridgeDataLoadState {
-    #[default]
-    Unloaded,
-    LoadingDirty,
-    LoadedDirty,
-    Loading,
-    Loaded,
-}
+#[derive(Clone, Debug)]
+pub struct BridgeDataLoadState(Arc<AtomicU8>);
 
-impl Default for AtomicBridgeDataLoadState {
+impl Default for BridgeDataLoadState {
     fn default() -> Self {
-        Self(Default::default())
+        Self(Arc::new(AtomicU8::new(BridgeDataLoadState::UNLOADED)))
     }
 }
 
 impl BridgeDataLoadState {
-    pub fn should_load(self) -> bool {
-        match self {
-            BridgeDataLoadState::Unloaded => true,
-            BridgeDataLoadState::LoadingDirty => false,
-            BridgeDataLoadState::LoadedDirty => true,
-            BridgeDataLoadState::Loading => false,
-            BridgeDataLoadState::Loaded => false,
-        }
-    }
-
-    pub fn is_not_unloaded(self) -> bool {
-        self != Self::Unloaded
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct BridgeDataLoadState2(Arc<AtomicU8>);
-
-impl Default for BridgeDataLoadState2 {
-    fn default() -> Self {
-        Self(Arc::new(AtomicU8::new(BridgeDataLoadState2::UNLOADED)))
-    }
-}
-
-impl BridgeDataLoadState2 {
     const LOADING: u8 = 1;
     const OBSERVED: u8 = 2;
     const DIRTY: u8 = 4;
@@ -449,7 +416,7 @@ pub enum AccountCapesResult {
 
 #[derive(Clone, Debug)]
 pub struct SkinLibrary {
-    pub state: BridgeDataLoadState2,
+    pub state: BridgeDataLoadState,
     pub skins: Arc<[Arc<[u8]>]>,
     pub folder: Arc<Path>
 }

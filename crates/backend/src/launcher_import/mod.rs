@@ -153,7 +153,7 @@ fn loop_subfolders(folder: &Path, check: &dyn Fn(&Path) -> bool) -> Vec<PathBuf>
 }
 
 pub async fn import_from_other_launcher(backend: &BackendState, details: ImportFromOtherLauncher, modal_action: ModalAction) {
-    println!("Recieved import request with data: {:#?}", details);
+    // println!("Recieved import request with data: {:#?}", details);
     match details.launcher {
         OtherLauncher::Prism => {
             import_from_multimc(backend, details, modal_action).await;

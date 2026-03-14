@@ -433,6 +433,134 @@ impl Launcher {
                     true
                 ).await
             },
+            Loader::Quilt => {
+                // Quilt uses the same launch mechanism as Fabric
+                let versions = self.meta.fetch(&MinecraftVersionManifestMetadataItem).map_err(LaunchError::from);
+
+                let quilt_loader_version = async move {
+                    if let Some(preferred_version) = instance_info.preferred_loader_version {
+                        Ok(preferred_version)
+                    } else {
+                        let manifest = self.meta.fetch(&crate::metadata::items::QuiltLoaderManifestMetadataItem).map_err(LaunchError::from).await?;
+
+                        let mut latest_loader_version = manifest.0.iter().find(|v| !v.version.contains("beta"));
+                        if latest_loader_version.is_none() {
+                            latest_loader_version = manifest.0.first();
+                        }
+                        Ok(latest_loader_version.unwrap().version)
+                    }
+                };
+
+                launch_tracker.add_total(4);
+                launch_tracker.notify();
+
+                let launch_tracker2 = launch_tracker.clone();
+                let meta2 = Arc::clone(&self.meta);
+                let minecraft_version = instance_info.minecraft_version;
+                let quilt_launch = quilt_loader_version.and_then(async move |loader_version| {
+                    launch_tracker2.add_count(1);
+                    launch_tracker2.notify();
+
+                    let value = meta2.fetch(&crate::metadata::items::QuiltLaunchMetadataItem {
+                        minecraft_version,
+                        loader_version,
+                    }).await?;
+
+                    launch_tracker2.add_count(1);
+                    launch_tracker2.notify();
+
+                    Ok(value)
+                });
+
+                let launch_tracker3 = launch_tracker.clone();
+                let meta3 = Arc::clone(&self.meta);
+                let instance_version = instance_info.minecraft_version;
+                let version = versions.and_then(async move |versions| {
+                    launch_tracker3.add_count(1);
+                    launch_tracker3.notify();
+
+                    let Some(version) = versions.versions.iter().find(|v| v.id == instance_version) else {
+                        return Err(LaunchError::CantFindVersion(instance_version.as_str()));
+                    };
+
+                    let value = meta3.fetch(&MinecraftVersionMetadataItem(version)).await?;
+
+                    launch_tracker3.add_count(1);
+                    launch_tracker3.notify();
+
+                    Ok(value)
+                });
+
+                let (version, quilt_launch): (Arc<MinecraftVersion>, Arc<FabricLaunch>) =
+                    futures::future::try_join(version, quilt_launch).await?;
+
+                let mut version: MinecraftVersion = (*version).clone();
+
+                if let Some(loader) = &quilt_launch.loader {
+                    let loader_coordinate = MavenCoordinate::create(&loader.maven);
+                    let artifact_path = loader_coordinate.artifact_path();
+                    version.libraries.push(GameLibrary {
+                        downloads: GameLibraryDownloads {
+                            artifact: Some(GameLibraryArtifact {
+                                url: format!("https://maven.quiltmc.org/repository/release/{}", &artifact_path).into(),
+                                path: artifact_path.into(),
+                                sha1: None,
+                                size: None,
+                            }),
+                            classifiers: None,
+                        },
+                        name: loader.maven,
+                        rules: None,
+                        natives: None,
+                        extract: None,
+                    });
+                }
+
+                if let Some(intermediary) = &quilt_launch.intermediary {
+                    let intermediary_coordinate = MavenCoordinate::create(&intermediary.maven);
+                    let artifact_path = intermediary_coordinate.artifact_path();
+                    version.libraries.push(GameLibrary {
+                        downloads: GameLibraryDownloads {
+                            artifact: Some(GameLibraryArtifact {
+                                url: format!("https://maven.quiltmc.org/repository/release/{}", &artifact_path).into(),
+                                path: artifact_path.into(),
+                                sha1: None,
+                                size: None,
+                            }),
+                            classifiers: None,
+                        },
+                        name: intermediary.maven,
+                        rules: None,
+                        natives: None,
+                        extract: None,
+                    });
+                }
+
+                let libraries = &quilt_launch.launcher_meta.libraries;
+                for library in libraries.common.iter().chain(libraries.client.iter()) {
+                    let library_coordinate = MavenCoordinate::create(&library.name);
+                    let artifact_path = library_coordinate.artifact_path();
+                    version.libraries.push(GameLibrary {
+                        downloads: GameLibraryDownloads {
+                            artifact: Some(GameLibraryArtifact {
+                                url: format!("{}{}", &library.url, &artifact_path).into(),
+                                path: artifact_path.into(),
+                                sha1: Some(library.sha1),
+                                size: Some(library.size),
+                            }),
+                            classifiers: None,
+                        },
+                        name: library.name,
+                        rules: None,
+                        natives: None,
+                        extract: None,
+                    });
+                }
+
+                version.main_class = quilt_launch.launcher_meta.main_class.client;
+
+                Ok((Arc::new(version), AddVanillaJar::Yes))
+            },
             Loader::Unknown => todo!(),
         }
     }

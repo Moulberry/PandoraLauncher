@@ -484,6 +484,7 @@ impl BackendState {
                     Loader::Fabric => Some(CurseforgeModLoaderType::Fabric as u32),
                     Loader::Forge => Some(CurseforgeModLoaderType::Forge as u32),
                     Loader::NeoForge => Some(CurseforgeModLoaderType::NeoForge as u32),
+                    Loader::Quilt => Some(CurseforgeModLoaderType::Quilt as u32),
                     Loader::Unknown => None,
                 };
 

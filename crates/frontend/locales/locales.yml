@@ -378,7 +378,7 @@ instance:
   loader:
     en: Loader
   loader_version:
-    en: "%{loader} Version"
+    en: "Loader Version"
   game_version:
     en: Game Version
   mc_version:
@@ -398,6 +398,8 @@ instance:
   versions_loading:
     game_versions:
       en: Loading Minecraft Versions...
+    loader_versions:
+      en: Loading Loader Versions...
     reload:
       en: Reload Versions
     possible_loader_error:

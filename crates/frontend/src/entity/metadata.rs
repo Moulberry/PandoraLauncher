@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::ts;
 use bridge::{handle::BackendHandle, keep_alive::KeepAliveHandle, message::MessageToBackend, meta::{MetadataRequest, MetadataResult}};
 use gpui::{prelude::*, *};
-use schema::{curseforge::{CurseforgeGetModFilesResult, CurseforgeSearchResult}, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, modrinth::{ModrinthProjectResult, ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
+use schema::{curseforge::{CurseforgeGetModFilesResult, CurseforgeSearchResult}, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, modrinth::{ModrinthProjectResult, ModrinthProjectVersionsResult, ModrinthSearchResult}, quilt_loader_manifest::QuiltLoaderManifest, version_manifest::MinecraftVersionManifest};
 
 #[derive(Debug)]
 pub enum FrontendMetadataState {
@@ -136,6 +136,7 @@ define_as_metadata_result!(MinecraftVersionManifest);
 define_as_metadata_result!(ModrinthSearchResult);
 define_as_metadata_result!(ModrinthProjectVersionsResult);
 define_as_metadata_result!(FabricLoaderManifest);
+define_as_metadata_result!(QuiltLoaderManifest);
 define_as_metadata_result!(ForgeMavenManifest);
 define_as_metadata_result!(NeoforgeMavenManifest);
 define_as_metadata_result!(ModrinthProjectResult);

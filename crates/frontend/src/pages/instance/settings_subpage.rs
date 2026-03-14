@@ -7,7 +7,7 @@ use gpui::{prelude::*, *};
 use gpui_component::{
     ActiveTheme as _, Disableable, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
 };
-use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
+use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, quilt_loader_manifest::QuiltLoaderManifest, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
 use uuid::Uuid;
 
@@ -296,6 +296,13 @@ impl InstanceSettingsSubpage {
             },
             Loader::Fabric => {
                 self.update_loader_versions_for_loader(MetadataRequest::FabricLoaderManifest, |manifest: &FabricLoaderManifest| {
+                    std::iter::once("Latest")
+                        .chain(manifest.0.iter().map(|s| s.version.as_str()))
+                        .collect()
+                }, window, cx)
+            },
+            Loader::Quilt => {
+                self.update_loader_versions_for_loader(MetadataRequest::QuiltLoaderManifest, |manifest: &QuiltLoaderManifest| {
                     std::iter::once("Latest")
                         .chain(manifest.0.iter().map(|s| s.version.as_str()))
                         .collect()
@@ -737,6 +744,7 @@ impl Render for InstanceSettingsSubpage {
                 TypelessFrontendMetadataResult::Loaded => {
                     version_content = version_content.child(Select::new(&self.loader_version_select_state).title_prefix(match self.loader {
                         Loader::Fabric => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.fabric"))),
+                        Loader::Quilt => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.quilt"))),
                         Loader::Forge => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.forge"))),
                         Loader::NeoForge => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.neoforge"))),
                         Loader::Vanilla | Loader::Unknown => format!("{}: ", ts!("instance.loader_version", loader = ts!("instance.loader"))),

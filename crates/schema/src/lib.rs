@@ -9,6 +9,7 @@ pub mod fabric_launch;
 pub mod fabric_loader_manifest;
 pub mod fabric_mod;
 pub mod forge;
+pub mod quilt_loader_manifest;
 pub mod forge_mod;
 pub mod instance;
 pub mod java_runtime_component;

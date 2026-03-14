@@ -14,6 +14,8 @@ pub enum Loader {
     Forge,
     #[serde(alias = "NeoForge")]
     NeoForge,
+    #[serde(alias = "Quilt")]
+    Quilt,
     #[serde(other)]
     Unknown,
 }
@@ -25,6 +27,7 @@ impl Loader {
             Loader::Fabric => "Fabric",
             Loader::Forge => "Forge",
             Loader::NeoForge => "NeoForge",
+            Loader::Quilt => "Quilt",
             Loader::Unknown => "Unknown",
         }
     }
@@ -35,6 +38,7 @@ impl Loader {
             "Fabric" | "fabric" => Self::Fabric,
             "Forge" | "forge" => Self::Forge,
             "NeoForge" | "neoforge" => Self::NeoForge,
+            "Quilt" | "quilt" => Self::Quilt,
             _ => Self::Unknown,
         }
     }
@@ -45,6 +49,7 @@ impl Loader {
             Loader::Fabric => ModrinthLoader::Fabric,
             Loader::Forge => ModrinthLoader::Forge,
             Loader::NeoForge => ModrinthLoader::NeoForge,
+            Loader::Quilt => ModrinthLoader::Quilt,
             Loader::Unknown => ModrinthLoader::Unknown,
         }
     }
@@ -55,6 +60,7 @@ impl Loader {
             Loader::Fabric => CurseforgeModLoaderType::Fabric,
             Loader::Forge => CurseforgeModLoaderType::Forge,
             Loader::NeoForge => CurseforgeModLoaderType::NeoForge,
+            Loader::Quilt => CurseforgeModLoaderType::Quilt,
             Loader::Unknown => CurseforgeModLoaderType::Any,
         }
     }

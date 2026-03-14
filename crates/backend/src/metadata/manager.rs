@@ -5,7 +5,7 @@ use std::{
 use bridge::keep_alive::{KeepAlive, KeepAliveHandle};
 use reqwest::StatusCode;
 use schema::{
-    assets_index::AssetsIndex, curseforge::{CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult}, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, modrinth::{ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
+    assets_index::AssetsIndex, curseforge::{CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult}, fabric_launch::FabricLaunch, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::JavaRuntimes, modrinth::{ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, quilt_loader_manifest::QuiltLoaderManifest, version::MinecraftVersion, version_manifest::MinecraftVersionManifest
 };
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
@@ -23,9 +23,11 @@ pub struct MetadataManagerStates {
     pub(super) minecraft_version_manifest: MetaLoadStateWrapper<MinecraftVersionManifest>,
     pub(super) mojang_java_runtimes: MetaLoadStateWrapper<JavaRuntimes>,
     pub(super) fabric_loader_manifest: MetaLoadStateWrapper<FabricLoaderManifest>,
+    pub(super) quilt_loader_manifest: MetaLoadStateWrapper<QuiltLoaderManifest>,
     pub(super) neoforge_installer_maven_manifest: MetaLoadStateWrapper<NeoforgeMavenManifest>,
     pub(super) forge_installer_maven_manifest: MetaLoadStateWrapper<ForgeMavenManifest>,
     pub(super) fabric_launch: HashMap<(Ustr, Ustr), MetaLoadStateWrapper<FabricLaunch>>,
+    pub(super) quilt_launch: HashMap<(Ustr, Ustr), MetaLoadStateWrapper<FabricLaunch>>,
     pub(super) version_info: HashMap<Ustr, MetaLoadStateWrapper<MinecraftVersion>>,
     pub(super) assets_index: HashMap<Ustr, MetaLoadStateWrapper<AssetsIndex>>,
     pub(super) java_runtime_manifests: HashMap<Ustr, MetaLoadStateWrapper<JavaRuntimeComponentManifest>>,
@@ -46,6 +48,7 @@ pub struct MetadataManager {
     pub(super) version_manifest_cache: Arc<Path>,
     pub(super) mojang_java_runtimes_cache: Arc<Path>,
     pub(super) fabric_loader_manifest_cache: Arc<Path>,
+    pub(super) quilt_loader_manifest_cache: Arc<Path>,
     pub(super) neoforge_installer_maven_cache: Arc<Path>,
     pub(super) forge_installer_maven_cache: Arc<Path>,
 
@@ -156,6 +159,7 @@ impl MetadataManager {
             version_manifest_cache: directory.join("version_manifest.json").into(),
             mojang_java_runtimes_cache: directory.join("mojang_java_runtimes.json").into(),
             fabric_loader_manifest_cache: directory.join("fabric_loader_manifest.json").into(),
+            quilt_loader_manifest_cache: directory.join("quilt_loader_manifest.json").into(),
             neoforge_installer_maven_cache: directory.join("neoforge_installer_maven.xml").into(),
             forge_installer_maven_cache: directory.join("forge_installer_maven.xml").into(),
             metadata_cache: directory,

@@ -141,6 +141,7 @@ pub enum ModrinthLoader {
     Fabric,
     Forge,
     NeoForge,
+    Quilt,
     // Resourcepacks
     Minecraft,
     // Shaders
@@ -155,7 +156,7 @@ pub enum ModrinthLoader {
 impl ModrinthLoader {
     pub fn install_directory(self) -> Option<&'static str> {
         match self {
-            ModrinthLoader::Fabric | ModrinthLoader::Forge | ModrinthLoader::NeoForge => Some("mods"),
+            ModrinthLoader::Fabric | ModrinthLoader::Forge | ModrinthLoader::NeoForge | ModrinthLoader::Quilt => Some("mods"),
             ModrinthLoader::Minecraft => Some("resourcepacks"),
             ModrinthLoader::Iris | ModrinthLoader::Optifine => Some("shaderpacks"),
             ModrinthLoader::Canvas => Some("resourcepacks"),
@@ -168,6 +169,7 @@ impl ModrinthLoader {
             Self::Fabric => "Fabric",
             Self::Forge => "Forge",
             Self::NeoForge => "NeoForge",
+            Self::Quilt => "Quilt",
             Self::Minecraft => "Minecraft",
             Self::Iris => "Iris",
             Self::Optifine => "Optifine",
@@ -181,6 +183,7 @@ impl ModrinthLoader {
             Self::Fabric => "fabric",
             Self::Forge => "forge",
             Self::NeoForge => "neoforge",
+            Self::Quilt => "quilt",
             Self::Minecraft => "minecraft",
             Self::Iris => "iris",
             Self::Optifine => "optifine",
@@ -194,6 +197,7 @@ impl ModrinthLoader {
             "Fabric" | "fabric" => Self::Fabric,
             "Forge" | "forge" => Self::Forge,
             "NeoForge" | "neoforge" => Self::NeoForge,
+            "Quilt" | "quilt" => Self::Quilt,
             "Minecraft" | "minecraft" => Self::Minecraft,
             "Iris" | "iris" => Self::Iris,
             "Optifine" | "optifine" => Self::Optifine,

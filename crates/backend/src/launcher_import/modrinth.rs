@@ -149,7 +149,7 @@ pub fn read_profiles_from_modrinth_db(data_dir: &Path, pandora_dir: &Path) -> ru
         let path: String = row.get(0)?;
         let profile = profiles.join(path);
         if profile.is_dir() {
-        	let state = if pandora_dir.join(profile.file_name().unwrap()).exists() { ImportStatus::Duplicate } else { ImportStatus::Importing };
+            let state = if pandora_dir.join(profile.file_name().unwrap()).exists() { ImportStatus::Duplicate } else { ImportStatus::Importing };
             paths.insert(profile, state);
         }
     }

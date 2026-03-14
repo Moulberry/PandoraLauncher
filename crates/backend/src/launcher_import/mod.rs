@@ -7,8 +7,8 @@ use strum::IntoEnumIterator;
 use crate::{BackendState,
     launcher_import::{
         modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db},
-	    multimc::{import_from_multimc, try_load_from_multimc},
-	    atlauncher::import_from_atlauncher
+        multimc::{import_from_multimc, try_load_from_multimc},
+        atlauncher::import_from_atlauncher
     }
 };
 
@@ -56,14 +56,14 @@ pub fn discover_instances_from_other_launchers(backend: &BackendState) -> Import
 
 /// Loop through all potential instances and returns the first one found.
 pub fn discover_instances_from_path(backend: &BackendState, path: PathBuf) -> Option<ImportFromOtherLauncher> {
- 	debug!("Received request to update data w/path: {:?}", path);
+    debug!("Received request to update data w/path: {:?}", path);
 
     // modrith doesn't conform to standards, hence we deal with it separately...
     if let Ok(modrinth) = read_profiles_from_modrinth_db(&path, &backend.directories.instances_dir) {
         if modrinth.is_some() { return modrinth; }
     }
 
-  	for launcher in OtherLauncher::iter()
+    for launcher in OtherLauncher::iter()
         .filter(|launcher| *launcher != OtherLauncher::Modrinth)
     {
         let details = get_launcher_details(backend, launcher, &path);
@@ -173,7 +173,7 @@ pub async fn import_from_other_launcher(backend: &BackendState, details: ImportF
             import_from_multimc(backend, details, modal_action).await;
         },
          OtherLauncher::ATLauncher => {
-          	import_from_atlauncher(backend, details, modal_action).await;
+            import_from_atlauncher(backend, details, modal_action).await;
         }
     }
 }

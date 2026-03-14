@@ -397,13 +397,13 @@ fn import_instances_from_multimc(backend: &BackendState, instances: HashMap<Path
             continue;
         }
 
-    	if !entry.exists() {
-	        continue;
-	    };
-	    let folder = entry;
-	    if !folder.is_dir() {
-	        continue;
-	    }
+        if !entry.exists() {
+            continue;
+        };
+        let folder = entry;
+        if !folder.is_dir() {
+            continue;
+        }
 
         let Some(filename) = folder.file_name() else {
             continue;

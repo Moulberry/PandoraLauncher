@@ -412,7 +412,7 @@ fn import_instances_from_atlauncher(backend: &BackendState, instances: HashMap<P
 
     for (entry, state) in instances {
 	    if state != ImportStatus::Importing {
-			// println!("Not importing: {:?}", entry);
+            // println!("Not importing: {:?}", entry);
 		    continue;
 	    }
 

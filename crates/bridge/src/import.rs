@@ -9,13 +9,13 @@ pub struct ImportFromOtherLaunchers {
 #[derive(Debug, Clone)]
 pub struct ImportFromOtherLauncher {
     // launcher is duplicated here for when we send a custom path request.
-	pub launcher: OtherLauncher,
-	pub instances: HashMap<PathBuf, ImportStatus>,
-	pub account: Option<PathBuf>,
-	pub custom_import: bool,
-	// This is placeholder for a future update if we ever implement it.
-	// might remove it before releasing this PR though... (if i don't, then i forgot.)
-	// pub can_deduplicate: bool,
+    pub launcher: OtherLauncher,
+    pub instances: HashMap<PathBuf, ImportStatus>,
+    pub account: Option<PathBuf>,
+    pub custom_import: bool,
+    // This is placeholder for a future update if we ever implement it.
+    // might remove it before releasing this PR though... (if i don't, then i forgot.)
+    // pub can_deduplicate: bool,
 }
 
 impl ImportFromOtherLauncher {
@@ -42,35 +42,35 @@ pub enum OtherLauncher {
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum ImportStatus {
-	#[default]
-	NotImporting,
-	Importing,
-	/// This means we already have an instance with this name, hence it's not worth importing again.
-	Duplicate,
+    #[default]
+    NotImporting,
+    Importing,
+    /// This means we already have an instance with this name, hence it's not worth importing again.
+    Duplicate,
 }
 
 impl ImportStatus {
-	pub fn flip(&mut self) {
-	    *self = match *self {
-	        ImportStatus::NotImporting => ImportStatus::Importing,
-	        ImportStatus::Importing => ImportStatus::NotImporting,
-	        ImportStatus::Duplicate => ImportStatus::Duplicate,
-	    };
-	}
+    pub fn flip(&mut self) {
+        *self = match *self {
+            ImportStatus::NotImporting => ImportStatus::Importing,
+            ImportStatus::Importing => ImportStatus::NotImporting,
+            ImportStatus::Duplicate => ImportStatus::Duplicate,
+        };
+    }
 
-	pub fn enable(&mut self) {
-		*self = match *self {
-	    	ImportStatus::NotImporting => ImportStatus::Importing,
-	     	ImportStatus::Importing => ImportStatus::Importing,
-	     	ImportStatus::Duplicate => ImportStatus::Duplicate,
-	  	};
-	}
+    pub fn enable(&mut self) {
+        *self = match *self {
+            ImportStatus::NotImporting => ImportStatus::Importing,
+            ImportStatus::Importing => ImportStatus::Importing,
+            ImportStatus::Duplicate => ImportStatus::Duplicate,
+        };
+    }
 
-	pub fn disable(&mut self) {
-		*self = match *self {
-		    ImportStatus::NotImporting => ImportStatus::NotImporting,
-		    ImportStatus::Importing => ImportStatus::NotImporting,
-		    ImportStatus::Duplicate => ImportStatus::Duplicate,
-		};
-	}
+    pub fn disable(&mut self) {
+        *self = match *self {
+            ImportStatus::NotImporting => ImportStatus::NotImporting,
+            ImportStatus::Importing => ImportStatus::NotImporting,
+            ImportStatus::Duplicate => ImportStatus::Duplicate,
+        };
+    }
 }

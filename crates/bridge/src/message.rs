@@ -52,8 +52,8 @@ pub enum MessageToBackend {
         loader: Loader
     },
     SetInstancePreferredAccount {
-    	id: InstanceID,
-     	account: Option<Uuid>,
+        id: InstanceID,
+        account: Option<Uuid>,
     },
     SetInstancePreferredLoaderVersion {
         id: InstanceID,
@@ -151,8 +151,8 @@ pub enum MessageToBackend {
         channel: tokio::sync::oneshot::Sender<ImportFromOtherLaunchers>,
     },
     GetImportFromCustomLauncherPath {
-    	channel: tokio::sync::oneshot::Sender<Option<ImportFromOtherLauncher>>,
-     	path: PathBuf,
+        channel: tokio::sync::oneshot::Sender<Option<ImportFromOtherLauncher>>,
+        path: PathBuf,
     },
     GetSyncState {
         channel: tokio::sync::oneshot::Sender<SyncState>,
@@ -205,7 +205,7 @@ pub enum MessageToBackend {
         modal_action: ModalAction,
     },
     ImportFromOtherLauncher {
-    	details: ImportFromOtherLauncher,
+        details: ImportFromOtherLauncher,
         modal_action: ModalAction,
     },
     GetAccountSkin {

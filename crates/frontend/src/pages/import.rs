@@ -56,17 +56,17 @@ impl ImportPage {
     }
 
     pub fn request_custom_paths(&mut self, cx: &mut Context<Self>, path: PathBuf) {
-    	let (send, recv) = tokio::sync::oneshot::channel();
-     	cx.spawn(async move |page, cx| {
-      		let result: Option<ImportFromOtherLauncher> = recv.await.unwrap_or_default();
-        	let _ = page.update(cx, move |page, cx| {
+        let (send, recv) = tokio::sync::oneshot::channel();
+        cx.spawn(async move |page, cx| {
+            let result: Option<ImportFromOtherLauncher> = recv.await.unwrap_or_default();
+            let _ = page.update(cx, move |page, cx| {
                 page.failed_details = result.is_none();
-         		page.import_details = result;
-           		cx.notify();
-         	});
-      	}).detach();
+                page.import_details = result;
+                cx.notify();
+            });
+        }).detach();
 
-      	self.backend_handle.send(MessageToBackend::GetImportFromCustomLauncherPath { channel: send, path });
+        self.backend_handle.send(MessageToBackend::GetImportFromCustomLauncherPath { channel: send, path });
     }
 }
 
@@ -145,35 +145,35 @@ impl Render for ImportPage {
                             });
                         })
                     })))
-               	.child(Button::new("custom")
+                .child(Button::new("custom")
                     .label("Import From Custom Directory")
                     .w_full()
                     .on_click(cx.listener(|page, _, window, cx| {
-	                    let receiver = cx.prompt_for_paths(PathPromptOptions {
-	                        files: false,
-	                        directories: true,
-	                        multiple: false,
-	                        prompt: Some("Select Directory To Import From".into())
-	                    });
+                        let receiver = cx.prompt_for_paths(PathPromptOptions {
+                            files: false,
+                            directories: true,
+                            multiple: false,
+                            prompt: Some("Select Directory To Import From".into())
+                        });
 
-						let page_entity = cx.entity();
-						page._open_file_task = window.spawn(cx, async move |cx| {
-    						let Ok(Ok(Some(path))) = receiver.await else {
-    						    return;
-    						};
+                        let page_entity = cx.entity();
+                        page._open_file_task = window.spawn(cx, async move |cx| {
+                            let Ok(Ok(Some(path))) = receiver.await else {
+                                return;
+                            };
                             // we just care about an owned version and not the iter being useless. We can only select one anyway...
                             let Some(dir) = path.into_iter().nth(0) else { return; };
 
                             _ = page_entity.update_in(cx, |page, _, cx| {
                                 page.request_custom_paths(cx, dir);
                             });
-						});
+                        });
                     })))
             );
 
         if let Some(import) = &self.import_details {
             let import_from = import.launcher;
-           	let label = match import.custom_import {
+            let label = match import.custom_import {
                 true => ts!("import.dir.custom", launcher = import_from),
                 false => ts!("import.dir.normal", launcher = import_from),
             };
@@ -181,7 +181,7 @@ impl Render for ImportPage {
 
             // this is just to always make sure it's in alphabetical order.
             // makes it more reliable upon loading as well.
-           	let mut list = import.instances.iter().collect::<Vec<_>>();
+            let mut list = import.instances.iter().collect::<Vec<_>>();
             list.sort_by(|a, b| a.0.cmp(b.0));
             // println!("{:#?}", list);
 
@@ -213,42 +213,42 @@ impl Render for ImportPage {
                     .border_color(cx.theme().border)
                     .max_h_64()
                     .child(h_flex().children([
-                    	Button::new("uncheck_all").label("Uncheck All")
-                        	.on_click(cx.listener(move |page, _, _, _| {
-                       			if let Some(details) = page.import_details.as_mut() {
-                           			details.instances.iter_mut().for_each(|(_, state)| state.disable());
-                          		}
-                        	})),
-                    	Button::new("check_all").label("Check All")
-                        	.on_click(cx.listener(move |page, _, _, _| {
-                       			if let Some(details) = page.import_details.as_mut() {
-                           			details.instances.iter_mut().for_each(|(_, state)| state.enable());
-                          		}
-                        	}))
+                        Button::new("uncheck_all").label("Uncheck All")
+                            .on_click(cx.listener(move |page, _, _, _| {
+                                if let Some(details) = page.import_details.as_mut() {
+                                    details.instances.iter_mut().for_each(|(_, state)| state.disable());
+                                }
+                            })),
+                        Button::new("check_all").label("Check All")
+                            .on_click(cx.listener(move |page, _, _, _| {
+                                if let Some(details) = page.import_details.as_mut() {
+                                    details.instances.iter_mut().for_each(|(_, state)| state.enable());
+                                }
+                            }))
                     ]))
                     .child(v_flex().overflow_y_scrollbar().children({
                         list.iter().map(|(path, checked)| {
-                        	let mut line = v_flex().child(Checkbox::new(SharedString::new(path.to_string_lossy()))
-	                         	.label(SharedString::new(path.to_string_lossy()))
-	                           	.checked(**checked == ImportStatus::Importing)
-	                            .disabled(**checked == ImportStatus::Duplicate)
-	                            .on_click({
-	                                let path_buf = path.to_path_buf();
-	                                cx.listener(move |page, _, _, _| {
-	                                    if let Some(details) = page.import_details.as_mut() {
-											if let Some(state) = details.instances.get_mut(&path_buf) {
+                            let mut line = v_flex().child(Checkbox::new(SharedString::new(path.to_string_lossy()))
+                                .label(SharedString::new(path.to_string_lossy()))
+                                .checked(**checked == ImportStatus::Importing)
+                                .disabled(**checked == ImportStatus::Duplicate)
+                                .on_click({
+                                    let path_buf = path.to_path_buf();
+                                    cx.listener(move |page, _, _, _| {
+                                        if let Some(details) = page.import_details.as_mut() {
+                                            if let Some(state) = details.instances.get_mut(&path_buf) {
                                                 state.flip();
                                             }
                                         }
-	                                })
-	                            }));
-                         	if **checked == ImportStatus::Duplicate {
-                         		line = line.child(h_flex().text_color(cx.theme().red).pl_8()
-                           			.child(PandoraIcon::TriangleAlert)
-                            		.child(ts!("import.duplicated", name = path.file_name().unwrap().to_string_lossy()))
-                           		);
-                          	}
-                           	line
+                                    })
+                                }));
+                            if **checked == ImportStatus::Duplicate {
+                                line = line.child(h_flex().text_color(cx.theme().red).pl_8()
+                                    .child(PandoraIcon::TriangleAlert)
+                                    .child(ts!("import.duplicated", name = path.file_name().unwrap().to_string_lossy()))
+                                );
+                            }
+                            line
                         })
                     })))
                 )
@@ -268,7 +268,7 @@ impl Render for ImportPage {
                         if !page.import_instances { details.instances.clear(); }
 
                         page.backend_handle.send(MessageToBackend::ImportFromOtherLauncher {
-                           	details,
+                            details,
                             modal_action: modal_action.clone()
                         });
 

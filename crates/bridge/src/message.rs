@@ -12,7 +12,7 @@ use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLaunchers, OtherLauncher}, install::ContentInstall, instance::{
+    account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers}, install::ContentInstall, instance::{
         InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus,
         InstanceWorldSummary,
     }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction
@@ -52,8 +52,8 @@ pub enum MessageToBackend {
         loader: Loader
     },
     SetInstancePreferredAccount {
-    	id: InstanceID,
-     	account: Option<Uuid>,
+        id: InstanceID,
+        account: Option<Uuid>,
     },
     SetInstancePreferredLoaderVersion {
         id: InstanceID,
@@ -150,6 +150,10 @@ pub enum MessageToBackend {
     GetImportFromOtherLauncherPaths {
         channel: tokio::sync::oneshot::Sender<ImportFromOtherLaunchers>,
     },
+    GetImportFromCustomLauncherPath {
+        channel: tokio::sync::oneshot::Sender<Option<ImportFromOtherLauncher>>,
+        path: PathBuf,
+    },
     GetSyncState {
         channel: tokio::sync::oneshot::Sender<SyncState>,
     },
@@ -201,9 +205,7 @@ pub enum MessageToBackend {
         modal_action: ModalAction,
     },
     ImportFromOtherLauncher {
-        launcher: OtherLauncher,
-        import_accounts: bool,
-        import_instances: bool,
+        details: ImportFromOtherLauncher,
         modal_action: ModalAction,
     },
     GetAccountSkin {

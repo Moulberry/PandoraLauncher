@@ -1,13 +1,21 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{collections::HashMap, path::{Path, PathBuf}, sync::Arc};
 
 use auth::{credentials::AccountCredentials, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
-use bridge::modal_action::{ModalAction, ProgressTracker};
+use bridge::{import::{ImportFromOtherLauncher, ImportStatus}, modal_action::{ModalAction, ProgressTracker}};
 use chrono::DateTime;
 use schema::{instance::{InstanceConfiguration, LwjglLibraryPath}, loader::Loader};
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{BackendState, account::BackendAccount};
+
+pub fn is_valid_mmcinstance(path: &PathBuf) -> bool {
+    path.join("instance.cfg").exists() && path.join("mmc-pack.json").exists()
+}
+pub fn is_valid_mmcaccount(path: &PathBuf) -> Option<PathBuf> {
+    let path = path.join("accounts.json");
+    path.exists().then(|| path)
+}
 
 
 #[derive(Deserialize)]
@@ -232,21 +240,20 @@ struct MultiMCAccountTokenExtra {
     uhs: Option<Arc<str>>,
 }
 
-pub async fn import_from_multimc(backend: &BackendState, path: &Path, import_accounts: bool, import_instances: bool, modal_action: ModalAction) {
-    if import_accounts {
-        import_accounts_from_multimc(backend, path, &modal_action).await;
+pub async fn import_from_multimc(backend: &BackendState, details: ImportFromOtherLauncher, modal_action: ModalAction) {
+    if let Some(path) = details.account {
+        import_accounts_from_multimc(backend, &path, &modal_action).await;
     }
-    if import_instances {
-        import_instances_from_multimc(backend, path, &modal_action);
+    if !details.instances.is_empty() {
+        import_instances_from_multimc(backend, details.instances, &modal_action);
     }
 }
 
-async fn import_accounts_from_multimc(backend: &BackendState, path: &Path, modal_action: &ModalAction) {
+async fn import_accounts_from_multimc(backend: &BackendState, accounts_path: &Path, modal_action: &ModalAction) {
     let tracker = ProgressTracker::new("Reading accounts.json".into(), backend.send.clone());
     modal_action.trackers.push(tracker.clone());
     tracker.notify();
 
-    let accounts_path = path.join("accounts.json");
     let Ok(accounts_bytes) = std::fs::read(&accounts_path) else {
         return;
     };
@@ -378,24 +385,22 @@ struct MultiMCInstanceToImport {
     folder: PathBuf,
 }
 
-fn import_instances_from_multimc(backend: &BackendState, path: &Path, modal_action: &ModalAction) {
+fn import_instances_from_multimc(backend: &BackendState, instances: HashMap<PathBuf, ImportStatus>, modal_action: &ModalAction) {
     let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
 
-    let Ok(read_dir) = std::fs::read_dir(path.join("instances")) else {
-        all_tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
-        all_tracker.notify();
-        return;
-    };
-
     let mut to_import = Vec::new();
 
-    for entry in read_dir {
-        let Ok(entry) = entry else {
+    for (entry, status) in instances {
+        if status != ImportStatus::Importing {
+            continue;
+        }
+
+        if !entry.exists() {
             continue;
         };
-        let folder = entry.path();
+        let folder = entry;
         if !folder.is_dir() {
             continue;
         }

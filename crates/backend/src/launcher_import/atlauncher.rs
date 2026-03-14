@@ -1,14 +1,14 @@
-use std::{path::{Path, PathBuf}, str::FromStr};
+use std::{collections::HashMap, path::{Path, PathBuf}, str::FromStr};
 use auth::{credentials::AccountCredentials, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
-use bridge::modal_action::{ModalAction, ProgressTracker};
+use bridge::{import::{ImportFromOtherLauncher, ImportStatus}, modal_action::{ModalAction, ProgressTracker}};
 use chrono::DateTime;
-use log::debug;
+use log::{debug, warn};
 use schema::{instance::{InstanceConfiguration, InstanceMemoryConfiguration,  InstanceWrapperCommandConfiguration}, loader::Loader};
 use serde::Deserialize;
 use uuid::Uuid;
 use crate::{BackendState, account::BackendAccount, write_safe};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct AtLauncherConfig {
     maximum_memory: Option<usize>,
@@ -244,31 +244,52 @@ struct AtLauncherDisplayClaim {
     uhs: String,
 }
 
-
-
-
-pub async fn import_from_atlauncher(backend: &BackendState, path: &Path, import_accounts: bool, import_instance: bool, modal_action: ModalAction) {
-    let Ok(launcher_config_bytes) = std::fs::read(path.join("configs/ATLauncher.json")) else {
-        return;
-    };
-    let launcher_config = serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json");
-    // log::debug!("Launcher config: {}", launcher_config.is_some());
-
-    if import_accounts {
-        import_accounts_from_atlauncher(backend, path, &launcher_config, &modal_action).await;
-    }
-    if import_instance {
-        import_instances_from_atlauncher(backend, path, &launcher_config, &modal_action);
-    }
+// assuming in instance folder
+pub fn is_valid_atinstance(path: &Path) -> bool {
+    path.join("instance.json").exists()
+}
+// assuming in main folder
+pub fn is_valid_ataccount(path: &Path) -> Option<PathBuf> {
+    let account_path = path.join("configs/accounts.json");
+    account_path.exists().then(|| account_path)
 }
 
-async fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
-    let tracker = ProgressTracker::new("Reading accounts.json".into(), backend.send.clone());
+
+pub async fn import_from_atlauncher(backend: &BackendState, details: ImportFromOtherLauncher, modal_action: ModalAction) {
+    let path =
+    if let Some(account_path) = &details.account {
+        Some(account_path.parent().unwrap().parent().unwrap())
+    } else if !details.instances.is_empty() {
+        Some((&details.instances).keys().nth(0).unwrap().parent().unwrap().parent().unwrap())
+    } else { None };
+
+ 	// probably a better way of doing this mess...
+ 	let launcher_config = {
+        if let Some(config_path) = path {
+      		match std::fs::read(config_path.join("configs/ATLauncher.json")).ok() {
+      		    Some(launcher_config_bytes) => serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json"),
+      		    None => {
+                    warn!("Failed to read config path for ATLauncher.json!");
+                    return;
+                },
+      		}
+        } else { AtLauncherConfig::default() }
+ 	};
+ 	// log::debug!("Launcher config: {}", launcher_config.is_some());
+    if let Some(account_path) = details.account {
+		import_accounts_from_atlauncher(backend, &account_path, &launcher_config, &modal_action).await;
+	}
+	if !details.instances.is_empty() {
+		import_instances_from_atlauncher(backend, details.instances, &launcher_config, &modal_action);
+	}
+}
+
+async fn import_accounts_from_atlauncher(backend: &BackendState, account_path: &Path, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
+	let tracker = ProgressTracker::new("Reading accounts.json".into(), backend.send.clone());
     modal_action.trackers.push(tracker.clone());
     tracker.notify();
 
-    let accounts_path = path.join("configs/accounts.json");
-    let Ok(accounts_bytes) = std::fs::read(&accounts_path) else {
+    let Ok(accounts_bytes) = std::fs::read(&account_path) else {
         return;
     };
 
@@ -292,15 +313,15 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, path: &Path, la
     backend.account_info.write().modify(|accounts| {
         let mut last_account_username = None;
         for account in &accounts_json {
-               tracker.add_count(1);
+            tracker.add_count(1);
              tracker.notify();
              accounts.accounts.insert(account.uuid, BackendAccount {
                 username: account.minecraft_username.clone().into(),
-                 offline: false,
-                  head: None,
-              });
+                offline: false,
+                head: None,
+            });
             if let Some(last_account) = launcher_config.last_account && account.username == last_account {
-                   last_account_username = Some(account.uuid);
+                last_account_username = Some(account.uuid);
             }
         }
         accounts.selected_account = last_account_username;
@@ -383,27 +404,25 @@ fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConf
     Ok(configuration)
 }
 
-fn import_instances_from_atlauncher(backend: &BackendState, path: &Path, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
-    let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
+fn import_instances_from_atlauncher(backend: &BackendState, instances: HashMap<PathBuf, ImportStatus>, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
+	let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
-
-    let Ok(read_dir) = std::fs::read_dir(path.join("instances")) else {
-        all_tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
-        all_tracker.notify();
-        return;
-    };
-
     let mut to_import = Vec::new();
 
-    for entry in read_dir {
-        let Ok(entry) = entry else {
-            continue;
-        };
-        let folder = entry.path();
-        if !folder.is_dir() {
-            continue;
-        }
+    for (entry, state) in instances {
+	    if state != ImportStatus::Importing {
+            // println!("Not importing: {:?}", entry);
+		    continue;
+	    }
+
+	    if !entry.exists() {
+	        continue;
+	    };
+	    let folder = entry;
+	    if !folder.is_dir() {
+	        continue;
+	    }
 
         let Some(filename) = folder.file_name() else {
             continue;

@@ -1,6 +1,6 @@
-use std::{io::Cursor, path::{Path, PathBuf}};
+use std::{collections::HashMap, io::Cursor, path::{Path, PathBuf}};
 
-use bridge::{import::ImportFromOtherLauncher, modal_action::{ModalAction, ProgressTracker}, safe_path::SafePath};
+use bridge::{import::{ImportFromOtherLauncher, ImportStatus, OtherLauncher}, modal_action::{ModalAction, ProgressTracker}, safe_path::SafePath};
 use image::ImageFormat;
 use schema::{instance::InstanceConfiguration, loader::Loader};
 
@@ -14,7 +14,7 @@ struct ModrinthInstanceToImport {
     minecraft_folder: PathBuf,
 }
 
-pub fn import_instances_from_modrinth(backend: &BackendState, modrinth: &Path, modal_action: &ModalAction) -> rusqlite::Result<()> {
+pub fn import_instances_from_modrinth(backend: &BackendState, modrinth: &Path, instances: &HashMap<PathBuf, ImportStatus>, modal_action: &ModalAction) -> rusqlite::Result<()> {
     let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
@@ -43,6 +43,9 @@ pub fn import_instances_from_modrinth(backend: &BackendState, modrinth: &Path, m
 
         let profile = profiles.join(&path);
         if !profile.is_dir() {
+            continue;
+        }
+        if *instances.get(&profile).unwrap() != ImportStatus::Importing {
             continue;
         }
 
@@ -127,10 +130,9 @@ pub fn import_instances_from_modrinth(backend: &BackendState, modrinth: &Path, m
     Ok(())
 }
 
-pub fn read_profiles_from_modrinth_db(data_dir: &Path) -> rusqlite::Result<Option<ImportFromOtherLauncher>> {
-    let modrinth = data_dir.join("ModrinthApp");
-    let profiles = modrinth.join("profiles");
-    let app_db = modrinth.join("app.db");
+pub fn read_profiles_from_modrinth_db(data_dir: &Path, pandora_dir: &Path) -> rusqlite::Result<Option<ImportFromOtherLauncher>> {
+    let profiles = data_dir.join("profiles");
+    let app_db = data_dir.join("app.db");
 
     if !app_db.exists() {
         return Ok(None);
@@ -141,18 +143,16 @@ pub fn read_profiles_from_modrinth_db(data_dir: &Path) -> rusqlite::Result<Optio
     let mut stmt = conn.prepare("SELECT path FROM profiles")?;
     let mut query = stmt.query([])?;
 
-    let mut paths = Vec::new();
+    let mut paths = HashMap::new();
 
     while let Ok(Some(row)) = query.next() {
         let path: String = row.get(0)?;
         let profile = profiles.join(path);
         if profile.is_dir() {
-            paths.push(profile);
+            let state = if pandora_dir.join(profile.file_name().unwrap()).exists() { ImportStatus::Duplicate } else { ImportStatus::Importing };
+            paths.insert(profile, state);
         }
     }
 
-    Ok(Some(ImportFromOtherLauncher {
-        can_import_accounts: false,
-        paths,
-    }))
+    Ok(Some(ImportFromOtherLauncher::new(OtherLauncher::Modrinth, paths)))
 }

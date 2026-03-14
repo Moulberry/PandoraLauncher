@@ -938,7 +938,15 @@ impl BackendState {
                 }
             },
             MessageToBackend::GetImportFromOtherLauncherPaths { channel } => {
-                let result = crate::launcher_import::discover_instances_from_other_launchers();
+                let result = crate::launcher_import::discover_instances_from_other_launchers(&self);
+                _ = channel.send(result);
+            },
+            MessageToBackend::GetImportFromCustomLauncherPath { channel, path } => {
+                let mut result = crate::launcher_import::discover_instances_from_path(&self, path);
+                // this is required to tell the front-end we have used the custom system. Easier done here than in the function itself.
+                if let Some(data) = &mut result {
+                    data.custom_import = true;
+                }
                 _ = channel.send(result);
             },
             MessageToBackend::GetSyncState { channel } => {
@@ -1373,9 +1381,9 @@ impl BackendState {
             MessageToBackend::InstallUpdate { update, modal_action } => {
                 tokio::task::spawn(crate::update::install_update(self.redirecting_http_client.clone(), self.directories.clone(), self.send.clone(), update, modal_action));
             },
-            MessageToBackend::ImportFromOtherLauncher { launcher, import_accounts, import_instances, modal_action } => {
-                crate::launcher_import::import_from_other_launcher(self, launcher, import_accounts, import_instances, modal_action).await;
-            },
+            MessageToBackend::ImportFromOtherLauncher { details, modal_action } => {
+                crate::launcher_import::import_from_other_launcher(self, details, modal_action).await;
+            }
             MessageToBackend::GetAccountSkin { account, result } => {
                 let backend = self.clone();
                 tokio::task::spawn(async move {

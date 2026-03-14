@@ -1,19 +1,21 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
-use bridge::{handle::BackendHandle, import::{ImportFromOtherLaunchers, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
+use bridge::{handle::BackendHandle, import::{ImportFromOtherLauncher, ImportFromOtherLaunchers, ImportStatus, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, scroll::ScrollableElement, spinner::Spinner, v_flex, ActiveTheme as _, Disableable, Sizable
+    ActiveTheme, Disableable, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, notification::{Notification, NotificationType}, scroll::ScrollableElement, spinner::Spinner, v_flex
 };
+use log::debug;
 use schema::{content::ContentSource, loader::Loader};
 use strum::IntoEnumIterator;
 
-use crate::{component::{responsive_grid::ResponsiveGrid}, entity::DataEntities, pages::page::Page, root};
+use crate::{component::responsive_grid::ResponsiveGrid, entity::DataEntities, icon::PandoraIcon, pages::page::Page, root, ts};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
     import_from_other_launchers: Option<ImportFromOtherLaunchers>,
-    import_from: Option<OtherLauncher>,
+    import_details: Option<ImportFromOtherLauncher>,
+    failed_details: bool,
     import_accounts: bool,
     import_instances: bool,
     _get_import_paths_task: Task<()>,
@@ -25,7 +27,8 @@ impl ImportPage {
         let mut page = Self {
             backend_handle: data.backend_handle.clone(),
             import_from_other_launchers: None,
-            import_from: None,
+            import_details: None,
+            failed_details: false,
             import_accounts: true,
             import_instances: true,
             _get_import_paths_task: Task::ready(()),
@@ -51,6 +54,20 @@ impl ImportPage {
             channel: send,
         });
     }
+
+    pub fn request_custom_paths(&mut self, cx: &mut Context<Self>, path: PathBuf) {
+        let (send, recv) = tokio::sync::oneshot::channel();
+        cx.spawn(async move |page, cx| {
+            let result: Option<ImportFromOtherLauncher> = recv.await.unwrap_or_default();
+            let _ = page.update(cx, move |page, cx| {
+                page.failed_details = result.is_none();
+                page.import_details = result;
+                cx.notify();
+            });
+        }).detach();
+
+        self.backend_handle.send(MessageToBackend::GetImportFromCustomLauncherPath { channel: send, path });
+    }
 }
 
 impl Page for ImportPage {
@@ -64,13 +81,19 @@ impl Page for ImportPage {
 }
 
 impl Render for ImportPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(imports) = &self.import_from_other_launchers else {
             let content = v_flex().size_full().p_3().gap_3()
                 .child(Spinner::new().with_size(gpui_component::Size::Large));
 
             return content;
         };
+
+        if self.failed_details {
+            self.failed_details = false;
+            let notification: Notification = (NotificationType::Error, ts!("import.failed")).into();
+            window.push_notification(notification.autohide(true), cx);
+        }
 
         let mut content = v_flex().size_full().p_3().gap_3()
             .child(ResponsiveGrid::new(Size::new(AvailableSpace::MinContent, AvailableSpace::MinContent))
@@ -80,8 +103,10 @@ impl Render for ImportPage {
                         Button::new(launcher.to_string())
                              .label(format!("Import from {}", launcher))
                              .w_full()
-                              .disabled(imports.imports[launcher].is_none())
-                             .on_click(cx.listener(move |page, _, _, _| page.import_from = Some(launcher)))
+                             .disabled(imports.imports[launcher].is_none())
+                             .on_click(cx.listener(move |page, _, _, _| {
+                                 page.import_details = page.import_from_other_launchers.as_ref().unwrap().imports[launcher].clone();
+                             }))
                      })
                 })
                 .child(Button::new("mrpack")
@@ -120,11 +145,49 @@ impl Render for ImportPage {
                             });
                         })
                     })))
+                .child(Button::new("custom")
+                    .label("Import From Custom Directory")
+                    .w_full()
+                    .on_click(cx.listener(|page, _, window, cx| {
+                        let receiver = cx.prompt_for_paths(PathPromptOptions {
+                            files: false,
+                            directories: true,
+                            multiple: false,
+                            prompt: Some("Select Directory To Import From".into())
+                        });
+
+                        let page_entity = cx.entity();
+                        page._open_file_task = window.spawn(cx, async move |cx| {
+                            let Ok(Ok(Some(path))) = receiver.await else {
+                                return;
+                            };
+                            // we just care about an owned version and not the iter being useless. We can only select one anyway...
+                            let Some(dir) = path.into_iter().nth(0) else { return; };
+
+                            _ = page_entity.update_in(cx, |page, _, cx| {
+                                page.request_custom_paths(cx, dir);
+                            });
+                        });
+                    })))
             );
 
-        if let Some(import_from) = self.import_from && let Some(import) = &imports.imports[import_from] {
-            let label = format!("Import From {}", import_from);
-            let import_accounts = self.import_accounts && import.can_import_accounts;
+        if let Some(import) = &self.import_details {
+            let import_from = import.launcher;
+            let label = match import.custom_import {
+                true => ts!("import.dir.custom", launcher = import_from),
+                false => ts!("import.dir.normal", launcher = import_from),
+            };
+            let import_accounts = self.import_accounts && import.account.is_some();
+
+            // this is just to always make sure it's in alphabetical order.
+            // makes it more reliable upon loading as well.
+            let mut list = import.instances.iter().collect::<Vec<_>>();
+            list.sort_by(|a, b| a.0.cmp(b.0));
+            // println!("{:#?}", list);
+
+            let can_import = import_accounts ||
+                (self.import_instances && import.instances.iter().any(|(_, status)| *status == ImportStatus::Importing));
+
             content = content.child(v_flex()
                 .w_full()
                 .border_1()
@@ -132,7 +195,7 @@ impl Render for ImportPage {
                 .p_2()
                 .rounded(cx.theme().radius_lg)
                 .border_color(cx.theme().border)
-                .when(import.can_import_accounts, |div| div.child(Checkbox::new("accounts").label("Import Accounts")
+                .when(import.account.is_some(), |div| div.child(Checkbox::new("accounts").label("Import Accounts")
                     .checked(self.import_accounts)
                     .on_click(cx.listener(|page, checked, _, _| {
                     page.import_accounts = *checked;
@@ -149,25 +212,73 @@ impl Render for ImportPage {
                     .rounded(cx.theme().radius)
                     .border_color(cx.theme().border)
                     .max_h_64()
-                    .child(v_flex().overflow_y_scrollbar().children(
-                        import.paths.iter().map(|path| {
-                            SharedString::new(path.to_string_lossy())
+                    .child(h_flex().children([
+                        Button::new("uncheck_all").label("Uncheck All")
+                            .on_click(cx.listener(move |page, _, _, _| {
+                                if let Some(details) = page.import_details.as_mut() {
+                                    details.instances.iter_mut().for_each(|(_, state)| state.disable());
+                                }
+                            })),
+                        Button::new("check_all").label("Check All")
+                            .on_click(cx.listener(move |page, _, _, _| {
+                                if let Some(details) = page.import_details.as_mut() {
+                                    details.instances.iter_mut().for_each(|(_, state)| state.enable());
+                                }
+                            }))
+                    ]))
+                    .child(v_flex().overflow_y_scrollbar().children({
+                        list.iter().map(|(path, checked)| {
+                            let mut line = v_flex().child(Checkbox::new(SharedString::new(path.to_string_lossy()))
+                                .label(SharedString::new(path.to_string_lossy()))
+                                .checked(**checked == ImportStatus::Importing)
+                                .disabled(**checked == ImportStatus::Duplicate)
+                                .on_click({
+                                    let path_buf = path.to_path_buf();
+                                    cx.listener(move |page, _, _, _| {
+                                        if let Some(details) = page.import_details.as_mut() {
+                                            if let Some(state) = details.instances.get_mut(&path_buf) {
+                                                state.flip();
+                                            }
+                                        }
+                                    })
+                                }));
+                            if **checked == ImportStatus::Duplicate {
+                                line = line.child(h_flex().text_color(cx.theme().red).pl_8()
+                                    .child(PandoraIcon::TriangleAlert)
+                                    .child(ts!("import.duplicated", name = path.file_name().unwrap().to_string_lossy()))
+                                );
+                            }
+                            line
                         })
-                    )))
+                    })))
                 )
-                .child(Button::new("doimport").disabled(!import_accounts && !self.import_instances).success().label(label.clone()).on_click(cx.listener(move |page, _, window, cx| {
-                    let modal_action = ModalAction::default();
+                .child(Button::new("doimport").disabled(!can_import).success().label(label.clone())
+                    .tooltip({
+                        match can_import {
+                            true => ts!("import.enabled", launcher = import_from.to_string()),
+                            false => ts!("import.disabled", launcher = import_from.to_string()),
+                        }
+                    })
+                    .on_click(cx.listener(move |page, _, window, cx| {
+                        let modal_action = ModalAction::default();
+                        debug!("{:?}", page.import_details);
 
-                    page.backend_handle.send(MessageToBackend::ImportFromOtherLauncher {
-                        launcher: import_from,
-                        import_accounts: import_accounts,
-                        import_instances: page.import_instances,
-                        modal_action: modal_action.clone()
-                    });
+                        let mut details = page.import_details.as_ref().unwrap().clone();
+                        details.account = if import_accounts { details.account } else { None };
+                        if !page.import_instances { details.instances.clear(); }
 
-                    let title = SharedString::new(label.clone());
-                    crate::modals::generic::show_modal(window, cx, title, "Error importing".into(), modal_action);
-                })))
+                        page.backend_handle.send(MessageToBackend::ImportFromOtherLauncher {
+                            details,
+                            modal_action: modal_action.clone()
+                        });
+
+                        let title = SharedString::new(label.clone());
+                        crate::modals::generic::show_modal(window, cx, title, "Error importing".into(), modal_action);
+                        page.import_details = None;
+                        // might be a tad bit over-the-top for what we technically need...
+                        page.update_launcher_paths(cx);
+                    }))
+                )
             )
         }
 

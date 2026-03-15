@@ -10,7 +10,7 @@ use rustc_hash::FxBuildHasher;
 
 use bridge::{game_output::GameOutputLogLevel, keep_alive::KeepAlive};
 
-use crate::{CloseWindow, icon::PandoraIcon, ts};
+use crate::{CloseWindow, icon::PandoraIcon, interface_config::InterfaceConfig, ts};
 
 struct CachedShapedLogLevels {
     fatal: Arc<ShapedLine>,
@@ -40,7 +40,7 @@ pub struct GameOutputItemState {
 
 pub struct GameOutput {
     font: Font,
-    scroll_state: Rc<RefCell<GameOutputScrollState>>,
+    pub scroll_state: Rc<RefCell<GameOutputScrollState>>,
     pending: Vec<(i64, GameOutputLogLevel, Arc<[Arc<str>]>)>,
     item_state: Option<GameOutputItemState>,
     time_column_width: Pixels,
@@ -82,6 +82,32 @@ impl Default for GameOutput {
 impl GameOutput {
     pub fn add(&mut self, time: i64, level: GameOutputLogLevel, text: Arc<[Arc<str>]>) {
         self.pending.push((time, level, text));
+    }
+
+    pub fn clear(&mut self) {
+        self.pending.clear();
+        if let Some(item_state) = &mut self.item_state {
+            item_state.items.clear();
+            item_state.item_sizes = FenwickTree::new();
+            item_state.total_line_count = 0;
+        }
+    }
+
+    pub fn collect_logs(&self) -> String {
+        let mut output = String::new();
+        
+        if let Some(item_state) = &self.item_state {
+            for item in &item_state.items {
+                if !item.skip {
+                    for line in item.text.iter() {
+                        output.push_str(line);
+                        output.push('\n');
+                    }
+                }
+            }
+        }
+        
+        output
     }
 
     fn shape_log_level(
@@ -825,22 +851,27 @@ fn paint_lines<'a, const REVERSE: bool>(
 }
 
 pub struct GameOutputRoot {
-    scroll_handler: ScrollHandler,
+    pub scroll_handler: ScrollHandler,
     _keep_alive: KeepAlive,
-    game_output: Entity<GameOutput>,
+    pub game_output: Entity<GameOutput>,
     search_state: Entity<InputState>,
     _search_task: Task<()>,
     _search_input_subscription: Subscription,
     focus_handle: FocusHandle,
+    // Tabbed mode fields
+    is_tabbed: bool,
+    pub active_instance_id: Option<usize>,
+    pub tabs: std::collections::HashMap<usize, Entity<GameOutput>>,
+    pub instance_names: std::collections::HashMap<usize, SharedString>,
 }
 
 #[derive(Clone)]
 pub struct ScrollHandler {
-    state: Rc<RefCell<GameOutputScrollState>>,
+    pub state: Rc<RefCell<GameOutputScrollState>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-struct ActiveDrag {
+pub struct ActiveDrag {
     start_content_height: Pixels,
     drag_pivot: Pixels,
     real_pivot: Pixels,
@@ -848,7 +879,7 @@ struct ActiveDrag {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
-struct GameOutputScrollState {
+pub struct GameOutputScrollState {
     lines: usize,
     line_height: Pixels,
     bounds_y: Pixels,
@@ -951,6 +982,45 @@ impl GameOutputRoot {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
 
+        // Observe window bounds changes and save them to config
+        // Delay observation slightly to let OS apply initial window bounds first
+        let observe_start = std::cell::RefCell::new(std::time::Instant::now());
+        cx.observe_window_bounds(window, move |_, window, cx| {
+            let elapsed = observe_start.borrow().elapsed().as_millis();
+            // Only start tracking changes after 200ms to let OS position the window
+            if elapsed < 200 {
+                return;
+            }
+
+            let origin = window.bounds().origin;
+            let size = window.viewport_size();
+            
+            let x = origin.x.to_f64() as f32;
+            let y = origin.y.to_f64() as f32;
+            let w = size.width.to_f64() as f32;
+            let h = size.height.to_f64() as f32;
+
+            let new_window_bounds = if window.is_fullscreen() {
+                crate::interface_config::WindowBounds::Fullscreen { x, y, w, h }
+            } else if window.is_maximized() {
+                crate::interface_config::WindowBounds::Maximized { x, y, w, h }
+            } else {
+                crate::interface_config::WindowBounds::Windowed { x, y, w, h }
+            };
+
+            let old_window_bounds = InterfaceConfig::get(cx).game_output_bounds.clone();
+            if new_window_bounds != old_window_bounds {
+                InterfaceConfig::get_mut(cx).game_output_bounds = new_window_bounds;
+            }
+        }).detach();
+
+        // Force save config when window is closed to ensure bounds are persisted
+        cx.on_window_closed({
+            move |cx| {
+                InterfaceConfig::force_save(cx);
+            }
+        }).detach();
+
         Self {
             scroll_handler: ScrollHandler { state: scroll_state },
             _keep_alive: keep_alive,
@@ -959,6 +1029,123 @@ impl GameOutputRoot {
             _search_task: Task::ready(()),
             _search_input_subscription,
             focus_handle,
+            is_tabbed: false,
+            active_instance_id: None,
+            tabs: std::collections::HashMap::new(),
+            instance_names: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn new_tabbed(
+        instance_id: usize,
+        instance_name: SharedString,
+        keep_alive: KeepAlive,
+        game_output: Entity<GameOutput>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let scroll_state = Rc::clone(&game_output.read(cx).scroll_state);
+
+        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(ts!("common.search")).clean_on_escape());
+
+        let _search_input_subscription = cx.subscribe_in(&search_state, window, Self::on_search_input_event);
+
+        let focus_handle = cx.focus_handle();
+        focus_handle.focus(window, cx);
+
+        // Observe window bounds changes and save them to config
+        let observe_start = std::cell::RefCell::new(std::time::Instant::now());
+        cx.observe_window_bounds(window, move |_, window, cx| {
+            let elapsed = observe_start.borrow().elapsed().as_millis();
+            if elapsed < 200 {
+                return;
+            }
+
+            let origin = window.bounds().origin;
+            let size = window.viewport_size();
+            
+            let x = origin.x.to_f64() as f32;
+            let y = origin.y.to_f64() as f32;
+            let w = size.width.to_f64() as f32;
+            let h = size.height.to_f64() as f32;
+
+            let new_window_bounds = if window.is_fullscreen() {
+                crate::interface_config::WindowBounds::Fullscreen { x, y, w, h }
+            } else if window.is_maximized() {
+                crate::interface_config::WindowBounds::Maximized { x, y, w, h }
+            } else {
+                crate::interface_config::WindowBounds::Windowed { x, y, w, h }
+            };
+
+            let old_window_bounds = InterfaceConfig::get(cx).game_output_bounds.clone();
+            if new_window_bounds != old_window_bounds {
+                InterfaceConfig::get_mut(cx).game_output_bounds = new_window_bounds;
+            }
+        }).detach();
+
+        cx.on_window_closed({
+            move |cx| {
+                InterfaceConfig::force_save(cx);
+            }
+        }).detach();
+
+        let mut tabs = std::collections::HashMap::new();
+        tabs.insert(instance_id, game_output.clone());
+        
+        let mut instance_names = std::collections::HashMap::new();
+        instance_names.insert(instance_id, instance_name);
+
+        Self {
+            scroll_handler: ScrollHandler { state: scroll_state },
+            _keep_alive: keep_alive,
+            game_output,
+            search_state,
+            _search_task: Task::ready(()),
+            _search_input_subscription,
+            focus_handle,
+            is_tabbed: true,
+            active_instance_id: Some(instance_id),
+            tabs,
+            instance_names,
+        }
+    }
+
+    pub fn create_or_switch_tab(
+        &mut self,
+        instance_id: usize,
+        instance_name: SharedString,
+        game_output: Entity<GameOutput>,
+        cx: &mut Context<Self>,
+    ) {
+        // Check if tab already exists
+        if !self.tabs.contains_key(&instance_id) {
+            // Create new tab
+            self.tabs.insert(instance_id, game_output.clone());
+            self.instance_names.insert(instance_id, instance_name);
+        }
+        
+        // Switch to this tab
+        self.active_instance_id = Some(instance_id);
+        if let Some(game_output_entity) = self.tabs.get(&instance_id) {
+            self.game_output = game_output_entity.clone();
+            let scroll_state = Rc::clone(&self.game_output.read(cx).scroll_state);
+            self.scroll_handler = ScrollHandler { state: scroll_state };
+        }
+        cx.notify();
+    }
+
+    pub fn add_output_to_tab(
+        &mut self,
+        instance_id: usize,
+        time: i64,
+        level: GameOutputLogLevel,
+        text: Arc<[Arc<str>]>,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(game_output) = self.tabs.get(&instance_id) {
+            game_output.update(cx, |game_output, _| {
+                game_output.add(time, level, text);
+            });
         }
     }
 
@@ -1058,10 +1245,10 @@ impl Render for GameOutputRoot {
 
         let bar = h_flex()
             .w_full()
-            .rounded(cx.theme().radius)
             .id("controls")
-            .flex_1()
             .gap_4()
+            .px_2()
+            .py_2()
             .child(search)
             .child(Button::new("top").label(ts!("common.nav.top")).on_click(cx.listener(|root, _, _, cx| {
                 let mut state = root.scroll_handler.state.borrow_mut();
@@ -1072,31 +1259,134 @@ impl Render for GameOutputRoot {
                 let mut state = root.scroll_handler.state.borrow_mut();
                 state.scrolling = GameOutputScrolling::Bottom;
                 cx.notify();
+            })))
+            .child(Button::new("upload").label(ts!("instance.logs.upload.label")))
+            .child(Button::new("clear").label("Clear").on_click(cx.listener(|root, _, _, cx| {
+                root.game_output.update(cx, |game_output, _| {
+                    game_output.clear();
+                });
+                cx.notify();
+            })))
+            .child(Button::new("copy").label("Copy").on_click(cx.listener(|root, _, _, cx| {
+                let logs = root.game_output.read(cx).collect_logs();
+                cx.write_to_clipboard(logs.into());
             })));
 
-        v_flex()
-            .size_full()
-            .border_12()
-            .gap_4()
+        // Build tab bar if in tabbed mode
+        let mut tab_bar = h_flex()
+            .w_full()
+            .gap_2()
+            .px_2();
+
+        for (instance_id, _game_output) in &self.tabs {
+            let is_active = self.active_instance_id == Some(*instance_id);
+            let instance_id_copy = *instance_id;
+            let instance_name = self.instance_names.get(instance_id)
+                .cloned()
+                .unwrap_or_else(|| format!("Instance {}", instance_id).into());
+
+            let tab = if is_active {
+                Button::new(format!("tab_{}", instance_id))
+                    .label(instance_name)
+                    .on_click(cx.listener(move |root, _, _, cx| {
+                        root.active_instance_id = Some(instance_id_copy);
+                        // Switch to the new instance's game output
+                        if let Some(game_output) = root.tabs.get(&instance_id_copy) {
+                            root.game_output = game_output.clone();
+                            let scroll_state = Rc::clone(&root.game_output.read(cx).scroll_state);
+                            root.scroll_handler = ScrollHandler { state: scroll_state };
+                        }
+                        cx.notify();
+                    }))
+            } else {
+                Button::new(format!("tab_{}", instance_id))
+                    .label(instance_name)
+                    .on_click(cx.listener(move |root, _, _, cx| {
+                        root.active_instance_id = Some(instance_id_copy);
+                        // Switch to the new instance's game output
+                        if let Some(game_output) = root.tabs.get(&instance_id_copy) {
+                            root.game_output = game_output.clone();
+                            let scroll_state = Rc::clone(&root.game_output.read(cx).scroll_state);
+                            root.scroll_handler = ScrollHandler { state: scroll_state };
+                        }
+                        cx.notify();
+                    }))
+            };
+
+            tab_bar = tab_bar.child(tab);
+        }
+
+        // Check if we're in tabbed mode
+        let has_tabs = self.is_tabbed && !self.tabs.is_empty();
+        
+        // Build the main content area (without tabs/borders)
+        let main_output = h_flex()
+            .flex_1()
+            .w_full()
+            .child(GameOutputList {
+                interactivity: Interactivity::new(),
+                game_output: self.game_output.clone(),
+            })
+            .child(
+                div()
+                    .w_3()
+                    .h_full()
+                    .border_y_12()
+                    .child(Scrollbar::vertical(&self.scroll_handler)),
+            );
+
+        // Build layout: search/buttons > tabs > output, all in single border
+        let mut inner = v_flex()
+            .w_full()
+            .flex_1()
+            .gap_1();
+
+        // Add control buttons first with separator
+        let bar_with_separator = v_flex()
+            .w_full()
             .child(bar)
             .child(
-                h_flex()
-                    .size_full()
-                    .rounded(cx.theme().radius)
-                    .border_1()
+                div()
+                    .w_full()
+                    .border_b_1()
                     .border_color(cx.theme().border)
-                    .child(GameOutputList {
-                        interactivity: Interactivity::new(),
-                        game_output: self.game_output.clone(),
-                    })
-                    .child(
-                        div()
-                            .w_3()
-                            .h_full()
-                            .border_y_12()
-                            .child(Scrollbar::vertical(&self.scroll_handler)),
-                    ),
-            )
+            );
+        inner = inner.child(bar_with_separator);
+
+        // Add tab bar below buttons if we have tabs with separator
+        if has_tabs {
+            let tabs_with_separator = v_flex()
+                .w_full()
+                .child(tab_bar)
+                .child(
+                    div()
+                        .w_full()
+                        .border_b_1()
+                        .border_color(cx.theme().border)
+                );
+            inner = inner.child(tabs_with_separator);
+        }
+
+        // Add main content area last
+        inner = inner.child(main_output);
+
+        // Wrap everything in a single border
+        let content_area = v_flex()
+            .w_full()
+            .flex_1()
+            .rounded(cx.theme().radius)
+            .border_1()
+            .border_color(cx.theme().border)
+            .child(inner);
+
+        let mut contents = v_flex()
+            .size_full()
+            .border_12()
+            .gap_4();
+
+        contents = contents.child(content_area);
+
+        contents
             .on_scroll_wheel(cx.listener(|root, event: &ScrollWheelEvent, _, cx| {
                 let state = root.scroll_handler.state.borrow();
                 let delta = event.delta.pixel_delta(state.line_height).y;

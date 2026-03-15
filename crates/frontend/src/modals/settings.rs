@@ -314,6 +314,18 @@ impl Settings {
                             .on_click(|value, _, cx| {
                                 InterfaceConfig::get_mut(cx).quit_on_main_closed = *value;
                             }))
+                        .child(Checkbox::new("game-output-size-persistence")
+                            .label(ts!("settings.windows.game_output_size_persistence"))
+                            .checked(interface_config.game_output_size_persistence)
+                            .on_click(|value, _, cx| {
+                                InterfaceConfig::get_mut(cx).game_output_size_persistence = *value;
+                            }))
+                        .child(Checkbox::new("game-output-tabs")
+                            .label(ts!("settings.windows.game_output_tabs_enabled"))
+                            .checked(interface_config.game_output_tabs_enabled)
+                            .on_click(|value, _, cx| {
+                                InterfaceConfig::get_mut(cx).game_output_tabs_enabled = *value;
+                            }))
                 ))
         } else {
             div = div.child(Spinner::new().large());

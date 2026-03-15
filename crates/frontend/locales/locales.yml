@@ -737,6 +737,10 @@ settings:
       en: Open game output on launch
     close_all_when_main_closed:
       en: Close all other windows when main window closed
+    game_output_size_persistence:
+      en: Enable console size restoration
+    game_output_tabs_enabled:
+      en: Enable tabs in console
   privacy:
     title:
       en: Privacy

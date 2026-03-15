@@ -282,6 +282,7 @@ pub enum MessageToFrontend {
     },
     CreateGameOutputWindow {
         id: usize,
+        name: String,
         keep_alive: KeepAlive,
     },
     AddGameOutput {

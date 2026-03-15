@@ -1,14 +1,19 @@
-use std::{collections::HashMap, sync::{Arc, atomic::AtomicBool}};
+use std::{collections::HashMap, rc::Rc, sync::{Arc, atomic::AtomicBool}};
 
 use bridge::{instance::InstanceStatus, message::{BridgeNotificationType, MessageToFrontend}};
-use gpui::{AnyWindowHandle, App, AppContext, Entity, SharedString, TitlebarOptions, Window, WindowDecorations, WindowHandle, WindowOptions, px, size};
+use gpui::{AnyWindowHandle, App, AppContext, Bounds, Entity, Point, SharedString, Size, TitlebarOptions, Window, WindowBounds, WindowDecorations, WindowHandle, WindowOptions, px, size};
 use gpui_component::{notification::{Notification, NotificationType}, Root, WindowExt};
 
 use crate::{entity::{DataEntities, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata}, game_output::{GameOutput, GameOutputRoot}, interface_config::InterfaceConfig, root::LauncherRoot, ts};
+use crate::game_output::ScrollHandler;
 
 pub struct Processor {
     data: DataEntities,
+    game_output_window: Option<WindowHandle<Root>>,
     game_output_windows: HashMap<usize, (WindowHandle<Root>, Entity<GameOutput>)>,
+    game_output_tabs: HashMap<usize, Entity<GameOutput>>,
+    game_output_names: HashMap<usize, SharedString>,
+    game_output_root: Option<Entity<GameOutputRoot>>,
     main_window_handle: Option<AnyWindowHandle>,
     main_window_hidden: Arc<AtomicBool>,
     waiting_for_window: Vec<MessageToFrontend>,
@@ -18,7 +23,11 @@ impl Processor {
     pub fn new(data: DataEntities, main_window_hidden: Arc<AtomicBool>) -> Self {
         Self {
             data,
+            game_output_window: None,
             game_output_windows: HashMap::new(),
+            game_output_tabs: HashMap::new(),
+            game_output_names: HashMap::new(),
+            game_output_root: None,
             main_window_handle: None,
             main_window_hidden,
             waiting_for_window: Vec::new(),
@@ -171,26 +180,146 @@ impl Processor {
                     window.close_all_dialogs(cx);
                 });
             },
-            MessageToFrontend::CreateGameOutputWindow { id, keep_alive } => {
-                let options = WindowOptions {
-                    app_id: Some("PandoraLauncher".into()),
-                    window_min_size: Some(size(px(360.0), px(240.0))),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some(ts!("system.game_output")),
+            MessageToFrontend::CreateGameOutputWindow { id, name, keep_alive } => {
+                let instance_name: SharedString = name.into();
+                let should_use_tabs = InterfaceConfig::get(cx).game_output_tabs_enabled;
+                let should_persist_size = InterfaceConfig::get(cx).game_output_size_persistence;
+                
+                // Clean up orphaned references from the opposite mode if switching
+                if should_use_tabs && !self.game_output_windows.is_empty() {
+                    // Switching to tabs mode - clean up any orphaned simple mode references
+                    self.game_output_windows.clear();
+                } else if !should_use_tabs && (!self.game_output_tabs.is_empty() || self.game_output_root.is_some()) {
+                    // Switching to simple mode - clean up any orphaned tabbed mode references
+                    self.game_output_tabs.clear();
+                    self.game_output_names.clear();
+                    self.game_output_root = None;
+                    self.game_output_window = None;
+                }
+                
+                self.game_output_names.insert(id, instance_name.clone());
+                
+                if should_use_tabs {
+                    // TABBED MODE: Multiple instances in one window with tabs
+                    // Check if the window still exists - if not, clear the reference
+                    let window_still_exists = if let Some(window_handle) = &self.game_output_window {
+                        window_handle.update(cx, |_, _, _| {}).is_ok()
+                    } else {
+                        false
+                    };
+                    
+                    if !window_still_exists {
+                        self.game_output_window = None;
+                        self.game_output_root = None;
+                        self.game_output_tabs.clear();
+                    }
+                    
+                    if self.game_output_window.is_none() {
+                        // First instance - create the window
+                        let window_bounds = if should_persist_size {
+                            match InterfaceConfig::get(cx).game_output_bounds {
+                                crate::interface_config::WindowBounds::Inherit => None,
+                                crate::interface_config::WindowBounds::Windowed { w, h, .. } => {
+                                    Some(WindowBounds::Windowed(Bounds::new(Point::new(px(0.0), px(0.0)), Size::new(px(w), px(h)))))
+                                },
+                                crate::interface_config::WindowBounds::Maximized { w, h, .. } => {
+                                    Some(WindowBounds::Maximized(Bounds::new(Point::new(px(0.0), px(0.0)), Size::new(px(w), px(h)))))
+                                },
+                                crate::interface_config::WindowBounds::Fullscreen { w, h, .. } => {
+                                    Some(WindowBounds::Fullscreen(Bounds::new(Point::new(px(0.0), px(0.0)), Size::new(px(w), px(h)))))
+                                },
+                            }
+                        } else {
+                            None
+                        };
+
+                        let options = WindowOptions {
+                            app_id: Some("PandoraLauncher".into()),
+                            window_min_size: Some(size(px(360.0), px(240.0))),
+                            window_bounds,
+                            titlebar: Some(TitlebarOptions {
+                                title: Some(ts!("system.game_output")),
+                                ..Default::default()
+                            }),
+                            window_decorations: Some(WindowDecorations::Server),
+                            ..Default::default()
+                        };
+                        
+                        // Create initial GameOutput for this instance
+                        let game_output = cx.new(|_| GameOutput::default());
+                        self.game_output_tabs.insert(id, game_output.clone());
+                        
+                        let processor_ptr = self as *mut Processor;
+                        _ = cx.open_window(options, move |window, cx| {
+                            let window_handle = window.window_handle().downcast::<Root>().unwrap();
+                            
+                            let game_output_root = cx.new(|cx| GameOutputRoot::new_tabbed(id, instance_name, keep_alive, game_output, window, cx));
+                            window.activate_window();
+                            
+                            // SAFETY: processor_ptr is valid because it's created from &mut self in the current scope.
+                            // The window callback is executed synchronously by cx.open_window(), so the pointer
+                            // remains valid for the duration of this callback. This is a temporary pointer used
+                            // only to mutate the Processor state without moving self.
+                            unsafe {
+                                (*processor_ptr).game_output_window = Some(window_handle);
+                                (*processor_ptr).game_output_root = Some(game_output_root.clone());
+                            }
+
+                            cx.new(|cx| Root::new(game_output_root, window, cx))
+                        });
+                    } else if !self.game_output_tabs.contains_key(&id) {
+                        // Window exists but this is a new instance - add a tab
+                        let game_output = cx.new(|_| GameOutput::default());
+                        self.game_output_tabs.insert(id, game_output.clone());
+                        
+                        // Tell the GameOutputRoot to add this new tab
+                        if let Some(root_entity) = &self.game_output_root {
+                            root_entity.update(cx, |root, cx| {
+                                root.create_or_switch_tab(id, instance_name, game_output, cx);
+                            });
+                        }
+                    }
+                } else {
+                    // SIMPLE MODE: Separate window for each instance (master's original behavior)
+                    let window_bounds = if should_persist_size {
+                        match InterfaceConfig::get(cx).game_output_bounds {
+                            crate::interface_config::WindowBounds::Inherit => None,
+                            crate::interface_config::WindowBounds::Windowed { w, h, .. } => {
+                                Some(WindowBounds::Windowed(Bounds::new(Point::new(px(0.0), px(0.0)), Size::new(px(w), px(h)))))
+                            },
+                            crate::interface_config::WindowBounds::Maximized { w, h, .. } => {
+                                Some(WindowBounds::Maximized(Bounds::new(Point::new(px(0.0), px(0.0)), Size::new(px(w), px(h)))))
+                            },
+                            crate::interface_config::WindowBounds::Fullscreen { w, h, .. } => {
+                                Some(WindowBounds::Fullscreen(Bounds::new(Point::new(px(0.0), px(0.0)), Size::new(px(w), px(h)))))
+                            },
+                        }
+                    } else {
+                        None
+                    };
+
+                    let options = WindowOptions {
+                        app_id: Some("PandoraLauncher".into()),
+                        window_min_size: Some(size(px(360.0), px(240.0))),
+                        window_bounds,
+                        titlebar: Some(TitlebarOptions {
+                            title: Some(ts!("system.game_output")),
+                            ..Default::default()
+                        }),
+                        window_decorations: Some(WindowDecorations::Server),
                         ..Default::default()
-                    }),
-                    window_decorations: Some(WindowDecorations::Server),
-                    ..Default::default()
-                };
-                _ = cx.open_window(options, |window, cx| {
-                    let game_output = cx.new(|_| GameOutput::default());
-                    let game_output_root = cx
-                        .new(|cx| GameOutputRoot::new(keep_alive, game_output.clone(), window, cx));
-                    window.activate_window();
-                    let window_handle = window.window_handle().downcast::<Root>().unwrap();
-                    self.game_output_windows.insert(id, (window_handle, game_output.clone()));
-                    cx.new(|cx| Root::new(game_output_root, window, cx))
-                });
+                    };
+                    
+                    _ = cx.open_window(options, |window, cx| {
+                        let game_output = cx.new(|_| GameOutput::default());
+                        let game_output_root = cx
+                            .new(|cx| GameOutputRoot::new(keep_alive, game_output.clone(), window, cx));
+                        window.activate_window();
+                        let window_handle = window.window_handle().downcast::<Root>().unwrap();
+                        self.game_output_windows.insert(id, (window_handle, game_output.clone()));
+                        cx.new(|cx| Root::new(game_output_root, window, cx))
+                    });
+                }
             },
             MessageToFrontend::AddGameOutput {
                 id,
@@ -198,13 +327,51 @@ impl Processor {
                 level,
                 text,
             } => {
-                if let Some((window, game_output)) = self.game_output_windows.get(&id) {
-                    _ = window.update(cx, |_, window, cx| {
+                let should_use_tabs = InterfaceConfig::get(cx).game_output_tabs_enabled;
+                
+                if should_use_tabs {
+                    // TABS MODE: Use game_output_tabs
+                    if let Some(game_output) = self.game_output_tabs.get(&id) {
                         game_output.update(cx, |game_output, _| {
                             game_output.add(time, level, text);
                         });
-                        window.refresh();
-                    });
+                        
+                        // Switch to this instance's tab if it exists
+                        if let Some(root_entity) = &self.game_output_root {
+                            root_entity.update(cx, |root, cx| {
+                                root.active_instance_id = Some(id);
+                                if let Some(game_output_entity) = root.tabs.get(&id) {
+                                    root.game_output = game_output_entity.clone();
+                                    let scroll_state = Rc::clone(&root.game_output.read(cx).scroll_state);
+                                    root.scroll_handler = ScrollHandler { state: scroll_state };
+                                }
+                                cx.notify();
+                            });
+                        }
+                        
+                        // Refresh the window if it exists
+                        if let Some(window_handle) = &self.game_output_window {
+                            _ = window_handle.update(cx, |_, window, _cx| {
+                                window.refresh();
+                            });
+                        }
+                    } else {
+                        // Log warning for orphaned output
+                        eprintln!("Warning: Received game output for unknown tabbed instance id={}", id);
+                    }
+                } else {
+                    // SIMPLE MODE: Use game_output_windows (separate window per instance)
+                    if let Some((window, game_output)) = self.game_output_windows.get(&id) {
+                        _ = window.update(cx, |_, window, cx| {
+                            game_output.update(cx, |game_output, _| {
+                                game_output.add(time, level, text);
+                            });
+                            window.refresh();
+                        });
+                    } else {
+                        // Log warning for orphaned output
+                        eprintln!("Warning: Received game output for unknown windowed instance id={}", id);
+                    }
                 }
             },
             MessageToFrontend::MoveInstanceToTop { id } => {

@@ -39,11 +39,15 @@ pub fn replace(string: &str) -> Cow<'_, str> {
     replaced
 }
 
-pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sender: FrontendHandle) {
+pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sender: FrontendHandle, instance_name: impl Into<String>) {
     let id = GAME_OUTPUT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let keep_alive = KeepAlive::new();
     let keep_alive_handle = keep_alive.create_handle();
-    sender.send(MessageToFrontend::CreateGameOutputWindow { id, keep_alive });
+    sender.send(MessageToFrontend::CreateGameOutputWindow { 
+        id, 
+        name: instance_name.into().into(),
+        keep_alive,
+    });
 
     if let Some(stderr) = stderr {
         let sender = sender.clone();

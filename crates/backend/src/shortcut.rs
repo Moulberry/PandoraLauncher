@@ -38,8 +38,8 @@ pub fn create_shortcut(mut path: PathBuf, name: &str, bin: &Path, args: &[&str])
     let Ok(mut sl) = mslnk::ShellLink::new(bin) else {
         return;
     };
-    let args_str = shell_words::join(args);
-    sl.set_arguments(Some(args_str.into()));
+    let args_str = crate::join_windows_shell(args);
+    sl.set_arguments(Some(args_str));
     sl.set_name(Some(name.into()));
     _ = sl.create_lnk(path);
 

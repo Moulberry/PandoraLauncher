@@ -197,3 +197,56 @@ impl FolderChanges {
         }
     }
 }
+
+pub fn join_windows_shell(args: &[&str]) -> String {
+    let mut string = String::new();
+
+    let mut first = true;
+    for arg in args {
+        let mut backslashes = 0;
+
+        if first {
+            first = false;
+        } else {
+            string.push(' ');
+        }
+
+        let quoted = arg.contains(&[' ', '\t']);
+        if quoted {
+            string.push('"');
+        }
+
+        for char in arg.chars() {
+            if char == '\\' {
+                backslashes += 1;
+            } else if char == '"' {
+                for _ in 0..backslashes {
+                    string.push_str("\\\\");
+                }
+                string.push_str("\\\"");
+                backslashes = 0;
+            } else {
+                for _ in 0..backslashes {
+                    string.push('\\');
+                }
+                string.push(char);
+            }
+        }
+
+        if quoted {
+            for _ in 0..backslashes {
+                string.push_str("\\\\");
+            }
+        } else {
+            for _ in 0..backslashes {
+                string.push('\\');
+            }
+        }
+
+        if quoted {
+            string.push('"');
+        }
+    }
+
+    string
+}

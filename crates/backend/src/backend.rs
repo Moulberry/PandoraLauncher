@@ -341,6 +341,7 @@ impl BackendState {
                 }
 
                 existing.copy_basic_attributes_from(instance);
+                existing.rewatch_directories(&mut self.file_watching.write());
 
                 let _ = self.send.send(existing.create_modify_message());
 
@@ -1139,20 +1140,38 @@ impl BackendState {
 
 impl BackendStateFileWatching {
     pub fn watch_filesystem(&mut self, path: Arc<Path>, target: WatchTarget) {
-        if let Some(old_path) = self.watch_target_to_path.get(&target) && old_path == &path {
-            return;
-        }
         let Ok(canonical) = path.canonicalize() else {
-            log::error!("Unable to watch {:?} because it could not be canonicalized", path);
             return;
         };
+
         let canonical: Arc<Path> = if canonical == &*path {
             log::debug!("Watching {:?} as {:?}", path, target);
             path.clone()
         } else {
-            log::debug!("Watching {:?} (real path {:?}) as {:?}", path, canonical, target);
-            canonical.into()
+            let is_just_long_path_prefixed = if cfg!(windows) {
+                let canonical_bytes = canonical.as_os_str().as_encoded_bytes();
+                let path_bytes = path.as_os_str().as_encoded_bytes();
+                canonical_bytes.len() == path_bytes.len()+4
+                    && &canonical_bytes[..4] == b"\\\\?\\"
+                    && &canonical_bytes[4..] == path_bytes
+            } else {
+                false
+            };
+            if is_just_long_path_prefixed {
+                log::debug!("Watching {:?} as {:?}", path, target);
+                path.clone()
+            } else {
+                log::debug!("Watching {:?} (real path {:?}) as {:?}", path, canonical, target);
+                canonical.into()
+            }
         };
+
+        if let Some(old_path) = self.watch_target_to_path.get(&target) && old_path == &path {
+            let old_canonical = self.symlink_link_to_src.get(old_path).cloned().unwrap_or(old_path.clone());
+            if old_canonical == canonical {
+                return;
+            }
+        }
 
         if let Err(err) = self.watcher.watch(&path, notify::RecursiveMode::NonRecursive) {
             log::error!("Unable to watch filesystem: {:?}", err);

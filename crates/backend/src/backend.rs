@@ -374,6 +374,7 @@ impl BackendState {
                 root_path: instance.resolve_real_root_path(),
                 dot_minecraft_folder: instance.dot_minecraft_path.clone(),
                 configuration: instance.configuration.get().clone(),
+                playtime: instance.playtime(),
                 worlds_state: instance.worlds_state.clone(),
                 servers_state: instance.servers_state.clone(),
                 mods_state: instance.content_state[ContentFolder::Mods].load_state.clone(),
@@ -424,18 +425,24 @@ impl BackendState {
 
         let mut instance_state = self.instance_state.write();
         for instance in instance_state.instances.iter_mut() {
-            let mut changed = false;
+            let was_running = !instance.processes.is_empty();
             instance.processes.retain_mut(|child| {
                 if matches!(child.try_wait(), Ok(None)) {
                     true
                 } else {
                     log::debug!("Child process {} is no longer alive", child.id());
-                    changed = true;
                     false
                 }
             });
-            if changed {
+
+            if was_running && instance.processes.is_empty() {
+                instance.finish_session();
                 self.send.send(instance.create_modify_message());
+            } else if instance.has_active_session() {
+                self.send.send(MessageToFrontend::InstancePlaytimeUpdated {
+                    id: instance.id,
+                    playtime: instance.playtime(),
+                });
             }
         }
     }

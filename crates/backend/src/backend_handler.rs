@@ -194,6 +194,7 @@ impl BackendState {
                     }
                 }
 
+                instance.finish_session();
                 self.send.send(instance.create_modify_message());
             },
             MessageToBackend::StartInstance {
@@ -271,7 +272,11 @@ impl BackendState {
                         child.stdout.take();
 
                         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                            let was_running = !instance.processes.is_empty();
                             instance.processes.push(child);
+                            if !was_running {
+                                instance.begin_session();
+                            }
                         }
                     },
                     Err(ref err) => {

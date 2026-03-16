@@ -53,6 +53,8 @@ pub struct InterfaceConfig {
     pub instances_view_mode: InstancesViewMode,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub instance_subpage: InstanceSubpageType,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub collapse_capes_in_skins_page: bool,
 }
 
 fn default_modrinth_project_type() -> ModrinthProjectType {
@@ -83,7 +85,8 @@ impl Default for InterfaceConfig {
             hide_usernames: false,
             show_snapshots_in_create_instance: Default::default(),
             instances_view_mode: Default::default(),
-            instance_subpage: Default::default()
+            instance_subpage: Default::default(),
+            collapse_capes_in_skins_page: false,
         }
     }
 }

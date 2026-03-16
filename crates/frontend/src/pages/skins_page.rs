@@ -307,71 +307,89 @@ impl Render for SkinsPage {
 
             if let Some(AccountCapesResult::Success { capes }) = self.account_capes.get(&uuid) {
                 if !capes.is_empty() {
-                    const TRANSFORM: ImageTransformation = ImageTransformation::CropAndScale {
-                        min_x: 1,
-                        min_y: 1,
-                        width: 10,
-                        height: 16,
-                        scale: 5
-                    };
-
-                    let cape_buttons = capes.iter().enumerate().map(|(i, cape)| {
-                        let selected = self.selected_cape.as_ref().map(|(id, _)| *id) == Some(cape.id);
-                        let active = self.active_cape.as_ref().map(|(id, _)| *id) == Some(cape.id);
-                        let padding = if selected {
-                            px(7.0)
-                        } else {
-                            px(8.0)
-                        };
-                        let button = v_flex()
-                            .gap_1()
-                            .min_size(px(144.0))
-                            .text_base()
-                            .id(("select-cape", i))
-                            .rounded(radius)
-                            .items_center()
-                            .justify_center()
-                            .p(padding)
-                            .when_else(selected, |this| {
-                                this.bg(list_active)
-                                    .pt_0()
-                                    .border_1()
-                                    .border_color(list_active_border)
-                            }, |this| {
-                                this.bg(secondary)
-                                    .pt_px()
-                                    .hover(|style| style.bg(secondary_hover))
-                            })
-                            .when(active, |this| {
-                                this.child(Icon::new(PandoraIcon::Flag).absolute().right(padding).bottom(padding))
-                            })
-                            .child(SharedString::new(cape.alias.clone()))
-                            .on_click({
-                                let cape_url = cape.url.clone();
-                                let uuid = cape.id;
-                                cx.listener(move |page, _, _, cx| {
-                                    if page.selected_cape.as_ref().map(|(id, _)| *id) == Some(uuid) {
-                                        page.select_no_cape(cx);
-                                    } else {
-                                        page.select_cape(uuid, cape_url.clone());
-                                    }
-                                    cx.notify();
+                    if InterfaceConfig::get(cx).collapse_capes_in_skins_page {
+                        library = library
+                            .child(h_flex()
+                                .id("toggle-capes")
+                                .child(ts!("skins.capes"))
+                                .child(PandoraIcon::ChevronLeft)
+                                .on_click(|_, _, cx| {
+                                    InterfaceConfig::get_mut(cx).collapse_capes_in_skins_page = false;
                                 })
-                            });
+                            )
+                    } else {
+                        const TRANSFORM: ImageTransformation = ImageTransformation::CropAndScale {
+                            min_x: 1,
+                            min_y: 1,
+                            width: 10,
+                            height: 16,
+                            scale: 5
+                        };
 
-                        let uri: SharedUri = SharedString::new(cape.url.clone()).into();
-                        let bytes = cx.fetch_asset::<DataAssetLoader>(&Resource::Uri(uri)).0.now_or_never().flatten();
-                        if let Some(bytes) = bytes {
-                            let cape_img = crate::png_render_cache::render_with_transform(bytes, TRANSFORM,  cx);
-                            button.child(cape_img)
-                        } else {
-                            button.child(Skeleton::new().w(px(50.0)).h(px(80.0)).bg(secondary_skeleton))
-                        }
-                    });
+                        let cape_buttons = capes.iter().enumerate().map(|(i, cape)| {
+                            let selected = self.selected_cape.as_ref().map(|(id, _)| *id) == Some(cape.id);
+                            let active = self.active_cape.as_ref().map(|(id, _)| *id) == Some(cape.id);
+                            let padding = if selected {
+                                px(7.0)
+                            } else {
+                                px(8.0)
+                            };
+                            let button = v_flex()
+                                .gap_1()
+                                .min_size(px(144.0))
+                                .text_base()
+                                .id(("select-cape", i))
+                                .rounded(radius)
+                                .items_center()
+                                .justify_center()
+                                .p(padding)
+                                .when_else(selected, |this| {
+                                    this.bg(list_active)
+                                        .pt_0()
+                                        .border_1()
+                                        .border_color(list_active_border)
+                                }, |this| {
+                                    this.bg(secondary)
+                                        .pt_px()
+                                        .hover(|style| style.bg(secondary_hover))
+                                })
+                                .when(active, |this| {
+                                    this.child(Icon::new(PandoraIcon::Flag).absolute().right(padding).bottom(padding))
+                                })
+                                .child(SharedString::new(cape.alias.clone()))
+                                .on_click({
+                                    let cape_url = cape.url.clone();
+                                    let uuid = cape.id;
+                                    cx.listener(move |page, _, _, cx| {
+                                        if page.selected_cape.as_ref().map(|(id, _)| *id) == Some(uuid) {
+                                            page.select_no_cape(cx);
+                                        } else {
+                                            page.select_cape(uuid, cape_url.clone());
+                                        }
+                                        cx.notify();
+                                    })
+                                });
 
-                    library = library
-                        .child(ts!("skins.capes"))
-                        .child(h_flex().w_full().mb_4().gap_2().flex_wrap().children(cape_buttons))
+                            let uri: SharedUri = SharedString::new(cape.url.clone()).into();
+                            let bytes = cx.fetch_asset::<DataAssetLoader>(&Resource::Uri(uri)).0.now_or_never().flatten();
+                            if let Some(bytes) = bytes {
+                                let cape_img = crate::png_render_cache::render_with_transform(bytes, TRANSFORM,  cx);
+                                button.child(cape_img)
+                            } else {
+                                button.child(Skeleton::new().w(px(50.0)).h(px(80.0)).bg(secondary_skeleton))
+                            }
+                        });
+
+                        library = library
+                            .child(h_flex()
+                                .id("toggle-capes")
+                                .child(ts!("skins.capes"))
+                                .child(PandoraIcon::ChevronDown)
+                                .on_click(|_, _, cx| {
+                                    InterfaceConfig::get_mut(cx).collapse_capes_in_skins_page = true;
+                                }))
+                            .child(h_flex().w_full().mb_4().gap_2().flex_wrap().children(cape_buttons))
+                    }
                 }
             }
         } else {

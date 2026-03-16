@@ -338,6 +338,10 @@ instance:
     en: Worlds
   servers:
     en: Servers
+  total_playtime:
+    en: Total Playtime
+  current_session:
+    en: Current Session
   vanilla:
     en: Vanilla
   unable_to_find:

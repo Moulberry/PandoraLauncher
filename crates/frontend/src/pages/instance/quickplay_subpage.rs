@@ -3,7 +3,8 @@ use std::{ffi::OsString, sync::Arc};
 use bridge::{
     handle::BackendHandle,
     instance::{InstanceID, InstanceServerSummary, InstanceWorldSummary},
-    message::{BridgeDataLoadState, MessageToBackend, QuickPlayLaunch}, serial::AtomicOptionSerial,
+    message::{BridgeDataLoadState, MessageToBackend, QuickPlayLaunch},
+    serial::AtomicOptionSerial,
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -14,10 +15,12 @@ use gpui_component::{
     v_flex,
 };
 
-use crate::{entity::instance::InstanceEntry, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, root, ts};
+use crate::{
+    entity::instance::InstanceEntry, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, root, ts,
+};
 
 pub struct InstanceQuickplaySubpage {
-    instance: InstanceID,
+    instance: Entity<InstanceEntry>,
     backend_handle: BackendHandle,
     worlds_state: BridgeDataLoadState,
     world_list: Entity<ListState<WorldsListDelegate>>,
@@ -34,6 +37,7 @@ impl InstanceQuickplaySubpage {
         mut window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> Self {
+        let instance_entity = instance.clone();
         let instance = instance.read(cx);
         let instance_id = instance.id;
 
@@ -67,7 +71,8 @@ impl InstanceQuickplaySubpage {
                 delegate.worlds = worlds.clone();
                 delegate.searched = worlds;
                 cx.notify();
-            }).detach();
+            })
+            .detach();
 
             ListState::new(worlds_list_delegate, window2, cx).selectable(false).searchable(true)
         });
@@ -79,13 +84,19 @@ impl InstanceQuickplaySubpage {
                 delegate.servers = servers.clone();
                 delegate.searched = servers;
                 cx.notify();
-            }).detach();
+            })
+            .detach();
 
             ListState::new(servers_list_delegate, window, cx).selectable(false).searchable(true)
         });
 
+        cx.observe(&instance_entity, |_, _, cx| {
+            cx.notify();
+        })
+        .detach();
+
         Self {
-            instance: instance_id,
+            instance: instance_entity,
             backend_handle,
             worlds_state,
             world_list,
@@ -100,47 +111,105 @@ impl InstanceQuickplaySubpage {
 impl Render for InstanceQuickplaySubpage {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
         let theme = cx.theme();
+        let instance = self.instance.read(cx);
+        let playtime = instance.playtime;
+        let instance_id = instance.id;
 
         self.worlds_state.set_observed();
         if self.worlds_state.should_load() {
-            self.backend_handle.send_with_serial(MessageToBackend::RequestLoadWorlds { id: self.instance }, &self.worlds_serial);
+            self.backend_handle
+                .send_with_serial(MessageToBackend::RequestLoadWorlds { id: instance_id }, &self.worlds_serial);
         }
 
         self.servers_state.set_observed();
         if self.servers_state.should_load() {
-            self.backend_handle.send_with_serial(MessageToBackend::RequestLoadServers { id: self.instance }, &self.servers_serial);
+            self.backend_handle
+                .send_with_serial(MessageToBackend::RequestLoadServers { id: instance_id }, &self.servers_serial);
         }
 
         let worlds_header = div().mb_1().ml_1().text_lg().child(ts!("instance.worlds"));
         let servers_header = div().mb_1().ml_1().text_lg().child(ts!("instance.servers"));
+        let total_playtime = format_playtime(playtime.total_secs);
+        let current_session = if playtime.current_session_secs > 0 {
+            format_playtime(playtime.current_session_secs)
+        } else {
+            "Not running".into()
+        };
 
-        v_flex().p_4().gap_4().size_full().child(
-            h_flex()
-                .size_full()
-                .gap_4()
-                .child(
-                    v_flex().size_full().child(worlds_header).child(
-                        v_flex()
-                            .text_base()
-                            .size_full()
-                            .border_1()
-                            .rounded(theme.radius)
-                            .border_color(theme.border)
-                            .child(self.world_list.clone()),
+        v_flex()
+            .p_4()
+            .gap_4()
+            .size_full()
+            .child(
+                h_flex()
+                    .gap_4()
+                    .child(card(
+                        ts!("instance.current_session"),
+                        current_session.into(),
+                        theme.border,
+                        theme.radius,
+                    ))
+                    .child(card(
+                        ts!("instance.total_playtime"),
+                        total_playtime,
+                        theme.border,
+                        theme.radius,
+                    )),
+            )
+            .child(
+                h_flex()
+                    .size_full()
+                    .gap_4()
+                    .child(
+                        v_flex().size_full().child(worlds_header).child(
+                            v_flex()
+                                .text_base()
+                                .size_full()
+                                .border_1()
+                                .rounded(theme.radius)
+                                .border_color(theme.border)
+                                .child(self.world_list.clone()),
+                        ),
+                    )
+                    .child(
+                        v_flex().size_full().child(servers_header).child(
+                            v_flex()
+                                .text_base()
+                                .size_full()
+                                .border_1()
+                                .rounded(theme.radius)
+                                .border_color(theme.border)
+                                .child(self.server_list.clone()),
+                        ),
                     ),
-                )
-                .child(
-                    v_flex().size_full().child(servers_header).child(
-                        v_flex()
-                            .text_base()
-                            .size_full()
-                            .border_1()
-                            .rounded(theme.radius)
-                            .border_color(theme.border)
-                            .child(self.server_list.clone()),
-                    ),
-                ),
-        )
+            )
+    }
+}
+
+fn card(label: impl Into<SharedString>, value: SharedString, border: Hsla, radius: Pixels) -> Div {
+    v_flex()
+        .gap_1()
+        .px_3()
+        .py_2()
+        .min_w_40()
+        .border_1()
+        .border_color(border)
+        .rounded(radius)
+        .child(div().text_sm().opacity(0.6).child(label.into()))
+        .child(div().text_lg().child(value))
+}
+
+fn format_playtime(total_secs: u64) -> SharedString {
+    let hours = total_secs / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let seconds = total_secs % 60;
+
+    if hours > 0 {
+        format!("{hours}h {minutes}m").into()
+    } else if minutes > 0 {
+        format!("{minutes}m {seconds}s").into()
+    } else {
+        format!("{seconds}s").into()
     }
 }
 
@@ -159,7 +228,12 @@ impl ListDelegate for WorldsListDelegate {
         self.searched.len()
     }
 
-    fn render_item(&mut self, ix: IndexPath, _window: &mut Window, cx: &mut Context<ListState<Self>>) -> Option<Self::Item> {
+    fn render_item(
+        &mut self,
+        ix: IndexPath,
+        _window: &mut Window,
+        cx: &mut Context<ListState<Self>>,
+    ) -> Option<Self::Item> {
         let summary = self.searched.get(ix.row)?;
 
         let icon = if let Some(png_icon) = summary.png_icon.as_ref() {
@@ -232,7 +306,12 @@ impl ListDelegate for ServersListDelegate {
         self.searched.len()
     }
 
-    fn render_item(&mut self, ix: IndexPath, _window: &mut Window, cx: &mut Context<ListState<Self>>) -> Option<Self::Item> {
+    fn render_item(
+        &mut self,
+        ix: IndexPath,
+        _window: &mut Window,
+        cx: &mut Context<ListState<Self>>,
+    ) -> Option<Self::Item> {
         let interface_config = InterfaceConfig::get(cx);
 
         let interface_config_hide_server_addresses = interface_config.hide_server_addresses;
@@ -245,11 +324,16 @@ impl ListDelegate for ServersListDelegate {
             gpui::img(ImageSource::Resource(Resource::Embedded("images/default_world.png".into())))
         };
 
-        let description = v_flex()
-            .child(SharedString::from(summary.name.clone()))
-            .when(!interface_config_hide_server_addresses, |parent| {
-                parent.child(div().text_color(cx.theme().muted_foreground).child(SharedString::from(summary.ip.clone())))
-            });
+        let description = v_flex().child(SharedString::from(summary.name.clone())).when(
+            !interface_config_hide_server_addresses,
+            |parent| {
+                parent.child(
+                    div()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(SharedString::from(summary.ip.clone())),
+                )
+            },
+        );
 
         let id = self.id;
         let name = self.name.clone();

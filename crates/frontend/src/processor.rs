@@ -63,6 +63,7 @@ impl Processor {
                 root_path,
                 dot_minecraft_folder,
                 configuration,
+                playtime,
                 worlds_state,
                 servers_state,
                 mods_state,
@@ -76,6 +77,7 @@ impl Processor {
                     root_path,
                     dot_minecraft_folder,
                     configuration,
+                    playtime,
                     worlds_state,
                     servers_state,
                     mods_state,
@@ -93,6 +95,7 @@ impl Processor {
                 root_path,
                 dot_minecraft_folder,
                 configuration,
+                playtime,
                 status,
             } => {
                 if status == InstanceStatus::Running {
@@ -120,9 +123,13 @@ impl Processor {
                     root_path,
                     dot_minecraft_folder,
                     configuration,
+                    playtime,
                     status,
                     cx,
                 );
+            },
+            MessageToFrontend::InstancePlaytimeUpdated { id, playtime } => {
+                InstanceEntries::set_playtime(&self.data.instances, id, playtime, cx);
             },
             MessageToFrontend::InstanceWorldsUpdated { id, worlds } => {
                 InstanceEntries::set_worlds(&self.data.instances, id, worlds, cx);

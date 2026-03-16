@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::{BufRead, Read}, sync::Arc, time::{Duration, Instant, SystemTime}};
+use std::{borrow::Cow, io::{BufRead, Read}, path::Path, sync::Arc, time::{Duration, Instant, SystemTime}};
 
 use auth::{credentials::AccountCredentials, models::MinecraftAccessToken, secret::PlatformSecretStorage};
 use bridge::{
@@ -1382,9 +1382,35 @@ impl BackendState {
                 }
             },
             MessageToBackend::RelocateInstance { id, path } => {
-                if path.exists() {
-                    self.send.send_warning("Cannot relocate instance: path already exists");
+                let (instance_root, resolved_instance_root) = if let Some(instance) = self.instance_state.read().instances.get(id) {
+                    (instance.root_path.clone(), instance.resolve_real_root_path())
+                } else {
                     return;
+                };
+
+                if path == *instance_root || path == *resolved_instance_root {
+                    self.send.send_info("Instance is already in that location");
+                    return;
+                }
+
+                if path.exists() {
+                    if !path.is_dir() {
+                        self.send.send_warning("Cannot relocate instance: path already exists");
+                        return;
+                    }
+
+                    let mut entries = match std::fs::read_dir(&path) {
+                        Ok(entries) => entries,
+                        Err(err) => {
+                            self.send.send_error(format!("Cannot inspect relocation path: {err}"));
+                            return;
+                        },
+                    };
+
+                    if entries.next().is_some() {
+                        self.send.send_warning("Cannot relocate instance: target directory is not empty");
+                        return;
+                    }
                 }
 
                 let mut is_normal_instance_folder = false;
@@ -1417,7 +1443,7 @@ impl BackendState {
 
                     #[cfg(windows)]
                     if let Ok(target) = junction::get_target(&instance.root_path) {
-                        if let Err(err) = std::fs::rename(&target, &path) {
+                        if let Err(err) = move_instance_directory(&target, &path) {
                             log::error!("Unable to move instance files from {target:?} to {path:?}: {err:?}");
                             self.send.send_error(format!("Unable to move instance files: {err}"));
                             return;
@@ -1435,7 +1461,7 @@ impl BackendState {
                     };
 
                     if let Ok(target) = std::fs::read_link(&instance.root_path) {
-                        if let Err(err) = std::fs::rename(&target, &path) {
+                        if let Err(err) = move_instance_directory(&target, &path) {
                             log::error!("Unable to move instance files from {target:?} to {path:?}: {err:?}");
                             self.send.send_error(format!("Unable to move instance files: {err}"));
                             return;
@@ -1463,7 +1489,7 @@ impl BackendState {
                         return;
                     }
 
-                    if let Err(err) = std::fs::rename(&instance.root_path, &path) {
+                    if let Err(err) = move_instance_directory(&instance.root_path, &path) {
                         log::error!("Unable to move instance files: {err:?}");
                         self.send.send_error(format!("Unable to move instance files: {err}"));
                         return;
@@ -2025,6 +2051,18 @@ impl BackendState {
 
         println!("Done downloading all metadata");
     }
+}
+
+fn move_instance_directory(from: &Path, to: &Path) -> Result<(), Arc<str>> {
+    std::fs::create_dir_all(to).map_err(|err| format!("Unable to create destination directory: {err}"))?;
+
+    let options = fs_extra::dir::CopyOptions::default().content_only(true);
+    if let Err(err) = fs_extra::dir::move_dir(from, to, &options) {
+        _ = std::fs::remove_dir_all(to);
+        return Err(format!("Unable to copy instance files: {err}").into());
+    }
+
+    Ok(())
 }
 
 fn check_argument_expansions(argument: &str) {

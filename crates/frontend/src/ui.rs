@@ -75,7 +75,7 @@ impl PageType {
                     ts!("curseforge.name")
                 }
             },
-            PageType::Import => ts!("instance.import.label").into(),
+            PageType::Import => ts!("import.label").into(),
             PageType::Syncing => ts!("instance.sync.label"),
             PageType::ModrinthProject { project_title, .. } => project_title.clone(),
             PageType::InstancePage { name } => {
@@ -395,7 +395,7 @@ impl Render for LauncherUI {
                 })));
 
         let files_group = MenuGroup::new(ts!("common.files"))
-            .child(MenuGroupItem::new(ts!("instance.import.label"))
+            .child(MenuGroupItem::new(ts!("import.label"))
                 .active(page_type == PageType::Import)
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Import, &[], window, cx);

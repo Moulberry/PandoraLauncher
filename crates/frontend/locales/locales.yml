@@ -958,30 +958,6 @@ instance:
         en: Installed manually - cannot automatically update
         pl: Zainstalowano ręcznie - nie można aktualizować automatycznie
 
-  # Import Feature
-  import:
-    label:
-      en: Import
-    from:
-      en: Import from %{launcher}
-      pl: Importuj z %{launcher}
-    modrinth_pack:
-      label:
-        en: Import Modrinth Pack (.mrpack)
-        pl: Importuj Paczkę Modrinth (.mrpack)
-      select:
-        en: Select Modrinth Pack
-        pl: Wybierz Paczkę Modrinth
-    accounts:
-      en: Import Accounts
-      pl: Importuj Konta
-    instances:
-      en: Import Instances
-      pl: Importuj Instancje
-    error:
-      en: Error importing
-      pl: Błąd importowania
-
   # Sync Feature
   sync:
     label:
@@ -1073,6 +1049,30 @@ instance:
       litematic:
         en: Sync Litematic (schematic) folder
         pl: Synchronizuj folder Litematic (schematic)
+
+# Import Feature
+import:
+  label:
+    en: Import
+  from:
+    en: Import from %{launcher}
+    pl: Importuj z %{launcher}
+  modrinth_pack:
+    label:
+      en: Import Modrinth Pack (.mrpack)
+      pl: Importuj Paczkę Modrinth (.mrpack)
+    select:
+      en: Select Modrinth Pack
+      pl: Wybierz Paczkę Modrinth
+  accounts:
+    en: Import Accounts
+    pl: Importuj Konta
+  instances:
+    en: Import Instances
+    pl: Importuj Instancje
+  error:
+    en: Error importing
+    pl: Błąd importowania
 
 settings:
   title:

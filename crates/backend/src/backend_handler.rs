@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::{BufRead, Read}, path::Path, sync::Arc, time::{Duration, Instant, SystemTime}};
+use std::{borrow::Cow, io::{BufRead, Read}, path::{Path, PathBuf}, sync::Arc, time::{Duration, Instant, SystemTime}};
 
 use auth::{credentials::AccountCredentials, models::MinecraftAccessToken, secret::PlatformSecretStorage};
 use bridge::{
@@ -1442,14 +1442,27 @@ impl BackendState {
                     }
 
                     #[cfg(windows)]
-                    if let Ok(target) = junction::get_target(&instance.root_path) {
+                    if junction::exists(&instance.root_path).unwrap_or(false) {
+                        let target = match junction::get_target(&instance.root_path) {
+                            Ok(target) => target,
+                            Err(err) => {
+                                log::error!("Unable to resolve junction target for {:?}: {err:?}", instance.root_path);
+                                self.send.send_error(format!("Unable to resolve instance junction: {err}"));
+                                return;
+                            },
+                        };
+
                         if let Err(err) = move_instance_directory(&target, &path) {
                             log::error!("Unable to move instance files from {target:?} to {path:?}: {err:?}");
                             self.send.send_error(format!("Unable to move instance files: {err}"));
                             return;
                         }
 
-                        _ = junction::delete(&instance.root_path);
+                        if let Err(err) = junction::delete(&instance.root_path) {
+                            log::error!("Error while deleting junction to moved instance: {err:?}");
+                            self.send.send_error(format!("Error while deleting junction to moved instance: {err}"));
+                            return;
+                        }
 
                         if !is_normal_instance_folder {
                             if let Err(err) = junction::create(&path, &instance.root_path) {
@@ -1458,7 +1471,9 @@ impl BackendState {
                                 return;
                             }
                         }
-                    };
+
+                        return;
+                    }
 
                     if let Ok(target) = std::fs::read_link(&instance.root_path) {
                         if let Err(err) = move_instance_directory(&target, &path) {
@@ -2053,13 +2068,90 @@ impl BackendState {
     }
 }
 
-fn move_instance_directory(from: &Path, to: &Path) -> Result<(), Arc<str>> {
-    std::fs::create_dir_all(to).map_err(|err| format!("Unable to create destination directory: {err}"))?;
+fn move_instance_directory(src: &Path, dest: &Path) -> Result<(), Arc<str>> {
+    if !src.is_dir() {
+        return Err("Unable to move instance files: source is not a directory".into());
+    }
 
+    if dest.starts_with(src) {
+        return Err("Unable to move instance files: destination cannot be inside the source directory".into());
+    }
+
+    let parent = dest.parent().ok_or_else(|| Arc::<str>::from("Unable to move instance files: destination has no parent directory"))?;
+
+    if dest.exists() {
+        if !dest.is_dir() {
+            return Err("Unable to move instance files: destination already exists and is not a directory".into());
+        }
+
+        let mut entries = std::fs::read_dir(dest)
+            .map_err(|err| Arc::<str>::from(format!("Unable to inspect destination directory: {err}")))?;
+        if entries.next().is_some() {
+            return Err("Unable to move instance files: destination directory is not empty".into());
+        }
+    } else {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| Arc::<str>::from(format!("Unable to create destination parent directory: {err}")))?;
+    }
+
+    // we move instance into temporary directory before moving it
+    // to actual target to prevent destruction incase of cross-fs errors
+    let temp_dir = prepare_move_temp_dir(parent, dest)?;
+    let result = move_instance_directory_inner(src, dest, &temp_dir);
+    
+    // it failed, so we get rid of the traces
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+    
+    result
+}
+
+fn prepare_move_temp_dir(parent: &Path, to: &Path) -> Result<PathBuf, Arc<str>> {
+    let file_name = to.file_name().ok_or_else(|| Arc::<str>::from("Unable to move instance files: destination has no file name"))?;
+
+    for _ in 0..16 {
+        let mut temp_name = file_name.to_os_string();
+        temp_name.push(format!(".pandora-relocate-{:08x}.tmp", rand::random::<u32>()));
+
+        let temp = parent.join(temp_name);
+        if !temp.exists() {
+            return Ok(temp);
+        }
+    }
+
+    Err("Unable to allocate a temporary directory for instance relocation".into())
+}
+
+fn move_instance_directory_inner(
+    src: &Path,
+    dest: &Path,
+    temp_dir: &Path,
+) -> Result<(), Arc<str>> {
+    // first copy the contents into the temp dir
     let options = fs_extra::dir::CopyOptions::default().content_only(true);
-    if let Err(err) = fs_extra::dir::move_dir(from, to, &options) {
-        _ = std::fs::remove_dir_all(to);
-        return Err(format!("Unable to copy instance files: {err}").into());
+    fs_extra::dir::copy(src, temp_dir, &options)
+        .map_err(|err| Arc::<str>::from(format!("Unable to copy instance files: {err}")))?;
+
+    // remove destination first if it exists
+    let dest_exists = dest.exists();
+    if dest_exists {
+        std::fs::remove_dir(dest).map_err(|err| Arc::<str>::from(format!("Failed to create destination dir: {err}")))?;
+    }
+
+    // finally rename temp to dest
+    if let Err(err) = std::fs::rename(temp_dir, dest) {
+        return Err(format!("Unable to finalize moved instance files: {err}").into());
+    }
+
+    // assuming the migration is done, we can now safely remove the source
+    if let Err(err) = std::fs::remove_dir_all(src) {
+        return match std::fs::remove_dir_all(dest) {
+            Ok(()) => Err(format!("Unable to remove original instance files after copying them: {err}").into()),
+            Err(cleanup_err) => Err(
+                format!("Unable to remove original instance files after copying them: {err}; also failed to clean up relocated copy: {cleanup_err}")
+                    .into()),
+        };
     }
 
     Ok(())

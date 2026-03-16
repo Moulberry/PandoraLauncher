@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLaunchers, OtherLauncher}, install::ContentInstall, instance::{
-        InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus,
+        InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus,
         InstanceWorldSummary,
     }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction
 };
@@ -247,6 +247,7 @@ pub enum MessageToFrontend {
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
+        playtime: InstancePlaytime,
         worlds_state: BridgeDataLoadState,
         servers_state: BridgeDataLoadState,
         mods_state: BridgeDataLoadState,
@@ -262,7 +263,12 @@ pub enum MessageToFrontend {
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
+        playtime: InstancePlaytime,
         status: InstanceStatus,
+    },
+    InstancePlaytimeUpdated {
+        id: InstanceID,
+        playtime: InstancePlaytime,
     },
     InstanceWorldsUpdated {
         id: InstanceID,

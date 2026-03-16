@@ -44,6 +44,13 @@ pub enum InstanceStatus {
     Running,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InstancePlaytime {
+    pub total_secs: u64,
+    pub current_session_secs: u64,
+    pub last_played_unix_ms: Option<i64>,
+}
+
 #[derive(Debug, Clone)]
 pub struct InstanceWorldSummary {
     pub title: Arc<str>,

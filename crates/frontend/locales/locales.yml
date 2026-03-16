@@ -374,7 +374,7 @@ instance:
   create:
     en: Create Instance
   select_relocation_folder:
-    en: Select relocation folder
+    en: Select empty folder
 
   # Properties & Config
   name:

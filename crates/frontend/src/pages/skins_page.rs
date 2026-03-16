@@ -375,7 +375,7 @@ impl Render for SkinsPage {
                 }
             }
         } else {
-            controls = "Select an account to view/edit skins".into_any_element();
+            controls = ts!("skins.select_to_view").into_any_element();
         }
 
         let skin_library = self.data.use_skin_library(cx).cloned();
@@ -388,7 +388,7 @@ impl Render for SkinsPage {
                 .mb_1()
                 .child(ts!("skins.title"))
                 .child(Button::new("add-file")
-                    .label("Add from file")
+                    .label(ts!("common.from_file"))
                     .icon(PandoraIcon::File)
                     .success()
                     .small()
@@ -399,7 +399,7 @@ impl Render for SkinsPage {
                                 files: true,
                                 directories: false,
                                 multiple: true,
-                                prompt: Some("Select Skin".into())
+                                prompt: Some(ts!("skins.select"))
                             });
 
                             let entity = cx.entity();
@@ -432,7 +432,7 @@ impl Render for SkinsPage {
                         })
                     }))
                 .child(Popover::new("add-url-popover")
-                    .trigger(Button::new("add-url").label("Add from url").icon(PandoraIcon::Link).success().small().compact())
+                    .trigger(Button::new("add-url").label(ts!("skins.from_url")).icon(PandoraIcon::Link).success().small().compact())
                     .gap_2()
                     .w_full()
                     .items_start()
@@ -450,7 +450,7 @@ impl Render for SkinsPage {
                         })
                     })
                     .child(Button::new("download-skin")
-                        .label("Download")
+                        .label(ts!("common.download"))
                         .success()
                         .on_click({
                             cx.listener(move |page, _, _, cx| {
@@ -464,7 +464,7 @@ impl Render for SkinsPage {
                             })
                         })))
                 .child(Button::new("open-folder")
-                    .label("Open folder")
+                    .label(ts!("file_system.open_folder.label"))
                     .icon(PandoraIcon::FolderOpen)
                     .info()
                     .small()

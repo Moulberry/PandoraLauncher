@@ -423,7 +423,7 @@ impl CurseforgeSearchPage {
                     let author = &*hit.authors[0].name;
                     ts!("instance.content.by", name = author)
                 } else if hit.authors.is_empty() {
-                    ts!("instance.content.by", name = "Unknown")
+                    ts!("instance.content.by", name = ts!("common.unknown"))
                 } else {
                     let mut authors_string = String::new();
                     for (i, author) in hit.authors.iter().enumerate() {
@@ -484,12 +484,12 @@ impl CurseforgeSearchPage {
                                     },
                                     PrimaryAction::InstallLatest => {
                                         let Some(install_for) = install_for else {
-                                            window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
+                                            window.push_notification((NotificationType::Error, ts!("instance.unable_to_find")), cx);
                                             return;
                                         };
 
                                         let Some(entry) = data.instances.read(cx).entries.get(&install_for) else {
-                                            window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
+                                            window.push_notification((NotificationType::Error, ts!("instance.unable_to_find")), cx);
                                             return;
                                         };
 

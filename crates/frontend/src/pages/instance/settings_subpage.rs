@@ -751,7 +751,7 @@ impl Render for InstanceSettingsSubpage {
                 ts!("account.override_account"),
                 h_flex()
                 .gap_2()
-                .child(Select::new(&self.account_items).placeholder("No override").cleanable(true))
+                .child(Select::new(&self.account_items).placeholder(ts!("account.no_override")).cleanable(true))
             ))
             .child(crate::labelled(
                 ts!("instance.sync.label"),

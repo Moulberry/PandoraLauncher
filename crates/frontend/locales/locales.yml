@@ -223,9 +223,11 @@ modrinth:
       en: "%{name} (Alpha)"
     beta:
       en: "%{name} (Beta)"
+
 curseforge:
   name:
     en: Curseforge
+
 common:
   app_name:
     en: Pandora
@@ -245,6 +247,8 @@ common:
     en: Max
   or_upper:
     en: OR
+  view:
+    en: View
   unset:
     en: <unset>
   custom:
@@ -257,6 +261,14 @@ common:
     en: Apply Changes
   ok:
     en: OK
+  download:
+    en: Download
+  minecraft:
+    en: Minecraft
+  files:
+    en: Files
+  from_file:
+    en: Add from file
   nav:
     top:
       en: Go to Top
@@ -269,6 +281,8 @@ common:
       en: List
 file_system:
   open_folder:
+    label:
+      en: Open folder
     error:
       en: "Unable to open folder: %{err}"
     not_a_directory:
@@ -278,11 +292,18 @@ system:
     en: Backend has abruptly shutdown
   metadata_error:
     en: Wrong metadata type! Pandora bug!
+  report_bug:
+    label:
+      en: Report a bug
+    no_url_error:
+      en: Unable to report bug, GITHUB_REPOSITORY_URL was not set at compile time
   game_output:
     en: Minecraft Game Output
   update:
     title:
       en: Update Pandora?
+    available:
+      en: Update Available
     current:
       en: "Current version: %{ver}"
     new:
@@ -293,11 +314,23 @@ system:
       en: Later
     install_error:
       en: Unable to install update
+  flatpak_warning:
+    title:
+      en: Flatpak Permission Warning
+    description:
+      en: "Pandora was downloaded through Flathub, which has a policy disallowing software from accessing both X11 and Wayland.\n\nMinecraft will be forced to run under Wayland, which may cause issues."
+  x11_unavailable:
+    title:
+      en: X11 Unavailable
+    description:
+      en: "It seems that X11/Xwayland is not available.\n\nMinecraft will be forced to run under Wayland, which may cause issues."
 account:
   title:
     en: Accounts
   override_account:
     en: Override Account
+  no_override:
+    en: No override
   none:
     en: No Account
   name:
@@ -349,6 +382,15 @@ instance:
       en: Start
     starting:
       en: Launching...
+    already_running:
+      label:
+        en: Instance already running
+      warning:
+        en: Starting it again may cause malfunction or corrupt your saved worlds.
+      confirm:
+        en: We cannot take responsibility for any issues if you choose to start another game. Would you like to continue anyway?
+      start:
+        en: Start anyway
     error:
       en: Error starting instance
 
@@ -487,34 +529,34 @@ instance:
       en: Shaders
     filename_prefix:
       en: "Filename: "
+    versions:
+      en: "%{min} - %{max} (%{num} versions)"
     version:
       mod:
-        en: "Mod Version"
+        en: Mod Version
       modpack:
-        en: "Modpack Version"
+        en: Modpack Version
       resourcepack:
-        en: "Pack Version"
+        en: Pack Version
       shader:
-        en: "Shader Version"
+        en: Shader Version
       file:
-        en: "File Version"
+        en: File Version
     search:
       mod:
-        en: "Search mods..."
+        en: Search mods...
       modpack:
-        en: "Search modpacks..."
+        en: Search modpacks...
       resourcepack:
-        en: "Search resourcepacks..."
+        en: Search resourcepacks...
       shader:
-        en: "Search shaders..."
+        en: Search shaders...
       file:
-        en: "Search..."
+        en: Search...
     requesting_from_modrinth_error:
       en: Error requesting from Modrinth
     unnamed:
       en: Unnamed
-    open_page:
-      en: Open Page
     by:
       en: by %{name}
     no_description:
@@ -542,6 +584,11 @@ instance:
     downloads:
       en: "%{num} Downloads"
     load:
+      files:
+        title:
+          en: Loading files...
+        error:
+          en: "Error loading files: %{err}"
       versions:
         title:
           en: Loading mod versions...
@@ -571,18 +618,23 @@ instance:
         en: Add from Modrinth
       from_curseforge:
         en: Add from Curseforge
-      from_file:
-        en: Add from file
       unable_other_type:
         en: Unable to install 'other' project type
       invalid_filename:
         en: Invalid/dangerous filename
       missing_sha1_hash:
         en: Missing sha1 hash
+      blocked:
+        en: Blocked
       no_third_party_downloads:
         en: The mod author has blocked downloads from third-party launchers
       select_mods:
         en: Select mods to install
+      children_downloading:
+        title:
+          en: Downloading children
+        error:
+          en: Error downloading children
       new_instance_with:
         mod:
           en: Create new instance with this mod
@@ -642,6 +694,24 @@ instance:
       installed_manually:
         en: Installed manually - cannot automatically update
 
+  # Import Feature
+  import:
+    label:
+      en: Import
+    from:
+      en: Import from %{launcher}
+    modrinth_pack:
+      label:
+        en: Import Modrinth Pack (.mrpack)
+      select:
+        en: Select Modrinth Pack
+    accounts:
+      en: Import Accounts
+    instances:
+      en: Import Instances
+    error:
+      en: Error importing
+
   # Sync Feature
   sync:
     label:
@@ -656,8 +726,6 @@ instance:
       en: "(%{num1}/%{num2} folders synced)"
     unable_count:
       en: "%{num1}/%{num2} instances are unable to be synced!"
-    files:
-      en: Files
     folders:
       en: Folders
     mods:
@@ -721,6 +789,11 @@ settings:
       en: Open theme folder
     open_repo:
       en: Open theme repository
+  language:
+    title:
+      en: Language
+    en:
+      en: English
   delete:
     title:
       en: Deletion
@@ -776,6 +849,19 @@ skins:
     en: Loading %{username}'s skin...
   no_offline:
     en: Skins cannot be applied to offline accounts
+  select:
+    en: Select Skin
+  select_to_view:
+    en: Select an account to view/edit skins
+  from_url:
+    en: Add from url
+  pose:
+    yaw:
+      en: "Yaw: %{num}°"
+    pitch:
+      en: "Pitch: %{num}°"
+    animation:
+      en: Animation
 login:
   title:
     en: Login

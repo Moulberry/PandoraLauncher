@@ -671,12 +671,12 @@ impl PrimaryAction {
             },
             PrimaryAction::InstallLatest => {
                 let Some(install_for) = install_for else {
-                    window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
+                    window.push_notification((NotificationType::Error, ts!("instance.unable_to_find")), cx);
                     return;
                 };
 
                 let Some(entry) = data.instances.read(cx).entries.get(&install_for) else {
-                    window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
+                    window.push_notification((NotificationType::Error, ts!("instance.unable_to_find")), cx);
                     return;
                 };
 

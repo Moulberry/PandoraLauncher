@@ -124,7 +124,7 @@ impl Render for InstanceModsSubpage {
                     root::switch_page(page, path, window, cx);
                 }
             }))
-            .child(Button::new("addfile").label(ts!("instance.content.install.from_file")).success().compact().small().on_click({
+            .child(Button::new("addfile").label(ts!("common.from_file")).success().compact().small().on_click({
                 cx.listener(move |this, _, window, cx| {
                     let receiver = cx.prompt_for_paths(PathPromptOptions {
                         files: true,

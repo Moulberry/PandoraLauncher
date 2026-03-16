@@ -153,7 +153,7 @@ impl Render for SyncingPage {
             .child(Button::new("open").info().icon(PandoraIcon::FolderOpen).label(ts!("instance.sync.open_folder")).on_click(move |_, window, cx| {
                 crate::open_folder(&sync_folder, window, cx);
             }).w_72())
-            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("instance.sync.files")))
+            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("common.files")))
             .child(self.create_entry(sync_state, "options.txt".into(), true,  ts!("instance.sync.targets.options"), warning, info, cx))
             .child(self.create_entry(sync_state, "servers.dat".into(), true, ts!("instance.sync.targets.servers"), warning, info, cx))
             .child(self.create_entry(sync_state, "command_history.txt".into(), true, ts!("instance.sync.targets.commands"), warning, info, cx))

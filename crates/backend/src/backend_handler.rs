@@ -186,6 +186,8 @@ impl BackendState {
                     return;
                 }
 
+                instance.end_session();
+
                 for mut process in instance.processes.drain(..) {
                     let result = process.kill();
                     if result.is_err() {
@@ -271,6 +273,7 @@ impl BackendState {
                         child.stdout.take();
 
                         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                            instance.start_session();
                             instance.processes.push(child);
                         }
                     },

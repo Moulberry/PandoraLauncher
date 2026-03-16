@@ -26,6 +26,7 @@ impl InstanceEntries {
         servers_state: BridgeDataLoadState,
         mods_state: BridgeDataLoadState,
         resource_packs_state: BridgeDataLoadState,
+        play_time_seconds: u64,
         cx: &mut App,
     ) {
         entity.update(cx, |entries, cx| {
@@ -46,6 +47,7 @@ impl InstanceEntries {
                 mods: cx.new(|_| [].into()),
                 resource_packs_state,
                 resource_packs: cx.new(|_| [].into()),
+                play_time_seconds,
             };
             instance.title = instance.create_title();
 
@@ -97,6 +99,7 @@ impl InstanceEntries {
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
         status: InstanceStatus,
+        play_time_seconds: u64,
         cx: &mut App,
     ) {
         entity.update(cx, |entries, cx| {
@@ -108,6 +111,7 @@ impl InstanceEntries {
                     instance.dot_minecraft_folder = dot_minecraft_folder.clone();
                     instance.configuration = configuration.clone();
                     instance.status = status;
+                    instance.play_time_seconds = play_time_seconds;
                     instance.title = instance.create_title();
                     cx.notify();
 
@@ -204,6 +208,7 @@ pub struct InstanceEntry {
     pub dot_minecraft_folder: Arc<Path>,
     pub configuration: InstanceConfiguration,
     pub status: InstanceStatus,
+    pub play_time_seconds: u64,
     pub worlds_state: BridgeDataLoadState,
     pub worlds: Entity<Arc<[InstanceWorldSummary]>>,
     pub servers_state: BridgeDataLoadState,

@@ -376,6 +376,18 @@ struct MultiMCInstanceToImport {
     multimc_instance_cfg: PathBuf,
     multimc_mmc_pack: PathBuf,
     folder: PathBuf,
+    total_time_played: Option<u64>,
+}
+
+fn read_total_time_played(instance_cfg: &Path) -> Option<u64> {
+    let content = std::fs::read_to_string(instance_cfg).ok()?;
+    for line in content.split('\n') {
+        let line = line.trim();
+        if let Some(value) = line.strip_prefix("totalTimePlayed=") {
+            return value.trim().parse::<u64>().ok();
+        }
+    }
+    None
 }
 
 fn import_instances_from_multimc(backend: &BackendState, path: &Path, modal_action: &ModalAction) {
@@ -415,11 +427,13 @@ fn import_instances_from_multimc(backend: &BackendState, path: &Path, modal_acti
             continue;
         }
 
+        let total_time_played = read_total_time_played(&multimc_instance_cfg);
         to_import.push(MultiMCInstanceToImport {
             pandora_path,
             multimc_instance_cfg,
             multimc_mmc_pack,
             folder,
+            total_time_played,
         });
     }
 
@@ -465,12 +479,21 @@ fn import_instances_from_multimc(backend: &BackendState, path: &Path, modal_acti
             });
         }
 
-        // Copy icon
         _ = std::fs::copy(to_import.folder.join("icon.png"), to_import.pandora_path.join("icon.png"));
 
-        // Write info_v1.json
+        // actually write info_v1.json
         let info_path = to_import.pandora_path.join("info_v1.json");
         _ = crate::write_safe(&info_path, &configuration_bytes);
+
+        // Write playtime_v1.json if PrismLauncher saved playtime
+        if let Some(seconds) = to_import.total_time_played {
+            #[derive(serde::Serialize)]
+            struct PlaytimeData { seconds: u64 }
+            if let Ok(bytes) = serde_json::to_vec(&PlaytimeData { seconds }) {
+                let playtime_path = to_import.pandora_path.join("playtime_v1.json");
+                _ = crate::write_safe(&playtime_path, &bytes);
+            }
+        }
 
         all_tracker.add_count(1);
         all_tracker.notify();

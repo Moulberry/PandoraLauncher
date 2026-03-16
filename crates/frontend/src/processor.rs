@@ -67,6 +67,7 @@ impl Processor {
                 servers_state,
                 mods_state,
                 resource_packs_state,
+                play_time_seconds,
             } => {
                 InstanceEntries::add(
                     &self.data.instances,
@@ -80,6 +81,7 @@ impl Processor {
                     servers_state,
                     mods_state,
                     resource_packs_state,
+                    play_time_seconds,
                     cx,
                 );
             },
@@ -94,6 +96,7 @@ impl Processor {
                 dot_minecraft_folder,
                 configuration,
                 status,
+                play_time_seconds,
             } => {
                 if status == InstanceStatus::Running {
                     if InterfaceConfig::get(cx).hide_main_window_on_launch {
@@ -121,6 +124,7 @@ impl Processor {
                     dot_minecraft_folder,
                     configuration,
                     status,
+                    play_time_seconds,
                     cx,
                 );
             },

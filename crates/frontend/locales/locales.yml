@@ -370,6 +370,11 @@ instance:
   create:
     en: Create Instance
 
+  playtime:
+    en: Play Time
+  total_playtime:
+    en: Total play time
+
   # Properties & Config
   name:
     en: Name

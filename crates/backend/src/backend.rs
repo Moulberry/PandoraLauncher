@@ -378,6 +378,7 @@ impl BackendState {
                 servers_state: instance.servers_state.clone(),
                 mods_state: instance.content_state[ContentFolder::Mods].load_state.clone(),
                 resource_packs_state: instance.content_state[ContentFolder::ResourcePacks].load_state.clone(),
+                play_time_seconds: instance.play_time_seconds,
             };
             self.send.send(message);
 
@@ -435,6 +436,9 @@ impl BackendState {
                 }
             });
             if changed {
+                if instance.processes.is_empty() {
+                    instance.end_session();
+                }
                 self.send.send(instance.create_modify_message());
             }
         }

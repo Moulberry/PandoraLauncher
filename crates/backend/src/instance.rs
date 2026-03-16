@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::Arc
+    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::Arc, time::Instant
 };
 
 use anyhow::Context;
@@ -33,6 +33,8 @@ pub struct Instance {
 
     pub launch_keepalive: Option<KeepAliveHandle>,
     pub processes: Vec<Child>,
+    pub session_start: Option<Instant>,
+    pub play_time_seconds: u64,
 
     pub worlds_state: BridgeDataLoadState,
     dirty_worlds: FolderChanges,
@@ -700,6 +702,25 @@ impl Instance {
         summaries
     }
 
+    pub fn start_session(&mut self) {
+        self.session_start = Some(Instant::now());
+    }
+
+    pub fn end_session(&mut self) {
+        if let Some(start) = self.session_start.take() {
+            self.play_time_seconds += start.elapsed().as_secs();
+            self.save_play_time();
+        }
+    }
+
+    fn save_play_time(&self) {
+        #[derive(serde::Serialize)]
+        struct PlaytimeData { seconds: u64 }
+        if let Ok(bytes) = serde_json::to_vec(&PlaytimeData { seconds: self.play_time_seconds }) {
+            let _ = crate::write_safe(&self.root_path.join("playtime_v1.json"), &bytes);
+        }
+    }
+
     pub fn load_from_folder(path: impl AsRef<Path>) -> Result<Self, InstanceLoadError> {
         let path = path.as_ref();
         log::info!("Loading instance from {:?}", path);
@@ -729,6 +750,8 @@ impl Instance {
         let icon_path = path.join("icon.png");
         let icon = std::fs::read(icon_path).ok().map(|v| v.into());
 
+        let play_time_seconds = load_play_time(path);
+
         Ok(Self {
             id: InstanceID::dangling(),
             root_path: path.into(),
@@ -741,6 +764,8 @@ impl Instance {
 
             launch_keepalive: None,
             processes: Vec::new(),
+            session_start: None,
+            play_time_seconds,
 
             worlds_state: BridgeDataLoadState::default(),
             dirty_worlds: FolderChanges::all_dirty(),
@@ -858,6 +883,7 @@ impl Instance {
             dot_minecraft_folder: self.dot_minecraft_path.clone(),
             configuration: self.configuration.get().clone(),
             status: self.status(),
+            play_time_seconds: self.play_time_seconds,
         }
     }
 
@@ -873,6 +899,14 @@ impl Instance {
             self.root_path.clone()
         }
     }
+}
+
+fn load_play_time(root_path: &Path) -> u64 {
+    #[derive(serde::Deserialize)]
+    struct PlaytimeData { seconds: u64 }
+    crate::read_json::<PlaytimeData>(&root_path.join("playtime_v1.json"))
+        .map(|d| d.seconds)
+        .unwrap_or(0)
 }
 
 fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMetadataManager>, for_loader: Loader, for_version: Ustr) -> Option<InstanceContentSummary> {

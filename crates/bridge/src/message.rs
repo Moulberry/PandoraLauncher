@@ -251,6 +251,7 @@ pub enum MessageToFrontend {
         servers_state: BridgeDataLoadState,
         mods_state: BridgeDataLoadState,
         resource_packs_state: BridgeDataLoadState,
+        play_time_seconds: u64,
     },
     InstanceRemoved {
         id: InstanceID,
@@ -263,6 +264,7 @@ pub enum MessageToFrontend {
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
         status: InstanceStatus,
+        play_time_seconds: u64,
     },
     InstanceWorldsUpdated {
         id: InstanceID,

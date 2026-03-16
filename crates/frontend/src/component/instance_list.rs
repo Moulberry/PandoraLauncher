@@ -1,4 +1,20 @@
 use bridge::{handle::BackendHandle, instance::InstanceStatus, message::MessageToBackend};
+
+pub(crate) fn format_playtime(seconds: u64) -> SharedString {
+    if seconds == 0 {
+        return "Never played".into();
+    }
+    let h = seconds / 3600;
+    let m = (seconds % 3600) / 60;
+    let s = seconds % 60;
+    if h > 0 {
+        format!("{}h {}m {}s", h, m, s).into()
+    } else if m > 0 {
+        format!("{}m {}s", m, s).into()
+    } else {
+        format!("{}s", s).into()
+    }
+}
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants}, h_flex, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex, ActiveTheme, Icon, Sizable
@@ -61,6 +77,10 @@ impl InstanceList {
                         .width(150.)
                         .fixed_left()
                         .resizable(true),
+                    Column::new("playtime", ts!("instance.playtime"))
+                        .width(150.)
+                        .fixed_left()
+                        .resizable(true),
                 ],
                 items,
                 backend_handle: data.backend_handle.clone(),
@@ -92,6 +112,7 @@ impl InstanceList {
         };
 
         let play_button = render_play_button(item, index, self.backend_handle.clone());
+        let playtime = format_playtime(item.play_time_seconds);
 
         let theme = cx.theme();
         v_flex()
@@ -112,6 +133,7 @@ impl InstanceList {
                     .w_full()
                     .child(item.name.clone())
                     .child(loader_and_version)
+                    .child(playtime)
                 )
             ).child(h_flex()
                 .gap_2()
@@ -186,6 +208,7 @@ impl TableDelegate for InstanceList {
                         .into_any_element()
                 },
                 "loader" => item.configuration.loader.name().into_any_element(),
+                "playtime" => format_playtime(item.play_time_seconds).into_any_element(),
                 _ => ts!("common.unknown").into_any_element(),
             }
         } else {

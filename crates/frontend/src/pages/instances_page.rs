@@ -1,12 +1,12 @@
 use bridge::handle::BackendHandle;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    IndexPath, button::{Button, ButtonVariants}, h_flex, select::{Select, SelectDelegate, SelectEvent, SelectItem, SelectState}, table::{DataTable, TableDelegate, TableState}
+    ActiveTheme as _, IndexPath, button::{Button, ButtonVariants}, h_flex, scroll::ScrollableElement as _, select::{Select, SelectDelegate, SelectEvent, SelectItem, SelectState}, table::{DataTable, TableDelegate, TableState}, v_flex
 };
 use strum::IntoEnumIterator;
 
 use crate::{
-    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::FrontendMetadata}, icon::PandoraIcon, interface_config::{InstancesViewMode, InterfaceConfig}, pages::page::Page, ts
+    component::{instance_list::{InstanceList, format_playtime}, named_dropdown::{NamedDropdown, NamedDropdownItem}, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::FrontendMetadata}, icon::PandoraIcon, interface_config::{InstancesViewMode, InterfaceConfig}, pages::page::Page, ts
 };
 
 pub struct InstancesPage {
@@ -65,17 +65,19 @@ impl Page for InstancesPage {
         h_flex().gap_3().child(create_instance).child(select_view)
     }
 
-    fn scrollable(&self, cx: &App) -> bool {
-        match InterfaceConfig::get(cx).instances_view_mode {
-            InstancesViewMode::Cards => true,
-            InstancesViewMode::List => false,
-        }
+    fn scrollable(&self, _cx: &App) -> bool {
+        false
     }
 }
 
+// wrap in .div().relative() so overlay can be positioned absolutly
 impl Render for InstancesPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        match InterfaceConfig::get(cx).instances_view_mode {
+        let total_playtime = self.instances.read(cx).entries.values()
+            .map(|e| e.read(cx).play_time_seconds)
+            .sum::<u64>();
+
+        let content: AnyElement = match InterfaceConfig::get(cx).instances_view_mode {
             InstancesViewMode::Cards => {
                 let cards = self.instance_table.update(cx, |table, cx| {
                     let rows = table.delegate().rows_count(cx);
@@ -87,12 +89,36 @@ impl Render for InstancesPage {
                     gpui::AvailableSpace::MinContent
                 );
 
-                div().p_4().child(ResponsiveGrid::new(size).size_full().gap_4().children(cards)).into_any_element()
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(v_flex().size_full().overflow_y_scrollbar()
+                        .child(div().p_4().child(ResponsiveGrid::new(size).size_full().gap_4().children(cards))))
+                    .into_any_element()
             },
             InstancesViewMode::List => {
                 DataTable::new(&self.instance_table).bordered(false).into_any_element()
             },
-        }
+        };
+
+        let theme = cx.theme();
+        div()
+            .relative()
+            .size_full()
+            .child(content)
+            .child(
+                div()
+                    .absolute()
+                    .bottom_4()
+                    .right_4()
+                    .px_3()
+                    .py_2()
+                    .rounded(theme.radius)
+                    .bg(theme.background)
+                    .border_1()
+                    .border_color(theme.border)
+                    .child(format!("{}: {}", ts!("instance.total_playtime"), format_playtime(total_playtime)))
+            )
     }
 }
 

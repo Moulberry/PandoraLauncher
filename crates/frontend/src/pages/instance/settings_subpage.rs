@@ -1,11 +1,11 @@
 use std::{path::Path, sync::Arc};
 
 use bridge::{
-    handle::BackendHandle, instance::InstanceID, message::MessageToBackend, meta::MetadataRequest
+    handle::BackendHandle, instance::InstanceID, message::{EmbeddedOrRaw, MessageToBackend}, meta::MetadataRequest
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
+    ActiveTheme as _, Disableable, Icon, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
 };
 use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
 	component::{horizontal_sections::HorizontalSections, named_dropdown::{NamedDropdown, NamedDropdownItem}, path_label::PathLabel},
 	entity::{DataEntities, account::{AccountEntries, AccountExt}, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}},
-	interface_config::InterfaceConfig, pages::instances_page::VersionList, ts
+	interface_config::InterfaceConfig, pages::instances_page::VersionList, png_render_cache, ts
 };
 
 #[derive(PartialEq, Eq)]
@@ -68,6 +68,7 @@ pub struct InstanceSettingsSubpage {
     #[cfg(target_os = "linux")]
     gamemode_available: bool,
     new_name_change_state: NewNameChangeState,
+    icon: Option<EmbeddedOrRaw>,
     backend_handle: BackendHandle,
     _observe_loader_version_subscription: Option<Subscription>,
     _select_file_task: Task<()>,
@@ -98,6 +99,14 @@ impl InstanceSettingsSubpage {
         let system_libraries = entry.configuration.system_libraries.clone().unwrap_or_default();
 
         let instance_root_label = PathLabel::new(entry.root_path.clone(), true);
+
+        let icon = if let Some(raw) = entry.icon.clone() {
+            Some(EmbeddedOrRaw::Raw(raw))
+        } else if let Some(embedded) = entry.configuration.instance_fallback_icon {
+            Some(EmbeddedOrRaw::Embedded(embedded.as_str().into()))
+        } else {
+            None
+        };
 
         let glfw_path = system_libraries.glfw.get_or_auto(&*AUTO_LIBRARY_PATH_GLFW);
         let openal_path = system_libraries.openal.get_or_auto(&*AUTO_LIBRARY_PATH_OPENAL);
@@ -152,6 +161,13 @@ impl InstanceSettingsSubpage {
         cx.observe_in(instance, window, |page, instance, window, cx| {
             let entry = instance.read(cx);
             page.instance_root_label = PathLabel::new(entry.root_path.clone(), true);
+            page.icon = if let Some(raw) = entry.icon.clone() {
+                Some(EmbeddedOrRaw::Raw(raw))
+            } else if let Some(embedded) = entry.configuration.instance_fallback_icon {
+                Some(EmbeddedOrRaw::Embedded(embedded.as_str().into()))
+            } else {
+                None
+            };
             if page.loader_version_select_state.read(cx).selected_index(cx).is_none() {
                 let version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
                 page.loader_version_select_state.update(cx, |select_state, cx| {
@@ -227,6 +243,7 @@ impl InstanceSettingsSubpage {
             #[cfg(target_os = "linux")]
             gamemode_available: Self::is_command_available("gamemoderun"),
             new_name_change_state: NewNameChangeState::NoChange,
+            icon,
             backend_handle,
             loader_versions_state: TypelessFrontendMetadataResult::Loading,
             _observe_loader_version_subscription: None,
@@ -667,7 +684,8 @@ impl InstanceSettingsSubpage {
 
 impl Render for InstanceSettingsSubpage {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
-        let theme = cx.theme();
+        let theme_radius = cx.theme().radius;
+        let theme_border = cx.theme().border;
 
         let header = h_flex()
             .gap_3()
@@ -679,6 +697,18 @@ impl Render for InstanceSettingsSubpage {
         let wrapper_command_enabled = self.wrapper_command_enabled;
         let jvm_flags_enabled = self.jvm_flags_enabled;
         let jvm_binary_enabled = self.jvm_binary_enabled;
+
+        let icon_element: Option<AnyElement> = self.icon.clone().map(|icon| match icon {
+            EmbeddedOrRaw::Embedded(path) => {
+                Icon::default().path(path).size_8().min_w_8().min_h_8().into_any_element()
+            },
+            EmbeddedOrRaw::Raw(data) => {
+                let radius = theme_radius;
+                let transform = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
+                png_render_cache::render_with_transform(data, transform, cx)
+                    .rounded(radius).size_8().min_w_8().min_h_8().into_any_element()
+            },
+        });
 
         let mut basic_content = v_flex()
             .gap_4()
@@ -708,7 +738,32 @@ impl Render for InstanceSettingsSubpage {
                         }
                     })
                 )
-            );
+            )
+            .child(crate::labelled(
+                ts!("common.icon"),
+                {
+                    let mut row = h_flex().gap_2()
+                        .child(Button::new("icon").icon(crate::icon::PandoraIcon::Plus).label(ts!("instance.select_icon")).on_click({
+                            let entity = cx.entity();
+                            move |_, window, cx| {
+                                let entity = entity.clone();
+                                crate::modals::select_icon::open_select_icon(Box::new(move |icon, cx| {
+                                    cx.update_entity(&entity, |this, _| {
+                                        this.icon = Some(icon.clone());
+                                        this.backend_handle.send(MessageToBackend::SetInstanceIcon {
+                                            id: this.instance_id,
+                                            icon: Some(icon),
+                                        });
+                                    });
+                                }), window, cx);
+                            }
+                        }));
+                    if let Some(el) = icon_element {
+                        row = row.child(el);
+                    }
+                    row
+                }
+            ));
 
         let mut version_content = v_flex().gap_2();
 
@@ -1025,8 +1080,8 @@ impl Render for InstanceSettingsSubpage {
             .child(div()
                 .size_full()
                 .border_1()
-                .rounded(theme.radius)
-                .border_color(theme.border)
+                .rounded(theme_radius)
+                .border_color(theme_border)
                 .child(sections)
             )
     }

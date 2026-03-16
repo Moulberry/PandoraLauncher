@@ -253,6 +253,8 @@ common:
     en: Cancel
   reset:
     en: Reset
+  icon:
+    en: Icon
   apply_changes:
     en: Apply Changes
   ok:

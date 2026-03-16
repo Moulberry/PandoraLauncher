@@ -87,6 +87,10 @@ pub enum MessageToBackend {
         id: InstanceID,
         system_libraries: InstanceSystemLibrariesConfiguration,
     },
+    SetInstanceIcon {
+        id: InstanceID,
+        icon: Option<EmbeddedOrRaw>,
+    },
     KillInstance {
         id: InstanceID,
     },

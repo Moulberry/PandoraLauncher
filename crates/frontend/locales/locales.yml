@@ -373,6 +373,8 @@ instance:
     en: Open .minecraft folder
   create:
     en: Create Instance
+  select_relocation_folder:
+    en: Select relocation folder
 
   # Properties & Config
   name:

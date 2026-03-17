@@ -173,13 +173,13 @@ pub fn try_load_from_multimc(instance_cfg: &Path, mmc_pack: &Path) -> Option<Ins
                         configuration.linux_wrapper.get_or_insert_default().use_discrete_gpu = enabled;
                     },
                     (Some("[General]"), "UseAccountForInstance") => {
-                    	let Ok(enabled) = value.parse::<bool>() else {
-                     		continue;
-                     	};
-                    	override_account.0 = enabled;
+                        let Ok(enabled) = value.parse::<bool>() else {
+                            continue;
+                        };
+                        override_account.0 = enabled;
                     },
                     (Some("[General]"), "InstanceAccountId") => {
-                    	override_account.1 = value.parse::<Uuid>().ok();
+                        override_account.1 = value.parse::<Uuid>().ok();
                     }
                     _ => {}
                 }
@@ -195,7 +195,7 @@ pub fn try_load_from_multimc(instance_cfg: &Path, mmc_pack: &Path) -> Option<Ins
     }
 
     if override_account.0 {
-   		configuration.preferred_account = override_account.1;
+        configuration.preferred_account = override_account.1;
     }
 
     Some(configuration)

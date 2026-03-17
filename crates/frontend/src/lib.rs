@@ -34,7 +34,7 @@ pub mod root;
 pub mod skin_renderer;
 pub mod ui;
 
-rust_i18n::i18n!("locales");
+rust_i18n::i18n!("locales", fallback = "en");
 
 macro_rules! ts {
     ($key:expr) => {
@@ -112,6 +112,9 @@ pub fn start(
 
         gpui_component::init(cx);
         InterfaceConfig::init(cx, launcher_dir.join("interface.json").into());
+
+        let saved_locale = InterfaceConfig::get(cx).active_locale.clone();
+        rust_i18n::set_locale(&saved_locale);
 
         gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
 
@@ -208,8 +211,8 @@ pub fn start(
             if std::env::var_os("FLATPAK_ID").is_some() {
                 _ = main_window.update(cx, |_, window, cx| {
                     window.open_dialog(cx, move |modal, _, _| {
-                        let error = "Pandora was downloaded through Flathub, which has a policy disallowing software from accessing both X11 and Wayland.\n\nMinecraft will be forced to run under Wayland, which may cause issues.\n\nhttps://github.com/flathub-infra/flatpak-builder-lint/pull/935";
-                        let error_widget = ErrorAlert::new("Flatpak Permission Warning".into(), error.into());
+                        let error = format!("{}\n\nhttps://github.com/flathub-infra/flatpak-builder-lint/pull/935", ts!("system.flatpak_warning.description"));
+                        let error_widget = ErrorAlert::new(ts!("system.flatpak_warning.title"), error.into());
 
                         return modal
                             .child(error_widget)
@@ -221,8 +224,8 @@ pub fn start(
             } else {
                 _ = main_window.update(cx, |_, window, cx| {
                     window.open_dialog(cx, move |modal, _, _| {
-                        let error = "It seems that X11/Xwayland is not available.\n\nMinecraft will be forced to run under Wayland, which may cause issues.";
-                        let error_widget = ErrorAlert::new("X11 Unavailable".into(), error.into());
+                        let error = ts!("system.x11_unavailable.description");
+                        let error_widget = ErrorAlert::new(ts!("system.x11_unavailable.title"), error.into());
 
                         return modal
                             .child(error_widget)

@@ -19,6 +19,8 @@ impl gpui::Global for InterfaceConfigHolder {}
 pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub active_theme: SharedString,
+    #[serde(default = "default_locale", deserialize_with = "schema::try_deserialize")]
+    pub active_locale: String,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_window_bounds: WindowBounds,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -57,6 +59,10 @@ pub struct InterfaceConfig {
     pub collapse_capes_in_skins_page: bool,
 }
 
+fn default_locale() -> String {
+    "en".to_string()
+}
+
 fn default_modrinth_project_type() -> ModrinthProjectType {
     ModrinthProjectType::Mod
 }
@@ -69,6 +75,7 @@ impl Default for InterfaceConfig {
     fn default() -> Self {
         Self {
             active_theme: Default::default(),
+            active_locale: default_locale(),
             main_window_bounds: Default::default(),
             sidebar_width: Default::default(),
             main_page: Default::default(),

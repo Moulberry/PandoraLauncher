@@ -20,8 +20,10 @@ modrinth:
       en: BTA (Babric)
     java-agent:
       en: Java Agent
+      pl: Agent Java
     legacy-fabric:
       en: Legacy Fabric
+      pl: Stary Fabric
     liteloader:
       en: LiteLoader
     modloader:
@@ -35,6 +37,7 @@ modrinth:
     # datapacks
     datapack:
       en: Data Pack
+      pl: Paczka Danych
     # shaders
     iris:
       en: Iris
@@ -44,6 +47,7 @@ modrinth:
       en: Canvas
     vanilla:
       en: Vanilla Shader
+      pl: Shader Vanilla
     # plugins
     bukkit:
       en: Bukkit
@@ -69,124 +73,180 @@ modrinth:
     # Categories
     cursed:
       en: Cursed
+      pl: Przeklęte
     technology:
       en: Technology
+      pl: Technologia
     challenging:
       en: Challenging
+      pl: Wyzwanie
     decoration:
       en: Decoration
+      pl: Dekoracje
     library:
       en: Library
+      pl: Biblioteka
     adventure:
       en: Adventure
+      pl: Przygoda
     path-tracing:
       en: Path Tracing
     realistic:
       en: Realistic
+      pl: Realistyczne
     atmosphere:
       en: Atmosphere
+      pl: Atmosfera
     fantasy:
       en: Fantasy
+      pl: Fantastyka
     foliage:
       en: Foliage
+      pl: Liście
     bloom:
       en: Bloom
     vanilla-like:
       en: Vanilla-like
+      pl: W stylu Vanilla
     cartoon:
       en: Cartoon
+      pl: Kreskówkowe
     shadows:
       en: Shadows
+      pl: Cienie
     pbr:
       en: PBR
     semi-realistic:
       en: Semi-realistic
+      pl: Semi-Realistyczne
     reflections:
       en: Reflections
+      pl: Odbicia
     colored-lighting:
       en: Colored Lighting
+      pl: Kolorowe Oświetlenie
     economy:
       en: Economy
+      pl: Ekonomia
     management:
       en: Management
+      pl: Zarządzanie
     optimization:
       en: Optimization
+      pl: Optymalizacja
     mobs:
       en: Mobs
+      pl: Moby
     transportation:
       en: Transportation
+      pl: Transport
     kitchen-sink:
       en: Kitchen sink
+      pl: Mieszane
     blocks:
       en: Blocks
+      pl: Bloki
     audio:
       en: Audio
+      pl: Dźwięk
     combat:
       en: Combat
+      pl: Walka
     modded:
       en: Modded
+      pl: Zmodyfikowane
     environment:
       en: Environment
+      pl: Środowisko
     entities:
       en: Entities
+      pl: Byty
     game-mechanics:
       en: Game Mechanics
+      pl: Mechaniki Gry
     utility:
       en: Utility
+      pl: Narzędzia
     core-shaders:
       en: Core Shaders
+      pl: Shadery Core
     tweaks:
       en: Tweaks
+      pl: Drobne Zmiany
     items:
       en: Items
+      pl: Przedmioty
     models:
       en: Models
+      pl: Modele
     equipment:
       en: Equipment
+      pl: Wyposażenie
     fonts:
       en: Fonts
+      pl: Czcionki
     simplistic:
       en: Simplistic
+      pl: Proste
     themed:
       en: Themed
+      pl: Tematyczne
     magic:
       en: Magic
+      pl: Magiczne
     storage:
       en: Storage
+      pl: Magazynowanie
     food:
       en: Food
+      pl: Jedzenie
     gui:
       en: GUI
+      pl: Interfejs
     worldgen:
       en: World Generation
+      pl: Generacja Świata
     worldgen.short:
       en: Worldgen
+      pl: Gen. Świata
     multiplayer:
       en: Multiplayer
+      pl: Wieloosobowe
     quests:
       en: Quests
+      pl: Zadania
     lightweight:
       en: Lightweight
+      pl: Lekkie
     social:
       en: Social
+      pl: Społeczne
     minigame:
       en: Minigame
+      pl: Minigry
     locale:
       en: Locale
+      pl: Tłumaczenie
     # shaders performance impact
     potato:
       en: Potato
+      pl: Ziemniak
     low:
       en: Low
+      pl: Niskie
     medium:
       en: Medium
+      pl: Średnie
     high:
       en: High
+      pl: Wysokie
     screenshot:
       en: Screenshot
+      pl: Zrzut Ekranu
     # resourcepack resolutions
     8x-:
       en: 8x or lower
+      pl: 8x lub niższe
     16x:
       en: 16x
     32x:
@@ -201,589 +261,957 @@ modrinth:
       en: 256x
     512x+:
       en: 512x or higher
+      pl: 512x lub wyższe
 
   environment:
     client_and_server:
       en: Client and server
+      pl: Klient i serwer
     client_only:
       en: Client only
     client_only_server_optional:
       en: Client (server optional)
+      pl: Klient (opcjonalnie serwer)
     server_only:
       en: Server only
+      pl: Tylko serwer
     server_only_client_optional:
       en: Server (client optional)
+      pl: Serwer (opcjonalnie klient)
     client_or_server:
       en: Client or server
+      pl: Klient lub serwer
     unknown_environment:
       en: Unknown environment
+      pl: Nieznane środowisko
 
   versions:
     alpha:
       en: "%{name} (Alpha)"
     beta:
       en: "%{name} (Beta)"
+
 curseforge:
   name:
     en: Curseforge
+
 common:
   app_name:
     en: Pandora
   unknown:
     en: Unknown
+    pl: Nieznane
   search:
     en: Search
+    pl: Szukaj
   error:
     en: Error
+    pl: Błąd
   latest:
     en: Latest
+    pl: Najnowsze
   update:
     en: Update
+    pl: Aktualizacja
   min:
     en: Min
   max:
     en: Max
   or_upper:
     en: OR
+    pl: LUB
+  view:
+    en: View
+    pl: Widok
   unset:
     en: <unset>
+    pl: <nieustawiony>
   custom:
     en: Custom
+    pl: Niestandardowe
   cancel:
     en: Cancel
+    pl: Anuluj
   reset:
     en: Reset
+    pl: Resetuj
   apply_changes:
     en: Apply Changes
+    pl: Zastosuj zmiany
   ok:
     en: OK
+  download:
+    en: Download
+    pl: Pobierz
+  minecraft:
+    en: Minecraft
+  files:
+    en: Files
+    pl: Pliki
+  from_file:
+    en: Add from file
+    pl: Dodaj z pliku
   nav:
     top:
       en: Go to Top
+      pl: Przewiń na Górę
     bottom:
       en: Go to Bottom
+      pl: Przewiń na Dół
   layout:
     cards:
       en: Cards
+      pl: Karty
     list:
       en: List
+      pl: Lista
 file_system:
   open_folder:
+    label:
+      en: Open folder
+      pl: Otwórz folder
     error:
       en: "Unable to open folder: %{err}"
+      pl: "Nie udało się otworzyć folderu: %{err}"
     not_a_directory:
       en: "Unable to open folder: not a directory"
+      pl: "Nie udało się otworzyć folderu: nie jest katalogiem"
 system:
   backend_shutdown:
     en: Backend has abruptly shutdown
+    pl: Backend niespodziewanie przerwał pracę
   metadata_error:
     en: Wrong metadata type! Pandora bug!
+    pl: Niepoprawny typ metadanych! Błąd Pandory!
+  report_bug:
+    label:
+      en: Report a bug
+      pl: Zgłoś błąd
+    no_url_error:
+      en: Unable to report bug, GITHUB_REPOSITORY_URL was not set at compile time
+      pl: Nie udało się zgłościć błędu, GITHUB_REPOSITORY_URL nie zostało ustawione podczas kompilacji
   game_output:
     en: Minecraft Game Output
+    pl: Wyjście Gry Minecraft
   update:
     title:
       en: Update Pandora?
+      pl: Zaktualizować Pandora?
+    available:
+      en: Update Available
+      pl: Dostępna Aktualizacja
     current:
       en: "Current version: %{ver}"
+      pl: "Aktualna wersja: %{ver}"
     new:
       en: "New version: %{ver}"
+      pl: "Nowa wersja: %{ver}"
     size:
       en: "Update size: %{num}"
+      pl: "Rozmiar aktualizacji: %{num}"
     later:
       en: Later
+      pl: Później
     install_error:
       en: Unable to install update
+      pl: Nie udało się zainstalować aktualizacji
+  flatpak_warning:
+    title:
+      en: Flatpak Permission Warning
+      pl: Ostrzeżenie o uprawnieniach Flatpak
+    description:
+      en: "Pandora was downloaded through Flathub, which has a policy disallowing software from accessing both X11 and Wayland.\n\nMinecraft will be forced to run under Wayland, which may cause issues."
+      pl: "Pandora została pobrana przez Flathub, który posiada politykę uniemożliwiającą aplikacjom jednoczesny dostęp do X11 i Wayland.\n\nMinecraft zostanie wymuszony do pracy w Wayland, co może powodować problemy."
+  x11_unavailable:
+    title:
+      en: X11 Unavailable
+      pl: X11 Niedostępne
+    description:
+      en: "It seems that X11/Xwayland is not available.\n\nMinecraft will be forced to run under Wayland, which may cause issues."
+      pl: "Wygląda na to, że X11/Xwayland jest niedostępny.\n\nMinecraft zostanie wymuszony do pracy w Wayland, co może powodować problemy."
 account:
   title:
     en: Accounts
+    pl: Konta
   override_account:
     en: Override Account
+    pl: Nadpisz Konto
+  no_override:
+    en: No override
+    pl: Brak nadpisania
   none:
     en: No Account
+    pl: Brak Konta
   name:
     en: Name
+    pl: Nazwa
   uuid:
     en: UUID
   uuid_random:
     en: Random
+    pl: Losowe
   add:
     title:
       en: Adding new account
+      pl: Dodawanie nowego konta
     label:
       en: Add account
+      pl: Dodaj konto
     submit:
       en: Add
+      pl: Dodaj
     offline:
       en: Add Offline Account
+      pl: Dodaj Konto Offline
     error:
       en: Error adding account
+      pl: Błąd dodawania konta
 instance:
   title:
     en: Instances
+    pl: Instancje
   label:
     en: Instance
+    pl: Instancja
   recent:
     en: Recent Instances
+    pl: Ostatnie Instancje
   none_selected:
     en: Select an instance
+    pl: Wybierz instancję
   unnamed:
     en: Unnamed Instance
+    pl: Nienazwana Instancja
   incompatible:
     en: (%{num} instances were incompatible)
+    pl: "(Niekompatybilne instancje: %{num})"
   new:
     en: New Instance
+    pl: Nowa Instancja
   quickplay:
     en: Quickplay
+    pl: Gra
   worlds:
     en: Worlds
+    pl: Światy
   servers:
     en: Servers
+    pl: Serwery
   total_playtime:
     en: Total Playtime
+    pl: Czas Gry
   current_session:
     en: Current Session
+    pl: Aktualna Sesja
   vanilla:
     en: Vanilla
   unable_to_find:
     en: Unable to find instance
+    pl: Nie znaleziono instancji
   start:
     title:
       en: Launching %{name}
+      pl: Uruchamianie %{name}
     label:
       en: Start
+      pl: Uruchom
     starting:
       en: Launching...
+      pl: Uruchamianie...
+    already_running:
+      label:
+        en: Instance already running
+        pl: Instancja jest już uruchomiona
+      warning:
+        en: Starting it again may cause malfunction or corrupt your saved worlds.
+        pl: Uruchamianie jej ponownie może spowodować błędy lub uszkodzić zapisane światy
+      confirm:
+        en: We cannot take responsibility for any issues if you choose to start another game. Would you like to continue anyway?
+        pl: Nie możemy wziąć odpowiedzialności za jakiekolwiek błędy, jeśli wybierzesz uruchomienie kolejnej gry. Czy mimo to chcesz kontynuować?
+      start:
+        en: Start anyway
+        pl: Uruchom mimo to
     error:
       en: Error starting instance
+      pl: Błąd uruchamiania instancji
 
   # Actions
   play:
     en: Play
+    pl: Graj
   view:
     en: View
+    pl: Zobacz
   kill:
     en: Kill
+    pl: Zatrzymaj
   kill_instance:
     en: Kill Instance
+    pl: Wymuś Zatrzymanie
   delete:
     en: Delete this instance
+    pl: Usuń instancję
   create_shortcut:
     en: Create shortcut
+    pl: Utwórz skrót
   open_folder:
     en: Open .minecraft folder
+    pl: Otwórz folder .minecraft
   create:
     en: Create Instance
+    pl: Utwórz Instancję
 
   # Properties & Config
   name:
     en: Name
+    pl: Nazwa
   name_placeholder:
     en: <instance name>
+    pl: <nazwa instancji>
   version:
     en: Version
+    pl: Wersja
   loader:
     en: Loader
+    pl: Silnik
   loader_version:
     en: "%{loader} Version"
+    pl: "Wersja %{loader}"
   game_version:
     en: Game Version
+    pl: Wersja Gry
   mc_version:
     en: Minecraft Version
+    pl: Wersja Minecraft
   show_snapshots:
     en: Show Snapshots
+    pl: Pokaż Snapshoty
   modloader:
     en: Modloader
   select_icon:
     en: Select Icon
+    pl: Wybierz Ikonę
   select_png_icon:
     en: Select PNG Icon
+    pl: Wybierz Ikonę PNG
   instance_name:
     en: Instance name
+    pl: Nazwa Instancji
   invalid_name:
     en: Invalid name
+    pl: Nieprawidłowa nazwa
   versions_loading:
     game_versions:
       en: Loading Minecraft Versions...
+      pl: Ładowanie Wersji Minecraft...
     reload:
       en: Reload Versions
+      pl: Odśwież Wersje
     possible_loader_error:
       en: Error loading possible loader versions
+      pl: Błąd ładowania dostępnych wersji silnika
     error:
       en: Error loading Minecraft versions
+      pl: Błąd ładowania
 
   # Advanced Settings
   memory:
     en: Set Memory
+    pl: Ustaw Pamięć
   wrapper_command:
     en: Add Wrapper Command
+    pl: Dodaj Polecenie Pośredniczące
   jvm_flags:
     en: Add JVM Flags
+    pl: Dodaj Flagi JVM
   jvm_binary:
     en: Override JVM Binary
+    pl: Nadpisz Plik Binarny JVM
   select_jvm_binary:
     en: Select JVM Binary
+    pl: Wybierz Plik Binarny JVM
   glfw_lib:
     en: Use System GLFW
+    pl: Używaj Systemowego GLFW
   select_glfw_lib:
     en: Select GLFW Library
+    pl: Wybierz Bibliotekę GLFW
   openal_lib:
     en: Use System OpenAL
+    pl: Używaj Systemowego OpenAL
   select_openal_lib:
     en: Select OpenAL Library
+    pl: Wybierz Bibliotekę OpenAL
 
   # Linux Specific
   linux:
     label:
       en: Linux Performance
+      pl: Wydajność Linux
     use_mangohud:
       en: Use MangoHud
+      pl: Używaj MangoHud
     use_gamemode:
       en: Use GameMode
+      pl: Używaj GameMode
     use_discrete_gpu:
       en: Use Discrete GPU
+      pl: Używaj Dedykowanego GPU
     disable_gl_threaded_optimizations:
       en: Disable GL Threaded Optimizations
+      pl: Wyłącz Optymalizację Wielowątkową GL
 
   # Delete Dialog
   delete_dialog:
     title:
       en: "Delete Instance: %{name}"
+      pl: "Usuń Instancję: %{name}"
     label:
       en: I want to delete this instance
+      pl: Chcę usunąć tę instancję
     check:
       en: I have read and understand these effects
+      pl: Przeczytałem/am i rozumiem konsekwencje
     confirm_text:
       en: "To confirm, type '%{name}' in the box below"
+      pl: "Aby potwierdzić, wpisz '%{name}' w pole poniżej"
     warning:
       en: "This will permanently delete the '%{name}' instance and associated saves, resourcepacks, mods, configuration files, and more. These files will not be recoverable"
+      pl: "Spowoduje to trwałe usunięcie instancji '%{name}' i powiązanych z nią światów, paczek zasobów, modyfikacji, plików konfiguracyjnych i innych. Tych plików nie będzie można odzyskać"
 
   # Logs
   logs:
     title:
       en: Logs
+      pl: Dziennik zdarzeń
     none:
       en: No available logs
+      pl: Brak dostępnych dzienników
     loading:
       en: Loading available logs...
+      pl: Ładowanie dostępnych dzienników...
     cleanup:
       en: Cleanup old log files (%{num})
+      pl: Wyczyść stare pliki dziennika (%{num})
     select_file:
       en: Select log file
+      pl: Wybierz plik dziennika zdarzeń
     upload:
       label:
         en: Upload
+        pl: Prześlij
       title:
         en: Uploading log file
+        pl: Przesyłanie pliku dziennika
       error:
         en: Error uploading log file
+        pl: Błąd przesyłania pliku dziennika
 
   # Content Management
   content:
     title:
       en: Content
+      pl: Zawartość
     mods:
       en: Mods
+      pl: Modyfikacje
     modpacks:
       en: Modpacks
+      pl: Paczki Modyfikacji
     resourcepacks:
       en: Resourcepacks
+      pl: Paczki Zasobów
     shaders:
       en: Shaders
+      pl: Shadery
     filename_prefix:
       en: "Filename: "
+      pl: "Nazwa pliku: "
+    versions:
+      en: "%{min} - %{max} (%{num} versions)"
     version:
       mod:
-        en: "Mod Version"
+        en: Mod Version
+        pl: Wersja Modyfikacji
       modpack:
-        en: "Modpack Version"
+        en: Modpack Version
+        pl: Wersja Paczki Modów
       resourcepack:
-        en: "Pack Version"
+        en: Pack Version
+        pl: Wersja Paczki
       shader:
-        en: "Shader Version"
+        en: Shader Version
+        pl: Wersja Shadera
       file:
-        en: "File Version"
+        en: File Version
+        pl: Wersja Pliku
     search:
       mod:
-        en: "Search mods..."
+        en: Search mods...
+        pl: Szukaj modyfikacji...
       modpack:
-        en: "Search modpacks..."
+        en: Search modpacks...
+        pl: Szukaj paczek modyfikacji...
       resourcepack:
-        en: "Search resourcepacks..."
+        en: Search resourcepacks...
+        pl: Szukaj paczek zasobów...
       shader:
-        en: "Search shaders..."
+        en: Search shaders...
+        pl: Szukaj shaderów...
       file:
-        en: "Search..."
+        en: Search...
+        pl: Szukaj...
     requesting_from_modrinth_error:
       en: Error requesting from Modrinth
+      pl: Błąd zapytania do Modrinth
     unnamed:
       en: Unnamed
-    open_page:
-      en: Open Page
+      pl: Bez Nazwy
     by:
       en: by %{name}
+      pl: od %{name}
     no_description:
       en: No Description
+      pl: Brak Opisu
     error_loading:
       en: Error loading project
+      pl: Błąd ładowania projektu
     no_gallery:
       en: No gallery images
+      pl: Brak obrazów w galerii
     tabs:
       description:
         en: Description
+        pl: Opis
       gallery:
         en: Gallery
+        pl: Galeria
     links:
       source:
         en: Source
+        pl: Źródło
       issues:
         en: Issues
+        pl: Zgłoszenia
       wiki:
         en: Wiki
       discord:
         en: Discord
     categories:
       en: Categories
+      pl: Kategorie
     downloads:
       en: "%{num} Downloads"
+      pl: "%{num} Pobrań"
     load:
+      files:
+        title:
+          en: Loading files...
+          pl: Ładowanie plików...
+        error:
+          en: "Error loading files: %{err}"
+          pl: "Błąd ładowania plików: %{err}"
       versions:
         title:
           en: Loading mod versions...
+          pl: Ładowanie wersji modyfikacji...
         not_found:
           en: No mod versions found
+          pl: Nie znaleziono wersji modyfikacji
         not_found_for:
           en: No mod versions found for %{ver}
+          pl: Nie znaleziono wersji modyfikacji dla %{ver}
       versions_from_modrinth:
         title:
           en: Loading project versions from Modrinth...
+          pl: Ładowanie wersji projektu z Modrinth...
         error:
           en: "Error loading project versions from Modrinth: %{err}"
+          pl: "Błąd ładowania wersji projektu z Modrinth: %{err}"
     install:
       label:
         en: Install
+        pl: Zainstaluj
       title:
         en: Install %{name}
+        pl: Zainstaluj %{name}
       reinstall:
         en: Reinstall
+        pl: Zainstaluj ponownie
       latest:
         en: Install Latest
+        pl: Instaluj Najnowsze
       error:
         en: Error installing content
+        pl: Błąd ładowania zawartości
       always_latest:
         en: Always install the latest version. Untick to be able to choose older versions of content to install
+        pl: Zawsze instaluj najnowsze wersje. Odznacz, aby mieć możliwość wybierania starszych wersji zawartości do instalacji
       from_modrinth:
         en: Add from Modrinth
+        pl: Dodaj z Modrinth
       from_curseforge:
         en: Add from Curseforge
-      from_file:
-        en: Add from file
+        pl: Dodaj z Curseforge
       unable_other_type:
         en: Unable to install 'other' project type
+        pl: Nie udało się zainstalować typu projektu 'inne'
       invalid_filename:
         en: Invalid/dangerous filename
+        pl: Nieprawidłowa/niebezpieczna nazwa pliku
       missing_sha1_hash:
         en: Missing sha1 hash
+        pl: Brakujący hash sha1
+      blocked:
+        en: Blocked
+        pl: Zablokowane
       no_third_party_downloads:
         en: The mod author has blocked downloads from third-party launchers
+        pl: Autor moda zablokował pobieranie z launcherów osób trzecich
       select_mods:
         en: Select mods to install
+        pl: Wybierz modyfikacje do instalacji
+      children_downloading:
+        title:
+          en: Downloading children
+          pl: Pobieranie zależności
+        error:
+          en: Error downloading children
+          pl: Błąd pobierania zależności
       new_instance_with:
         mod:
           en: Create new instance with this mod
+          pl: Stwórz nową instancję z tą modyfikacją
         modpack:
           en: Create new instance with this modpack
+          pl: Stwórz nową instancję z tą paczką modyfikacji
         resourcepack:
           en: Create new instance with this resourcepack
+          pl: Stwórz nową instancję z tą paczką zasobów
         shader:
           en: Create new instance with this shader
+          pl: Stwórz nową instancję z tym shaderem
         file:
           en: Create new instance with this file
+          pl: Stwórz nową instancję z tym plikiem
       add_to_instance:
         en: Add to instance
+        pl: Dodaj do instancji
       install_dependency:
         en: Install 1 dependency
+        pl: Zainstaluj 1 zależność
       install_dependencies:
         en: Install %{num} dependencies
+        pl: Zainstaluj %{num} zależności
       no_mod_version_selected:
         en: No mod version selected
+        pl: Brak zaznaczonej wersji modyfikacji
       unable_install_other:
         en: Unable to install 'other' project type
+        pl: Nie udało się zainstalować typu projektu 'inny'
       no_matching_versions:
         en: Unable to find matching version of project
+        pl: Nie udało się znaleźć pasującej wersji projektu
       unknown_type:
         en: Don't know how to handle this type of content
+        pl: Nieobsługiwany typ zawartości
       select_resourcepacks:
         en: Select resource packs to install
+        pl: Wybierz paczkę zasobów do instalacji
     update:
       label:
         en: Update
+        pl: Aktualizuj
       check:
         label:
           en: Check for updates
+          pl: Sprawdź aktualizacje
         label.short:
           en: Update Check
+          pl: Sprawdź Aktualizacje
         title:
           en: Checking for updates
+          pl: Sprawdzanie aktualizacji
         error:
           en: Error checking for updates
+          pl: Błąd podczas sprawdzania aktualizacji
         error_404:
           en: Error while checking updates - 404 not found
+          pl: Błąd podczas sprawdzania aktualizacji - 404 nie znaleziono
         invalid_hash_error:
           en: Error while checking updates - returned invalid hash
+          pl: Błąd podczas sprawdzania aktualizacji - zwrócono niepoprawny hash
         last_up_to_date:
           en: Up-to-date as of last check
+          pl: Aktualne (stan z ostatniego sprawdzenia)
         up_to_date:
           en: Up-to-date
+          pl: Aktualne
       download:
         error:
           en: Error downloading update
+          pl: Błąd pobierania aktualizacji
         from_modrinth:
           en: Download update from Modrinth
+          pl: Pobierz aktualizację z Modrinth
         from_curseforge:
           en: Download update from Curseforge
+          pl: Pobierz aktualizację z Curseforge
       error:
         en: Error updating mod
+        pl: Błąd aktualizacji modyfikacji
       installed_manually:
         en: Installed manually - cannot automatically update
+        pl: Zainstalowano ręcznie - nie można aktualizować automatycznie
 
   # Sync Feature
   sync:
     label:
       en: Syncing
+      pl: Synchronizacja
     description:
       en: These options allow for syncing various files/folders across instances
+      pl: Te opcje pozwalają synchronizować przeróżne pliki/foldery między instancjami
     open_folder:
       en: Open synced folders directory
+      pl: Otwórz synchronizowane foldery
     already_exists:
       en: "%{num} instance(s) already contain a '%{name}' folder. Please safely backup and remove the folders to enable syncing"
+      pl: "%{num} instancji zawiera już folder '%{name}'. Proszę utworzyć kopię zapasową i usunąć je, aby włączyć synchronizację"
     folders_count:
       en: "(%{num1}/%{num2} folders synced)"
+      pl: "(%{num1}/%{num2} zsynchronizowanych folderów)"
     unable_count:
       en: "%{num1}/%{num2} instances are unable to be synced!"
-    files:
-      en: Files
+      pl: "%{num1}/%{num2} instancji nie ma możliwości synchronizacji!"
     folders:
       en: Folders
+      pl: Foldery
     mods:
       en: Mods
+      pl: Modyfikacje
     custom:
       en: Custom
+      pl: Niestandardowe
     sync_name_file:
       en: Sync %{name} file
+      pl: Synchronizuj plik %{name}
     sync_name_folder:
       en: Sync %{name} folder
+      pl: Synchronizuj folder %{name}
     sync_file:
       en: Sync file
+      pl: Synchronizuj plik
     sync_folder:
       en: Sync folder
+      pl: Synchronizuj folder
     disable_syncing:
       en: Disable Instance File Syncing
+      pl: Wyłącz Synchronizowanie Plików Instancji
 
     targets:
       options:
         en: Sync options.txt
+        pl: Synchronizuj options.txt
       servers:
         en: Sync servers.dat
+        pl: Synchronizuj servers.dat
       commands:
         en: Sync command_history.txt
+        pl: Synchronizuj command_history.txt
       hotbars:
         en: Sync hotbar.nbt
+        pl: Synchronizuj hotbar.nbt
       saves:
         en: Sync saves folder
+        pl: Synchronizuj folder światów
       config:
         en: Sync config folder
+        pl: Synchronizuj folder ustawień
       screenshots:
         en: Sync screenshots folder
+        pl: Synchronizuj folder zrzutów ekranu
       resourcepacks:
         en: Sync resourcepacks folder
+        pl: Synchronizuj folder paczek zasobów
       shaderpacks:
         en: Sync shaderpacks folder
+        pl: Synchronizuj folder paczek shaderów
       flashback:
         en: Sync Flashback (flashback) folder
+        pl: Synchronizuj folder Flashback (flashback)
       dh:
         en: Sync Distant Horizons (Distant_Horizons_server_data) folder
+        pl: Synchronizuj folder Distant Horizons (Distant_Horizons_server_data)
       voxy:
         en: Sync Voxy (.voxy) folder
+        pl: Synchronizuj folder Voxy (.voxy)
       xaero:
         en: Sync Xaero's Minimap (xaero) folder
+        pl: Synchronizuj folder Xaero's Minimap (xaero)
       bobby:
         en: Sync Bobby (.bobby) folder
+        pl: Synchronizuj folder Bobby (.bobby)
       litematic:
         en: Sync Litematic (schematic) folder
+        pl: Synchronizuj folder Litematic (schematic)
+
+# Import Feature
+import:
+  label:
+    en: Import
+  from:
+    en: Import from %{launcher}
+    pl: Importuj z %{launcher}
+  modrinth_pack:
+    label:
+      en: Import Modrinth Pack (.mrpack)
+      pl: Importuj Paczkę Modrinth (.mrpack)
+    select:
+      en: Select Modrinth Pack
+      pl: Wybierz Paczkę Modrinth
+  accounts:
+    en: Import Accounts
+    pl: Importuj Konta
+  instances:
+    en: Import Instances
+    pl: Importuj Instancje
+  error:
+    en: Error importing
+    pl: Błąd importowania
 
 settings:
   title:
     en: Settings
+    pl: Ustawienia
   interface:
     en: Interface
+    pl: Interfejs
   network:
     en: Network
+    pl: Sieć
   theme:
     title:
       en: Theme
+      pl: Motyw
     open_folder:
       en: Open theme folder
+      pl: Otwórz folder motywów
     open_repo:
       en: Open theme repository
+      pl: Otwórz repozytorium motywów
+  language:
+    title:
+      en: Language
+      pl: Język
+    en:
+      en: English
+    pl:
+      en: Polski
   delete:
     title:
       en: Deletion
+      pl: Usuwanie
     skip_mod_delete_confirmation:
       en: Shift+Click to skip mod delete confirmation
+      pl: Shift+Klik, aby pominąć potwierdzenie usunięcia modyfikacji
     skip_instance_delete_confirmation:
       en: Shift+Click to skip instance delete confirmation
+      pl: Shift+Klik, aby pominąć potwierdzenie usunięcia instancji
   windows:
     title:
       en: Windows
+      pl: Okna
     hide_main_window:
       en: Hide main window on launch
+      pl: Ukryj główne okno po uruchomieniu
     open_game_output:
       en: Open game output on launch
+      pl: Otwórz wyjście gry po uruchomieniu
     close_all_when_main_closed:
       en: Close all other windows when main window closed
+      pl: Zamknij wszystkie inne okna po zamknięciu głównego
   privacy:
     title:
       en: Privacy
-    hide_usernames:
-      en: Hide usernames
+      pl: Prywatność
     hide_server_addresses:
       en: Hide server addresses
+      pl: Ukryj adresy serwerów
+    hide_usernames:
+      en: Hide usernames
+      pl: Ukryj nazwy użytkowników
   proxy:
     title:
       en: Proxy Settings
+      pl: Ustawienia Proxy
     enabled:
       en: Enable Proxy
+      pl: Włącz Proxy
     protocol:
       en: Protocol
+      pl: Protokół
     host:
       en: Host
     port:
       en: Port
     auth:
       en: Authentication
+      pl: Uwierzytelnianie
     use_auth:
       en: Use Authentication
+      pl: Używaj Uwierzytelniania
     username:
       en: Username
+      pl: Nazwa Użytkownika
     password:
       en: Password
+      pl: Hasło
     launcher_only_note:
       en: Note - Proxy settings only apply to the launcher, not the game itself
+      pl: Informacja - Proxy działa tylko dla launchera, a nie samej gry
 skins:
   title:
     en: Skins
+    pl: Skórki
   capes:
     en: Capes
+    pl: Peleryny
   login_to_view_edit:
     en: Login to view/edit %{username}'s skin
+    pl: Zaloguj się, aby zobaczyć/edytować skórkę gracza %{username}
   unable_to_load:
     en: Unable to load %{username}'s skin
+    pl: Nie udało się załadować skórki gracza %{username}
   loading:
     en: Loading %{username}'s skin...
+    pl: Ładowanie skórki gracza %{username}...
   no_offline:
     en: Skins cannot be applied to offline accounts
+    pl: Skórki nie mogą być ustawiane na kontach offline
+  select:
+    en: Select Skin
+    pl: Wybierz Skórkę
+  select_to_view:
+    en: Select an account to view/edit skins
+    pl: Wybierz konto, aby przeglądać/edytować skórki
+  from_url:
+    en: Add from url
+    pl: Dodaj z URL
+  pose:
+    yaw:
+      en: "Yaw: %{num}°"
+      pl: "Obrót: %{num}°"
+    pitch:
+      en: "Pitch: %{num}°"
+      pl: "Nachylenie: %{num}°"
+    animation:
+      en: Animation
+      pl: Animacja
 login:
   title:
     en: Login
+    pl: Zaloguj się
   error:
     en: Error while logging in
+    pl: Błąd logowania

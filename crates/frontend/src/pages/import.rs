@@ -8,7 +8,7 @@ use gpui_component::{
 use schema::{content::ContentSource, loader::Loader};
 use strum::IntoEnumIterator;
 
-use crate::{component::{responsive_grid::ResponsiveGrid}, entity::DataEntities, pages::page::Page, root};
+use crate::{component::responsive_grid::ResponsiveGrid, entity::DataEntities, pages::page::Page, root, ts};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
@@ -78,21 +78,21 @@ impl Render for ImportPage {
                 .children({
                     OtherLauncher::iter().map(|launcher| {
                         Button::new(launcher.to_string())
-                             .label(format!("Import from {}", launcher))
+                             .label(ts!("import.from", launcher = launcher))
                              .w_full()
                               .disabled(imports.imports[launcher].is_none())
                              .on_click(cx.listener(move |page, _, _, _| page.import_from = Some(launcher)))
                      })
                 })
                 .child(Button::new("mrpack")
-                    .label("Import Modrinth Pack (.mrpack)")
+                    .label(ts!("import.modrinth_pack.label"))
                     .w_full()
                     .on_click(cx.listener(|page, _, window, cx| {
                         let receiver = cx.prompt_for_paths(PathPromptOptions {
                             files: true,
                             directories: false,
                             multiple: false,
-                            prompt: Some("Select Modrinth Pack".into())
+                            prompt: Some(ts!("import.modrinth_pack.select"))
                         });
                         let page_entity = cx.entity();
                         page._open_file_task = window.spawn(cx, async move |cx| {
@@ -123,7 +123,7 @@ impl Render for ImportPage {
             );
 
         if let Some(import_from) = self.import_from && let Some(import) = &imports.imports[import_from] {
-            let label = format!("Import From {}", import_from);
+            let label = ts!("import.from", launcher = import_from);
             let import_accounts = self.import_accounts && import.can_import_accounts;
             content = content.child(v_flex()
                 .w_full()
@@ -132,12 +132,12 @@ impl Render for ImportPage {
                 .p_2()
                 .rounded(cx.theme().radius_lg)
                 .border_color(cx.theme().border)
-                .when(import.can_import_accounts, |div| div.child(Checkbox::new("accounts").label("Import Accounts")
+                .when(import.can_import_accounts, |div| div.child(Checkbox::new("accounts").label(ts!("import.accounts"))
                     .checked(self.import_accounts)
                     .on_click(cx.listener(|page, checked, _, _| {
                     page.import_accounts = *checked;
                 }))))
-                .child(Checkbox::new("instances").label("Import Instances")
+                .child(Checkbox::new("instances").label(ts!("import.instances"))
                     .checked(self.import_instances)
                     .on_click(cx.listener(|page, checked, _, _| {
                     page.import_instances = *checked;
@@ -166,7 +166,7 @@ impl Render for ImportPage {
                     });
 
                     let title = SharedString::new(label.clone());
-                    crate::modals::generic::show_modal(window, cx, title, "Error importing".into(), modal_action);
+                    crate::modals::generic::show_modal(window, cx, title, ts!("import.error"), modal_action);
                 })))
             )
         }

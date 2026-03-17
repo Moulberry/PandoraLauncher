@@ -361,10 +361,10 @@ impl Render for ModrinthProjectPage {
                     let text = if gv.len() <= 5 {
                         gv.iter().map(|v| v.as_ref()).collect::<Vec<_>>().join(", ")
                     } else {
-                        format!("{} - {} ({} versions)",
-                            gv.first().map(|v| v.as_ref()).unwrap_or(""),
-                            gv.last().map(|v| v.as_ref()).unwrap_or(""),
-                            gv.len())
+                        ts!("instance.content.versions",
+                            min = gv.first().map(|v| v.as_ref()).unwrap_or(""),
+                            max = gv.last().map(|v| v.as_ref()).unwrap_or(""),
+                            num = gv.len()).to_string()
                     };
                     h_flex()
                         .gap_1()

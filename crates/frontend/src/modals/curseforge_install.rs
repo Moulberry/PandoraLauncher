@@ -442,7 +442,7 @@ impl InstallDialog {
 
             match result {
                 FrontendMetadataResult::Loading => {
-                    self.mod_version_not_loaded_message = Some("Loading files...".into());
+                    self.mod_version_not_loaded_message = Some(ts!("instance.content.load.files.title"));
                 },
                 FrontendMetadataResult::Loaded(result) => {
                     self.mod_version_not_loaded_message = None;
@@ -489,7 +489,7 @@ impl InstallDialog {
                     }));
                 },
                 FrontendMetadataResult::Error(shared_string) => {
-                    self.mod_version_not_loaded_message = Some(format!("Error loading files: {}", shared_string).into());
+                    self.mod_version_not_loaded_message = Some(ts!("instance.content.load.files.title", err = shared_string));
                 },
             }
         }

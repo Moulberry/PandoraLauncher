@@ -73,19 +73,19 @@ impl Page for InstancePage {
                             let name = name.clone();
                             let backend_handle = backend_handle.clone();
                             window.open_dialog(cx, move |dialog, _, _| {
-                                dialog.title("Instance already running")
+                                dialog.title(ts!("instance.start.already_running.label"))
                                     .overlay_closable(false)
                                     .flex()
                                     .line_height(rems(1.2))
-                                    .child("Starting it again may cause malfunction or corrupt your saved worlds.")
+                                    .child(ts!("instance.start.already_running.warning"))
                                     .child(div().h_2())
-                                    .child("We cannot take responsibility for any issues if you choose to start another game. Would you like to continue anyway?")
+                                    .child(ts!("instance.start.already_running.confirm"))
                                     .footer(h_flex()
                                         .gap_2()
                                         .w_full()
                                         .child(
                                             Button::new("cancel")
-                                                .label("Cancel")
+                                                .label(ts!("common.cancel"))
                                                 .on_click(|_, window, cx| {
                                                     window.close_dialog(cx);
                                                 }).flex_grow()
@@ -93,7 +93,7 @@ impl Page for InstancePage {
                                         .child(
                                             Button::new("ok")
                                                 .success()
-                                                .label("Start anyway")
+                                                .label(ts!("instance.start.already_running.start"))
                                                 .on_click({
                                                     let name = name.clone();
                                                     let backend_handle = backend_handle.clone();

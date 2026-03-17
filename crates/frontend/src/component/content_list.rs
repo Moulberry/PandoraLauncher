@@ -409,9 +409,9 @@ impl ContentListDelegate {
             .when_some(desc2, |div, desc2| div.child(desc2.when(!visually_enabled, |this| this.line_through())));
 
         if child.disabled_third_party_downloads {
-            item_content = item_content.child(ErrorAlert::new("Blocked".into(), "The mod author has blocked downloads from third-party launchers".into()).w(Length::Auto));
+            item_content = item_content.child(ErrorAlert::new(ts!("instance.content.install.blocked"), ts!("instance.content.install.no_third_party_downloads")).w(Length::Auto));
         } else if child.is_missing {
-            item_content = item_content.child(Button::new("download").label("Download").success().on_click({
+            item_content = item_content.child(Button::new("download").label(ts!("common.download")).success().on_click({
                 let backend_handle = self.backend_handle.clone();
                 let id = self.id;
                 let content_id = child.parent;
@@ -424,8 +424,8 @@ impl ContentListDelegate {
                         modal_action: modal_action.clone()
                     });
 
-                    crate::modals::generic::show_modal(window, cx, "Downloading children".into(),
-                        "Error downloading children".into(), modal_action);
+                    crate::modals::generic::show_modal(window, cx, ts!("instance.content.install.children_downloading.title"),
+                        ts!("instance.content.install.children_downloading.error"), modal_action);
                 }
             }));
         }

@@ -17,6 +17,24 @@ use schema::backend_config::{BackendConfig, ProxyConfig, ProxyProtocol};
 
 use crate::{entity::DataEntities, icon::PandoraIcon, interface_config::InterfaceConfig, ts};
 
+#[derive(Clone)]
+struct LocaleItem {
+    code: SharedString,
+    name: SharedString,
+}
+
+impl gpui_component::select::SelectItem for LocaleItem {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        self.name.clone()
+    }
+
+    fn value(&self) -> &SharedString {
+        &self.code
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum SettingsTab {
     #[default]
@@ -28,6 +46,7 @@ struct Settings {
     selected_tab: SettingsTab,
     theme_folder: Arc<Path>,
     theme_select: Entity<SelectState<SearchableVec<SharedString>>>,
+    locale_select: Entity<SelectState<Vec<LocaleItem>>>,
     backend_handle: BackendHandle,
     pending_request: bool,
     backend_config: Option<BackendConfig>,
@@ -69,6 +88,30 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             gpui_component::Theme::global_mut(cx).apply_config(&theme);
         }).detach();
 
+        let available_locales: Vec<LocaleItem> = rust_i18n::available_locales!()
+            .iter()
+            .map(|l| LocaleItem {
+                code: SharedString::from(*l),
+                name: ts!(format!("settings.language.{}", l)),
+            })
+            .collect();
+
+        let current_locale = SharedString::from(rust_i18n::locale().to_string());
+
+        let locale_select = cx.new(|cx| {
+            let mut state = SelectState::new(available_locales, None, window, cx);
+            state.set_selected_value(&current_locale, window, cx);
+            state
+        });
+
+        cx.subscribe_in(&locale_select, window, |_, entity, _: &SelectEvent<_>, _window, cx| {
+            let Some(locale) = entity.read(cx).selected_value().cloned() else {
+                return;
+            };
+            rust_i18n::set_locale(locale.as_ref());
+            InterfaceConfig::get_mut(cx).active_locale = locale.to_string();
+        }).detach();
+
         let proxy_protocol_select = cx.new(|cx| {
             let protocols = vec!["HTTP", "HTTPS", "SOCKS5"];
             let mut state = SelectState::new(protocols, None, window, cx);
@@ -78,9 +121,9 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
 
         let proxy_host_input = cx.new(|cx| InputState::new(window, cx).placeholder("proxy.example.com"));
         let proxy_port_input = cx.new(|cx| InputState::new(window, cx).default_value("8080".to_string()));
-        let proxy_username_input = cx.new(|cx| InputState::new(window, cx).placeholder("username"));
+        let proxy_username_input = cx.new(|cx| InputState::new(window, cx).placeholder(ts!("settings.proxy.username")));
         let proxy_password_input = cx.new(|cx| {
-            let mut state = InputState::new(window, cx).placeholder("password");
+            let mut state = InputState::new(window, cx).placeholder(ts!("settings.proxy.password"));
             state.set_masked(true, window, cx);
             state
         });
@@ -89,6 +132,7 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             selected_tab: SettingsTab::Interface,
             theme_folder,
             theme_select,
+            locale_select,
             backend_handle: data.backend_handle.clone(),
             pending_request: false,
             backend_config: None,
@@ -269,6 +313,10 @@ impl Settings {
                     cx.open_url("https://github.com/longbridge/gpui-component/tree/main/themes");
                 }
             }))
+            .child(crate::labelled(
+                ts!("settings.language.title"),
+                Select::new(&self.locale_select)
+            ))
             .child(crate::labelled(ts!("settings.delete.title"),
                 v_flex().gap_2()
                     .child(Checkbox::new("confirm-delete-mods")

@@ -75,7 +75,7 @@ impl PageType {
                     ts!("curseforge.name")
                 }
             },
-            PageType::Import => "Import".into(),
+            PageType::Import => ts!("import.label").into(),
             PageType::Syncing => ts!("instance.sync.label"),
             PageType::ModrinthProject { project_title, .. } => project_title.clone(),
             PageType::InstancePage { name } => {
@@ -370,7 +370,7 @@ impl Render for LauncherUI {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let page_type = InterfaceConfig::get(cx).main_page.clone();
 
-        let library_group = MenuGroup::new("Minecraft")
+        let library_group = MenuGroup::new(ts!("common.minecraft"))
             .child(MenuGroupItem::new(ts!("instance.title"))
                 .active(page_type == PageType::Instances)
                 .on_click(cx.listener(|launcher, _, window, cx| {
@@ -394,8 +394,8 @@ impl Render for LauncherUI {
                     launcher.switch_page(PageType::Curseforge { installing_for: None }, &[], window, cx);
                 })));
 
-        let files_group = MenuGroup::new("Files")
-            .child(MenuGroupItem::new("Import")
+        let files_group = MenuGroup::new(ts!("common.files"))
+            .child(MenuGroupItem::new(ts!("import.label"))
                 .active(page_type == PageType::Import)
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Import, &[], window, cx);
@@ -621,7 +621,7 @@ impl Render for LauncherUI {
             })
             .child(PandoraIcon::Bug)
             .tooltip(move |window, cx| {
-                Tooltip::new("Report a bug").build(window, cx)
+                Tooltip::new(ts!("system.report_bug.label")).build(window, cx)
             })
             .on_click({
                 move |_, window, cx| {
@@ -713,7 +713,7 @@ fn open_bug_report_url(window: &mut Window, cx: &mut App) {
     }
 
     let Some(github) = option_env!("GITHUB_REPOSITORY_URL") else {
-        let mut notification: Notification = (NotificationType::Error, SharedString::from("Unable to report bug, GITHUB_REPOSITORY_URL was not set at compile time")).into();
+        let mut notification: Notification = (NotificationType::Error, ts!("system.report_bug.no_url_error")).into();
         notification = notification.autohide(false);
         window.push_notification(notification, cx);
         return;

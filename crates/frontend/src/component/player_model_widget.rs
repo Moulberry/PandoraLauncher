@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Instant};
 use gpui::{prelude::*, *};
 use gpui_component::{Sizable, button::Button, h_flex, slider::{Slider, SliderEvent, SliderState}, v_flex};
 
-use crate::{component::player_model::{self, PlayerModel, PlayerModelState}, icon::PandoraIcon};
+use crate::{component::player_model::{self, PlayerModel, PlayerModelState}, icon::PandoraIcon, ts};
 
 pub struct PlayerModelWidget {
     player_model_state: Entity<PlayerModelState>,
@@ -209,7 +209,7 @@ impl Render for PlayerModelWidget {
             .child(v_flex().p_4().w_full()
                 .child(v_flex()
                     .child(h_flex().text_sm().gap_1()
-                        .child(format!("Yaw: {}°", yaw as i32))
+                        .child(ts!("skins.pose.yaw", num = yaw as i32))
                         .child(Button::new("play-yaw").compact().small()
                             .icon(PandoraIcon::pause_play(self.animating_yaw))
                             .on_click(cx.listener(|widget, _, _, cx| {
@@ -220,7 +220,7 @@ impl Render for PlayerModelWidget {
                     .child(Slider::new(&self.yaw_slider_state)))
                 .child(v_flex()
                     .child(h_flex().text_sm().gap_1()
-                        .child(format!("Pitch: {}°", pitch as i32))
+                        .child(ts!("skins.pose.pitch", num = pitch as i32))
                         .child(Button::new("play-pitch").compact().small()
                             .icon(PandoraIcon::pause_play(self.animating_pitch))
                             .on_click(cx.listener(|widget, _, _, cx| {
@@ -231,7 +231,7 @@ impl Render for PlayerModelWidget {
                     .child(Slider::new(&self.pitch_slider_state)))
                 .child(v_flex()
                     .child(h_flex().text_sm().gap_1()
-                        .child("Animation")
+                        .child(ts!("skins.pose.animation"))
                         .child(Button::new("play-anim").compact().small()
                             .icon(PandoraIcon::pause_play(self.animating_animation))
                             .on_click(cx.listener(|widget, _, _, cx| {

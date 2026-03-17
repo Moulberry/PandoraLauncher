@@ -4,7 +4,7 @@ use gpui_component::{ActiveTheme, Colorize, InteractiveElementExt, Sizable, butt
 use once_cell::sync::Lazy;
 use schema::pandora_update::UpdatePrompt;
 
-use crate::{component::page_path::PagePath, icon::PandoraIcon};
+use crate::{component::page_path::PagePath, icon::PandoraIcon, ts};
 
 #[derive(IntoElement)]
 pub struct TitleBar {
@@ -89,7 +89,7 @@ impl RenderOnce for TitleBar {
                         })
                         .when_some(self.update, |this, update| {
                             this.child(Button::new("update")
-                                .label("Update Available")
+                                .label(ts!("system.update.available"))
                                 .success()
                                 .compact()
                                 .small()

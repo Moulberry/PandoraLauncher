@@ -1201,6 +1201,13 @@ impl BackendStateFileWatching {
         }
     }
 
+    pub fn unwatch_target(&mut self, target: WatchTarget) {
+        if let Some(path) = self.watch_target_to_path.remove(&target) {
+            self.remove(&path);
+            _ = self.watcher.unwatch(&path);
+        }
+    }
+
     pub fn get_target(&self, path: &Path) -> Option<&WatchTarget> {
         self.watching.get(path)
     }

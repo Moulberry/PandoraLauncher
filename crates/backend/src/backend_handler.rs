@@ -1552,13 +1552,17 @@ impl BackendState {
                         self.send.send(instance.create_modify_message());
                         return;
                     } else {
+                        self.file_watching.write().unwatch_target(crate::WatchTarget::InstanceDir { id });
+
                         match replace_source_directory_with_link(&source_path, &path) {
                             Ok(cleanup_warning) => {
+                                self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
                                 if let Some(err) = cleanup_warning {
                                     self.send.send_warning(err);
                                 }
                             },
                             Err(err) => {
+                                self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
                                 log::error!("Error while linking to moved instance: {err:?}");
                                 self.send.send_error(format!("Error while linking to moved instance: {err}"));
                                 return;

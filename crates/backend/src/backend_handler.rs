@@ -1470,6 +1470,10 @@ impl BackendState {
                         }
 
                         if is_normal_instance_folder {
+                            if let Some(err) = cleanup_moved_instance_source(&target) {
+                                self.send.send_warning(err);
+                            }
+
                             let mut file_watching = self.file_watching.write();
                             instance.rewatch_directories(&mut *file_watching);
                             file_watching.watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
@@ -1478,10 +1482,14 @@ impl BackendState {
                             self.send.send(instance.create_modify_message());
                             return;
                         } else {
-                            if let Err(err) = junction::create(&path, &instance.root_path) {
+                            if let Err(err) = create_directory_link(&path, &instance.root_path) {
                                 log::error!("Error while creating junction to moved instance: {err:?}");
                                 self.send.send_error(format!("Error while creating junction to moved instance: {err}"));
                                 return;
+                            }
+
+                            if let Some(err) = cleanup_moved_instance_source(&target) {
+                                self.send.send_warning(err);
                             }
                         }
 
@@ -1498,6 +1506,10 @@ impl BackendState {
                         _ = std::fs::remove_file(&instance.root_path);
 
                         if is_normal_instance_folder {
+                            if let Some(err) = cleanup_moved_instance_source(&target) {
+                                self.send.send_warning(err);
+                            }
+
                             let mut file_watching = self.file_watching.write();
                             instance.rewatch_directories(&mut *file_watching);
                             file_watching.watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
@@ -1506,32 +1518,32 @@ impl BackendState {
                             self.send.send(instance.create_modify_message());
                             return;
                         } else {
-                            #[cfg(unix)]
-                            if let Err(err) = std::os::unix::fs::symlink(&path, &instance.root_path) {
+                            if let Err(err) = create_directory_link(&path, &instance.root_path) {
                                 log::error!("Error while linking to moved instance: {err:?}");
                                 self.send.send_error(format!("Error while linking to moved instance: {err}"));
                                 return;
                             }
-                            #[cfg(windows)]
-                            if let Err(err) = std::os::windows::fs::symlink_dir(&path, &instance.root_path) {
-                                log::error!("Error while linking to moved instance: {err:?}");
-                                self.send.send_error(format!("Error while linking to moved instance: {err}"));
-                                return;
+
+                            if let Some(err) = cleanup_moved_instance_source(&target) {
+                                self.send.send_warning(err);
                             }
-                            #[cfg(not(any(unix, windows)))]
-                            compile_error!("Unsupported platform");
                         }
 
                         return;
                     }
 
-                    if let Err(err) = move_instance_directory(&instance.root_path, &path) {
+                    let source_path = instance.root_path.clone();
+                    if let Err(err) = move_instance_directory(&source_path, &path) {
                         log::error!("Unable to move instance files: {err:?}");
                         self.send.send_error(format!("Unable to move instance files: {err}"));
                         return;
                     }
 
                     if is_normal_instance_folder {
+                        if let Some(err) = cleanup_moved_instance_source(&source_path) {
+                            self.send.send_warning(err);
+                        }
+
                         let mut file_watching = self.file_watching.write();
                         instance.rewatch_directories(&mut *file_watching);
                         file_watching.watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
@@ -1540,20 +1552,18 @@ impl BackendState {
                         self.send.send(instance.create_modify_message());
                         return;
                     } else {
-                        #[cfg(unix)]
-                        if let Err(err) = std::os::unix::fs::symlink(&path, &instance.root_path) {
-                            log::error!("Error while linking to moved instance: {err:?}");
-                            self.send.send_error(format!("Error while linking to moved instance: {err}"));
-                            return;
+                        match replace_source_directory_with_link(&source_path, &path) {
+                            Ok(cleanup_warning) => {
+                                if let Some(err) = cleanup_warning {
+                                    self.send.send_warning(err);
+                                }
+                            },
+                            Err(err) => {
+                                log::error!("Error while linking to moved instance: {err:?}");
+                                self.send.send_error(format!("Error while linking to moved instance: {err}"));
+                                return;
+                            },
                         }
-                        #[cfg(windows)]
-                        if let Err(err) = junction::create(&path, &instance.root_path) {
-                            log::error!("Error while creating junction to moved instance: {err:?}");
-                            self.send.send_error(format!("Error while creating junction to moved instance: {err}"));
-                            return;
-                        }
-                        #[cfg(not(any(unix, windows)))]
-                        compile_error!("Unsupported platform");
                     }
 
                 }
@@ -2110,7 +2120,7 @@ fn move_instance_directory(src: &Path, dest: &Path) -> Result<(), Arc<str>> {
 
     if dest.exists() {
         if !dest.is_dir() {
-            return Err("Unable to move instance files: destination already exists and is not a directory".into());
+            return Err("Unable to move instance files: destination is not a directory".into());
         }
 
         let mut entries = std::fs::read_dir(dest)
@@ -2173,17 +2183,58 @@ fn move_instance_directory_inner(
         return Err(format!("Unable to finalize moved instance files: {err}").into());
     }
 
-    // assuming the migration is done, we can now safely remove the source
-    if let Err(err) = std::fs::remove_dir_all(src) {
-        return match std::fs::remove_dir_all(dest) {
-            Ok(()) => Err(format!("Unable to remove original instance files after copying them: {err}").into()),
-            Err(cleanup_err) => Err(
-                format!("Unable to remove original instance files after copying them: {err}; also failed to clean up relocated copy: {cleanup_err}")
-                    .into()),
+    Ok(())
+}
+
+fn cleanup_moved_instance_source(path: &Path) -> Option<Arc<str>> {
+    match std::fs::remove_dir_all(path) {
+        Ok(()) => None,
+        Err(err) => Some(format!("Unable to clean up original instance files after copying them: {err}").into()),
+    }
+}
+
+fn create_directory_link(target: &Path, path: &Path) -> Result<(), Arc<str>> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(target, path)
+            .map_err(|err| format!("Unable to create link to moved instance: {err}").into())
+    }
+    #[cfg(windows)]
+    {
+        junction::create(target, path)
+            .map_err(|err| format!("Unable to create link to moved instance: {err}").into())
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        compile_error!("Unsupported platform");
+    }
+}
+
+fn replace_source_directory_with_link(src: &Path, dest: &Path) -> Result<Option<Arc<str>>, Arc<str>> {
+    let parent = src.parent().ok_or_else(|| Arc::<str>::from("Unable to replace instance directory with a link: source has no parent directory"))?;
+    let source_temp = prepare_move_temp_dir(parent, src)?;
+    std::fs::rename(src, &source_temp)
+        .map_err(|err| Arc::<str>::from(format!("Unable to prepare original instance directory for relinking: {err}")))?;
+
+    if let Err(err) = create_directory_link(dest, src) {
+        let restore_result = std::fs::rename(&source_temp, src);
+        let cleanup_dest_result = if restore_result.is_ok() {
+            std::fs::remove_dir_all(dest).err()
+        } else {
+            None
         };
+
+        let mut error = format!("Unable to create link to moved instance: {err}");
+        if let Err(restore_err) = restore_result {
+            error.push_str(&format!("; also failed to restore original instance directory: {restore_err}"));
+        }
+        if let Some(cleanup_err) = cleanup_dest_result {
+            error.push_str(&format!("; also failed to clean up relocated copy: {cleanup_err}"));
+        }
+        return Err(error.into());
     }
 
-    Ok(())
+    Ok(cleanup_moved_instance_source(&source_temp))
 }
 
 fn check_argument_expansions(argument: &str) {

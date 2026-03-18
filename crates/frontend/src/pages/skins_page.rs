@@ -535,6 +535,25 @@ impl Render for SkinsPage {
                     .when(active, |this| {
                         this.child(Icon::new(PandoraIcon::Flag).absolute().right(padding).bottom(padding))
                     })
+                    .child(
+                        Button::new("delete-skin").icon(PandoraIcon::Trash2)
+                        .danger()
+                        .compact()
+                        .absolute()
+                        .small()
+                        .left(padding)
+                        .bottom(padding)
+                        .on_click({
+                            let skin = skin.clone();
+                            let skin: Arc<[u8]> = skin.into();
+                            cx.listener(move |page, _, _, cx| {
+                                
+                                page.data.backend_handle.send(MessageToBackend::RemoveFromSkinLibrary {
+                                    skin: { skin.clone() }
+                                });
+                            })
+                        })
+                    )
                     .child(skin_img)
                     .on_click({
                         let skin = skin.clone();

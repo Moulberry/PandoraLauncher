@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Cursor, path::Path, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, io::Cursor, path::{Path, PathBuf}, sync::Arc, time::SystemTime};
 
 use bridge::message::{AccountSkinResult, BridgeDataLoadState, MessageToFrontend, SkinLibrary};
 use image::DynamicImage;
@@ -53,6 +53,42 @@ impl SkinManager {
             self.skin_cache.insert(image.as_bytes().into(), skin.clone());
             skin
         }
+    }
+
+    pub fn remove_skin(backend: &BackendState, image_bytes: Arc<[u8]>) {
+        let Some(skin_path) = Self::get_path_from_skin(backend, image_bytes) else {
+            log::warn!("Unable to find skin");
+            return;
+        };
+
+        let Ok(_) = std::fs::remove_file(skin_path) else {
+            log::warn!("Unable to delete skin");
+            return;
+        };
+
+    }
+
+    fn get_path_from_skin(backend: &BackendState, skin: Arc<[u8]>) -> Option<PathBuf> {
+        let Ok(read_dir) = std::fs::read_dir(&backend.directories.skin_library_dir) else {
+            return None;
+        };
+
+        for entry in read_dir {
+            let Ok(entry) = entry else {
+                break;
+            };
+            
+            let path = entry.path();
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+
+            if bytes == *skin {
+                return Some(path);
+            }
+        }
+
+        None
     }
 
     pub fn frontend_request(

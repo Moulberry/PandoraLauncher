@@ -1687,6 +1687,9 @@ impl BackendState {
             MessageToBackend::RequestSkinLibrary => {
                 SkinManager::load_skin_library(&self);
             },
+            MessageToBackend::RemoveFromSkinLibrary { skin } => {
+                SkinManager::remove_skin(&self, skin);
+            },
             MessageToBackend::AddToSkinLibrary { source } => {
                 let (bytes, filename) = match source {
                     bridge::message::UrlOrFile::Url { url } => {

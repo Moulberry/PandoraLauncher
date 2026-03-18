@@ -1469,7 +1469,15 @@ impl BackendState {
                             let _ = std::fs::remove_dir(&instance.root_path);
                         }
 
-                        if !is_normal_instance_folder {
+                        if is_normal_instance_folder {
+                            let mut file_watching = self.file_watching.write();
+                            instance.rewatch_directories(&mut *file_watching);
+                            file_watching.watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
+                            drop(file_watching);
+
+                            self.send.send(instance.create_modify_message());
+                            return;
+                        } else {
                             if let Err(err) = junction::create(&path, &instance.root_path) {
                                 log::error!("Error while creating junction to moved instance: {err:?}");
                                 self.send.send_error(format!("Error while creating junction to moved instance: {err}"));
@@ -1489,7 +1497,15 @@ impl BackendState {
 
                         _ = std::fs::remove_file(&instance.root_path);
 
-                        if !is_normal_instance_folder {
+                        if is_normal_instance_folder {
+                            let mut file_watching = self.file_watching.write();
+                            instance.rewatch_directories(&mut *file_watching);
+                            file_watching.watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
+                            drop(file_watching);
+
+                            self.send.send(instance.create_modify_message());
+                            return;
+                        } else {
                             #[cfg(unix)]
                             if let Err(err) = std::os::unix::fs::symlink(&path, &instance.root_path) {
                                 log::error!("Error while linking to moved instance: {err:?}");
@@ -1515,7 +1531,15 @@ impl BackendState {
                         return;
                     }
 
-                    if !is_normal_instance_folder {
+                    if is_normal_instance_folder {
+                        let mut file_watching = self.file_watching.write();
+                        instance.rewatch_directories(&mut *file_watching);
+                        file_watching.watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
+                        drop(file_watching);
+
+                        self.send.send(instance.create_modify_message());
+                        return;
+                    } else {
                         #[cfg(unix)]
                         if let Err(err) = std::os::unix::fs::symlink(&path, &instance.root_path) {
                             log::error!("Error while linking to moved instance: {err:?}");

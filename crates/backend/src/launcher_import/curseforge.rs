@@ -77,7 +77,6 @@ pub fn import_instances_from_curseforge(backend: &BackendState, import_job: &Imp
     let mut to_import = Vec::new();
 
     for folder in import_job.paths.iter() {
-        println!("{:?}", folder);
         if !folder.is_dir() {
             continue;
         }
@@ -92,12 +91,9 @@ pub fn import_instances_from_curseforge(backend: &BackendState, import_job: &Imp
         }
 
         let curseforge_config = folder.join("minecraftinstance.json");
-        println!("{:?}", curseforge_config);
-        println!("{:?}", curseforge_config.exists());
         if !curseforge_config.exists() {
             continue;
         }
-        println!("a");
 
         to_import.push(CurseforgeInstanceToImport {
             pandora_path,
@@ -105,7 +101,6 @@ pub fn import_instances_from_curseforge(backend: &BackendState, import_job: &Imp
             folder: folder.clone()
         });
     }
-    println!("{:?}", to_import);
 
     all_tracker.set_total(to_import.len());
 

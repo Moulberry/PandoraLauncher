@@ -1,3 +1,4 @@
 {
-  "format_on_save": "off"
+  "format_on_save": "off",
+  "hard_tabs": false
 }

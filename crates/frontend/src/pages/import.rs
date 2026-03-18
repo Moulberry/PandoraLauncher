@@ -113,8 +113,7 @@ impl Render for ImportPage {
                                      return;
                                  };
 
-                                 let data_dir = base_dirs.data_dir();
-                                 let default_path = launcher.default_path(data_dir);
+                                 let default_path = launcher.default_path(&base_dirs);
                                  page.import_from_path = Some(PathLabel::new(default_path.clone(), true));
                                  page.import_job = None;
                                  page.get_import_job(launcher, default_path, cx);

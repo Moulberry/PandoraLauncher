@@ -11,15 +11,19 @@ pub struct ImportFromOtherLauncherJob {
 #[derive(Debug, Display, Clone, Copy, enum_map::Enum, EnumIter)]
 pub enum OtherLauncher {
     Prism,
+    CurseForge,
     Modrinth,
     MultiMC,
     ATLauncher,
 }
 
 impl OtherLauncher {
-    pub fn default_path(&self, data_dir: &Path) -> Arc<Path> {
+    pub fn default_path(&self, directories: &directories::BaseDirs) -> Arc<Path> {
+    	let data_dir = directories.data_dir();
+     	let document_dir = directories.home_dir().join("Documents");
         match self {
             OtherLauncher::Prism => data_dir.join("PrismLauncher").into(),
+            OtherLauncher::CurseForge => document_dir.join("curseforge").join("minecraft").into(),
             OtherLauncher::Modrinth => data_dir.join("ModrinthApp").into(),
             OtherLauncher::MultiMC => data_dir.join("multimc").into(),
             OtherLauncher::ATLauncher => data_dir.join("atlauncher").into(),

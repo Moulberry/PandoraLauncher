@@ -848,6 +848,7 @@ version = "0.1.0"
 dependencies = [
  "atomic-time",
  "atomic_enum",
+ "directories",
  "enum-map",
  "enumset",
  "indexmap 2.13.0",

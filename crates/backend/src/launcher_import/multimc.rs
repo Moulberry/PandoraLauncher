@@ -7,7 +7,7 @@ use schema::{instance::{InstanceConfiguration, LwjglLibraryPath}, loader::Loader
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{BackendState, account::BackendAccount};
+use crate::{BackendState, account::BackendAccount, instance::InstanceStats};
 
 
 #[derive(Deserialize)]
@@ -19,6 +19,59 @@ struct MMCPack {
 struct MMCPackComponent {
     uid: Arc<str>,
     version: Arc<str>,
+}
+
+fn try_load_stats_from_multimc(instance_cfg: &Path) -> Option<InstanceStats> {
+    let instance_cfg_str = std::fs::read_to_string(instance_cfg).ok()?;
+
+    let mut stats = InstanceStats::default();
+
+    let mut section = None;
+    for line in instance_cfg_str.split(|v| v == '\n') {
+        let line = line.trim_ascii_start();
+        if line.is_empty() {
+            continue;
+        }
+
+        let start = line.as_bytes()[0];
+        match start {
+            b';' | b'#' => continue,
+            b'[' => {
+                section = Some(line.trim_ascii_end());
+            },
+            _ => {
+                let Some((key, value)) = line.split_once("=") else {
+                    continue;
+                };
+
+
+                let mut value = value.trim_ascii();
+                if value.len() > 1 && value.starts_with('"') && value.ends_with('"') {
+                    value = &value[1..value.len()-1];
+                } else if value.len() > 1 && value.starts_with('\'') && value.ends_with('\'') {
+                    value = &value[1..value.len()-1];
+                }
+
+                match (section, key) {
+                    (Some("[General]"), "totalTimePlayed") => {
+                        let Ok(time_played) = value.parse::<u64>() else {
+                            continue;
+                        };
+                        stats.total_playtime_secs = time_played;
+                    },
+                    (Some("[General]"), "lastLaunchTime") => {
+                        let Ok(last_launcher_time) = value.parse::<i64>() else {
+                            continue;
+                        };
+                        stats.last_played_unix_ms = Some(last_launcher_time);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Some(stats)
 }
 
 pub fn try_load_from_multimc(instance_cfg: &Path, mmc_pack: &Path) -> Option<InstanceConfiguration> {
@@ -200,7 +253,6 @@ pub fn try_load_from_multimc(instance_cfg: &Path, mmc_pack: &Path) -> Option<Ins
 
     Some(configuration)
 }
-
 
 #[derive(Deserialize, Debug)]
 struct MultiMCAccountsJson {
@@ -479,6 +531,14 @@ fn import_instances_from_multimc(backend: &BackendState, import_job: &ImportFrom
         // Write info_v1.json
         let info_path = to_import.pandora_path.join("info_v1.json");
         _ = crate::write_safe(&info_path, &configuration_bytes);
+
+        // Write stats_v1.json if we have stats in the first place.
+        if let Some(stats) = try_load_stats_from_multimc(&to_import.multimc_instance_cfg) {
+            let stats_path = to_import.pandora_path.join("stats_v1.json");
+            if let Ok(stats_bytes) = serde_json::to_vec(&stats) {
+                _ = crate::write_safe(&stats_path, &stats_bytes);
+            }
+        }
 
         all_tracker.add_count(1);
         all_tracker.notify();

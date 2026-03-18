@@ -1383,6 +1383,11 @@ impl BackendState {
             },
             MessageToBackend::RelocateInstance { id, path } => {
                 let (instance_root, resolved_instance_root) = if let Some(instance) = self.instance_state.read().instances.get(id) {
+                    if instance.has_active_session() {
+                        self.send.send_warning("Cannot relocate instance while it is running");
+                        return;
+                    }
+
                     (instance.root_path.clone(), instance.resolve_real_root_path())
                 } else {
                     return;

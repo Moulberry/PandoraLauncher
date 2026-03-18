@@ -19,8 +19,8 @@ pub enum OtherLauncher {
 
 impl OtherLauncher {
     pub fn default_path(&self, directories: &directories::BaseDirs) -> Arc<Path> {
-    	let data_dir = directories.data_dir();
-     	let document_dir = directories.home_dir().join("Documents");
+        let data_dir = directories.data_dir();
+        let document_dir = directories.home_dir().join("Documents");
         match self {
             OtherLauncher::Prism => data_dir.join("PrismLauncher").into(),
             OtherLauncher::CurseForge => document_dir.join("curseforge").join("minecraft").into(),

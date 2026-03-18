@@ -30,13 +30,13 @@ pub fn get_import_from_other_launcher_job(other_launcher: OtherLauncher, path: A
             })
         },
         OtherLauncher::CurseForge => {
-        	Some(ImportFromOtherLauncherJob {
-         		import_accounts: false,
-             	paths: collect_subfolders_matching(&path.join("Instances"), &|path| {
-              		path.join("minecraftinstance.json").exists()
+            Some(ImportFromOtherLauncherJob {
+                import_accounts: false,
+                paths: collect_subfolders_matching(&path.join("Instances"), &|path| {
+                    path.join("minecraftinstance.json").exists()
                 }),
-           		root: path
-         	})
+                root: path
+            })
         }
         OtherLauncher::Modrinth => {
             let paths = match read_profiles_from_modrinth_db(&path) {
@@ -105,7 +105,7 @@ pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherL
             import_from_multimc(backend, import_job, modal_action).await;
         },
         OtherLauncher::CurseForge => {
-       		import_from_curseforge(backend, import_job, modal_action);
+            import_from_curseforge(backend, import_job, modal_action);
         }
         OtherLauncher::Modrinth => {
             if let Err(err) = import_instances_from_modrinth(backend, import_job, &modal_action) {

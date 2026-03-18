@@ -1463,12 +1463,10 @@ impl BackendState {
                             self.send.send_error(format!("Error while deleting junction to moved instance: {err}"));
                             return;
                         }
-
-                        if instance.root_path.exists() {
-                            if let Err(err) = std::fs::remove_dir(&instance.root_path) {
-                                log::error!("Error while deleting junction directory: {err:?}");
-                                self.send.send_error(format!("Error while deleting junction directory: {err}"));
-                            }
+                        
+                        // removing junction doesnt remove the folder for some reason
+                        if instance.root_path.is_dir() {
+                            let _ = std::fs::remove_dir(&instance.root_path);
                         }
 
                         if !is_normal_instance_folder {

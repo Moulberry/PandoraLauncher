@@ -787,3 +787,9 @@ login:
     en: Login
   error:
     en: Error while logging in
+
+import:
+  disabled:
+    en: "Please select one of the above to import from %{launcher}"
+  enabled:
+    en: "Import the above selected from %{launcher}"

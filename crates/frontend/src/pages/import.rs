@@ -9,7 +9,7 @@ use rustc_hash::FxHashSet;
 use schema::{content::ContentSource, loader::Loader};
 use strum::IntoEnumIterator;
 
-use crate::{component::{path_label::PathLabel, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries}, icon::PandoraIcon, pages::page::Page, root};
+use crate::{component::{path_label::PathLabel, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries}, icon::PandoraIcon, pages::page::Page, root, ts};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
@@ -262,8 +262,14 @@ impl Render for ImportPage {
                         )))
                 }
                 let import_accounts = import_job.import_accounts && self.import_accounts;
+                let can_import = import_accounts ||
+                	(self.import_instances && self.disabled_due_to_name_conflict.len() + self.disabled_manually.len() != import_job.paths.len());
                 import_box = import_box.child(Button::new("doimport")
-                    .disabled(!import_accounts && !self.import_instances)
+                    .tooltip(match can_import {
+                        true => ts!("import.enabled", launcher = import_from),
+                        false => ts!("import.disabled", launcher = import_from),
+                    })
+                    .disabled(!can_import)
                     .success()
                     .label(label.clone())
                     .on_click(cx.listener(move |page, _, window, cx| {

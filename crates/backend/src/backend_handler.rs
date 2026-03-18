@@ -1486,7 +1486,7 @@ impl BackendState {
                             self.send.send(instance.create_modify_message());
                             return;
                         } else {
-                            if let Err(err) = create_directory_link(&path, &instance.root_path) {
+                            if let Err(err) = relink_instance_root(&instance.root_path, &target, &path) {
                                 self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
                                 log::error!("Error while creating junction to moved instance: {err:?}");
                                 self.send.send_error(format!("Error while creating junction to moved instance: {err}"));
@@ -1530,7 +1530,7 @@ impl BackendState {
                             self.send.send(instance.create_modify_message());
                             return;
                         } else {
-                            if let Err(err) = create_directory_link(&path, &instance.root_path) {
+                            if let Err(err) = relink_instance_root(&instance.root_path, &target, &path) {
                                 self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
                                 log::error!("Error while linking to moved instance: {err:?}");
                                 self.send.send_error(format!("Error while linking to moved instance: {err}"));
@@ -2230,6 +2230,26 @@ fn create_directory_link(target: &Path, path: &Path) -> Result<(), Arc<str>> {
     {
         compile_error!("Unsupported platform");
     }
+}
+
+fn relink_instance_root(root: &Path, old_target: &Path, new_target: &Path) -> Result<(), Arc<str>> {
+    if let Err(link_err) = create_directory_link(new_target, root) {
+        if root.is_dir() {
+            let _ = std::fs::remove_dir(root);
+        }
+
+        if let Err(restore_err) = create_directory_link(old_target, root) {
+            return Err(format!(
+                "Unable to create link to moved instance: {link_err}; also failed to restore previous link: {restore_err}"
+            ).into());
+        }
+
+        return Err(format!(
+            "Unable to create link to moved instance: {link_err}; restored previous link"
+        ).into());
+    }
+
+    Ok(())
 }
 
 fn replace_source_directory_with_link(src: &Path, dest: &Path) -> Result<Option<Arc<str>>, Arc<str>> {

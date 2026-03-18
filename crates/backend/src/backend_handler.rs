@@ -1473,12 +1473,11 @@ impl BackendState {
                         }
 
                         if is_normal_instance_folder {
-                            self.file_watching.write().watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
-
                             if let Some(err) = cleanup_moved_instance_source(&target) {
                                 self.send.send_warning(err);
                             }
 
+                            instance.on_root_renamed(self, &path);
                             let mut file_watching = self.file_watching.write();
                             instance.rewatch_directories(&mut *file_watching);
                             file_watching.watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
@@ -1518,12 +1517,11 @@ impl BackendState {
                         _ = std::fs::remove_file(&instance.root_path);
 
                         if is_normal_instance_folder {
-                            self.file_watching.write().watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
-
                             if let Some(err) = cleanup_moved_instance_source(&target) {
                                 self.send.send_warning(err);
                             }
 
+                            instance.on_root_renamed(self, &path);
                             let mut file_watching = self.file_watching.write();
                             instance.rewatch_directories(&mut *file_watching);
                             file_watching.watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });

@@ -1458,7 +1458,10 @@ impl BackendState {
                             return;
                         }
 
+                        self.file_watching.write().unwatch_target(crate::WatchTarget::InstanceDir { id });
+
                         if let Err(err) = junction::delete(&instance.root_path) {
+                            self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
                             log::error!("Error while deleting junction to moved instance: {err:?}");
                             self.send.send_error(format!("Error while deleting junction to moved instance: {err}"));
                             return;
@@ -1470,6 +1473,8 @@ impl BackendState {
                         }
 
                         if is_normal_instance_folder {
+                            self.file_watching.write().watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
+
                             if let Some(err) = cleanup_moved_instance_source(&target) {
                                 self.send.send_warning(err);
                             }
@@ -1483,14 +1488,19 @@ impl BackendState {
                             return;
                         } else {
                             if let Err(err) = create_directory_link(&path, &instance.root_path) {
+                                self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
                                 log::error!("Error while creating junction to moved instance: {err:?}");
                                 self.send.send_error(format!("Error while creating junction to moved instance: {err}"));
                                 return;
                             }
 
+                            self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
+
                             if let Some(err) = cleanup_moved_instance_source(&target) {
                                 self.send.send_warning(err);
                             }
+
+                            self.send.send(instance.create_modify_message());
                         }
 
                         return;
@@ -1503,9 +1513,13 @@ impl BackendState {
                             return;
                         }
 
+                        self.file_watching.write().unwatch_target(crate::WatchTarget::InstanceDir { id });
+
                         _ = std::fs::remove_file(&instance.root_path);
 
                         if is_normal_instance_folder {
+                            self.file_watching.write().watch_filesystem(path.clone().into(), crate::WatchTarget::InstanceDir { id });
+
                             if let Some(err) = cleanup_moved_instance_source(&target) {
                                 self.send.send_warning(err);
                             }
@@ -1519,14 +1533,19 @@ impl BackendState {
                             return;
                         } else {
                             if let Err(err) = create_directory_link(&path, &instance.root_path) {
+                                self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
                                 log::error!("Error while linking to moved instance: {err:?}");
                                 self.send.send_error(format!("Error while linking to moved instance: {err}"));
                                 return;
                             }
 
+                            self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
+
                             if let Some(err) = cleanup_moved_instance_source(&target) {
                                 self.send.send_warning(err);
                             }
+
+                            self.send.send(instance.create_modify_message());
                         }
 
                         return;

@@ -2171,7 +2171,8 @@ fn prepare_move_temp_dir(parent: &Path, to: &Path) -> Result<PathBuf, Arc<str>> 
     let file_name = to.file_name().ok_or_else(|| Arc::<str>::from("Unable to move instance files: destination has no file name"))?;
 
     for _ in 0..16 {
-        let mut temp_name = file_name.to_os_string();
+        let mut temp_name = std::ffi::OsString::from(".");
+        temp_name.push(file_name);
         temp_name.push(format!(".pandora-relocate-{:08x}.tmp", rand::random::<u32>()));
 
         let temp = parent.join(temp_name);

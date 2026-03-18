@@ -1519,7 +1519,12 @@ impl BackendState {
 
                         self.file_watching.write().unwatch_target(crate::WatchTarget::InstanceDir { id });
 
-                        _ = std::fs::remove_file(&instance.root_path);
+                        if let Err(err) = std::fs::remove_file(&instance.root_path) {
+                            self.file_watching.write().watch_filesystem(instance.root_path.clone(), crate::WatchTarget::InstanceDir { id });
+                            log::error!("Error while deleting link to moved instance: {err:?}");
+                            self.send.send_error(format!("Error while deleting link to moved instance: {err}"));
+                            return;
+                        }
 
                         if is_normal_instance_folder {
                             if let Some(err) = cleanup_moved_instance_source(&target) {

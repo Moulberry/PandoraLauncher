@@ -476,6 +476,12 @@ instance:
         en: Uploading log file
       error:
         en: Error uploading log file
+    clear_console:
+      label:
+        en: Clear
+    copy_console:
+      label:
+        en: Copy
 
   # Content Management
   content:

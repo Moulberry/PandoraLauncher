@@ -20,7 +20,7 @@ use sha1::{Digest, Sha1};
 use ustr::Ustr;
 
 use crate::{
-    account::MinecraftLoginInfo, directories::LauncherDirectories, launch_wrapper, metadata::{items::{AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem}, manager::{
+    account::MinecraftLoginInfo, directories::LauncherDirectories, launch_wrapper, metadata::{items::{AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, LegacyFabricLaunchMetadataItem, LegacyFabricLoaderManifestMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem}, manager::{
         MetaLoadError, MetadataManager,
     }}
 };
@@ -355,6 +355,133 @@ impl Launcher {
                         downloads: GameLibraryDownloads {
                             artifact: Some(GameLibraryArtifact {
                                 url: format!("https://maven.fabricmc.net/{}", &artifact_path).into(),
+                                path: artifact_path.into(),
+                                sha1: None,
+                                size: None,
+                            }),
+                            classifiers: None,
+                        },
+                        name: intermediary.maven,
+                        rules: None,
+                        natives: None,
+                        extract: None,
+                    });
+                }
+
+                let libraries = &fabric_launch.launcher_meta.libraries;
+                for library in libraries.common.iter().chain(libraries.client.iter()) {
+                    let library_coordinate = MavenCoordinate::create(&library.name);
+                    let artifact_path = library_coordinate.artifact_path();
+                    version.libraries.push(GameLibrary {
+                        downloads: GameLibraryDownloads {
+                            artifact: Some(GameLibraryArtifact {
+                                url: format!("{}{}", &library.url, &artifact_path).into(),
+                                path: artifact_path.into(),
+                                sha1: Some(library.sha1),
+                                size: Some(library.size),
+                            }),
+                            classifiers: None,
+                        },
+                        name: library.name,
+                        rules: None,
+                        natives: None,
+                        extract: None,
+                    });
+                }
+
+                version.main_class = fabric_launch.launcher_meta.main_class.client;
+
+                Ok((Arc::new(version), AddVanillaJar::Yes))
+            },
+            Loader::LegacyFabric => {
+                let versions = self.meta.fetch(&MinecraftVersionManifestMetadataItem).map_err(LaunchError::from);
+
+                let fabric_loader_version = async move {
+                    if let Some(preferred_version) = instance_info.preferred_loader_version {
+                        Ok(preferred_version)
+                    } else {
+                        let manifest = self.meta.fetch(&LegacyFabricLoaderManifestMetadataItem).map_err(LaunchError::from).await?;
+
+                        let mut latest_loader_version = manifest.0.iter().find(|v| v.stable);
+                        if latest_loader_version.is_none() {
+                            latest_loader_version = manifest.0.first();
+                        }
+                        Ok(latest_loader_version.unwrap().version)
+                    }
+                };
+
+                launch_tracker.add_total(4);
+                launch_tracker.notify();
+
+                let launch_tracker2 = launch_tracker.clone();
+                let meta2 = Arc::clone(&self.meta);
+                let minecraft_version = instance_info.minecraft_version;
+                let fabric_launch = fabric_loader_version.and_then(async move |loader_version| {
+                    launch_tracker2.add_count(1);
+                    launch_tracker2.notify();
+
+                    let value = meta2.fetch(&LegacyFabricLaunchMetadataItem {
+                        minecraft_version,
+                        loader_version,
+                    }).await?;
+
+                    launch_tracker2.add_count(1);
+                    launch_tracker2.notify();
+
+                    Ok(value)
+                });
+
+                let launch_tracker3 = launch_tracker.clone();
+                let meta3 = Arc::clone(&self.meta);
+                let instance_version = instance_info.minecraft_version;
+                let version = versions.and_then(async move |versions| {
+                    launch_tracker3.add_count(1);
+                    launch_tracker3.notify();
+
+                    let Some(version) = versions.versions.iter().find(|v| v.id == instance_version) else {
+                        return Err(LaunchError::CantFindVersion(instance_version.as_str()));
+                    };
+
+                    let value = meta3.fetch(&MinecraftVersionMetadataItem(version)).await?;
+
+                    launch_tracker3.add_count(1);
+                    launch_tracker3.notify();
+
+                    Ok(value)
+                });
+
+                let (version, fabric_launch): (Arc<MinecraftVersion>, Arc<FabricLaunch>) =
+                    futures::future::try_join(version, fabric_launch).await?;
+
+                let mut version: MinecraftVersion = (*version).clone();
+
+                if let Some(loader) = &fabric_launch.loader {
+                    let loader_coordinate = MavenCoordinate::create(&loader.maven);
+                    let artifact_path = loader_coordinate.artifact_path();
+                    version.libraries.push(GameLibrary {
+                        downloads: GameLibraryDownloads {
+                            artifact: Some(GameLibraryArtifact {
+                                url: format!("https://maven.fabricmc.net/{}", &artifact_path).into(),
+                                path: artifact_path.into(),
+                                sha1: None,
+                                size: None,
+                            }),
+                            classifiers: None,
+                        },
+                        name: loader.maven,
+                        rules: None,
+                        natives: None,
+                        extract: None,
+                    });
+                }
+
+                if let Some(intermediary) = &fabric_launch.intermediary {
+                    let intermediary_coordinate = MavenCoordinate::create(&intermediary.maven);
+                    let artifact_path = intermediary_coordinate.artifact_path();
+                    version.libraries.push(GameLibrary {
+                        downloads: GameLibraryDownloads {
+                            artifact: Some(GameLibraryArtifact {
+                                url: format!("https://maven.legacyfabric.net/{}", &artifact_path).into(),
                                 path: artifact_path.into(),
                                 sha1: None,
                                 size: None,
@@ -2180,7 +2307,7 @@ impl LaunchContext {
         if !self.add_mods.is_empty() {
             match self.configuration.loader {
                 Loader::Vanilla => {},
-                Loader::Fabric => {
+                Loader::Fabric | Loader::LegacyFabric => {
                     let mods = std::env::join_paths(self.add_mods).unwrap();
 
                     stdin_arguments.push_str("property\n");

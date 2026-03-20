@@ -10,6 +10,8 @@ pub enum Loader {
     Vanilla,
     #[serde(alias = "Fabric")]
     Fabric,
+    #[serde(alias = "LegacyFabric")]
+    LegacyFabric,
     #[serde(alias = "Forge")]
     Forge,
     #[serde(alias = "NeoForge")]
@@ -23,6 +25,7 @@ impl Loader {
         match self {
             Loader::Vanilla => "Vanilla",
             Loader::Fabric => "Fabric",
+            Loader::LegacyFabric => "Legacy Fabric",
             Loader::Forge => "Forge",
             Loader::NeoForge => "NeoForge",
             Loader::Unknown => "Unknown",
@@ -33,6 +36,7 @@ impl Loader {
         match str {
             "Vanilla" | "vanilla" => Self::Vanilla,
             "Fabric" | "fabric" => Self::Fabric,
+            "LegacyFabric" | "legacyfabric" | "Legacy Fabric" => Self::LegacyFabric,
             "Forge" | "forge" => Self::Forge,
             "NeoForge" | "neoforge" => Self::NeoForge,
             _ => Self::Unknown,
@@ -43,6 +47,7 @@ impl Loader {
         match self {
             Loader::Vanilla => ModrinthLoader::Unknown,
             Loader::Fabric => ModrinthLoader::Fabric,
+            Loader::LegacyFabric => ModrinthLoader::Fabric,
             Loader::Forge => ModrinthLoader::Forge,
             Loader::NeoForge => ModrinthLoader::NeoForge,
             Loader::Unknown => ModrinthLoader::Unknown,
@@ -53,6 +58,7 @@ impl Loader {
         match self {
             Loader::Vanilla => CurseforgeModLoaderType::Any,
             Loader::Fabric => CurseforgeModLoaderType::Fabric,
+            Loader::LegacyFabric => CurseforgeModLoaderType::Fabric,
             Loader::Forge => CurseforgeModLoaderType::Forge,
             Loader::NeoForge => CurseforgeModLoaderType::NeoForge,
             Loader::Unknown => CurseforgeModLoaderType::Any,

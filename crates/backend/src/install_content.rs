@@ -471,6 +471,7 @@ impl BackendState {
                 let mod_loader_type = match content.loader_hint {
                     Loader::Vanilla => None,
                     Loader::Fabric => Some(CurseforgeModLoaderType::Fabric as u32),
+                    Loader::LegacyFabric => Some(CurseforgeModLoaderType::Fabric as u32),
                     Loader::Forge => Some(CurseforgeModLoaderType::Forge as u32),
                     Loader::NeoForge => Some(CurseforgeModLoaderType::NeoForge as u32),
                     Loader::Unknown => None,

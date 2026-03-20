@@ -320,6 +320,13 @@ impl InstanceSettingsSubpage {
                         .collect()
                 }, window, cx)
             },
+            Loader::LegacyFabric => {
+                self.update_loader_versions_for_loader(MetadataRequest::LegacyFabricLoaderManifest, |manifest: &FabricLoaderManifest| {
+                    std::iter::once("Latest")
+                        .chain(manifest.0.iter().map(|s| s.version.as_str()))
+                        .collect()
+                }, window, cx)
+            },
             Loader::Forge => {
                 self.update_loader_versions_for_loader(MetadataRequest::ForgeMavenManifest, |manifest: &ForgeMavenManifest| {
                     std::iter::once("Latest")
@@ -789,6 +796,7 @@ impl Render for InstanceSettingsSubpage {
                 TypelessFrontendMetadataResult::Loaded => {
                     version_content = version_content.child(Select::new(&self.loader_version_select_state).title_prefix(match self.loader {
                         Loader::Fabric => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.fabric"))),
+                        Loader::LegacyFabric => format!("{}: ", ts!("instance.loader_version", loader = "Legacy Fabric")),
                         Loader::Forge => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.forge"))),
                         Loader::NeoForge => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.neoforge"))),
                         Loader::Vanilla | Loader::Unknown => format!("{}: ", ts!("instance.loader_version", loader = ts!("instance.loader"))),

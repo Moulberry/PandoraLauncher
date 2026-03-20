@@ -135,7 +135,21 @@ macro_rules! define_as_metadata_result {
 define_as_metadata_result!(MinecraftVersionManifest);
 define_as_metadata_result!(ModrinthSearchResult);
 define_as_metadata_result!(ModrinthProjectVersionsResult);
-define_as_metadata_result!(FabricLoaderManifest);
+impl AsMetadataResult<FabricLoaderManifest> for FrontendMetadataState {
+    fn result(&self) -> FrontendMetadataResult<'_, FabricLoaderManifest> {
+        match self {
+            FrontendMetadataState::Loading => FrontendMetadataResult::Loading,
+            FrontendMetadataState::Loaded { result, .. } => {
+                match result {
+                    Ok(MetadataResult::FabricLoaderManifest(result)) => FrontendMetadataResult::Loaded(&*result),
+                    Ok(MetadataResult::LegacyFabricLoaderManifest(result)) => FrontendMetadataResult::Loaded(&*result),
+                    Ok(_) => FrontendMetadataResult::Error(ts!("system.metadata_error")),
+                    Err(error) => FrontendMetadataResult::Error(SharedString::new(error.clone())),
+                }
+            },
+        }
+    }
+}
 define_as_metadata_result!(ForgeMavenManifest);
 define_as_metadata_result!(NeoforgeMavenManifest);
 define_as_metadata_result!(ModrinthProjectResult);

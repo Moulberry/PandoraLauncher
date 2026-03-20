@@ -6,6 +6,7 @@ use schema::{curseforge::{CurseforgeGetModFilesRequest, CurseforgeGetModFilesRes
 pub enum MetadataRequest {
     MinecraftVersionManifest,
     FabricLoaderManifest,
+    LegacyFabricLoaderManifest,
     ForgeMavenManifest,
     NeoforgeMavenManifest,
     ModrinthSearch(ModrinthSearchRequest),
@@ -19,6 +20,7 @@ pub enum MetadataRequest {
 pub enum MetadataResult {
     MinecraftVersionManifest(Arc<MinecraftVersionManifest>),
     FabricLoaderManifest(Arc<FabricLoaderManifest>),
+    LegacyFabricLoaderManifest(Arc<FabricLoaderManifest>),
     ForgeMavenManifest(Arc<ForgeMavenManifest>),
     NeoforgeMavenManifest(Arc<NeoforgeMavenManifest>),
     ModrinthSearchResult(Arc<ModrinthSearchResult>),

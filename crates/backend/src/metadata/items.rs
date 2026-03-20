@@ -4,7 +4,7 @@ use std::{
 
 use reqwest::RequestBuilder;
 use schema::{
-    assets_index::AssetsIndex, curseforge::{CURSEFORGE_SEARCH_URL, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult, MINECRAFT_GAME_ID}, fabric_launch::FabricLaunch, fabric_loader_manifest::{FABRIC_LOADER_MANIFEST_URL, FabricLoaderManifest}, forge::{ForgeMavenManifest, NeoforgeMavenManifest, VersionFragment}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::{JAVA_RUNTIMES_URL, JavaRuntimes}, maven::MavenMetadataXml, modrinth::{MODRINTH_PROJECT_URL, MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::{MOJANG_VERSION_MANIFEST_URL, MinecraftVersionLink, MinecraftVersionManifest}
+    assets_index::AssetsIndex, curseforge::{CURSEFORGE_SEARCH_URL, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult, MINECRAFT_GAME_ID}, fabric_launch::FabricLaunch, fabric_loader_manifest::{FABRIC_LOADER_MANIFEST_URL, LEGACY_FABRIC_LOADER_MANIFEST_URL, FabricLoaderManifest}, forge::{ForgeMavenManifest, NeoforgeMavenManifest, VersionFragment}, java_runtime_component::JavaRuntimeComponentManifest, java_runtimes::{JAVA_RUNTIMES_URL, JavaRuntimes}, maven::MavenMetadataXml, modrinth::{MODRINTH_PROJECT_URL, MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult}, version::MinecraftVersion, version_manifest::{MOJANG_VERSION_MANIFEST_URL, MinecraftVersionLink, MinecraftVersionManifest}
 };
 use serde::Serialize;
 use ustr::Ustr;
@@ -209,6 +209,67 @@ impl MetadataItem for FabricLoaderManifestMetadataItem {
 
     fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
         states.fabric_loader_manifest.clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
+#[derive(Debug)]
+pub struct LegacyFabricLoaderManifestMetadataItem;
+
+impl MetadataItem for LegacyFabricLoaderManifestMetadataItem {
+    type T = FabricLoaderManifest;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        client.get(LEGACY_FABRIC_LOADER_MANIFEST_URL)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn cache_file(&self, metadata_manager: &MetadataManager) -> Option<impl AsRef<Path> + Send + Sync + 'static> {
+        Some(Arc::clone(&metadata_manager.legacy_fabric_loader_manifest_cache))
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.legacy_fabric_loader_manifest.clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
+#[derive(Debug)]
+pub struct LegacyFabricLaunchMetadataItem {
+    pub minecraft_version: Ustr,
+    pub loader_version: Ustr,
+}
+
+impl MetadataItem for LegacyFabricLaunchMetadataItem {
+    type T = FabricLaunch;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        client.get(format!("https://meta.legacyfabric.net/v2/versions/loader/{}/{}", self.minecraft_version, self.loader_version))
+    }
+
+    fn expires(&self) -> bool {
+        false
+    }
+
+    fn cache_file(&self, metadata_manager: &MetadataManager) -> Option<impl AsRef<Path> + Send + Sync + 'static> {
+        let mut path = metadata_manager.metadata_cache.join("legacy_fabric_launch");
+        path.push(self.minecraft_version.as_str());
+        path.push(self.loader_version.as_str());
+        Some(path)
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        let key = (self.minecraft_version, self.loader_version);
+        states.legacy_fabric_launch.entry(key).or_default().clone()
     }
 
     fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {

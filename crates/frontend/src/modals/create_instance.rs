@@ -252,6 +252,11 @@ impl CreateInstanceModalState {
                         .selected(self.selected_loader == Loader::Fabric),
                 )
                 .child(
+                    Button::new("loader-legacyfabric")
+                        .label("Legacy Fabric")
+                        .selected(self.selected_loader == Loader::LegacyFabric),
+                )
+                .child(
                     Button::new("loader-forge")
                         .label(ts!("modrinth.category.forge"))
                         .selected(self.selected_loader == Loader::Forge),
@@ -265,8 +270,9 @@ impl CreateInstanceModalState {
                     match selected.first() {
                         Some(0) => this.selected_loader = Loader::Vanilla,
                         Some(1) => this.selected_loader = Loader::Fabric,
-                        Some(2) => this.selected_loader = Loader::Forge,
-                        Some(3) => this.selected_loader = Loader::NeoForge,
+                        Some(2) => this.selected_loader = Loader::LegacyFabric,
+                        Some(3) => this.selected_loader = Loader::Forge,
+                        Some(4) => this.selected_loader = Loader::NeoForge,
                         _ => {},
                     };
                 }))
@@ -309,6 +315,7 @@ impl CreateInstanceModalState {
         let name_is_invalid = self.name_invalid;
         modal
             .overlay_closable(false)
+            .min_w(px(560.0))
             .title(ts!("instance.create"))
             .child(content)
             .when(name_is_invalid, |modal| {

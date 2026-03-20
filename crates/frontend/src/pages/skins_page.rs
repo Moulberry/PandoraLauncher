@@ -546,8 +546,7 @@ impl Render for SkinsPage {
                         .on_click({
                             let skin = skin.clone();
                             let skin: Arc<[u8]> = skin.into();
-                            cx.listener(move |page, _, _, cx| {
-                                
+                            cx.listener(move |page, _, _, _| {
                                 page.data.backend_handle.send(MessageToBackend::RemoveFromSkinLibrary {
                                     skin: { skin.clone() }
                                 });
@@ -567,7 +566,7 @@ impl Render for SkinsPage {
                         })
                     }))
             })));
-
+            
         h_flex().p_4()
             .gap_4()
             .child(v_flex()

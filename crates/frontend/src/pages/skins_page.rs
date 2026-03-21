@@ -11,7 +11,7 @@ use rustc_hash::FxHashMap;
 use schema::minecraft_profile::{SkinState, SkinVariant};
 use uuid::Uuid;
 use crate::{
-    component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, ts
+    component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, skin_renderer::{self, determine_skin_variant}, ts
 };
 
 pub struct SkinsPage {
@@ -21,6 +21,7 @@ pub struct SkinsPage {
     applying_to_account: Option<Uuid>,
     request_account_skin: Option<Task<()>>,
     selected_skin: Arc<[u8]>,
+    active_skin: Arc<[u8]>,
     selected_cape: Option<(Uuid, Arc<str>)>,
     active_cape: Option<(Uuid, Arc<str>)>,
     pending_apply_cape: bool,
@@ -42,6 +43,7 @@ impl SkinsPage {
             applying_to_account: None,
             request_account_skin: None,
             selected_skin: DEFAULT_SKIN.clone(),
+            active_skin: DEFAULT_SKIN.clone(),
             selected_cape: None,
             active_cape: None,
             pending_apply_cape: false,
@@ -105,6 +107,7 @@ impl SkinsPage {
                     if let AccountSkinResult::Success { skin, variant } = &skin_result {
                         if let Some(skin) = skin.clone() {
                             page.selected_skin = skin.clone();
+                            page.active_skin = skin.clone();
                             new_skin = Some((skin, *variant));
                         }
                     }
@@ -551,6 +554,9 @@ impl Render for SkinsPage {
                                     skin: { skin.clone() }
                                 });
                                 cx.stop_propagation();
+                                if Arc::ptr_eq(&skin, &page.selected_skin) {
+                                    page.select_skin(page.active_skin.clone(), determine_skin_variant(&page.active_skin).unwrap_or(SkinVariant::Classic), cx);
+                                }
                             })   
                         })
                     )

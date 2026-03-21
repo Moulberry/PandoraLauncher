@@ -502,7 +502,15 @@ impl Render for SkinsPage {
                         this.on_click(move |_, window, cx| {
                             crate::open_folder(&folder, window, cx);
                         })
-                    })))
+                    }))
+                .child(Button::new("toggle-3d")
+                    .icon(if InterfaceConfig::get(cx).skin_list_show_3d { PandoraIcon::Image } else { PandoraIcon::Box })
+                    .label(if InterfaceConfig::get(cx).skin_list_show_3d { ts!("skins.switch_view.texture") } else { ts!("skins.switch_view.model") })
+                    .small()
+                    .compact()
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        InterfaceConfig::get_mut(cx).skin_list_show_3d ^= true;
+                    }))))
             .child(h_flex().w_full().gap_2().flex_wrap().children(skins.filter_map(|(i, skin)| {
                 let selected = Arc::ptr_eq(&self.selected_skin, skin);
                 let active = if let Some(active_skin) = &active_skin {
@@ -520,9 +528,7 @@ impl Render for SkinsPage {
                     crate::skin_renderer::determine_skin_variant(skin).unwrap_or(SkinVariant::Classic)
                 };
 
-                let thumbnail = self.skin_thumbnail_cache.update(cx, |cache, cx| {
-                    cache.get_or_queue(skin, variant, cx)
-                });
+                let show_3d = InterfaceConfig::get(cx).skin_list_show_3d;
 
                 let padding = if selected {
                     px(7.0)
@@ -530,20 +536,30 @@ impl Render for SkinsPage {
                     px(8.0)
                 };
 
-                let thumb_w = px(crate::skin_thumbnail_cache::THUMB_WIDTH as f32);
-                let thumb_h = px(crate::skin_thumbnail_cache::THUMB_HEIGHT as f32);
-
-                let skin_child: AnyElement = if let Some(img) = thumbnail {
-                    gpui::img(img)
-                        .w(thumb_w)
-                        .h(thumb_h)
-                        .into_any_element()
+                let skin_child: AnyElement = if show_3d {
+                    let thumbnail = self.skin_thumbnail_cache.update(cx, |cache, cx| {
+                        cache.get_or_queue(skin, variant, cx)
+                    });
+                    let thumb_w = px(crate::skin_thumbnail_cache::THUMB_WIDTH as f32);
+                    let thumb_h = px(crate::skin_thumbnail_cache::THUMB_HEIGHT as f32);
+                    if let Some(img) = thumbnail {
+                        gpui::img(img)
+                            .w(thumb_w)
+                            .h(thumb_h)
+                            .into_any_element()
+                    } else {
+                        Skeleton::new()
+                            .w(thumb_w)
+                            .h(thumb_h)
+                            .bg(secondary_skeleton)
+                            .into_any_element()
+                    }
                 } else {
-                    Skeleton::new()
-                        .w(thumb_w)
-                        .h(thumb_h)
-                        .bg(secondary_skeleton)
-                        .into_any_element()
+                    crate::png_render_cache::render_with_transform(
+                        skin.clone(),
+                        ImageTransformation::ResizeToWidth { width: 128 },
+                        cx,
+                    ).into_any_element()
                 };
 
                 Some(div()

@@ -784,6 +784,11 @@ skins:
     en: Loading %{username}'s skin...
   no_offline:
     en: Skins cannot be applied to offline accounts
+  switch_view:
+    texture:
+      en: Switch to texture
+    model:
+      en: Switch to model
 login:
   title:
     en: Login

@@ -532,10 +532,10 @@ impl Render for SkinsPage {
                         this.bg(secondary)
                             .hover(|style| style.bg(secondary_hover))
                     })
-                    .when(active, |this| {
+                    .when_else(active, |this| {
                         this.child(Icon::new(PandoraIcon::Flag).absolute().right(padding).bottom(padding))
-                    })
-                    .child(
+                    }, |this| {
+                        this.child(
                         Button::new("delete-skin").icon(PandoraIcon::Trash2)
                         .danger()
                         .compact()
@@ -554,6 +554,7 @@ impl Render for SkinsPage {
                             })   
                         })
                     )
+                    })
                     .child(skin_img)
                     .on_click({
                         let skin = skin.clone();

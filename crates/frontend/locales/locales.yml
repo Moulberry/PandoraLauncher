@@ -784,6 +784,20 @@ skins:
     en: Loading %{username}'s skin...
   no_offline:
     en: Skins cannot be applied to offline accounts
+  add_from_file:
+    en: Add from file
+  select_skin:
+    en: Select Skin
+  copy_from_player:
+    en: Copy from player
+  copy:
+    en: Copy
+  add_from_url:
+    en: Add from url
+  download:
+    en: Download
+  open_folder:
+    en: Open folder
 login:
   title:
     en: Login

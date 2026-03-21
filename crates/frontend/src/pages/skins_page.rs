@@ -546,11 +546,12 @@ impl Render for SkinsPage {
                         .on_click({
                             let skin = skin.clone();
                             let skin: Arc<[u8]> = skin.into();
-                            cx.listener(move |page, _, _, _| {
+                            cx.listener(move |page, _, _, cx| {
                                 page.data.backend_handle.send(MessageToBackend::RemoveFromSkinLibrary {
                                     skin: { skin.clone() }
                                 });
-                            })
+                                cx.stop_propagation();
+                            })   
                         })
                     )
                     .child(skin_img)

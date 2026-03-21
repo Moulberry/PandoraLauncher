@@ -788,10 +788,10 @@ skins:
     en: Add from file
   select_skin:
     en: Select Skin
-  steal_from_player:
-    en: Steal from player
-  steal:
-    en: Steal
+  copy_from_player:
+    en: Copy from player
+  copy:
+    en: Copy
   add_from_url:
     en: Add from url
   download:

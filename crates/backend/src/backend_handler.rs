@@ -1783,7 +1783,7 @@ impl BackendState {
                     self.send.send_error("Error while saving skin, see logs for more details");
                 }
             },
-            MessageToBackend::StealPlayerSkin { username } => {
+            MessageToBackend::CopyPlayerSkin { username } => {
                 let lookup_url = format!(
                     "https://api.mojang.com/minecraft/profile/lookup/name/{}",
                     username
@@ -1791,30 +1791,41 @@ impl BackendState {
                 let response = match self.http_client.get(&lookup_url).send().await {
                     Ok(r) => r,
                     Err(err) => {
-                        log::error!("StealSkin: failed to reach Mojang API: {:?}", err);
-                        self.send.send_error(format!("Could not find player '{}'", username));
+                        log::error!("CopyPlayerSkin: failed to request Mojang API: {:?}", err);
+                        self.send.send_error("Failed to request Mojang API");
                         return;
                     }
                 };
+                if response.status() == reqwest::StatusCode::NOT_FOUND {
+                    self.send.send_error(format!("Player '{}' not found", username));
+                    return;
+                }
+                if !response.status().is_success() {
+                    log::error!("CopyPlayerSkin: Mojang API returned status {}", response.status());
+                    self.send.send_error(format!("Failed to request Mojang API: status {}", response.status()));
+                    return;
+                }
                 let body = match response.text().await {
                     Ok(b) => b,
                     Err(err) => {
-                        log::error!("StealSkin: failed to read Mojang response: {:?}", err);
-                        self.send.send_error("Error reading Mojang response");
+                        log::error!("CopyPlayerSkin: failed to read Mojang API response: {:?}", err);
+                        self.send.send_error("Failed to read Mojang API response");
                         return;
                     }
                 };
                 let profile_lookup: serde_json::Value = match serde_json::from_str(&body) {
                     Ok(v) => v,
-                    Err(_) => {
-                        self.send.send_error(format!("Player '{}' not found", username));
+                    Err(err) => {
+                        log::error!("CopyPlayerSkin: failed to deserialize Mojang API response: {:?}", err);
+                        self.send.send_error("Failed to deserialize Mojang API response");
                         return;
                     }
                 };
                 let uuid = match profile_lookup["id"].as_str() {
                     Some(id) => id.to_owned(),
                     None => {
-                        self.send.send_error(format!("Player '{}' not found", username));
+                        log::error!("CopyPlayerSkin: missing 'id' field in Mojang API response");
+                        self.send.send_error("Failed to deserialize Mojang API response");
                         return;
                     }
                 };
@@ -1826,16 +1837,21 @@ impl BackendState {
                 let response = match self.http_client.get(&session_url).send().await {
                     Ok(r) => r,
                     Err(err) => {
-                        log::error!("StealSkin: failed to reach session server: {:?}", err);
-                        self.send.send_error("Error reaching Mojang session server");
+                        log::error!("CopyPlayerSkin: failed to request session server: {:?}", err);
+                        self.send.send_error("Failed to request Mojang session server");
                         return;
                     }
                 };
+                if !response.status().is_success() {
+                    log::error!("CopyPlayerSkin: session server returned status {}", response.status());
+                    self.send.send_error(format!("Failed to request Mojang session server: status {}", response.status()));
+                    return;
+                }
                 let body = match response.text().await {
                     Ok(b) => b,
                     Err(err) => {
-                        log::error!("StealSkin: failed to read session profile: {:?}", err);
-                        self.send.send_error("Error reading player profile");
+                        log::error!("CopyPlayerSkin: failed to read session server response: {:?}", err);
+                        self.send.send_error("Failed to read Mojang session server response");
                         return;
                     }
                 };
@@ -1851,8 +1867,8 @@ impl BackendState {
                 let url = match url::Url::parse(&*skin_url) {
                     Ok(url) => url,
                     Err(err) => {
-                        log::error!("StealSkin: invalid skin URL: {}", err);
-                        self.send.send_error("StealSkin: invalid skin URL");
+                        log::error!("CopyPlayerSkin: failed to parse skin URL: {}", err);
+                        self.send.send_error("Failed to parse skin URL");
                         return;
                     }
                 };
@@ -1862,15 +1878,20 @@ impl BackendState {
                 let response = match self.redirecting_http_client.get(url).send().await {
                     Ok(r) => r,
                     Err(err) => {
-                        log::error!("StealSkin: error while requesting skin: {:?}", err);
+                        log::error!("CopyPlayerSkin: failed to request skin texture: {:?}", err);
                         self.send.send_error("Error while requesting skin, see logs for more details");
                         return;
                     }
                 };
+                if !response.status().is_success() {
+                    log::error!("CopyPlayerSkin: skin texture request returned status {}", response.status());
+                    self.send.send_error(format!("Failed to request skin texture: status {}", response.status()));
+                    return;
+                }
                 let bytes = match response.bytes().await {
                     Ok(bytes) => bytes.to_vec(),
                     Err(err) => {
-                        log::error!("StealSkin: error while downloading skin: {:?}", err);
+                        log::error!("CopyPlayerSkin: failed to read skin texture: {:?}", err);
                         self.send.send_error("Error while downloading skin, see logs for more details");
                         return;
                     }
@@ -1879,12 +1900,12 @@ impl BackendState {
                 let image = match image::load_from_memory_with_format(&bytes, image::ImageFormat::Png) {
                     Ok(image) => image,
                     Err(_) => {
-                        self.send.send_error("Stolen skin is not a valid PNG image");
+                        self.send.send_error("Player skin is not a valid PNG image");
                         return;
                     }
                 };
                 if !SkinManager::is_valid_size(&image) {
-                    self.send.send_error("Stolen skin has invalid dimensions. Must be 64x64 or 64x32.");
+                    self.send.send_error("Player skin has invalid dimensions. Must be 64x64 or 64x32.");
                     return;
                 }
 
@@ -1903,7 +1924,7 @@ impl BackendState {
                 }
 
                 if let Err(err) = crate::write_safe(&path, &bytes) {
-                    log::error!("StealSkin: error while saving skin: {:?}", err);
+                    log::error!("CopyPlayerSkin: failed to save skin: {:?}", err);
                     self.send.send_error("Error while saving skin, see logs for more details");
                 }
             },

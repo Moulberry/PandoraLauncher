@@ -27,8 +27,8 @@ pub struct SkinsPage {
     player_model_widget: Entity<PlayerModelWidget>,
     skin_download_popover_open: bool,
     skin_download_input: Entity<InputState>,
-    steal_skin_popover_open: bool,
-    steal_skin_input: Entity<InputState>,
+    copy_skin_popover_open: bool,
+    copy_skin_input: Entity<InputState>,
     add_from_file_task: Task<()>,
     data: DataEntities,
 }
@@ -50,8 +50,8 @@ impl SkinsPage {
             player_model_widget: cx.new(|cx| PlayerModelWidget::new(cx, DEFAULT_SKIN.clone())),
             skin_download_popover_open: false,
             skin_download_input: cx.new(|cx| InputState::new(window, cx)),
-            steal_skin_popover_open: false,
-            steal_skin_input: cx.new(|cx| InputState::new(window, cx)),
+            copy_skin_popover_open: false,
+            copy_skin_input: cx.new(|cx| InputState::new(window, cx)),
             add_from_file_task: Task::ready(()),
             data: data.clone(),
         }
@@ -461,37 +461,37 @@ impl Render for SkinsPage {
                             page.add_from_file_task = add_from_file_task;
                         })
                     }))
-                .child(Popover::new("steal-skin-popover")
-                    .trigger(Button::new("steal-skin").label(ts!("skins.steal_from_player")).icon(PandoraIcon::Download).success().small().compact())
+                .child(Popover::new("copy-skin-popover")
+                    .trigger(Button::new("copy-skin").label(ts!("skins.copy_from_player")).icon(PandoraIcon::Download).success().small().compact())
                     .gap_2()
                     .w_full()
                     .items_start()
-                    .child(Input::new(&self.steal_skin_input).w_128())
-                    .open(self.steal_skin_popover_open)
+                    .child(Input::new(&self.copy_skin_input).w_128())
+                    .open(self.copy_skin_popover_open)
                     .on_open_change({
-                        let steal_skin_input = self.steal_skin_input.clone();
+                        let copy_skin_input = self.copy_skin_input.clone();
                         cx.listener(move |page, open, window, cx| {
                             if *open {
-                                steal_skin_input.update(cx, |input, cx| {
+                                copy_skin_input.update(cx, |input, cx| {
                                     input.focus(window, cx);
                                 });
                             }
-                            page.steal_skin_popover_open = *open;
+                            page.copy_skin_popover_open = *open;
                         })
                     })
-                    .child(Button::new("steal-skin-confirm")
-                        .label(ts!("skins.steal"))
+                    .child(Button::new("copy-skin-confirm")
+                        .label(ts!("skins.copy"))
                         .success()
                         .on_click({
                             cx.listener(move |page, _, _, cx| {
-                                let value = page.steal_skin_input.read(cx).value();
+                                let value = page.copy_skin_input.read(cx).value();
                                 let username: Arc<str> = value.into();
                                 if !username.trim().is_empty() {
-                                    page.data.backend_handle.send(MessageToBackend::StealPlayerSkin {
+                                    page.data.backend_handle.send(MessageToBackend::CopyPlayerSkin {
                                         username,
                                     });
                                 }
-                                page.steal_skin_popover_open = false;
+                                page.copy_skin_popover_open = false;
                                 cx.notify();
                             })
                         })))

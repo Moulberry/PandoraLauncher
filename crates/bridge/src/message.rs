@@ -237,7 +237,7 @@ pub enum MessageToBackend {
     AddToSkinLibrary {
         source: UrlOrFile,
     },
-    StealPlayerSkin {
+    CopyPlayerSkin {
         username: Arc<str>,
     },
     Login {

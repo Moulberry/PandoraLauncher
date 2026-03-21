@@ -55,6 +55,8 @@ pub struct InterfaceConfig {
     pub instance_subpage: InstanceSubpageType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub collapse_capes_in_skins_page: bool,
+    #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
+    pub skin_list_show_3d: bool,
 }
 
 fn default_modrinth_project_type() -> ModrinthProjectType {
@@ -87,6 +89,7 @@ impl Default for InterfaceConfig {
             instances_view_mode: Default::default(),
             instance_subpage: Default::default(),
             collapse_capes_in_skins_page: false,
+            skin_list_show_3d: true,
         }
     }
 }

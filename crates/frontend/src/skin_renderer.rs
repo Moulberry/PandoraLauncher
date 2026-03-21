@@ -868,6 +868,8 @@ pub fn render_skin_3d(
     yaw_deg: f64,
     pitch_deg: f64,
     sway_progress: f64,
+    y_offset: f64,
+    zoom: f64,
 ) -> Option<RgbaImage> {
     let skin = image::load_from_memory_with_format(skin_png_bytes, ImageFormat::Png).ok()?;
     let cape = cape_png_bytes.map(|cape| image::load_from_memory_with_format(cape, ImageFormat::Png).ok()).flatten();
@@ -890,9 +892,9 @@ pub fn render_skin_3d(
     // Sort back-to-front (painter's algorithm): smaller Z = further from camera = draw first
     projected_quads.sort_by(|a, b| a.avg_z.partial_cmp(&b.avg_z).unwrap_or(std::cmp::Ordering::Equal));
 
-    let scale = (out_width as f64 / MAX_WIDTH_AT_ANY_ANGLE).min(out_height as f64 / MAX_HEIGHT_AT_ANY_ANGLE);
+    let scale = (out_width as f64 / MAX_WIDTH_AT_ANY_ANGLE).min(out_height as f64 / MAX_HEIGHT_AT_ANY_ANGLE) * zoom;
     let offset_x = out_width as f64 / 2.0;
-    let offset_y = out_height as f64 / 2.0;
+    let offset_y = out_height as f64 / 2.0 + y_offset * scale;
 
     // Create output image (transparent background)
     let mut output = RgbaImage::new(out_width, out_height);

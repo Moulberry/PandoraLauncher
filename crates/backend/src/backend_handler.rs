@@ -261,7 +261,8 @@ impl BackendState {
                     Ok(mut child) => {
                         if !self.config.write().get().dont_open_game_output_when_launching {
                             if let Some(stdout) = child.stdout.take() {
-                                log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
+                                let instance_name = self.instance_state.read().instances.get(id).map(|i| i.name.as_str()).unwrap_or("Unknown");
+                                log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone(), instance_name);
                             }
                         }
 

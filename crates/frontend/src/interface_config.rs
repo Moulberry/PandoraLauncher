@@ -22,6 +22,8 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_window_bounds: WindowBounds,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub game_output_bounds: WindowBounds,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub sidebar_width: f32,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_page: PageType,
@@ -66,6 +68,7 @@ impl Default for InterfaceConfig {
         Self {
             active_theme: Default::default(),
             main_window_bounds: Default::default(),
+            game_output_bounds: Default::default(),
             sidebar_width: Default::default(),
             main_page: Default::default(),
             page_path: Default::default(),

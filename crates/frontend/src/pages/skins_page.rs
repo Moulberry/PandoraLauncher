@@ -11,7 +11,7 @@ use rustc_hash::FxHashMap;
 use schema::minecraft_profile::{SkinState, SkinVariant};
 use uuid::Uuid;
 use crate::{
-    component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, ts
+    component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, skin_renderer::{self, determine_skin_variant}, ts
 };
 
 pub struct SkinsPage {
@@ -21,6 +21,7 @@ pub struct SkinsPage {
     applying_to_account: Option<Uuid>,
     request_account_skin: Option<Task<()>>,
     selected_skin: Arc<[u8]>,
+    active_skin: Arc<[u8]>,
     selected_cape: Option<(Uuid, Arc<str>)>,
     active_cape: Option<(Uuid, Arc<str>)>,
     pending_apply_cape: bool,
@@ -42,6 +43,7 @@ impl SkinsPage {
             applying_to_account: None,
             request_account_skin: None,
             selected_skin: DEFAULT_SKIN.clone(),
+            active_skin: DEFAULT_SKIN.clone(),
             selected_cape: None,
             active_cape: None,
             pending_apply_cape: false,
@@ -105,6 +107,7 @@ impl SkinsPage {
                     if let AccountSkinResult::Success { skin, variant } = &skin_result {
                         if let Some(skin) = skin.clone() {
                             page.selected_skin = skin.clone();
+                            page.active_skin = skin.clone();
                             new_skin = Some((skin, *variant));
                         }
                     }
@@ -532,8 +535,31 @@ impl Render for SkinsPage {
                         this.bg(secondary)
                             .hover(|style| style.bg(secondary_hover))
                     })
-                    .when(active, |this| {
+                    .when_else(active, |this| {
                         this.child(Icon::new(PandoraIcon::Flag).absolute().right(padding).bottom(padding))
+                    }, |this| {
+                        this.child(
+                        Button::new("delete-skin").icon(PandoraIcon::Trash2)
+                        .danger()
+                        .compact()
+                        .absolute()
+                        .small()
+                        .left(padding)
+                        .bottom(padding)
+                        .on_click({
+                            let skin = skin.clone();
+                            let skin: Arc<[u8]> = skin.into();
+                            cx.listener(move |page, _, _, cx| {
+                                page.data.backend_handle.send(MessageToBackend::RemoveFromSkinLibrary {
+                                    skin: { skin.clone() }
+                                });
+                                cx.stop_propagation();
+                                if Arc::ptr_eq(&skin, &page.selected_skin) {
+                                    page.select_skin(page.active_skin.clone(), determine_skin_variant(&page.active_skin).unwrap_or(SkinVariant::Classic), cx);
+                                }
+                            })   
+                        })
+                    )
                     })
                     .child(skin_img)
                     .on_click({
@@ -548,7 +574,7 @@ impl Render for SkinsPage {
                         })
                     }))
             })));
-
+            
         h_flex().p_4()
             .gap_4()
             .child(v_flex()

@@ -237,6 +237,9 @@ pub enum MessageToBackend {
     AddToSkinLibrary {
         source: UrlOrFile,
     },
+    CopyPlayerSkin {
+        username: Arc<str>,
+    },
     Login {
         account: Uuid,
         modal_action: ModalAction,

@@ -27,6 +27,8 @@ pub struct SkinsPage {
     player_model_widget: Entity<PlayerModelWidget>,
     skin_download_popover_open: bool,
     skin_download_input: Entity<InputState>,
+    copy_skin_popover_open: bool,
+    copy_skin_input: Entity<InputState>,
     add_from_file_task: Task<()>,
     data: DataEntities,
 }
@@ -48,6 +50,8 @@ impl SkinsPage {
             player_model_widget: cx.new(|cx| PlayerModelWidget::new(cx, DEFAULT_SKIN.clone())),
             skin_download_popover_open: false,
             skin_download_input: cx.new(|cx| InputState::new(window, cx)),
+            copy_skin_popover_open: false,
+            copy_skin_input: cx.new(|cx| InputState::new(window, cx)),
             add_from_file_task: Task::ready(()),
             data: data.clone(),
         }
@@ -414,7 +418,7 @@ impl Render for SkinsPage {
                 .mb_1()
                 .child(ts!("skins.title"))
                 .child(Button::new("add-file")
-                    .label("Add from file")
+                    .label(ts!("skins.add_from_file"))
                     .icon(PandoraIcon::File)
                     .success()
                     .small()
@@ -425,7 +429,7 @@ impl Render for SkinsPage {
                                 files: true,
                                 directories: false,
                                 multiple: true,
-                                prompt: Some("Select Skin".into())
+                                prompt: Some(ts!("skins.select_skin"))
                             });
 
                             let entity = cx.entity();
@@ -457,8 +461,42 @@ impl Render for SkinsPage {
                             page.add_from_file_task = add_from_file_task;
                         })
                     }))
+                .child(Popover::new("copy-skin-popover")
+                    .trigger(Button::new("copy-skin").label(ts!("skins.copy_from_player")).icon(PandoraIcon::Download).success().small().compact())
+                    .gap_2()
+                    .w_full()
+                    .items_start()
+                    .child(Input::new(&self.copy_skin_input).w_128())
+                    .open(self.copy_skin_popover_open)
+                    .on_open_change({
+                        let copy_skin_input = self.copy_skin_input.clone();
+                        cx.listener(move |page, open, window, cx| {
+                            if *open {
+                                copy_skin_input.update(cx, |input, cx| {
+                                    input.focus(window, cx);
+                                });
+                            }
+                            page.copy_skin_popover_open = *open;
+                        })
+                    })
+                    .child(Button::new("copy-skin-confirm")
+                        .label(ts!("skins.copy"))
+                        .success()
+                        .on_click({
+                            cx.listener(move |page, _, _, cx| {
+                                let value = page.copy_skin_input.read(cx).value();
+                                let username: Arc<str> = value.into();
+                                if !username.trim().is_empty() {
+                                    page.data.backend_handle.send(MessageToBackend::CopyPlayerSkin {
+                                        username,
+                                    });
+                                }
+                                page.copy_skin_popover_open = false;
+                                cx.notify();
+                            })
+                        })))
                 .child(Popover::new("add-url-popover")
-                    .trigger(Button::new("add-url").label("Add from url").icon(PandoraIcon::Link).success().small().compact())
+                    .trigger(Button::new("add-url").label(ts!("skins.add_from_url")).icon(PandoraIcon::Link).success().small().compact())
                     .gap_2()
                     .w_full()
                     .items_start()
@@ -476,7 +514,7 @@ impl Render for SkinsPage {
                         })
                     })
                     .child(Button::new("download-skin")
-                        .label("Download")
+                        .label(ts!("skins.download"))
                         .success()
                         .on_click({
                             cx.listener(move |page, _, _, cx| {
@@ -490,7 +528,7 @@ impl Render for SkinsPage {
                             })
                         })))
                 .child(Button::new("open-folder")
-                    .label("Open folder")
+                    .label(ts!("skins.open_folder"))
                     .icon(PandoraIcon::FolderOpen)
                     .info()
                     .small()

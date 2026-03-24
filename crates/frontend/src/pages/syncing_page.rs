@@ -169,6 +169,7 @@ impl Render for SyncingPage {
             .child(self.create_entry(sync_state, "Distant_Horizons_server_data".into(), false, ts!("instance.sync.targets.dh"), warning, info, cx))
             .child(self.create_entry(sync_state, ".voxy".into(), false, ts!("instance.sync.targets.voxy"), warning, info, cx))
             .child(self.create_entry(sync_state, "xaero".into(), false, ts!("instance.sync.targets.xaero"), warning, info, cx))
+            .child(self.create_entry(sync_state, "journeymap".into(), false, ts!("instance.sync.targets.journeymap"), warning, info, cx))
             .child(self.create_entry(sync_state, ".bobby".into(), false, ts!("instance.sync.targets.bobby"), warning, info, cx))
             .child(self.create_entry(sync_state, "schematics".into(), false, ts!("instance.sync.targets.litematic"), warning, info, cx))
             .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("instance.sync.custom")))
@@ -247,6 +248,7 @@ static NAMED_SYNC_TARGETS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         "Distant_Horizons_server_data",
         ".voxy",
         "xaero",
+        "journeymap",
         ".bobby",
         "schematics"
     ])

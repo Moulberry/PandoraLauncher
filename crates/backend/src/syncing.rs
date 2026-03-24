@@ -329,6 +329,7 @@ static DEFAULT_FOLDERS: Lazy<Vec<Arc<str>>> = Lazy::new(|| {
         "Distant_Horizons_server_data",
         ".voxy",
         "xaero",
+        "journeymap",
         ".bobby",
         "schematics",
     ].into_iter().map(Arc::from).collect()

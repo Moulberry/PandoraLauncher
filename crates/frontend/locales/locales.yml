@@ -708,6 +708,8 @@ instance:
         en: Sync Voxy (.voxy) folder
       xaero:
         en: Sync Xaero's Minimap (xaero) folder
+      journeymap:
+        en: Sync Journeymap (journeymap) folder
       bobby:
         en: Sync Bobby (.bobby) folder
       litematic:

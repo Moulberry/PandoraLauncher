@@ -32,6 +32,7 @@ pub mod png_render_cache;
 pub mod processor;
 pub mod root;
 pub mod skin_renderer;
+pub mod skin_thumbnail_cache;
 pub mod ui;
 
 rust_i18n::i18n!("locales");

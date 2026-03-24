@@ -383,6 +383,11 @@ pub fn join_windows_shell(args: &[&str]) -> String {
             string.push(' ');
         }
 
+        if arg.is_empty() {
+            string.push_str("\"\"");
+            continue;
+        }
+
         let quoted = arg.contains(&[' ', '\t']);
         if quoted {
             string.push('"');
@@ -434,6 +439,11 @@ pub fn join_windows_shell_os(args: &[&OsStr]) -> OsString {
             first = false;
         } else {
             string.push(b' ');
+        }
+
+        if arg.is_empty() {
+            string.extend(b"\"\"");
+            continue;
         }
 
         let arg_raw = arg.as_encoded_bytes();

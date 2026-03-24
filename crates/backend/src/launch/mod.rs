@@ -1,5 +1,5 @@
 use std::{
-    borrow::Cow, cmp::Ordering, collections::{BTreeSet, HashMap, HashSet}, ffi::{OsStr, OsString}, fs::File, io::Write, path::{Path, PathBuf}, process::{Child, Stdio}, sync::{Arc, OnceLock, atomic::AtomicBool}
+    borrow::Cow, cmp::Ordering, collections::{BTreeSet, HashMap, HashSet}, ffi::{OsStr, OsString}, fs::File, io::Write, path::{Path, PathBuf}, process::{Child, Command, Stdio}, sync::{Arc, OnceLock, atomic::AtomicBool}
 };
 
 use bridge::{
@@ -220,6 +220,8 @@ impl Launcher {
             natives_dir,
             libraries_dir: self.directories.libraries_dir.clone(),
             game_dir: dot_minecraft_path,
+            log_configs_dir: self.directories.log_configs_dir.clone(),
+            sandbox_dir: self.directories.sandbox_dir.clone(),
             configuration: instance_info,
             assets_root: self.directories.assets_root_dir.clone(),
             assets_index_name,
@@ -227,7 +229,7 @@ impl Launcher {
             log_configuration,
             rule_context: launch_rule_context,
             login_info,
-            add_mods
+            add_mods,
         };
 
         if modal_action.has_requested_cancel() {
@@ -2058,6 +2060,8 @@ pub struct LaunchContext {
     pub natives_dir: PathBuf,
     pub libraries_dir: Arc<Path>,
     pub game_dir: Arc<Path>,
+    pub log_configs_dir: Arc<Path>,
+    pub sandbox_dir: Arc<Path>,
     pub configuration: InstanceConfiguration,
     pub assets_root: Arc<Path>,
     pub assets_index_name: String,
@@ -2070,43 +2074,42 @@ pub struct LaunchContext {
 
 impl LaunchContext {
     pub fn launch(mut self, version_info: &MinecraftVersion) -> std::io::Result<std::process::Child> {
-        #[cfg(target_os = "linux")]
-        let use_mangohud = self.configuration.linux_wrapper.map(|w| w.use_mangohud).unwrap_or(false);
-        #[cfg(target_os = "linux")]
-        let use_gamemode = self.configuration.linux_wrapper.map(|w| w.use_gamemode).unwrap_or(false);
+        let mut wrapping_command: Vec<Cow<'static, OsStr>> = Vec::new();
 
-        let mut wrapping_command = Vec::new();
         #[cfg(target_os = "linux")]
-        {
-            if use_mangohud {
-                wrapping_command.push("mangohud".to_string());
+        if let Some(linux_wrapper) = &self.configuration.linux_wrapper {
+            if linux_wrapper.use_mangohud && let Some(mangohud) = command::get_command_path("mangohud") {
+                wrapping_command.push(mangohud.as_os_str().to_os_string().into());
             }
-            if use_gamemode {
-                wrapping_command.push("gamemoderun".to_string());
+            if linux_wrapper.use_gamemode && let Some(gamemoderun) = command::get_command_path("gamemoderun") {
+                wrapping_command.push(gamemoderun.as_os_str().to_os_string().into());
             }
         }
 
         if let Some(InstanceWrapperCommandConfiguration { enabled: true, ref flags }) = self.configuration.wrapper_command {
-            let split = &mut match shell_words::split(&flags) {
+            let split = match shell_words::split(&flags) {
               Ok(split) => split,
               Err(_) =>  flags.split_whitespace().map(|f| f.to_string()).collect()
             };
-            wrapping_command.append(split);
+            for arg in split {
+                wrapping_command.push(Cow::Owned(OsString::from(arg)));
+            }
         }
 
+        wrapping_command.push(self.java_path.clone().into_os_string().into());
+
         let mut iter = wrapping_command.iter();
+        let mut command = Command::new(iter.next().unwrap());
+        command.args(iter);
 
-        let mut command = if let Some(first) = iter.next() {
-            let mut cmd = std::process::Command::new(first);
-            iter.for_each(|arg| {
-                cmd.arg(arg);
-            });
-            cmd.arg(&*self.java_path);
-            cmd
-        } else {
-            std::process::Command::new(&*self.java_path)
-        };
-
+        #[cfg(target_os = "linux")]
+        if std::env::var_os("DISPLAY").is_none() {
+            use std::os::linux::net::SocketAddrExt;
+            use std::os::unix::net::{UnixStream, SocketAddr};
+            if std::fs::exists("/tmp/.X11-unix/X0").unwrap_or(false) || UnixStream::connect_addr(&SocketAddr::from_abstract_name(b"/tmp/.X11-unix/X0").unwrap()).is_ok() {
+                command.env("DISPLAY", ":0");
+            }
+        }
 
         #[cfg(target_os = "linux")] {
             if self.configuration.linux_wrapper.map(|w| w.use_discrete_gpu).unwrap_or(true) {
@@ -2146,6 +2149,7 @@ impl LaunchContext {
             command.arg(format!("-Xms{}m", memory.min));
             command.arg(format!("-Xmx{}m", memory.max.max(memory.min).max(128)));
         }
+
         if let Some(jvm_flags) = &self.configuration.jvm_flags && jvm_flags.enabled {
             if let Ok(split) = shell_words::split(&jvm_flags.flags) {
                 command.args(split);

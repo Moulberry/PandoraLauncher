@@ -2,14 +2,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::fmt::Write;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use bridge::message::MessageToFrontend;
 use bridge::modal_action::ModalAction;
 use clap::Parser;
+use command::PandoraSandbox;
 use fern::colors::ColoredLevelConfig;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use native_dialog::DialogBuilder;
@@ -213,6 +214,7 @@ fn setup_logging(level: log::LevelFilter) -> Result<(), fern::InitError> {
         .level_for("backend", level)
         .level_for("frontend", level)
         .level_for("bridge", level)
+        .level_for("command", level)
         .level_for("gpui_component::text", log::LevelFilter::Off)
         .level(log::LevelFilter::Warn);
 

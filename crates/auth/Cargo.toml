@@ -34,5 +34,5 @@ oo7 = { version = "0.6", default-features = false, features = ["native_crypto", 
 windows.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
-security-framework = "3.5.1"
-security-framework-sys = "2.15.0"
+security-framework.workspace = true
+security-framework-sys.workspace = true

@@ -21,6 +21,7 @@ opt-level = 3
 auth = { path = "crates/auth" }
 backend = { path = "crates/backend" }
 bridge = { path = "crates/bridge" }
+command = { path = "crates/command" }
 frontend = { path = "crates/frontend" }
 schema = { path = "crates/schema" }
 nbt = { path = "crates/nbt" }
@@ -119,3 +120,7 @@ crc32fast = "1.5.0"
 scopeguard = "1.2.0"
 hickory-resolver = { version = "0.25.2", features = ["system-config"] }
 trash = "5.2.5"
+libseccomp = "0.4.0"
+libc = "0.2.183"
+security-framework = "3.5.1"
+security-framework-sys = "2.15.0"

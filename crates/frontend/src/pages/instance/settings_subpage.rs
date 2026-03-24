@@ -215,9 +215,9 @@ impl InstanceSettingsSubpage {
             #[cfg(target_os = "linux")]
             disable_gl_threaded_optimizations: linux_wrapper.disable_gl_threaded_optimizations,
             #[cfg(target_os = "linux")]
-            mangohud_available: Self::is_command_available("mangohud"),
+            mangohud_available: command::is_command_available("mangohud"),
             #[cfg(target_os = "linux")]
-            gamemode_available: Self::is_command_available("gamemoderun"),
+            gamemode_available: command::is_command_available("gamemoderun2"),
             new_name_change_state: NewNameChangeState::NoChange,
             backend_handle,
             loader_versions_state: TypelessFrontendMetadataResult::Loading,
@@ -583,23 +583,7 @@ impl InstanceSettingsSubpage {
         }
     }
 
-    #[cfg(target_os = "linux")]
-    fn is_command_available(command: &str) -> bool {
-        std::process::Command::new("sh")
-            .arg("-c")
-            .arg(format!("command -v {command}"))
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    }
-
-    pub fn select_file(
-        &mut self,
-        message: impl Into<SharedString>,
-        handle: impl FnOnce(&mut Self, Option<Arc<Path>>) + 'static,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn select_file(&mut self, message: impl Into<SharedString>, handle: impl FnOnce(&mut Self, Option<Arc<Path>>) + 'static, window: &mut Window, cx: &mut Context<Self>) {
         let receiver = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
@@ -933,7 +917,7 @@ impl Render for InstanceSettingsSubpage {
                                 cx.notify();
                             }
                         })),
-                ),
+                ))
         );
 
         let actions_content = v_flex()

@@ -366,7 +366,16 @@ impl BackendState {
                             return;
                         },
                         "servers.dat" => {
-                            after_debounce_effects.server_dat_changes.insert(id);
+                            let mut ignore = self.server_dat_ignore.write();
+                            if let Some(count) = ignore.get_mut(&id) {
+                                if *count > 1 {
+                                    *count -= 1;
+                                } else {
+                                    ignore.remove(&id);
+                                }
+                            } else {
+                                after_debounce_effects.server_dat_changes.insert(id);
+                            }
                             return;
                         },
                         _ => {},
@@ -442,7 +451,16 @@ impl BackendState {
                     return;
                 };
                 if file_name == "servers.dat" {
-                    after_debounce_effects.server_dat_changes.insert(id);
+                    let mut ignore = self.server_dat_ignore.write();
+                    if let Some(count) = ignore.get_mut(&id) {
+                        if *count > 1 {
+                            *count -= 1;
+                        } else {
+                            ignore.remove(&id);
+                        }
+                    } else {
+                        after_debounce_effects.server_dat_changes.insert(id);
+                    }
                 }
             }
             WatchTarget::InstanceWorldDir { id } => {

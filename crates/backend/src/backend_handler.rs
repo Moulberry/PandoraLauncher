@@ -75,6 +75,9 @@ impl BackendState {
             MessageToBackend::RequestLoadServers { id } => {
                 tokio::task::spawn(Instance::load_servers(self.clone(), id));
             },
+            MessageToBackend::ReorderServers { id, from_index, to_index } => {
+                tokio::task::spawn(Instance::reorder_servers(self.clone(), id, from_index, to_index));
+            },
             MessageToBackend::RequestLoadMods { id } => {
                 tokio::task::spawn(Instance::load_content(self.clone(), id, ContentFolder::Mods));
             },

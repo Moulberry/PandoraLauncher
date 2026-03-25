@@ -7,13 +7,14 @@ use gpui_component::{
     ActiveTheme, Selectable, WindowExt, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, tooltip::Tooltip, v_flex
 };
 use rustc_hash::FxHashMap;
-use schema::{content::ContentSource, curseforge::{CurseforgeClassId, CurseforgeHit, CurseforgeSearchRequest, CurseforgeSearchResult}, loader::Loader};
+use schema::{content::ContentSource, curseforge::{CurseforgeClassId, CurseforgeHit, CurseforgeSearchRequest, CurseforgeSearchResult, CurseforgeSortField}, loader::Loader};
+use strum::IntoEnumIterator;
 use ustr::Ustr;
 
 use crate::{
     component::error_alert::ErrorAlert, entity::{
         DataEntities, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, ts
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, ts, ts_short
 };
 
 pub struct CurseforgeSearchPage {
@@ -30,7 +31,9 @@ pub struct CurseforgeSearchPage {
     _delayed_clear_task: Task<()>,
     filter_loaders: EnumSet<Loader>,
     filter_categories: BTreeSet<u32>,
+    sort_field: CurseforgeSortField,
     show_categories: Arc<AtomicBool>,
+    show_sort: Arc<AtomicBool>,
     can_install_latest: bool,
     installed_mods_by_project: FxHashMap<u32, Vec<InstalledMod>>,
     last_search: Arc<str>,
@@ -169,12 +172,14 @@ impl CurseforgeSearchPage {
             pending_reload: false,
             pending_clear: false,
             total_hits: 1,
+            sort_field: CurseforgeSortField::Popularity,
             search_state,
             _search_input_subscription,
             _delayed_clear_task: Task::ready(()),
             filter_loaders: Default::default(),
             filter_categories: Default::default(),
             show_categories: Arc::new(AtomicBool::new(false)),
+            show_sort: Arc::new(AtomicBool::new(false)),
             can_install_latest,
             installed_mods_by_project,
             last_search: Arc::from(""),
@@ -242,6 +247,14 @@ impl CurseforgeSearchPage {
             return;
         }
         self.filter_categories = categories;
+        self.reload(cx);
+    }
+
+    fn set_sort_field(&mut self, sort_field: CurseforgeSortField, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.sort_field == sort_field {
+            return;
+        }
+        self.sort_field = sort_field;
         self.reload(cx);
     }
 
@@ -330,6 +343,7 @@ impl CurseforgeSearchPage {
             category_ids,
             game_version,
             mod_loader_types,
+            sort_field: self.sort_field.clone() as u32,
             index: offset as u32,
             page_size: 20
         };
@@ -795,7 +809,7 @@ impl Render for CurseforgeSearchPage {
             _ => &[],
         };
 
-        let is_shown = self.show_categories.load(std::sync::atomic::Ordering::Relaxed);
+        let is_category_shown = self.show_categories.load(std::sync::atomic::Ordering::Relaxed);
         let show_categories = self.show_categories.clone();
 
         let category = v_flex()
@@ -803,10 +817,10 @@ impl Render for CurseforgeSearchPage {
             .child(
                 Button::new("toggle-categories")
                     .label(ts!("instance.content.categories"))
-                    .icon(if is_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
-                    .when(!is_shown, |this| this.outline())
+                    .icon(if is_category_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
+                    .when(!is_category_shown, |this| this.outline())
                     .on_click(move |_, _, _| {
-                        show_categories.store(!is_shown, std::sync::atomic::Ordering::Relaxed);
+                        show_categories.store(!is_category_shown, std::sync::atomic::Ordering::Relaxed);
                     })
             )
             .child(
@@ -826,9 +840,45 @@ impl Render for CurseforgeSearchPage {
                             .filter_map(|index| categories.get(*index).map(|(_, id)| *id))
                             .collect(), window, cx);
                     }))
-                    .when(!is_shown, |this| this.invisible().h_0())
+                    .when(!is_category_shown, |this| this.invisible().h_0())
             )
             .into_any_element();
+
+        let sort_fields = CurseforgeSortField::iter().collect::<Vec<_>>();
+        let is_sort_shown = self.show_sort.load(std::sync::atomic::Ordering::Relaxed);
+        let show_sort = self.show_sort.clone();
+
+        let sort = v_flex()
+                        .gap_1()
+                        .child(
+                            Button::new("toggle-sort")
+                                .label(ts!("instance.content.sort"))
+                                .icon(if is_sort_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
+                                .when(!is_sort_shown, |this| this.outline())
+                                .on_click(move |_, _, _| {
+                                    show_sort.store(!is_sort_shown, std::sync::atomic::Ordering::Relaxed);
+                                })
+                        )
+                        .child(
+                            ButtonGroup::new("sort_field")
+                                .layout(Axis::Vertical)
+                                .outline()
+                                .children(sort_fields.iter().map(|field| {
+                                    let id = field.clone() as u32;
+                                    Button::new(("sort", id))
+                                        .child(
+                                            h_flex().w_full().justify_start().gap_2()
+                                            .child(
+                                                ts_short!(format!("curseforge.sort.{}", field.as_str()))))
+                                        .selected(id == self.sort_field.clone() as u32)
+                                }))
+                                .on_click(cx.listener(move |page, clicked: &Vec<usize>, window, cx| {
+                                    let sort_field = sort_fields.get(clicked[0]).cloned().unwrap_or(CurseforgeSortField::Popularity);
+                                    page.set_sort_field(sort_field, window, cx);
+                                }))
+                                .when(!is_sort_shown, |this| this.invisible().h_0())
+                        )
+                        .into_any_element();
 
         let is_mod = filter_project_type == CurseforgeClassId::Mod || filter_project_type == CurseforgeClassId::Modpack;
         let filter_version_toggle = if is_mod && let Some(filter_version) = self.filter_version {
@@ -855,7 +905,8 @@ impl Render for CurseforgeSearchPage {
             .child(type_button_group)
             .when_some(loader_button_group, |this, group| this.child(group))
             .when_some(filter_version_toggle, |this, button| this.child(button))
-            .child(category);
+            .child(category)
+            .child(sort);
 
         h_flex().flex_1().min_h_0().size_full().child(parameters).child(content)
     }

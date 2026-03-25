@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 use ustr::Ustr;
 
 pub const MODRINTH_SEARCH_URL: &str = "https://api.modrinth.com/v2/search";
@@ -21,7 +22,7 @@ pub struct ModrinthProjectVersionsRequest {
     pub loaders: Option<Arc<[ModrinthLoader]>>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthSearchIndex {
     Relevance,
@@ -29,6 +30,18 @@ pub enum ModrinthSearchIndex {
     Follows,
     Newest,
     Updated,
+}
+
+impl ModrinthSearchIndex {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ModrinthSearchIndex::Relevance => "relevance",
+            ModrinthSearchIndex::Downloads => "downloads",
+            ModrinthSearchIndex::Follows => "follows",
+            ModrinthSearchIndex::Newest => "newest",
+            ModrinthSearchIndex::Updated => "updated",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

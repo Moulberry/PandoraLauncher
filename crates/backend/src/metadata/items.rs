@@ -513,7 +513,7 @@ impl<'a> MetadataItem for CurseforgeSearchMetadataItem<'a> {
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
         client.get(CURSEFORGE_SEARCH_URL)
             .query(self.0)
-            .query(&[("gameId", MINECRAFT_GAME_ID), ("sortField", 2)])
+            .query(&[("gameId", MINECRAFT_GAME_ID)])
             .query(&[("sortOrder", "desc")])
             .header("x-api-key", "$2a$10$YXf6dyJfJZM4zeChdr.RDOvWN.L48AN0dQShQO8/cVc5ho1wA8ZbS")
     }

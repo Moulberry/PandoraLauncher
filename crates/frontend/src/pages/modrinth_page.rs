@@ -8,9 +8,10 @@ use gpui_component::{
 };
 use rustc_hash::FxHashMap;
 use schema::{content::ContentSource, loader::Loader, modrinth::{
-    ModrinthHit, ModrinthProjectType, ModrinthSearchRequest, ModrinthSearchResult, ModrinthSideRequirement
+    ModrinthHit, ModrinthProjectType, ModrinthSearchIndex, ModrinthSearchRequest, ModrinthSearchResult, ModrinthSideRequirement
 }};
 use ustr::Ustr;
+use strum::IntoEnumIterator;
 
 use crate::{
     component::error_alert::ErrorAlert, entity::{
@@ -32,7 +33,9 @@ pub struct ModrinthSearchPage {
     _delayed_clear_task: Task<()>,
     filter_loaders: EnumSet<Loader>,
     filter_categories: BTreeSet<&'static str>,
+    sort_option: ModrinthSearchIndex,
     show_categories: Arc<AtomicBool>,
+    show_sort_options: Arc<AtomicBool>,
     can_install_latest: bool,
     installed_mods_by_project: FxHashMap<Arc<str>, Vec<InstalledMod>>,
     last_search: Arc<str>,
@@ -180,7 +183,9 @@ impl ModrinthSearchPage {
             _delayed_clear_task: Task::ready(()),
             filter_loaders: Default::default(),
             filter_categories: Default::default(),
+            sort_option: ModrinthSearchIndex::Relevance,
             show_categories: Arc::new(AtomicBool::new(false)),
+            show_sort_options: Arc::new(AtomicBool::new(false)),
             can_install_latest,
             installed_mods_by_project,
             last_search: Arc::from(""),
@@ -248,6 +253,14 @@ impl ModrinthSearchPage {
             return;
         }
         self.filter_categories = categories;
+        self.reload(cx);
+    }
+
+    fn set_sort_option(&mut self, sort_option: ModrinthSearchIndex, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.sort_option == sort_option {
+            return;
+        }
+        self.sort_option = sort_option;
         self.reload(cx);
     }
 
@@ -349,7 +362,7 @@ impl ModrinthSearchPage {
         let request = ModrinthSearchRequest {
             query,
             facets: Some(facets.into()),
-            index: schema::modrinth::ModrinthSearchIndex::Relevance,
+            index: self.sort_option.clone(),
             offset,
             limit: 20,
         };
@@ -868,7 +881,7 @@ impl Render for ModrinthSearchPage {
             ModrinthProjectType::Other => &[],
         };
 
-        let is_shown = self.show_categories.load(std::sync::atomic::Ordering::Relaxed);
+        let is_category_shown = self.show_categories.load(std::sync::atomic::Ordering::Relaxed);
         let show_categories = self.show_categories.clone();
 
         let category = v_flex()
@@ -876,10 +889,10 @@ impl Render for ModrinthSearchPage {
             .child(
                 Button::new("toggle-categories")
                     .label(ts!("instance.content.categories"))
-                    .icon(if is_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
-                    .when(!is_shown, |this| this.outline())
+                    .icon(if is_category_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
+                    .when(!is_category_shown, |this| this.outline())
                     .on_click(move |_, _, _| {
-                        show_categories.store(!is_shown, std::sync::atomic::Ordering::Relaxed);
+                        show_categories.store(!is_category_shown, std::sync::atomic::Ordering::Relaxed);
                     })
             )
             .child(
@@ -902,9 +915,43 @@ impl Render for ModrinthSearchPage {
                             .filter_map(|index| categories.get(*index).map(|s| *s))
                             .collect(), window, cx);
                     }))
-                    .when(!is_shown, |this| this.invisible().h_0())
+                    .when(!is_category_shown, |this| this.invisible().h_0())
             )
             .into_any_element();
+
+        let sort_options = ModrinthSearchIndex::iter().collect::<Vec<_>>();
+        let is_sort_shown = self.show_sort_options.load(std::sync::atomic::Ordering::Relaxed);
+        let show_sort_options = self.show_sort_options.clone();
+
+        let sort = v_flex()
+            .gap_1()
+            .child(
+                Button::new("toggle-sort")
+                    .label(ts!("instance.content.sort"))
+                    .icon(if is_sort_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
+                    .when(!is_sort_shown, |this| this.outline())
+                    .on_click(move |_, _, _| {
+                        show_sort_options.store(!is_sort_shown, std::sync::atomic::Ordering::Relaxed);
+                    })
+            )
+            .child(
+                ButtonGroup::new("sort_group")
+                    .layout(Axis::Vertical)
+                    .outline()
+                    .children(sort_options.iter().map(|search_index| {
+                        Button::new(search_index.as_str())
+                            .child(h_flex().w_full().justify_start().gap_2()
+                                .child(ts_short!(format!("modrinth.sort.{}", search_index.as_str()))))
+                            .selected(*search_index == self.sort_option)
+                    }))
+                    .on_click(cx.listener(move |page, clicked: &Vec<usize>, window, cx| {
+                        let sort_option = sort_options.get(clicked[0]).cloned().unwrap_or(ModrinthSearchIndex::Relevance);
+                        page.set_sort_option(sort_option, window, cx);
+                    }))
+                    .when(!is_sort_shown, |this| this.invisible().h_0())
+            )
+            .into_any_element();
+
 
         let is_mod = filter_project_type == ModrinthProjectType::Mod || filter_project_type == ModrinthProjectType::Modpack;
         let filter_version_toggle = if is_mod && let Some(filter_version) = self.filter_version {
@@ -931,7 +978,8 @@ impl Render for ModrinthSearchPage {
             .child(type_button_group)
             .when_some(loader_button_group, |this, group| this.child(group))
             .when_some(filter_version_toggle, |this, button| this.child(button))
-            .child(category);
+            .child(category)
+            .child(sort);
 
         h_flex().flex_1().min_h_0().size_full().child(parameters).child(content)
     }

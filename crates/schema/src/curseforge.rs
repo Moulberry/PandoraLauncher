@@ -223,13 +223,13 @@ pub enum CurseforgeSortField {
 }
 
 impl CurseforgeSortField {
-    pub fn pretty_name(self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Popularity => "Popularity",
-            Self::Downloads => "Downloads",
-            Self::LastUpdated => "Updated",
-            Self::Name => "Name",
-            Self::Author => "Author",
+            Self::Popularity => "popularity",
+            Self::Downloads => "downloads",
+            Self::LastUpdated => "updated",
+            Self::Name => "name",
+            Self::Author => "author",
         }
     }
 }

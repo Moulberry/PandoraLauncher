@@ -202,6 +202,18 @@ modrinth:
     512x+:
       en: 512x or higher
 
+  sort:
+    relevance:
+      en: Relevance
+    downloads:
+      en: Downloads
+    follows:
+      en: Follows
+    newest:
+      en: Newest
+    updated:
+      en: Updated
+
   environment:
     client_and_server:
       en: Client and server
@@ -226,6 +238,18 @@ modrinth:
 curseforge:
   name:
     en: Curseforge
+
+  sort:
+    popularity:
+      en: Popularity
+    downloads:
+      en: Downloads
+    updated:
+      en: Updated
+    name:
+      en: Name
+    author:
+      en: Author
 common:
   app_name:
     en: Pandora
@@ -545,6 +569,8 @@ instance:
         en: Discord
     categories:
       en: Categories
+    sort:
+      en: Sort by
     downloads:
       en: "%{num} Downloads"
     load:

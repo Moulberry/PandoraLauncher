@@ -14,7 +14,7 @@ use ustr::Ustr;
 use crate::{
     component::error_alert::ErrorAlert, entity::{
         DataEntities, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, ts
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, ts, ts_short
 };
 
 pub struct CurseforgeSearchPage {
@@ -852,7 +852,7 @@ impl Render for CurseforgeSearchPage {
                         .gap_1()
                         .child(
                             Button::new("toggle-sort")
-                                .label("Sort by")
+                                .label(ts!("instance.content.sort"))
                                 .icon(if is_sort_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
                                 .when(!is_sort_shown, |this| this.outline())
                                 .on_click(move |_, _, _| {
@@ -868,7 +868,8 @@ impl Render for CurseforgeSearchPage {
                                     Button::new(("sort", id))
                                         .child(
                                             h_flex().w_full().justify_start().gap_2()
-                                            .child(SharedString::new(field.clone().pretty_name())))
+                                            .child(
+                                                ts_short!(format!("curseforge.sort.{}", field.as_str()))))
                                         .selected(id == self.sort_field.clone() as u32)
                                 }))
                                 .on_click(cx.listener(move |page, clicked: &Vec<usize>, window, cx| {

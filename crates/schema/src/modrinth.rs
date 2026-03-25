@@ -33,13 +33,13 @@ pub enum ModrinthSearchIndex {
 }
 
 impl ModrinthSearchIndex {
-    pub fn pretty_name(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
-            ModrinthSearchIndex::Relevance => "Relevance",
-            ModrinthSearchIndex::Downloads => "Downloads",
-            ModrinthSearchIndex::Follows => "Follows",
-            ModrinthSearchIndex::Newest => "Newest",
-            ModrinthSearchIndex::Updated => "Updated",
+            ModrinthSearchIndex::Relevance => "relevance",
+            ModrinthSearchIndex::Downloads => "downloads",
+            ModrinthSearchIndex::Follows => "follows",
+            ModrinthSearchIndex::Newest => "newest",
+            ModrinthSearchIndex::Updated => "updated",
         }
     }
 }

@@ -257,7 +257,6 @@ impl ModrinthSearchPage {
     }
 
     fn set_sort_option(&mut self, sort_option: ModrinthSearchIndex, _window: &mut Window, cx: &mut Context<Self>) {
-        println!("Setting sort to {}", sort_option.pretty_name());
         if self.sort_option == sort_option {
             return;
         }
@@ -928,7 +927,7 @@ impl Render for ModrinthSearchPage {
             .gap_1()
             .child(
                 Button::new("toggle-sort")
-                    .label("Sort by")
+                    .label(ts!("instance.content.sort"))
                     .icon(if is_sort_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
                     .when(!is_sort_shown, |this| this.outline())
                     .on_click(move |_, _, _| {
@@ -940,8 +939,9 @@ impl Render for ModrinthSearchPage {
                     .layout(Axis::Vertical)
                     .outline()
                     .children(sort_options.iter().map(|search_index| {
-                        Button::new(search_index.pretty_name())
-                            .child(h_flex().w_full().justify_start().gap_2().child(search_index.pretty_name()))
+                        Button::new(search_index.as_str())
+                            .child(h_flex().w_full().justify_start().gap_2()
+                                .child(ts_short!(format!("modrinth.sort.{}", search_index.as_str()))))
                             .selected(*search_index == self.sort_option)
                     }))
                     .on_click(cx.listener(move |page, clicked: &Vec<usize>, window, cx| {

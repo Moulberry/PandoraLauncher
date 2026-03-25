@@ -105,6 +105,11 @@ pub enum MessageToBackend {
     RequestLoadServers {
         id: InstanceID,
     },
+    ReorderServers {
+        id: InstanceID,
+        from_index: usize,
+        to_index: usize,
+    },
     RequestLoadMods {
         id: InstanceID,
     },

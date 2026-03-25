@@ -382,6 +382,55 @@ impl Instance {
         Self::load_servers_inner(backend, id).await
     }
 
+    pub async fn reorder_servers(
+        backend: Arc<BackendState>,
+        id: InstanceID,
+        from_index: usize,
+        to_index: usize,
+    ) {
+        backend.server_dat_ignore.write().insert(id, 2);
+        let server_dat_path = {
+            let guard = backend.instance_state.read();
+            let Some(instance) = guard.instances.get(id) else {
+                backend.server_dat_ignore.write().remove(&id);
+                return;
+            };
+            instance.server_dat_path.clone()
+        };
+
+        let result = tokio::task::spawn_blocking(move || {
+            reorder_servers_in_file(&server_dat_path, from_index, to_index)
+        }).await;
+
+        match result {
+            Ok(Ok(changed)) => {
+                if changed {
+                    if let Some(instance) = backend.instance_state.write().instances.get_mut(id) {
+                        if let Some(servers) = instance.servers.as_ref() {
+                            if let Some(updated) = reorder_servers_in_memory(servers, from_index, to_index) {
+                                instance.servers = Some(updated.clone());
+                                backend.send.send(MessageToFrontend::InstanceServersUpdated {
+                                    id,
+                                    servers: updated,
+                                });
+                            }
+                        }
+                    }
+                }
+            },
+            Ok(Err(err)) => {
+                backend.server_dat_ignore.write().remove(&id);
+                log::error!("Error reordering servers: {:?}", err);
+                backend.send.send_error(format!("Error reordering servers: {err}"));
+            },
+            Err(err) => {
+                backend.server_dat_ignore.write().remove(&id);
+                log::error!("Error reordering servers: {:?}", err);
+                backend.send.send_error(format!("Error reordering servers: {err}"));
+            },
+        }
+    }
+
     fn load_servers_inner(
         backend: Arc<BackendState>,
         id: InstanceID,
@@ -1138,4 +1187,46 @@ fn load_servers_summary(server_dat_path: &Path, backend: &Arc<BackendState>, ver
     }
 
     Ok(summaries)
+}
+
+fn reorder_servers_in_file(server_dat_path: &Path, from_index: usize, to_index: usize) -> anyhow::Result<bool> {
+    if !server_dat_path.is_file() {
+        return Ok(false);
+    }
+
+    let raw = std::fs::read(server_dat_path)?;
+    let mut nbt_data = raw.as_slice();
+    let mut result = nbt::decode::read_named(&mut nbt_data)?;
+
+    let mut root = result.as_compound_mut().context("Unable to get root compound")?;
+    let mut servers = root
+        .find_list_mut("servers", nbt::TAG_COMPOUND_ID)
+        .context("Unable to get servers")?;
+
+    if !servers.move_index(from_index, to_index) {
+        return Ok(false);
+    }
+
+    let bytes = nbt::encode::write_named(&result);
+    let temp_path = server_dat_path.with_extension("dat.tmp");
+    std::fs::write(&temp_path, bytes)?;
+    let _ = std::fs::remove_file(server_dat_path);
+    std::fs::rename(&temp_path, server_dat_path)?;
+    Ok(true)
+}
+
+fn reorder_servers_in_memory(
+    servers: &Arc<[InstanceServerSummary]>,
+    from_index: usize,
+    to_index: usize,
+) -> Option<Arc<[InstanceServerSummary]>> {
+    if from_index >= servers.len() || to_index >= servers.len() || from_index == to_index {
+        return None;
+    }
+
+    let mut vec = servers.to_vec();
+    let entry = vec.remove(from_index);
+    let insert_at = to_index.min(vec.len());
+    vec.insert(insert_at, entry);
+    Some(vec.into())
 }

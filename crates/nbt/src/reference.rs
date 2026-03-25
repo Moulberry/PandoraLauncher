@@ -713,6 +713,21 @@ impl<'a> ListRefMut<'a> {
         self.get_self_node().1.len()
     }
 
+    pub fn move_index(&mut self, from: usize, to: usize) -> bool {
+        let (_, children) = self.get_self_node_mut();
+        if from >= children.len() || to >= children.len() || from == to {
+            return false;
+        }
+
+        let entry = children.remove(from);
+        let mut insert_at = to;
+        if insert_at > children.len() {
+            insert_at = children.len();
+        }
+        children.insert(insert_at, entry);
+        true
+    }
+
     pub fn get(&self, index: usize) -> Option<NBTRef<'_>> {
         let (_, children) = self.get_self_node();
         let idx = children.get(index)?;

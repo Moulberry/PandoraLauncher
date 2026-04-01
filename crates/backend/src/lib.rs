@@ -16,6 +16,7 @@ mod backend_handler;
 mod account;
 mod arcfactory;
 mod directories;
+mod export;
 mod install_content;
 mod instance;
 mod java_manifest;

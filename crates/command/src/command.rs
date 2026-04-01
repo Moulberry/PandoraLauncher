@@ -1,4 +1,13 @@
-use std::{borrow::Cow, ffi::{OsStr, OsString}, io::{PipeReader, PipeWriter}, os::fd::OwnedFd, path::{Path, PathBuf}, sync::Arc};
+use std::{
+    borrow::Cow,
+    ffi::{OsStr, OsString},
+    io::{Error, ErrorKind, PipeReader, PipeWriter},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+#[cfg(unix)]
+use std::os::fd::OwnedFd;
 
 use rustc_hash::FxHashMap;
 
@@ -12,6 +21,7 @@ pub struct PandoraCommand {
     pub(crate) stdin: PandoraStdioWriteMode,
     pub(crate) stdout: PandoraStdioReadMode,
     pub(crate) stderr: PandoraStdioReadMode,
+    #[cfg(unix)]
     pub(crate) pass_fds: Vec<OwnedFd>,
 }
 
@@ -25,6 +35,7 @@ impl PandoraCommand {
             stdin: Default::default(),
             stdout: Default::default(),
             stderr: Default::default(),
+            #[cfg(unix)]
             pass_fds: Default::default(),
         }
     }
@@ -35,17 +46,29 @@ impl PandoraCommand {
 
     pub fn spawn(self) -> std::io::Result<PandoraChild> {
         #[cfg(unix)]
-        return crate::unix::unix_spawn::spawn(self)
+        return crate::unix::unix_spawn::spawn(self);
+
+        #[cfg(not(unix))]
+        Err(Error::new(ErrorKind::Unsupported, "process spawning not supported on this platform"))
     }
 
     pub fn spawn_elevated(self) -> std::io::Result<PandoraProcess> {
         #[cfg(target_os = "linux")]
         return crate::unix::linux::pkexec::spawn(self);
+
+        #[cfg(not(target_os = "linux"))]
+        Err(Error::new(ErrorKind::Unsupported, "elevated spawning not supported on this platform"))
     }
 
     pub fn spawn_sandboxed(self, sandbox: PandoraSandbox) -> std::io::Result<PandoraChild> {
         #[cfg(target_os = "linux")]
         return crate::unix::linux::bwrap::spawn(self, sandbox);
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = sandbox;
+            Err(Error::new(ErrorKind::Unsupported, "sandboxed spawning not supported on this platform"))
+        }
     }
 }
 

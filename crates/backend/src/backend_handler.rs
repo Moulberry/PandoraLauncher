@@ -92,6 +92,12 @@ impl BackendState {
                     }
                 }
             },
+            MessageToBackend::ExportInstance { id, format, options, output, modal_action } => {
+                let backend = self.clone();
+                tokio::task::spawn(async move {
+                    crate::export::export_instance(backend, id, format, options, output, modal_action).await;
+                });
+            },
             MessageToBackend::RenameInstance { id, name } => {
                 self.rename_instance(id, &name).await;
             },

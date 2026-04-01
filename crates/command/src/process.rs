@@ -1,9 +1,12 @@
+#[cfg(unix)]
 use crate::unix::unix_helpers::{cvt, cvt_r};
 
+#[cfg(unix)]
 pub struct PandoraProcess {
     pub(crate) pid: libc::pid_t,
 }
 
+#[cfg(unix)]
 impl PandoraProcess {
     pub fn stop(&mut self) -> std::io::Result<()> {
         unsafe { cvt(libc::kill(self.pid, libc::SIGTERM))? };
@@ -19,9 +22,37 @@ impl PandoraProcess {
         let mut status = 0 as libc::c_int;
         cvt_r(|| unsafe { libc::waitpid(self.pid, &mut status, 0) })?;
         if libc::WIFEXITED(status) {
-            return Ok(Some(libc::WEXITSTATUS(status)));
+            Ok(Some(libc::WEXITSTATUS(status)))
         } else {
-            return Ok(None);
+            Ok(None)
         }
     }
 }
+
+#[cfg(not(unix))]
+pub struct PandoraProcess;
+
+#[cfg(not(unix))]
+impl PandoraProcess {
+    pub fn stop(&mut self) -> std::io::Result<()> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "process control not supported on this platform",
+        ))
+    }
+
+    pub fn kill(self) -> std::io::Result<()> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "process control not supported on this platform",
+        ))
+    }
+
+    pub fn wait(self) -> std::io::Result<Option<i32>> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "process control not supported on this platform",
+        ))
+    }
+}
+

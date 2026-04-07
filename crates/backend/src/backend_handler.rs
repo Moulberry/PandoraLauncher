@@ -238,16 +238,32 @@ impl BackendState {
                     return;
                 };
 
-                if instance.processes.is_empty() {
+                if instance.processes.is_empty() && instance.closing_processes.is_empty() {
                     self.send.send_error("Can't kill instance, instance wasn't running");
                     return;
                 }
 
-                for mut process in instance.processes.drain(..) {
+                for (process, _) in instance.closing_processes.drain(..) {
                     let result = process.kill();
-                    if result.is_err() {
+
+                    if let Err(err) = result {
                         self.send.send_error("Failed to kill instance");
-                        log::error!("Failed to kill instance: {:?}", result.unwrap_err());
+                        log::error!("Failed to kill instance: {err:?}");
+                    }
+                }
+
+                let now = Instant::now();
+                for mut process in instance.processes.drain(..) {
+                    let mut result = process.close();
+                    if result.is_err() {
+                        result = process.kill();
+                    } else {
+                        instance.closing_processes.push((process, now + Duration::from_secs(3)));
+                    }
+
+                    if let Err(err) = result {
+                        self.send.send_error("Failed to kill instance");
+                        log::error!("Failed to kill instance: {err:?}");
                     }
                 }
 
@@ -337,7 +353,7 @@ impl BackendState {
                         child.stdout.take();
 
                         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                            instance.processes.push(child);
+                            instance.processes.push(child.process);
                             instance.update_session();
                         }
                     },
@@ -1686,6 +1702,9 @@ impl BackendState {
             },
             MessageToBackend::RequestSkinLibrary => {
                 SkinManager::load_skin_library(&self);
+            },
+            MessageToBackend::RemoveFromSkinLibrary { skin } => {
+                SkinManager::remove_skin(&self, skin);
             },
             MessageToBackend::AddToSkinLibrary { source } => {
                 let (bytes, filename) = match source {

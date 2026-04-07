@@ -355,6 +355,8 @@ instance:
       en: Start
     starting:
       en: Launching...
+    stopping:
+      en: Stopping...
     error:
       en: Error starting instance
 
@@ -798,6 +800,11 @@ skins:
     en: Download
   open_folder:
     en: Open folder
+  switch_view:
+    texture:
+      en: Switch to texture
+    model:
+      en: Switch to model
 login:
   title:
     en: Login

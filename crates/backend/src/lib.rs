@@ -385,6 +385,11 @@ pub fn join_windows_shell(args: &[&str]) -> String {
             string.push(' ');
         }
 
+        if arg.is_empty() {
+            string.push_str("\"\"");
+            continue;
+        }
+
         let quoted = arg.contains(&[' ', '\t']);
         if quoted {
             string.push('"');
@@ -403,6 +408,7 @@ pub fn join_windows_shell(args: &[&str]) -> String {
                 for _ in 0..backslashes {
                     string.push('\\');
                 }
+                backslashes = 0;
                 string.push(char);
             }
         }
@@ -438,6 +444,11 @@ pub fn join_windows_shell_os(args: &[&OsStr]) -> OsString {
             string.push(b' ');
         }
 
+        if arg.is_empty() {
+            string.extend(b"\"\"");
+            continue;
+        }
+
         let arg_raw = arg.as_encoded_bytes();
         let quoted = arg_raw.contains(&b' ') || arg_raw.contains(&b'\t');
         if quoted {
@@ -458,6 +469,7 @@ pub fn join_windows_shell_os(args: &[&OsStr]) -> OsString {
                 for _ in 0..backslashes {
                     string.push(b'\\');
                 }
+                backslashes = 0;
                 string.push(*byte);
             }
         }

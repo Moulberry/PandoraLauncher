@@ -41,6 +41,7 @@ pub enum InstanceStatus {
     NotRunning,
     Launching,
     Running,
+    Stopping,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

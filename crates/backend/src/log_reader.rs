@@ -1,9 +1,4 @@
-use std::{
-    borrow::Cow,
-    io::{BufRead, BufReader},
-    process::{ChildStderr, ChildStdout},
-    sync::{atomic::AtomicUsize, Arc},
-};
+use std::{borrow::Cow, io::{BufRead, BufReader, PipeReader}, sync::{Arc, atomic::AtomicUsize}};
 
 use bridge::{
     game_output::GameOutputLogLevel, handle::FrontendHandle, keep_alive::KeepAlive, message::MessageToFrontend,
@@ -39,7 +34,7 @@ pub fn replace(string: &str) -> Cow<'_, str> {
     replaced
 }
 
-pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sender: FrontendHandle) {
+pub fn start_game_output(stdout: PipeReader, stderr: Option<PipeReader>, sender: FrontendHandle) {
     let id = GAME_OUTPUT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let keep_alive = KeepAlive::new();
     let keep_alive_handle = keep_alive.create_handle();
@@ -152,7 +147,7 @@ struct LogReader {
 
 struct LogInput {
     buffer: Vec<u8>,
-    reader: BufReader<ChildStdout>
+    reader: BufReader<PipeReader>
 }
 
 #[derive(Debug)]

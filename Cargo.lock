@@ -631,6 +631,7 @@ dependencies = [
  "base64 0.22.1",
  "bridge",
  "chrono",
+ "command",
  "crc32fast",
  "directories",
  "enum-map",
@@ -643,6 +644,8 @@ dependencies = [
  "indexmap 2.13.0",
  "junction",
  "lexical-sort",
+ "libc",
+ "libseccomp",
  "log",
  "lzma-rs",
  "memchr",
@@ -1274,6 +1277,25 @@ checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
 dependencies = [
  "bytes",
  "memchr",
+]
+
+[[package]]
+name = "command"
+version = "0.1.0"
+dependencies = [
+ "directories",
+ "junction",
+ "libc",
+ "libseccomp",
+ "log",
+ "once_cell",
+ "parking_lot",
+ "rustc-hash 2.1.1",
+ "scopeguard",
+ "security-framework 3.7.0",
+ "security-framework-sys",
+ "tokio",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -2567,6 +2589,7 @@ dependencies = [
  "backtrace",
  "bridge",
  "chrono",
+ "command",
  "directories",
  "enumset",
  "ftree",
@@ -4224,9 +4247,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.182"
+version = "0.2.183"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
+checksum = "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d"
 
 [[package]]
 name = "libdbus-sys"
@@ -4273,6 +4296,24 @@ dependencies = [
  "libc",
  "redox_syscall 0.7.2",
 ]
+
+[[package]]
+name = "libseccomp"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e5310a2c5b6ffbc094b5f70a2ca7b79ed36ad90e6f90994b166489a1bce3fcc"
+dependencies = [
+ "bitflags 2.11.0",
+ "libc",
+ "libseccomp-sys",
+ "pkg-config",
+]
+
+[[package]]
+name = "libseccomp-sys"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60276e2d41bbb68b323e566047a1bfbf952050b157d8b5cdc74c07c1bf4ca3b6"
 
 [[package]]
 name = "libsqlite3-sys"
@@ -5541,6 +5582,7 @@ dependencies = [
  "backtrace",
  "bridge",
  "clap",
+ "command",
  "directories",
  "fern",
  "frontend",

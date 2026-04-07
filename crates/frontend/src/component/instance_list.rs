@@ -213,6 +213,11 @@ fn render_play_button(item: &InstanceEntry, index: usize, backend_handle: Backen
                 .warning()
                 .label("...")
         },
+        InstanceStatus::Stopping => {
+            Button::new(("launching", index))
+                .danger()
+                .label("...")
+        },
         InstanceStatus::Running => {
             Button::new(("kill_instance", index))
                 .danger()

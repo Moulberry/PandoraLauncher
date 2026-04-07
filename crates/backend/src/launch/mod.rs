@@ -1,10 +1,13 @@
 use std::{
-    borrow::Cow, cmp::Ordering, collections::{BTreeSet, HashMap, HashSet}, ffi::{OsStr, OsString}, fs::File, io::Write, path::{Path, PathBuf}, process::{Child, Stdio}, sync::{Arc, OnceLock, atomic::AtomicBool}
+    borrow::Cow, cmp::Ordering, collections::{BTreeSet, HashMap, HashSet}, ffi::{OsStr, OsString}, fs::File, io::Write, path::{Path, PathBuf}, process::Stdio, sync::{Arc, OnceLock, atomic::AtomicBool}
 };
 
 use bridge::{
     handle::FrontendHandle, message::{MessageToFrontend, QuickPlayLaunch}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType, ProgressTrackers}, safe_path::SafePath
 };
+#[cfg(windows)]
+use command::PandoraArg;
+use command::{PandoraChild, PandoraCommand, PandoraSandbox};
 use futures::{FutureExt, TryFutureExt};
 use rand::seq::SliceRandom;
 use rc_zip_sync::{ArchiveHandle, ReadZip};
@@ -90,7 +93,7 @@ impl Launcher {
         add_mods: Vec<PathBuf>,
         launch_tracker: &ProgressTracker,
         modal_action: &ModalAction,
-    ) -> Result<Child, LaunchError> {
+    ) -> Result<PandoraChild, LaunchError> {
         log::info!("Launching {:?}", dot_minecraft_path);
 
         launch_tracker.set_total(6);
@@ -210,7 +213,7 @@ impl Launcher {
                     }
                 }
             } else {
-                classpath.push(library_path.into_os_string());
+                classpath.push(library_path);
             }
         }
 
@@ -220,6 +223,8 @@ impl Launcher {
             natives_dir,
             libraries_dir: self.directories.libraries_dir.clone(),
             game_dir: dot_minecraft_path,
+            log_configs_dir: self.directories.log_configs_dir.clone(),
+            sandbox_dir: self.directories.sandbox_dir.clone(),
             configuration: instance_info,
             assets_root: self.directories.assets_root_dir.clone(),
             assets_index_name,
@@ -227,7 +232,7 @@ impl Launcher {
             log_configuration,
             rule_context: launch_rule_context,
             login_info,
-            add_mods
+            add_mods,
         };
 
         if modal_action.has_requested_cancel() {
@@ -236,7 +241,7 @@ impl Launcher {
         }
 
         log::info!("Launching game process");
-        let child = launch_context.launch(&version_info)?;
+        let child = launch_context.launch(&version_info).await?;
 
         launch_tracker.add_count(1);
 
@@ -433,7 +438,7 @@ impl Launcher {
                     true
                 ).await
             },
-            Loader::Unknown => todo!(),
+            Loader::Unknown => unimplemented!(),
         }
     }
 
@@ -598,8 +603,8 @@ impl Launcher {
         let version: PartialMinecraftVersion = serde_json::from_slice(&version_file.bytes()?)?;
 
         // Download mirror list
-        let mirror = if check_mirrors {
-            Self::download_random_mirror(http_client, &install_profile.mirror_list).await
+        let mirror = if check_mirrors && let Some(mirror_list) = &install_profile.mirror_list {
+            Self::download_random_mirror(http_client, mirror_list).await
         } else {
             None
         };
@@ -610,6 +615,32 @@ impl Launcher {
         // Download libraries
         let libraries = install_profile.libraries.iter().filter_map(|library| {
             let mut artifact = library.downloads.artifact.clone()?;
+            if let Some(builtin) = installer_zip.by_name(format!("maven/{}", artifact.path)) {
+                if !path_is_normal(artifact.path.as_str()) {
+                    log::warn!("Refusing to install artifact with illegal path: {}", artifact.path);
+                    return None;
+                }
+
+                let path = self.directories.libraries_dir.join(artifact.path);
+
+                if let Some(sha1) = &artifact.sha1 {
+                    let mut expected_hash = [0u8; 20];
+                    if hex::decode_to_slice(sha1.as_str(), &mut expected_hash).is_ok() {
+                        if crate::check_sha1_hash(&path, expected_hash).unwrap_or(false) {
+                            return None;
+                        }
+                    };
+                }
+
+                if let Ok(bytes) = builtin.bytes() {
+                    _ = crate::write_safe(&path, &bytes);
+                } else {
+                    log::warn!("Unable to copy {} from zip", artifact.path);
+                }
+            }
+            if artifact.url.is_empty() {
+                return None;
+            }
             if let Some(mirror) = &mirror {
                 if artifact.url.starts_with("http") && !artifact.url.starts_with("https://libraries.minecraft.net/") && artifact.url.ends_with(artifact.path.as_str()) {
                     artifact.url = format!("{}{}", mirror, artifact.path).into();
@@ -782,7 +813,13 @@ impl Launcher {
         launch_tracker.add_count(1);
         launch_tracker.notify();
 
-        Ok((Arc::new(version.apply_to(&base_version)), AddVanillaJar::No))
+        let add_vanilla_jar = if install_profile.processors.is_empty() {
+            AddVanillaJar::Yes
+        } else {
+            AddVanillaJar::No
+        };
+
+        Ok((Arc::new(version.apply_to(&base_version)), add_vanilla_jar))
     }
 
     async fn create_forgelike_install_version_legacy(
@@ -2058,10 +2095,12 @@ pub struct LaunchContext {
     pub natives_dir: PathBuf,
     pub libraries_dir: Arc<Path>,
     pub game_dir: Arc<Path>,
+    pub log_configs_dir: Arc<Path>,
+    pub sandbox_dir: Arc<Path>,
     pub configuration: InstanceConfiguration,
     pub assets_root: Arc<Path>,
     pub assets_index_name: String,
-    pub classpath: Vec<OsString>,
+    pub classpath: Vec<PathBuf>,
     pub log_configuration: Option<OsString>,
     pub rule_context: LaunchRuleContext,
     pub login_info: MinecraftLoginInfo,
@@ -2069,44 +2108,45 @@ pub struct LaunchContext {
 }
 
 impl LaunchContext {
-    pub fn launch(mut self, version_info: &MinecraftVersion) -> std::io::Result<std::process::Child> {
-        #[cfg(target_os = "linux")]
-        let use_mangohud = self.configuration.linux_wrapper.map(|w| w.use_mangohud).unwrap_or(false);
-        #[cfg(target_os = "linux")]
-        let use_gamemode = self.configuration.linux_wrapper.map(|w| w.use_gamemode).unwrap_or(false);
+    pub async fn launch(mut self, version_info: &MinecraftVersion) -> std::io::Result<PandoraChild> {
+        let mut wrapping_command: Vec<Cow<'static, OsStr>> = Vec::new();
 
-        let mut wrapping_command = Vec::new();
         #[cfg(target_os = "linux")]
-        {
-            if use_mangohud {
-                wrapping_command.push("mangohud".to_string());
+        if let Some(linux_wrapper) = &self.configuration.linux_wrapper {
+            if linux_wrapper.use_mangohud && let Some(mangohud) = command::get_command_path("mangohud") {
+                wrapping_command.push(mangohud.as_os_str().to_os_string().into());
             }
-            if use_gamemode {
-                wrapping_command.push("gamemoderun".to_string());
+            if linux_wrapper.use_gamemode && let Some(gamemoderun) = command::get_command_path("gamemoderun") {
+                wrapping_command.push(gamemoderun.as_os_str().to_os_string().into());
             }
         }
 
         if let Some(InstanceWrapperCommandConfiguration { enabled: true, ref flags }) = self.configuration.wrapper_command {
-            let split = &mut match shell_words::split(&flags) {
+            let split = match shell_words::split(&flags) {
               Ok(split) => split,
               Err(_) =>  flags.split_whitespace().map(|f| f.to_string()).collect()
             };
-            wrapping_command.append(split);
+            for arg in split {
+                wrapping_command.push(Cow::Owned(OsString::from(arg)));
+            }
         }
 
+        wrapping_command.push(self.java_path.clone().into_os_string().into());
+
         let mut iter = wrapping_command.iter();
+        let mut command = PandoraCommand::new(iter.next().unwrap().to_os_string());
+        for arg in iter {
+            command.arg(arg.to_os_string());
+        }
 
-        let mut command = if let Some(first) = iter.next() {
-            let mut cmd = std::process::Command::new(first);
-            iter.for_each(|arg| {
-                cmd.arg(arg);
-            });
-            cmd.arg(&*self.java_path);
-            cmd
-        } else {
-            std::process::Command::new(&*self.java_path)
-        };
-
+        #[cfg(target_os = "linux")]
+        if std::env::var_os("DISPLAY").is_none() {
+            use std::os::linux::net::SocketAddrExt;
+            use std::os::unix::net::{UnixStream, SocketAddr};
+            if std::fs::exists("/tmp/.X11-unix/X0").unwrap_or(false) || UnixStream::connect_addr(&SocketAddr::from_abstract_name(b"/tmp/.X11-unix/X0").unwrap()).is_ok() {
+                command.env("DISPLAY", ":0");
+            }
+        }
 
         #[cfg(target_os = "linux")] {
             if self.configuration.linux_wrapper.map(|w| w.use_discrete_gpu).unwrap_or(true) {
@@ -2118,15 +2158,18 @@ impl LaunchContext {
         }
 
         command.current_dir(&self.game_dir);
-        command.stdin(Stdio::piped());
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
+        command.stdin(command::PandoraStdioWriteMode::Pipe);
+        command.stdout(command::PandoraStdioReadMode::Pipe);
+        command.stderr(command::PandoraStdioReadMode::Pipe);
 
-        self.classpath.push(self.launch_wrapper_path.as_os_str().to_os_string());
+        #[cfg(windows)]
+        command.force_feedback(true);
+
+        self.classpath.push(self.launch_wrapper_path.to_path_buf());
 
         if let Some(arguments) = &version_info.arguments {
             self.process_arguments(&arguments.jvm, &mut |arg| {
-                command.arg(arg);
+                command.arg(arg.to_os_string());
             });
         } else {
             let mut java_library_path = OsString::new();
@@ -2139,24 +2182,53 @@ impl LaunchContext {
         }
 
         if let Some(log_configuration) = &self.log_configuration {
-            command.arg(log_configuration);
+            command.arg(log_configuration.to_os_string());
         }
 
         if let Some(memory) = &self.configuration.memory && memory.enabled {
             command.arg(format!("-Xms{}m", memory.min));
             command.arg(format!("-Xmx{}m", memory.max.max(memory.min).max(128)));
         }
+
         if let Some(jvm_flags) = &self.configuration.jvm_flags && jvm_flags.enabled {
             if let Ok(split) = shell_words::split(&jvm_flags.flags) {
-                command.args(split);
+                for arg in split {
+                    command.arg(arg.to_string());
+                }
             } else {
-                command.args(jvm_flags.flags.split_whitespace());
+                for arg in jvm_flags.flags.split_whitespace() {
+                    command.arg(arg.to_string());
+                }
             }
         }
 
         command.arg("com.moulberry.pandora.LaunchWrapper");
 
-        let mut child = command.spawn()?;
+        let mut child = command.spawn_sandboxed(PandoraSandbox {
+            allow_read: vec![
+                self.libraries_dir.clone(),
+                self.log_configs_dir.clone(),
+                self.launch_wrapper_path.clone(),
+                self.assets_root.clone(),
+            ],
+            allow_write: vec![
+                self.game_dir.clone(),
+                self.natives_dir.clone().into(),
+            ],
+            is_jvm: true,
+            grant_network_access: true,
+            #[cfg(target_os = "linux")]
+            sandbox_dir: self.sandbox_dir.clone(),
+            #[cfg(windows)]
+            name: Arc::from(OsStr::new("PandoraInstanceSandbox")),
+            #[cfg(windows)]
+            description: Arc::from(OsStr::new("Sandbox for Minecraft instances run by Pandora Launcher")),
+            #[cfg(windows)]
+            self_elevate_for_acl_arg: Some(PandoraArg::from(OsStr::new("--internal-set-traverse-acls"))),
+            #[cfg(windows)]
+            grant_winsta_writeattributes: true,
+        }).await?;
+        // let mut child = command.spawn().await?;
 
         let mut stdin = child.stdin.take().expect("stdin present");
 

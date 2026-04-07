@@ -11,7 +11,7 @@ use rustc_hash::FxHashMap;
 use schema::minecraft_profile::{SkinState, SkinVariant};
 use uuid::Uuid;
 use crate::{
-    component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, ts
+    component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, skin_thumbnail_cache::SkinThumbnailCache, skin_renderer::determine_skin_variant, ts
 };
 
 pub struct SkinsPage {
@@ -31,6 +31,7 @@ pub struct SkinsPage {
     copy_skin_input: Entity<InputState>,
     add_from_file_task: Task<()>,
     data: DataEntities,
+    skin_thumbnail_cache: Entity<SkinThumbnailCache>,
 }
 
 static DEFAULT_SKIN: Lazy<Arc<[u8]>> = Lazy::new(|| Arc::from(*include_bytes!("../../../../assets/images/default_skin.png")));
@@ -54,6 +55,7 @@ impl SkinsPage {
             copy_skin_input: cx.new(|cx| InputState::new(window, cx)),
             add_from_file_task: Task::ready(()),
             data: data.clone(),
+            skin_thumbnail_cache: SkinThumbnailCache::new(cx),
         }
     }
 
@@ -538,10 +540,16 @@ impl Render for SkinsPage {
                         this.on_click(move |_, window, cx| {
                             crate::open_folder(&folder, window, cx);
                         })
-                    })))
+                    }))
+                .child(Button::new("toggle-3d")
+                    .icon(if InterfaceConfig::get(cx).skin_list_show_3d { PandoraIcon::Image } else { PandoraIcon::Box })
+                    .label(if InterfaceConfig::get(cx).skin_list_show_3d { ts!("skins.switch_view.texture") } else { ts!("skins.switch_view.model") })
+                    .small()
+                    .compact()
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        InterfaceConfig::get_mut(cx).skin_list_show_3d ^= true;
+                    }))))
             .child(h_flex().w_full().gap_2().flex_wrap().children(skins.filter_map(|(i, skin)| {
-                let skin_img = crate::png_render_cache::render_with_transform(skin.clone(),
-                    ImageTransformation::ResizeToWidth { width: 128 },  cx);
                 let selected = Arc::ptr_eq(&self.selected_skin, skin);
                 let active = if let Some(active_skin) = &active_skin {
                     Arc::ptr_eq(active_skin, skin)
@@ -551,11 +559,47 @@ impl Render for SkinsPage {
                 if active && i > 0 {
                     return None;
                 }
+
+                let variant = if active && let Some(v) = active_skin_variant {
+                    v
+                } else {
+                    crate::skin_renderer::determine_skin_variant(skin).unwrap_or(SkinVariant::Classic)
+                };
+
+                let show_3d = InterfaceConfig::get(cx).skin_list_show_3d;
+
                 let padding = if selected {
                     px(7.0)
                 } else {
                     px(8.0)
                 };
+
+                let skin_child: AnyElement = if show_3d {
+                    let thumbnail = self.skin_thumbnail_cache.update(cx, |cache, cx| {
+                        cache.get_or_queue(skin, variant, cx)
+                    });
+                    let thumb_w = px(crate::skin_thumbnail_cache::THUMB_WIDTH as f32);
+                    let thumb_h = px(crate::skin_thumbnail_cache::THUMB_HEIGHT as f32);
+                    if let Some(img) = thumbnail {
+                        gpui::img(img)
+                            .w(thumb_w)
+                            .h(thumb_h)
+                            .into_any_element()
+                    } else {
+                        Skeleton::new()
+                            .w(thumb_w)
+                            .h(thumb_h)
+                            .bg(secondary_skeleton)
+                            .into_any_element()
+                    }
+                } else {
+                    crate::png_render_cache::render_with_transform(
+                        skin.clone(),
+                        ImageTransformation::ResizeToWidth { width: 128 },
+                        cx,
+                    ).into_any_element()
+                };
+
                 Some(div()
                     .id(("select-skin", i))
                     .rounded(radius)
@@ -570,10 +614,44 @@ impl Render for SkinsPage {
                         this.bg(secondary)
                             .hover(|style| style.bg(secondary_hover))
                     })
-                    .when(active, |this| {
+                    .child(skin_child)
+                    .when_else(active, |this| {
                         this.child(Icon::new(PandoraIcon::Flag).absolute().right(padding).bottom(padding))
+                    }, |this| {
+                        this.child(Button::new("delete-skin")
+                            .icon(PandoraIcon::Trash2)
+                            .occlude()
+                            .danger()
+                            .outline()
+                            .compact()
+                            .absolute()
+                            .small()
+                            .left(padding)
+                            .bottom(padding)
+                            .on_click({
+                                let skin = skin.clone();
+                                let skin: Arc<[u8]> = skin.into();
+                                let active_skin = active_skin.clone();
+                                cx.listener(move |page, _, window, cx| {
+                                    page.data.backend_handle.send(MessageToBackend::RemoveFromSkinLibrary {
+                                        skin: { skin.clone() }
+                                    });
+                                    cx.stop_propagation();
+                                    window.prevent_default();
+                                    if Arc::ptr_eq(&skin, &page.selected_skin) {
+                                        if let Some(active_skin) = active_skin.clone() {
+                                            let variant = if let Some(active_skin_variant) = active_skin_variant {
+                                                active_skin_variant
+                                            } else {
+                                                determine_skin_variant(&active_skin).unwrap_or(SkinVariant::Classic)
+                                            };
+                                            page.select_skin(active_skin, variant, cx);
+                                        }
+                                    }
+                                })
+                            })
+                        )
                     })
-                    .child(skin_img)
                     .on_click({
                         let skin = skin.clone();
                         cx.listener(move |page, _, _, cx| {

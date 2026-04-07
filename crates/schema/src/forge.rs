@@ -12,7 +12,7 @@ pub const NEOFORGE_INSTALLER_MAVEN_URL: &str = "https://maven.neoforged.net/rele
 pub struct ForgeInstallProfile {
     pub minecraft: Arc<str>,
     pub json: Arc<str>,
-    pub mirror_list: Arc<str>,
+    pub mirror_list: Option<Arc<str>>,
     pub data: HashMap<String, ForgeSidedData>,
     pub processors: Arc<[ForgeInstallProcessor]>,
     pub libraries: Arc<[GameLibrary]>

@@ -29,10 +29,12 @@ pub struct MinecraftVersion {
 }
 
 #[derive(Deserialize, Clone, Debug)]
-#[cfg_attr(debug_assertions, serde(deny_unknown_fields))]
+// #[cfg_attr(debug_assertions, serde(deny_unknown_fields))]
 pub struct LaunchArguments {
     pub game: Arc<[LaunchArgument]>,
     pub jvm: Arc<[LaunchArgument]>,
+    // #[serde(rename = "default-user-jvm")]
+    // pub default_user_jvm: Arc<[LaunchArgument]>,
 }
 
 #[derive(Clone, Debug)]

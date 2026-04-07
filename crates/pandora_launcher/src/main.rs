@@ -17,16 +17,30 @@ use parking_lot::RwLock;
 
 #[derive(Parser, Debug)]
 #[command()]
-struct Args {
+struct Cli {
     /// Instance to launch, instead of opening the launcher
     #[arg(long)]
     run_instance: Option<String>,
+    /// Internal function to set traversable ACLs in an elevated context
+    #[cfg(windows)]
+    #[arg(long, hide = false, num_args = 2..)]
+    internal_set_traverse_acls: Option<Vec<OsString>>,
 }
 
 pub mod panic;
 
 fn main() {
-    let args = Args::parse();
+    let cli = Cli::parse();
+
+    #[cfg(windows)]
+    if let Some(internal_set_traverse_acls) = cli.internal_set_traverse_acls {
+        if let Err(err) = command::set_traverse_acls(internal_set_traverse_acls) {
+            eprintln!("Unable to set traverse ACLs: {err}");
+            std::process::exit(1);
+        } else {
+            std::process::exit(0);
+        }
+    }
 
     let data_dir = if let Some(portable_dir) = get_portable_dir() {
         portable_dir
@@ -53,7 +67,7 @@ fn main() {
 
     panic::install_logging_hook();
 
-    if let Some(run_instance) = args.run_instance {
+    if let Some(run_instance) = cli.run_instance {
         let (backend_recv, backend_handle, mut frontend_recv, frontend_handle) = bridge::handle::create_pair();
 
         backend::start(launcher_dir.clone(), frontend_handle, backend_handle.clone(), backend_recv);
@@ -69,6 +83,7 @@ fn main() {
                         modal_action: modal_action.clone()
                     });
                     run_modal_action(modal_action);
+                    // todo: remove this sleep after daemonizing
                     std::thread::sleep(std::time::Duration::from_millis(100));
                     return;
                 }
@@ -212,6 +227,7 @@ fn setup_logging(level: log::LevelFilter) -> Result<(), fern::InitError> {
         .level_for("backend", level)
         .level_for("frontend", level)
         .level_for("bridge", level)
+        .level_for("command", level)
         .level_for("gpui_component::text", log::LevelFilter::Off)
         .level(log::LevelFilter::Warn);
 

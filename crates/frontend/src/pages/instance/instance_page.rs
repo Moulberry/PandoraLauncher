@@ -54,6 +54,19 @@ impl Page for InstancePage {
             InstanceStatus::Launching => {
                 Button::new("launching").warning().icon(PandoraIcon::Loader).label(ts!("instance.start.starting")).into_any_element()
             },
+            InstanceStatus::Stopping => {
+                Button::new("stopping")
+                    .danger()
+                    .icon(PandoraIcon::Loader)
+                    .label(ts!("instance.start.stopping"))
+                    .on_click({
+                        let backend_handle = backend_handle.clone();
+                        move |_, _, _| {
+                            backend_handle.send(MessageToBackend::KillInstance { id });
+                        }
+                    })
+                    .into_any_element()
+            },
             InstanceStatus::Running => {
                 ButtonGroup::new("running")
                     .child(Button::new("kill_instance")

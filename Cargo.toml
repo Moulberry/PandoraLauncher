@@ -21,6 +21,7 @@ opt-level = 3
 auth = { path = "crates/auth" }
 backend = { path = "crates/backend" }
 bridge = { path = "crates/bridge" }
+command = { path = "crates/command" }
 frontend = { path = "crates/frontend" }
 schema = { path = "crates/schema" }
 nbt = { path = "crates/nbt" }
@@ -66,7 +67,7 @@ serde_json = "1.0.145"
 sha1 = "0.10.6"
 slab = "0.4.11"
 thiserror = "2.0.17"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "net", "sync"] }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 ustr = { version = "1.1.0", features = ["serde"] }
 base64 = "0.22.1"
@@ -112,8 +113,13 @@ runas = "1.2.0"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 walkdir = "2.5.0"
 urlencoding = "2.1.3"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_System_Com", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Wdk_System_SystemServices", "Win32_System_SystemInformation", "Win32_Security_Credentials"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_System_Console", "Win32_System_Com", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_StationsAndDesktops", "Wdk_System_SystemServices", "Win32_System_SystemServices", "Win32_System_SystemInformation", "Win32_System_WindowsProgramming", "Win32_Security", "Win32_Security_Isolation", "Win32_Security_Credentials", "Win32_Security_Authorization"] }
 itertools = "0.14.0"
 crc32fast = "1.5.0"
 scopeguard = "1.2.0"
 hickory-resolver = { version = "0.25.2", features = ["system-config"] }
+libseccomp = "0.4.0"
+libc = "0.2.183"
+security-framework = "3.5.1"
+security-framework-sys = "2.15.0"
+junction = "1.3.0"

@@ -26,8 +26,6 @@ Categories=Games;Minecraft;Launcher;
     let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
 }
 
-// todo: use actual windows shell escaping instead of unix escaping
-
 #[cfg(target_os = "windows")]
 pub fn create_shortcut(mut path: PathBuf, name: &str, bin: &Path, args: &[&str]) {
     log::info!("Creating windows shortcut at {:?}", path);

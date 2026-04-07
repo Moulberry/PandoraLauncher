@@ -43,6 +43,7 @@ strum.workspace = true
 urlencoding.workspace = true
 futures.workspace = true
 itertools.workspace = true
+command.workspace = true
 
 rust-i18n = "3.1.5"
 

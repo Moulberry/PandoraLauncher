@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::Arc, time::{Instant, SystemTime, UNIX_EPOCH}
+    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, sync::Arc, time::{Instant, SystemTime, UNIX_EPOCH}
 };
 
 use anyhow::Context;
@@ -9,6 +9,7 @@ use bridge::{
         ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
     }, keep_alive::KeepAliveHandle, message::{BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle}
 };
+use command::PandoraProcess;
 use futures::FutureExt;
 use relative_path::RelativePath;
 use rustc_hash::FxHashSet;
@@ -34,7 +35,8 @@ pub struct Instance {
     pub stats: Persistent<InstanceStats>,
 
     pub launch_keepalive: Option<KeepAliveHandle>,
-    pub processes: Vec<Child>,
+    pub processes: Vec<PandoraProcess>,
+    pub closing_processes: Vec<(PandoraProcess, Instant)>,
     session_started_at: Option<Instant>,
 
     pub worlds_state: BridgeDataLoadState,
@@ -714,6 +716,7 @@ impl Instance {
 
             launch_keepalive: None,
             processes: Vec::new(),
+            closing_processes: Vec::new(),
             session_started_at: None,
 
             worlds_state: BridgeDataLoadState::default(),
@@ -858,6 +861,8 @@ impl Instance {
     pub fn status(&self) -> InstanceStatus {
         if !self.processes.is_empty() {
             InstanceStatus::Running
+        } else if !self.closing_processes.is_empty() {
+            InstanceStatus::Stopping
         } else if let Some(keepalive) = &self.launch_keepalive && keepalive.is_alive() {
             InstanceStatus::Launching
         } else {

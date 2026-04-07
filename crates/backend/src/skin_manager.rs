@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io::Cursor, path::Path, sync::Arc, time::SystemTime};
+use std::{collections::HashMap, io::Cursor, path::{Path, PathBuf}, sync::Arc, time::SystemTime};
 
 use bridge::message::{AccountSkinResult, BridgeDataLoadState, MessageToFrontend, SkinLibrary};
 use image::DynamicImage;
@@ -17,6 +17,7 @@ pub struct SkinManager {
     skin_library_last: Vec<(SystemTime, Arc<Path>, Arc<[u8]>)>,
     skin_library: Arc<[Arc<[u8]>]>,
     skin_library_changes: FolderChanges,
+    skin_path_map: HashMap<Arc<[u8]>, Arc<Path>>
 }
 
 impl Default for SkinManager {
@@ -28,6 +29,7 @@ impl Default for SkinManager {
             skin_library_last: Default::default(),
             skin_library: Default::default(),
             skin_library_changes: FolderChanges::all_dirty(),
+            skin_path_map: HashMap::new(),
         }
     }
 }
@@ -53,6 +55,18 @@ impl SkinManager {
             self.skin_cache.insert(image.as_bytes().into(), skin.clone());
             skin
         }
+    }
+
+    pub fn remove_skin(backend: &BackendState, image_bytes: Arc<[u8]>) {
+        let skin_manager = backend.skin_manager.write();
+        let Some(skin_path) = skin_manager.skin_path_map.get(&image_bytes) else {
+            log::warn!("Unable to find skin for deletion");
+            return;
+        };
+        let Ok(_) = std::fs::remove_file(skin_path) else {
+            log::warn!("Unable to delete skin at {}", skin_path.display());
+            return;
+        };
     }
 
     pub fn frontend_request(
@@ -257,6 +271,7 @@ impl SkinManager {
                     let mut skin_manager = backend.skin_manager.write();
                     skin_manager.skin_library_last = Default::default();
                     skin_manager.skin_library = Default::default();
+                    skin_manager.skin_path_map = Default::default();
                     backend.send.send(MessageToFrontend::SkinLibraryUpdated {
                         skin_library: SkinLibrary {
                             state: skin_manager.skin_library_state.clone(),
@@ -301,6 +316,7 @@ impl SkinManager {
 
                     let path: Arc<Path> = path.into();
 
+                    
                     skins.push((time, path, image, bytes));
                 }
 
@@ -311,6 +327,7 @@ impl SkinManager {
                     (time, path, skin_manager.create_skin(&image, &bytes))
                 }).collect::<Vec<_>>();
                 skin_manager.skin_library = skins.iter().map(|(_, _, bytes)| bytes.clone()).collect();
+                skin_manager.skin_path_map = skins.iter().map(|(_, path, bytes)| (bytes.clone(), path.clone())).collect();
                 skin_manager.skin_library_last = skins;
                 backend.send.send(MessageToFrontend::SkinLibraryUpdated {
                     skin_library: SkinLibrary {
@@ -366,6 +383,7 @@ impl SkinManager {
                 skins.sort_by_key(|(time, _, _)| *time);
 
                 skin_manager.skin_library = skins.iter().map(|(_, _, bytes)| bytes.clone()).collect();
+                skin_manager.skin_path_map = skins.iter().map(|(_, path, bytes)| (bytes.clone(), path.clone())).collect();
                 skin_manager.skin_library_last = skins;
                 backend.send.send(MessageToFrontend::SkinLibraryUpdated {
                     skin_library: SkinLibrary {

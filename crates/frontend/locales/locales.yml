@@ -355,6 +355,8 @@ instance:
       en: Start
     starting:
       en: Launching...
+    stopping:
+      en: Stopping...
     error:
       en: Error starting instance
 

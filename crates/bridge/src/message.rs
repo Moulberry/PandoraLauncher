@@ -234,6 +234,9 @@ pub enum MessageToBackend {
         cape: Option<Uuid>,
     },
     RequestSkinLibrary,
+    RemoveFromSkinLibrary{
+        skin: Arc<[u8]>,
+    },
     AddToSkinLibrary {
         source: UrlOrFile,
     },

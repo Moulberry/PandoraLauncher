@@ -428,15 +428,51 @@ impl BackendState {
         let mut instance_state = self.instance_state.write();
         for instance in instance_state.instances.iter_mut() {
             let mut killed = false;
-            instance.processes.retain_mut(|child| {
-                if matches!(child.try_wait(), Ok(None)) {
-                    true
-                } else {
-                    log::debug!("Child process {} is no longer alive", child.id());
-                    killed = true;
-                    false
+
+            instance.processes.retain_mut(|process| {
+                match process.try_wait() {
+                    Ok(None) => true,
+                    Ok(Some(status)) => {
+                        log::info!("Child process {} is no longer alive: {}", process.id(), status);
+                        killed = true;
+                        false
+                    }
+                    Err(err) => {
+                        log::error!("An error occured while waiting for process {}: {:?}", process.id(), err);
+                        killed = true;
+                        false
+                    },
                 }
             });
+            instance.closing_processes.retain_mut(|(process, _)| {
+                match process.try_wait() {
+                    Ok(None) => true,
+                    Ok(Some(status)) => {
+                        log::info!("Child process {} is no longer alive: {}", process.id(), status);
+                        killed = true;
+                        false
+                    }
+                    Err(err) => {
+                        log::error!("An error occured while waiting for process {}: {:?}", process.id(), err);
+                        killed = true;
+                        false
+                    },
+                }
+            });
+
+            let now = Instant::now();
+            let to_kill = instance.closing_processes.extract_if(.., |(_, deadline)| {
+                now > *deadline
+            });
+            for (process, _) in to_kill {
+                log::info!("Force killed process {}", process.id());
+                let result = process.kill();
+                killed = true;
+                if let Err(err) = result {
+                    self.send.send_error("Failed to kill instance");
+                    log::error!("Failed to kill instance: {err:?}");
+                }
+            }
 
             if killed {
                 instance.update_session();

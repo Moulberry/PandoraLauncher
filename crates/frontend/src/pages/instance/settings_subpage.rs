@@ -239,9 +239,9 @@ impl InstanceSettingsSubpage {
             #[cfg(target_os = "linux")]
             disable_gl_threaded_optimizations: linux_wrapper.disable_gl_threaded_optimizations,
             #[cfg(target_os = "linux")]
-            mangohud_available: Self::is_command_available("mangohud"),
+            mangohud_available: command::is_command_available("mangohud"),
             #[cfg(target_os = "linux")]
-            gamemode_available: Self::is_command_available("gamemoderun"),
+            gamemode_available: command::is_command_available("gamemoderun2"),
             new_name_change_state: NewNameChangeState::NoChange,
             icon,
             backend_handle,
@@ -638,16 +638,6 @@ impl InstanceSettingsSubpage {
         }
     }
 
-    #[cfg(target_os = "linux")]
-    fn is_command_available(command: &str) -> bool {
-        std::process::Command::new("sh")
-            .arg("-c")
-            .arg(format!("command -v {command}"))
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    }
-
     pub fn select_file(&mut self, message: SharedString, handle: impl FnOnce(&mut Self, Option<Arc<Path>>) + 'static, window: &mut Window, cx: &mut Context<Self>) {
         let receiver = cx.prompt_for_paths(PathPromptOptions {
             files: true,
@@ -949,46 +939,60 @@ impl Render for InstanceSettingsSubpage {
         let runtime_content = runtime_content.child(v_flex()
             .gap_1()
             .child(ts!("instance.linux.label"))
-            .child(Checkbox::new("use_mangohud").label(ts!("instance.linux.use_mangohud")).checked(self.use_mangohud).disabled(!self.mangohud_available).on_click(cx.listener(|page, value, _, cx| {
-                if page.use_mangohud != *value {
-                    page.use_mangohud = *value;
-                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
-                        id: page.instance_id,
-                        linux_wrapper: page.get_linux_wrapper_configuration()
-                    });
-                    cx.notify();
-                }
-            })))
-            .child(Checkbox::new("use_gamemode").label(ts!("instance.linux.use_gamemode")).checked(self.use_gamemode).disabled(!self.gamemode_available).on_click(cx.listener(|page, value, _, cx| {
-                if page.use_gamemode != *value {
-                    page.use_gamemode = *value;
-                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
-                        id: page.instance_id,
-                        linux_wrapper: page.get_linux_wrapper_configuration()
-                    });
-                    cx.notify();
-                }
-            })))
-            .child(Checkbox::new("use_discrete_gpu").label(ts!("instance.linux.use_discrete_gpu")).checked(self.use_discrete_gpu).on_click(cx.listener(|page, value, _, cx| {
-                if page.use_discrete_gpu != *value {
-                    page.use_discrete_gpu = *value;
-                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
-                        id: page.instance_id,
-                        linux_wrapper: page.get_linux_wrapper_configuration()
-                    });
-                    cx.notify();
-                }
-            })))
-            .child(Checkbox::new("disable_gl_threaded_optimizations").label(ts!("instance.linux.disable_gl_threaded_optimizations")).checked(self.disable_gl_threaded_optimizations).on_click(cx.listener(|page, value, _, cx| {
-                if page.disable_gl_threaded_optimizations != *value {
-                    page.disable_gl_threaded_optimizations = *value;
-                    page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
-                        id: page.instance_id,
-                        linux_wrapper: page.get_linux_wrapper_configuration()
-                    });
-                    cx.notify();
-                }
-            })))
+            .child(Checkbox::new("use_mangohud")
+                .label(ts!("instance.linux.use_mangohud"))
+                .checked(self.use_mangohud && self.mangohud_available)
+                .disabled(!self.mangohud_available)
+                .on_click(cx.listener(|page, value, _, cx| {
+                    if page.use_mangohud != *value {
+                        page.use_mangohud = *value;
+                        page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                            id: page.instance_id,
+                            linux_wrapper: page.get_linux_wrapper_configuration()
+                        });
+                        cx.notify();
+                    }
+                })))
+            .child(Checkbox::new("use_gamemode")
+                .label(ts!("instance.linux.use_gamemode"))
+                .checked(self.use_gamemode && self.gamemode_available)
+                .disabled(!self.gamemode_available)
+                .on_click(cx.listener(|page, value, _, cx| {
+                    if page.use_gamemode != *value {
+                        page.use_gamemode = *value;
+                        page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                            id: page.instance_id,
+                            linux_wrapper: page.get_linux_wrapper_configuration()
+                        });
+                        cx.notify();
+                    }
+                })))
+            .child(Checkbox::new("use_discrete_gpu")
+                .label(ts!("instance.linux.use_discrete_gpu"))
+                .checked(self.use_discrete_gpu)
+                .on_click(cx.listener(|page, value, _, cx| {
+                    if page.use_discrete_gpu != *value {
+                        page.use_discrete_gpu = *value;
+                        page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                            id: page.instance_id,
+                            linux_wrapper: page.get_linux_wrapper_configuration()
+                        });
+                        cx.notify();
+                    }
+                })))
+            .child(Checkbox::new("disable_gl_threaded_optimizations")
+                .label(ts!("instance.linux.disable_gl_threaded_optimizations"))
+                .checked(self.disable_gl_threaded_optimizations)
+                .on_click(cx.listener(|page, value, _, cx| {
+                    if page.disable_gl_threaded_optimizations != *value {
+                        page.disable_gl_threaded_optimizations = *value;
+                        page.backend_handle.send(MessageToBackend::SetInstanceLinuxWrapper {
+                            id: page.instance_id,
+                            linux_wrapper: page.get_linux_wrapper_configuration()
+                        });
+                        cx.notify();
+                    }
+                })))
         );
 
         let actions_content = v_flex()

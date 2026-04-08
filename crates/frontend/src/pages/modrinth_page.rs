@@ -183,7 +183,7 @@ impl ModrinthSearchPage {
             _delayed_clear_task: Task::ready(()),
             filter_loaders: Default::default(),
             filter_categories: Default::default(),
-            sort_option: ModrinthSearchIndex::Relevance,
+            sort_option: ModrinthSearchIndex::default(),
             show_categories: Arc::new(AtomicBool::new(false)),
             show_sort_options: Arc::new(AtomicBool::new(false)),
             can_install_latest,
@@ -362,7 +362,7 @@ impl ModrinthSearchPage {
         let request = ModrinthSearchRequest {
             query,
             facets: Some(facets.into()),
-            index: self.sort_option.clone(),
+            index: self.sort_option,
             offset,
             limit: 20,
         };
@@ -895,31 +895,27 @@ impl Render for ModrinthSearchPage {
                         show_categories.store(!is_category_shown, std::sync::atomic::Ordering::Relaxed);
                     })
             )
-            .child(
-                ButtonGroup::new("category_group")
-                    .layout(Axis::Vertical)
-                    .outline()
-                    .multiple(true)
-                    .children(categories.iter().map(|id| {
-                        Button::new(*id)
-                            .child(
-                                h_flex().w_full().justify_start().gap_2()
-                                .when_some(icon_for(id), |this, icon| {
-                                    this.child(Icon::empty().path(icon))
-                                })
-                                .child(ts_short!(format!("modrinth.category.{}", id))))
-                            .selected(self.filter_categories.contains(id))
-                    }))
-                    .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
-                        page.set_filter_categories(clicked.iter()
-                            .filter_map(|index| categories.get(*index).map(|s| *s))
-                            .collect(), window, cx);
-                    }))
-                    .when(!is_category_shown, |this| this.invisible().h_0())
-            )
+            .when(is_category_shown, |this| this.child(ButtonGroup::new("category_group")
+                .layout(Axis::Vertical)
+                .outline()
+                .multiple(true)
+                .children(categories.iter().map(|id| {
+                    Button::new(*id)
+                        .child(
+                            h_flex().w_full().justify_start().gap_2()
+                            .when_some(icon_for(id), |this, icon| {
+                                this.child(Icon::empty().path(icon))
+                            })
+                            .child(ts_short!(format!("modrinth.category.{}", id))))
+                        .selected(self.filter_categories.contains(id))
+                }))
+                .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
+                    page.set_filter_categories(clicked.iter()
+                        .filter_map(|index| categories.get(*index).map(|s| *s))
+                        .collect(), window, cx);
+                }))))
             .into_any_element();
 
-        let sort_options = ModrinthSearchIndex::iter().collect::<Vec<_>>();
         let is_sort_shown = self.show_sort_options.load(std::sync::atomic::Ordering::Relaxed);
         let show_sort_options = self.show_sort_options.clone();
 
@@ -934,22 +930,19 @@ impl Render for ModrinthSearchPage {
                         show_sort_options.store(!is_sort_shown, std::sync::atomic::Ordering::Relaxed);
                     })
             )
-            .child(
-                ButtonGroup::new("sort_group")
-                    .layout(Axis::Vertical)
-                    .outline()
-                    .children(sort_options.iter().map(|search_index| {
-                        Button::new(search_index.as_str())
-                            .child(h_flex().w_full().justify_start().gap_2()
-                                .child(ts_short!(format!("modrinth.sort.{}", search_index.as_str()))))
-                            .selected(*search_index == self.sort_option)
-                    }))
-                    .on_click(cx.listener(move |page, clicked: &Vec<usize>, window, cx| {
-                        let sort_option = sort_options.get(clicked[0]).cloned().unwrap_or(ModrinthSearchIndex::Relevance);
-                        page.set_sort_option(sort_option, window, cx);
-                    }))
-                    .when(!is_sort_shown, |this| this.invisible().h_0())
-            )
+            .when(is_sort_shown, |this| this.child(ButtonGroup::new("sort_group")
+                .layout(Axis::Vertical)
+                .outline()
+                .children(ModrinthSearchIndex::iter().map(|search_index| {
+                    Button::new(search_index.as_str())
+                        .child(h_flex().w_full().justify_start().gap_2()
+                            .child(ts_short!(format!("modrinth.sort.{}", search_index.as_str()))))
+                        .selected(search_index == self.sort_option)
+                }))
+                .on_click(cx.listener(move |page, clicked: &Vec<usize>, window, cx| {
+                    let sort_option = ModrinthSearchIndex::iter().nth(clicked[0]).unwrap_or_default();
+                    page.set_sort_option(sort_option, window, cx);
+                }))))
             .into_any_element();
 
 

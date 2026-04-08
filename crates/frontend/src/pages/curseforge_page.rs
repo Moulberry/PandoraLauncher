@@ -172,7 +172,7 @@ impl CurseforgeSearchPage {
             pending_reload: false,
             pending_clear: false,
             total_hits: 1,
-            sort_field: CurseforgeSortField::Popularity,
+            sort_field: CurseforgeSortField::default(),
             search_state,
             _search_input_subscription,
             _delayed_clear_task: Task::ready(()),
@@ -343,7 +343,7 @@ impl CurseforgeSearchPage {
             category_ids,
             game_version,
             mod_loader_types,
-            sort_field: self.sort_field.clone() as u32,
+            sort_field: self.sort_field as u32,
             index: offset as u32,
             page_size: 20
         };
@@ -823,62 +823,55 @@ impl Render for CurseforgeSearchPage {
                         show_categories.store(!is_category_shown, std::sync::atomic::Ordering::Relaxed);
                     })
             )
-            .child(
-                ButtonGroup::new("category_group")
-                    .layout(Axis::Vertical)
-                    .outline()
-                    .multiple(true)
-                    .children(categories.iter().map(|(name, id)| {
-                        Button::new(("category", *id))
-                            .child(
-                                h_flex().w_full().justify_start().gap_2()
-                                .child(SharedString::new(*name)))
-                            .selected(self.filter_categories.contains(id))
-                    }))
-                    .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
-                        page.set_filter_categories(clicked.iter()
-                            .filter_map(|index| categories.get(*index).map(|(_, id)| *id))
-                            .collect(), window, cx);
-                    }))
-                    .when(!is_category_shown, |this| this.invisible().h_0())
-            )
+            .when(is_category_shown, |this| this.child(ButtonGroup::new("category_group")
+                .layout(Axis::Vertical)
+                .outline()
+                .multiple(true)
+                .children(categories.iter().map(|(name, id)| {
+                    Button::new(("category", *id))
+                        .child(
+                            h_flex().w_full().justify_start().gap_2()
+                            .child(SharedString::new(*name)))
+                        .selected(self.filter_categories.contains(id))
+                }))
+                .on_click(cx.listener(|page, clicked: &Vec<usize>, window, cx| {
+                    page.set_filter_categories(clicked.iter()
+                        .filter_map(|index| categories.get(*index).map(|(_, id)| *id))
+                        .collect(), window, cx);
+                }))))
             .into_any_element();
 
-        let sort_fields = CurseforgeSortField::iter().collect::<Vec<_>>();
         let is_sort_shown = self.show_sort.load(std::sync::atomic::Ordering::Relaxed);
         let show_sort = self.show_sort.clone();
 
         let sort = v_flex()
-                        .gap_1()
+            .gap_1()
+            .child(
+                Button::new("toggle-sort")
+                    .label(ts!("instance.content.sort"))
+                    .icon(if is_sort_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
+                    .when(!is_sort_shown, |this| this.outline())
+                    .on_click(move |_, _, _| {
+                        show_sort.store(!is_sort_shown, std::sync::atomic::Ordering::Relaxed);
+                    })
+            )
+            .when(is_sort_shown, |this| this.child(ButtonGroup::new("sort_field")
+                .layout(Axis::Vertical)
+                .outline()
+                .children(CurseforgeSortField::iter().map(|field| {
+                    let id = field.clone() as u32;
+                    Button::new(("sort", id))
                         .child(
-                            Button::new("toggle-sort")
-                                .label(ts!("instance.content.sort"))
-                                .icon(if is_sort_shown { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
-                                .when(!is_sort_shown, |this| this.outline())
-                                .on_click(move |_, _, _| {
-                                    show_sort.store(!is_sort_shown, std::sync::atomic::Ordering::Relaxed);
-                                })
-                        )
-                        .child(
-                            ButtonGroup::new("sort_field")
-                                .layout(Axis::Vertical)
-                                .outline()
-                                .children(sort_fields.iter().map(|field| {
-                                    let id = field.clone() as u32;
-                                    Button::new(("sort", id))
-                                        .child(
-                                            h_flex().w_full().justify_start().gap_2()
-                                            .child(
-                                                ts_short!(format!("curseforge.sort.{}", field.as_str()))))
-                                        .selected(id == self.sort_field.clone() as u32)
-                                }))
-                                .on_click(cx.listener(move |page, clicked: &Vec<usize>, window, cx| {
-                                    let sort_field = sort_fields.get(clicked[0]).cloned().unwrap_or(CurseforgeSortField::Popularity);
-                                    page.set_sort_field(sort_field, window, cx);
-                                }))
-                                .when(!is_sort_shown, |this| this.invisible().h_0())
-                        )
-                        .into_any_element();
+                            h_flex().w_full().justify_start().gap_2()
+                            .child(
+                                ts_short!(format!("curseforge.sort.{}", field.as_str()))))
+                        .selected(id == self.sort_field.clone() as u32)
+                }))
+                .on_click(cx.listener(move |page, clicked: &Vec<usize>, window, cx| {
+                    let sort_field = CurseforgeSortField::iter().nth(clicked[0]).unwrap_or_default();
+                    page.set_sort_field(sort_field, window, cx);
+                }))))
+            .into_any_element();
 
         let is_mod = filter_project_type == CurseforgeClassId::Mod || filter_project_type == CurseforgeClassId::Modpack;
         let filter_version_toggle = if is_mod && let Some(filter_version) = self.filter_version {

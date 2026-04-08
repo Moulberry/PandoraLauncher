@@ -22,9 +22,10 @@ pub struct ModrinthProjectVersionsRequest {
     pub loaders: Option<Arc<[ModrinthLoader]>>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, EnumIter)]
+#[derive(Default, Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthSearchIndex {
+    #[default]
     Relevance,
     Downloads,
     Follows,

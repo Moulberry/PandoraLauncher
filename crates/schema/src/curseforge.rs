@@ -212,9 +212,10 @@ impl CurseforgeModLoaderType {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, EnumIter)]
+#[derive(Default, Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, EnumIter)]
 #[repr(u32)]
 pub enum CurseforgeSortField {
+    #[default]
     Popularity = 2,
     Downloads = 6,
     LastUpdated = 3,

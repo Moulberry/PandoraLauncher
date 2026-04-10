@@ -2371,7 +2371,7 @@ impl LaunchContext {
             ArgumentExpansionKey::LauncherVersion => OsStr::new("1.0.0").into(),
             ArgumentExpansionKey::Classpath => std::env::join_paths(&self.classpath).unwrap().into(),
             ArgumentExpansionKey::AuthPlayerName => OsStr::new(&*self.login_info.username).into(),
-            ArgumentExpansionKey::VersionName => OsStr::new("1.21.10").into(),
+            ArgumentExpansionKey::VersionName => OsStr::new(&*self.configuration.minecraft_version).into(),
             ArgumentExpansionKey::GameDirectory => self.game_dir.as_os_str().into(),
             ArgumentExpansionKey::AssetsRoot => self.assets_root.as_os_str().into(),
             ArgumentExpansionKey::AssetsIndexName => OsStr::new(&self.assets_index_name).into(),

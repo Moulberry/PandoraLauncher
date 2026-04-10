@@ -31,6 +31,7 @@ env -u CARGO_PACKAGER_SIGN_PRIVATE_KEY cargo packager --config '{'\
 '  "authors": ["Moulberry"],'\
 '  "binaries": [{ "path": "PandoraLauncher-macOS-Universal", "main": true }],'\
 '  "icons": ["package/mac.icns"]'\
+'  "macos: {"entitlements": "package/mac/entitlements.plist", "infoPlistPath": "package/mac/Info.plist"}' \
 '}'
 
 mv -f dist/PandoraLauncher-macOS-Universal dist/PandoraLauncher-macOS-Universal-Portable

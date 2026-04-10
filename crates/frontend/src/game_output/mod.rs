@@ -38,6 +38,23 @@ pub struct GameOutputItemState {
     search_query: SharedString,
 }
 
+impl Default for GameOutputItemState {
+    fn default() -> Self {
+        Self {
+            items: Vec::new(),
+            last_scrolled_item: 0,
+            item_sizes: FenwickTree::new(),
+            total_line_count: 0,
+            cached_shaped_lines: CachedShapedLines {
+                last_time: None,
+                last_time_millis: 0,
+                item_lines: LruCache::with_hasher(NonZeroUsize::new(256).unwrap(), FxBuildHasher),
+            },
+            search_query: SharedString::new_static(""),
+        }
+    }
+}
+
 pub struct GameOutput {
     font: Font,
     scroll_state: Rc<RefCell<GameOutputScrollState>>,
@@ -1072,6 +1089,19 @@ impl Render for GameOutputRoot {
                 let mut state = root.scroll_handler.state.borrow_mut();
                 state.scrolling = GameOutputScrolling::Bottom;
                 cx.notify();
+            })))
+             .child(Button::new("clear").label(ts!("instance.logs.clear_console.label")).on_click(cx.listener(|root, _, _, cx| {
+                root.game_output.update(cx, |game_output, _| {
+                    game_output.pending.clear();
+                    game_output.item_state = Some(GameOutputItemState::default());
+                });
+                cx.notify();
+            })))
+            .child(Button::new("copy").label(ts!("instance.logs.copy_console.label")).on_click(cx.listener(|root, _, _window, cx| {
+                let text = root.game_output.read(cx).item_state.as_ref().map(|state| {
+                    state.items.iter().filter(|item| !item.skip).map(|item| item.text.join("\n")).collect::<Vec<_>>().join("\n\n")
+                }).unwrap_or_default();
+                cx.write_to_clipboard(ClipboardItem::new_string(text));
             })));
 
         v_flex()

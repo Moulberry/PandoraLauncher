@@ -335,6 +335,12 @@ impl Settings {
                     .on_click(|value, _, cx| {
                         InterfaceConfig::get_mut(cx).hide_usernames = *value;
                     }))
+                .child(Checkbox::new("hide-skins")
+                    .label(ts!("settings.privacy.hide_skins"))
+                    .checked(interface_config.hide_skins)
+                    .on_click(|value, _, cx| {
+                        InterfaceConfig::get_mut(cx).hide_skins = *value;
+                    }))
                 .child(Checkbox::new("hide-server-addresses")
                     .label(ts!("settings.privacy.hide_server_addresses"))
                     .checked(interface_config.hide_server_addresses)

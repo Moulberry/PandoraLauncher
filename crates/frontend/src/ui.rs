@@ -432,7 +432,9 @@ impl Render for LauncherUI {
         let accounts = self.data.accounts.read(cx);
         let (account_head, account_name) = if let Some(account) = &accounts.selected_account {
             let account_name = account.username(InterfaceConfig::get(cx).hide_usernames);
-            let head = if let Some(head) = &account.head {
+            let hide_skins = InterfaceConfig::get(cx).hide_skins;
+
+            let head = if let Some(head) = &account.head && !hide_skins {
                 let resize = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
                 png_render_cache::render_with_transform(head.clone(), resize, cx)
             } else {
@@ -474,13 +476,15 @@ impl Render for LauncherUI {
                     let accounts = accounts.clone();
                     let backend_handle = backend_handle.clone();
                     window.open_sheet_at(gpui_component::Placement::Left, cx, move |sheet, _, cx| {
+                        let hide_skins = InterfaceConfig::get(cx).hide_skins;
+
                         let (accounts, selected_account) = {
                             let accounts = accounts.read(cx);
                             (accounts.accounts.clone(), accounts.selected_account_uuid)
                         };
 
                         let items = accounts.iter().map(|account| {
-                            let head = if let Some(head) = &account.head {
+                            let head = if let Some(head) = &account.head && !hide_skins {
                                 let resize = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
                                 png_render_cache::render_with_transform(head.clone(), resize, cx)
                             } else {

@@ -778,6 +778,8 @@ settings:
       en: Privacy
     hide_usernames:
       en: Hide usernames
+    hide_skins:
+      en: Hide skins
     hide_server_addresses:
       en: Hide server addresses
   proxy:

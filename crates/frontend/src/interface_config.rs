@@ -46,6 +46,8 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_usernames: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub hide_skins: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_server_addresses: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub show_snapshots_in_create_instance: bool,
@@ -85,6 +87,7 @@ impl Default for InterfaceConfig {
             quit_on_main_closed: false,
             hide_server_addresses: false,
             hide_usernames: false,
+            hide_skins: false,
             show_snapshots_in_create_instance: Default::default(),
             instances_view_mode: Default::default(),
             instance_subpage: Default::default(),

@@ -13,7 +13,17 @@ pub struct Persistent<T: Serialize + for <'de> Deserialize<'de>> {
 
 impl<T: Serialize + for <'de> Deserialize<'de> + Default> Persistent<T> {
     pub fn load(path: Arc<Path>) -> Self {
-        let data = crate::read_json(&path).unwrap_or_default();
+        let data = if path.exists() {
+            match crate::read_json(&path) {
+                Ok(data) => data,
+                Err(err) => {
+                    log::error!("Error while loading file: {err:?}");
+                    T::default()
+                },
+            }
+        } else {
+            T::default()
+        };
         Self {
             path,
             dirty: false,

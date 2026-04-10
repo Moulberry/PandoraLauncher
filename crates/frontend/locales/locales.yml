@@ -395,6 +395,56 @@ instance:
     en: Kill Instance
   delete:
     en: Delete this instance
+  export:
+    action:
+      en: Export
+    title:
+      en: Export Instance
+    progress:
+      en: Exporting instance
+    error:
+      en: Error exporting instance
+    format:
+      label:
+        en: Format
+      zip:
+        en: Instance Zip
+      modrinth:
+        en: Modrinth Pack (.mrpack)
+      curseforge:
+        en: CurseForge Pack (.zip)
+    options:
+      en: Export Options
+    modrinth_options:
+      en: Modrinth Options
+    curseforge_options:
+      en: CurseForge Options
+    include_saves:
+      en: Include saves
+    include_mods:
+      en: Include mods
+    include_resourcepacks:
+      en: Include resourcepacks
+    include_configs:
+      en: Include configs
+    include_logs:
+      en: Include logs/crash reports
+    include_cache:
+      en: Include cache files
+    include_synced:
+      en: Include synced folders
+    name:
+      en: Name
+    version:
+      en: Version
+    summary:
+      en: Summary
+    author:
+      en: Author
+    recommended_ram:
+      en: Recommended RAM
+    optional_files:
+      en: Treat .disabled as optional files
   create_shortcut:
     en: Create shortcut
   open_folder:

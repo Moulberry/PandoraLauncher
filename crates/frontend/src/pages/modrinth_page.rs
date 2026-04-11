@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, ops::Range, sync::{Arc, atomic::AtomicBool}, time::Duration};
 
-use bridge::{install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{ContentUpdateStatus, InstanceContentID, InstanceID}, message::{BridgeDataLoadState, MessageToBackend}, meta::MetadataRequest, modal_action::ModalAction, serial::AtomicOptionSerial};
+use bridge::{instance::{ContentUpdateStatus, InstanceContentID, InstanceID}, message::{BridgeDataLoadState, MessageToBackend}, meta::MetadataRequest, modal_action::ModalAction, serial::AtomicOptionSerial};
 use enumset::EnumSet;
 use gpui::{prelude::*, *};
 use gpui_component::{
@@ -687,37 +687,15 @@ impl PrimaryAction {
                     window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
                     return;
                 };
-
-                let Some(entry) = data.instances.read(cx).entries.get(&install_for) else {
-                    window.push_notification((NotificationType::Error, "Unable to find instance"), cx);
-                    return;
-                };
-
-                let instance = entry.read(cx);
-                let loader = instance.configuration.loader;
-                let minecraft_version = instance.configuration.minecraft_version;
-
-                let content_install = ContentInstall {
-                    target: InstallTarget::Instance(instance.id),
-                    loader_hint: loader,
-                    version_hint: Some(minecraft_version.into()),
-                    files: [
-                        ContentInstallFile {
-                            replace_old: None,
-                            path: bridge::install::ContentInstallPath::Automatic,
-                            download: ContentDownload::Modrinth {
-                                project_id: project_id.clone(),
-                                version_id: None,
-                                install_dependencies: true,
-                            },
-                            content_source: ContentSource::ModrinthProject {
-                                project_id: project_id.clone()
-                            },
-                        }
-                    ].into(),
-                };
-
-                crate::root::start_install(content_install, &data.backend_handle, window, cx);
+                crate::modals::modrinth_install::open_latest(
+                    name,
+                    project_id.clone(),
+                    project_type,
+                    install_for,
+                    data,
+                    window,
+                    cx,
+                );
             },
             PrimaryAction::CheckForUpdates => {
                 let modal_action = ModalAction::default();

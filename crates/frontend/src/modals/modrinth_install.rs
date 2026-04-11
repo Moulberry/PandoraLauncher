@@ -4,13 +4,13 @@ use bridge::{install::{ContentDownload, ContentInstall, ContentInstallFile, Inst
 use enumset::EnumSet;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, dialog::Dialog, h_flex, notification::NotificationType, select::{SearchableVec, Select, SelectItem, SelectState}, spinner::Spinner, v_flex, IndexPath, WindowExt
+    ActiveTheme, Sizable, button::{Button, ButtonVariants}, checkbox::Checkbox, dialog::Dialog, h_flex, notification::NotificationType, select::{SearchableVec, Select, SelectItem, SelectState}, spinner::Spinner, v_flex, Disableable, IndexPath, WindowExt
 };
 use relative_path::RelativePath;
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{
     content::ContentSource, loader::Loader, modrinth::{
-        ModrinthDependencyType, ModrinthLoader, ModrinthProjectType, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthVersionStatus, ModrinthVersionType
+        ModrinthDependency, ModrinthDependencyType, ModrinthLoader, ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectType, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthVersionStatus, ModrinthVersionType
     }
 };
 
@@ -19,7 +19,7 @@ use crate::{
     entity::{
         DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}
     },
-    root, ts,
+    icon::PandoraIcon, root, ts,
 };
 
 struct VersionMatrixLoaders {
@@ -52,6 +52,11 @@ struct InstallDialog {
     loader_select_state: Option<Entity<SelectState<Vec<SharedString>>>>,
     skip_loader_check_for_mod_version: bool,
     install_dependencies: bool,
+    dep_selection: FxHashSet<SharedString>,
+    dep_keys: FxHashSet<SharedString>,
+    dependency_projects: FxHashMap<Arc<str>, Entity<FrontendMetadataState>>,
+    dep_project_versions: FxHashMap<Arc<str>, Entity<FrontendMetadataState>>,
+    show_dependency_list: bool,
 
     mod_version_select_state: Option<Entity<SelectState<SearchableVec<ModVersionItem>>>>,
 }
@@ -76,6 +81,37 @@ pub fn open(
     );
 
     open_from_entity(SharedString::new(name), project_versions, project_id, project_type, install_for, data.clone(), window, cx);
+}
+
+pub fn open_latest(
+    name: &str,
+    project_id: Arc<str>,
+    project_type: ModrinthProjectType,
+    install_for: InstanceID,
+    data: &DataEntities,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let project_versions = FrontendMetadata::request(
+        &data.metadata,
+        MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest {
+            project_id: project_id.clone(),
+            game_versions: None,
+            loaders: None,
+        }),
+        cx,
+    );
+
+    open_latest_from_entity(
+        SharedString::new(name),
+        project_versions,
+        project_id,
+        project_type,
+        install_for,
+        data.clone(),
+        window,
+        cx,
+    );
 }
 
 fn open_from_entity(
@@ -208,6 +244,11 @@ fn open_from_entity(
                     last_selected_minecraft_version: None,
                     skip_loader_check_for_mod_version: false,
                     install_dependencies: true,
+                    dep_selection: Default::default(),
+                    dep_keys: Default::default(),
+                    dependency_projects: Default::default(),
+                    dep_project_versions: Default::default(),
+                    show_dependency_list: false,
                     mod_version_select_state: None,
                     last_selected_loader: None,
                 };
@@ -269,11 +310,107 @@ fn open_from_entity(
                     last_selected_minecraft_version: None,
                     skip_loader_check_for_mod_version: false,
                     install_dependencies: true,
+                    dep_selection: Default::default(),
+                    dep_keys: Default::default(),
+                    dependency_projects: Default::default(),
+                    dep_project_versions: Default::default(),
+                    show_dependency_list: false,
                     mod_version_select_state: None,
                     last_selected_loader: None,
                 };
                 install_dialog.show(window, cx);
             }
+        },
+        FrontendMetadataResult::Error(message) => {
+            window.open_dialog(cx, move |modal, _, _| {
+                modal.title(title.clone()).child(ErrorAlert::new(ts!("instance.content.requesting_from_modrinth_error"), message.clone()))
+            });
+        },
+    }
+}
+
+fn open_latest_from_entity(
+    name: SharedString,
+    project_versions: Entity<FrontendMetadataState>,
+    project_id: Arc<str>,
+    project_type: ModrinthProjectType,
+    install_for: InstanceID,
+    data: DataEntities,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let title = ts!("instance.content.install.title", name = name);
+
+    let result: FrontendMetadataResult<ModrinthProjectVersionsResult> = project_versions.read(cx).result();
+    match result {
+        FrontendMetadataResult::Loading => {
+            let _subscription = window.observe(&project_versions, cx, move |project_versions, window, cx| {
+                window.close_all_dialogs(cx);
+                open_latest_from_entity(
+                    name.clone(),
+                    project_versions,
+                    project_id.clone(),
+                    project_type,
+                    install_for,
+                    data.clone(),
+                    window,
+                    cx,
+                );
+            });
+            window.open_dialog(cx, move |dialog, _, _| {
+                let _ = &_subscription;
+                dialog.title(title.clone()).child(h_flex().gap_2().child(ts!("instance.content.load.versions.title")).child(Spinner::new()))
+            });
+        },
+        FrontendMetadataResult::Loaded(versions) => {
+            let Some(instance) = data.instances.read(cx).entries.get(&install_for) else {
+                open_error_dialog(title.clone(), ts!("instance.unable_to_find"), window, cx);
+                return;
+            };
+
+            let instance = instance.read(cx);
+            let minecraft_version = instance.configuration.minecraft_version.as_str();
+            let instance_loader = instance.configuration.loader;
+
+            let selected_version = select_latest_modrinth_version(
+                &versions.0,
+                instance_loader,
+                minecraft_version,
+                project_type,
+            );
+
+            let Some(selected_version) = selected_version else {
+                let error_message = ts!("instance.content.load.versions.not_found_for", ver = minecraft_version);
+                open_error_dialog(title.clone(), error_message, window, cx);
+                return;
+            };
+
+            let required_dependencies = required_modrinth_dependencies(
+                Some(&selected_version),
+                Some(InstallTarget::Instance(instance.id)),
+                &data,
+                cx,
+            );
+
+            let target = InstallTarget::Instance(instance.id);
+            let installed_projects = modrinth_installed_projects(Some(&target), &data, cx);
+            let selected_dependencies = required_dependencies
+                .into_iter()
+                .filter(|dep| dep.project_id.as_ref().map(|id| !installed_projects.contains(id)).unwrap_or(false))
+                .collect::<Vec<_>>();
+
+            start_modrinth_install(
+                &data,
+                project_type,
+                &project_id,
+                &selected_version,
+                target,
+                instance_loader,
+                minecraft_version,
+                selected_dependencies,
+                window,
+                cx,
+            );
         },
         FrontendMetadataResult::Error(message) => {
             window.open_dialog(cx, move |modal, _, _| {
@@ -574,36 +711,37 @@ impl InstallDialog {
             ModrinthProjectType::Other => format!("{}: ", ts!("instance.content.version.file")),
         };
 
-        let required_dependencies = selected_mod_version.as_ref().and_then(|version| {
-            version.dependencies.as_ref().map(|deps| {
-                let mut required = deps
-                    .iter()
-                    .filter(|dep| {
-                        dep.project_id.is_some() && dep.dependency_type == ModrinthDependencyType::Required
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
+        let required_dependencies = required_modrinth_dependencies(
+            selected_mod_version.as_ref(),
+            self.target.clone(),
+            &self.data,
+            cx,
+        );
 
-                // Ignore projects that are already installed
-                if !required.is_empty()
-                    && let Some(InstallTarget::Instance(instance_id)) = self.target
-                    && let Some(instance) = self.data.instances.read(cx).entries.get(&instance_id)
-                {
-                    let mut existing_projects = FxHashSet::default();
-                    let existing_mods = instance.read(cx).mods.read(cx);
-                    for summary in existing_mods.iter() {
-                        let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
-                            continue;
-                        };
-                        existing_projects.insert(project_id.clone());
-                    }
-                    required.retain(|dep| !existing_projects.contains(dep.project_id.as_ref().unwrap()));
-                }
+        let installed_projects = modrinth_installed_projects(self.target.as_ref(), &self.data, cx);
+        let loader_hint = loader_for_selection(selected_loader.as_ref());
+        let version_hint = selected_minecraft_version.as_ref().map(|v| v.as_str()).unwrap_or_default();
+        let dep_tree = build_modrinth_dep_tree(
+            &required_dependencies,
+            &self.data,
+            &mut self.dependency_projects,
+            &mut self.dep_project_versions,
+            &installed_projects,
+            cx,
+            loader_hint,
+            version_hint,
+        );
+        let flat_deps = flatten_modrinth_deps(&dep_tree);
+        let selectable_keys: Vec<SharedString> = flat_deps.iter().map(|dep| dep.key.clone()).collect();
 
-                required
-            })
-        }).unwrap_or_default();
+        let required_keys: FxHashSet<SharedString> = selectable_keys.iter().cloned().collect();
+        if required_keys != self.dep_keys {
+            self.dep_keys = required_keys.clone();
+            self.dep_selection = required_keys;
+        }
+        self.install_dependencies = !self.dep_selection.is_empty();
 
+        let border = cx.theme().border;
         let content = v_flex()
             .gap_2()
             .child(
@@ -619,15 +757,32 @@ impl InstallDialog {
             .when_some(self.mod_version_select_state.as_ref(), |modal, mod_versions| {
                 modal
                     .child(Select::new(mod_versions).title_prefix(mod_version_prefix))
-                    .when(!required_dependencies.is_empty(), |modal| {
-                        modal.child(Checkbox::new("install_deps").checked(self.install_dependencies).label(if required_dependencies.len() == 1 {
-                            ts!("instance.content.install.install_dependency")
-                        } else {
-                            ts!("instance.content.install.install_dependencies", num = required_dependencies.len())
-                        }).on_click(cx.listener(|dialog, value, _, _| {
-                            dialog.install_dependencies = *value;
-                        })))
+                    .when(!flat_deps.is_empty(), |modal| {
+                        let dep_ui = modrinth_dep_ui_state(&flat_deps, &self.dep_selection);
+                        let dep_list = build_modrinth_dep_list(&flat_deps, &self.dep_selection, "install_dep", cx);
+                        let header = build_modrinth_dep_header(
+                            dep_ui.label,
+                            dep_ui.selectable_keys,
+                            dep_ui.selected_count,
+                            dep_ui.total_selectable,
+                            self.show_dependency_list,
+                            "install_deps_select_all",
+                            "install_deps_select_all_btn",
+                            "install_deps_toggle",
+                            cx,
+                        );
+
+                        modal
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(header)
+                                    .child(div().flex_grow())
+                            )
+                            .when(self.show_dependency_list, |modal| modal.child(dep_list))
                     })
+                    .child(div().border_t_1().border_color(border).mt_2())
                     .child(Button::new("install").success().label(ts!("instance.content.install.label")).on_click(cx.listener(
                         move |this, _, window, cx| {
                             let Some(selected_mod_version) = selected_mod_version.as_ref() else {
@@ -683,6 +838,10 @@ impl InstallDialog {
 
                             if this.install_dependencies {
                                 for dep in required_dependencies.iter() {
+                                    let key = modrinth_dep_key(dep);
+                                    if !this.dep_selection.contains(&key) {
+                                        continue;
+                                    }
                                     files.push(ContentInstallFile {
                                         replace_old: None,
                                         path: bridge::install::ContentInstallPath::Automatic,
@@ -743,4 +902,529 @@ impl SelectItem for ModVersionItem {
     fn value(&self) -> &Self::Value {
         &self.version
     }
+}
+
+#[derive(Clone)]
+struct ModrinthDepNode {
+    key: SharedString,
+    label: SharedString,
+    installed: bool,
+    children: Vec<ModrinthDepNode>,
+}
+
+#[derive(Clone)]
+struct ModrinthFlatDep {
+    key: SharedString,
+    label: SharedString,
+}
+
+fn modrinth_dep_key(dep: &ModrinthDependency) -> SharedString {
+    let project_id = dep.project_id.as_deref().unwrap_or("unknown");
+    if let Some(version_id) = dep.version_id.as_ref() {
+        format!("{}:{}", project_id, version_id).into()
+    } else {
+        project_id.to_string().into()
+    }
+}
+
+fn modrinth_dep_fallback(dep: &ModrinthDependency) -> SharedString {
+    if let Some(file_name) = dep.file_name.as_deref() {
+        return SharedString::new(file_name.to_string());
+    }
+    let project_id = dep.project_id.as_deref().unwrap_or("unknown");
+    if let Some(version_id) = dep.version_id.as_ref() {
+        format!("{} ({})", project_id, version_id).into()
+    } else {
+        project_id.to_string().into()
+    }
+}
+
+fn modrinth_dep_display(
+    dep: &ModrinthDependency,
+    data: &DataEntities,
+    dependency_projects: &mut FxHashMap<Arc<str>, Entity<FrontendMetadataState>>,
+    cx: &mut App,
+) -> SharedString {
+    if let Some(project_id) = dep.project_id.as_ref() {
+        let request = dependency_projects.entry(project_id.clone()).or_insert_with(|| {
+            FrontendMetadata::request(
+                &data.metadata,
+                MetadataRequest::ModrinthProject(ModrinthProjectRequest {
+                    project_id: project_id.clone(),
+                }),
+                cx,
+            )
+        });
+
+        let result: FrontendMetadataResult<ModrinthProjectResult> = request.read(cx).result();
+        if let FrontendMetadataResult::Loaded(project) = result {
+            if let Some(title) = project.title.as_ref() {
+                return SharedString::new(title.to_string());
+            }
+        }
+    }
+
+    modrinth_dep_fallback(dep)
+}
+
+fn loader_for_selection(selected_loader: Option<&SharedString>) -> Loader {
+    if let Some(selected_loader) = selected_loader {
+        let modrinth_loader = ModrinthLoader::from_name(selected_loader.as_str());
+        match modrinth_loader {
+            ModrinthLoader::Fabric => Loader::Fabric,
+            ModrinthLoader::Forge => Loader::Forge,
+            ModrinthLoader::NeoForge => Loader::NeoForge,
+            _ => Loader::Unknown,
+        }
+    } else {
+        Loader::Unknown
+    }
+}
+
+fn build_modrinth_dep_tree(
+    deps: &[ModrinthDependency],
+    data: &DataEntities,
+    dependency_projects: &mut FxHashMap<Arc<str>, Entity<FrontendMetadataState>>,
+    dep_project_versions: &mut FxHashMap<Arc<str>, Entity<FrontendMetadataState>>,
+    installed_projects: &FxHashSet<Arc<str>>,
+    cx: &mut App,
+    loader_hint: Loader,
+    minecraft_version: &str,
+) -> Vec<ModrinthDepNode> {
+    let mut visited = FxHashSet::default();
+    build_modrinth_dep_nodes(
+        deps,
+        data,
+        dependency_projects,
+        dep_project_versions,
+        installed_projects,
+        cx,
+        loader_hint,
+        minecraft_version,
+        &mut visited,
+    )
+}
+
+fn build_modrinth_dep_nodes(
+    deps: &[ModrinthDependency],
+    data: &DataEntities,
+    dependency_projects: &mut FxHashMap<Arc<str>, Entity<FrontendMetadataState>>,
+    dep_project_versions: &mut FxHashMap<Arc<str>, Entity<FrontendMetadataState>>,
+    installed_projects: &FxHashSet<Arc<str>>,
+    cx: &mut App,
+    loader_hint: Loader,
+    minecraft_version: &str,
+    visited: &mut FxHashSet<Arc<str>>,
+) -> Vec<ModrinthDepNode> {
+    let mut nodes = Vec::new();
+    for dep in deps.iter() {
+        let installed = dep.project_id.as_ref().map(|id| installed_projects.contains(id)).unwrap_or(false);
+        let key = dep.project_id.as_ref().map(|id| SharedString::new(id.to_string())).unwrap_or_else(|| modrinth_dep_key(dep));
+        let label = modrinth_dep_display(dep, data, dependency_projects, cx);
+
+        let mut children = Vec::new();
+        if let Some(project_id) = dep.project_id.as_ref() {
+            if visited.insert(project_id.clone()) {
+                let request = dep_project_versions.entry(project_id.clone()).or_insert_with(|| {
+                    FrontendMetadata::request(
+                        &data.metadata,
+                        MetadataRequest::ModrinthProjectVersions(ModrinthProjectVersionsRequest {
+                            project_id: project_id.clone(),
+                            game_versions: None,
+                            loaders: None,
+                        }),
+                        cx,
+                    )
+                });
+
+                let result: FrontendMetadataResult<ModrinthProjectVersionsResult> = request.read(cx).result();
+                if let FrontendMetadataResult::Loaded(versions) = result {
+                    if let Some(version) = select_latest_modrinth_version(
+                        &versions.0,
+                        loader_hint,
+                        minecraft_version,
+                        ModrinthProjectType::Mod,
+                    ) {
+                        let required = required_modrinth_dependencies(Some(&version), None, data, cx);
+                        children = build_modrinth_dep_nodes(
+                            &required,
+                            data,
+                            dependency_projects,
+                            dep_project_versions,
+                            installed_projects,
+                            cx,
+                            loader_hint,
+                            minecraft_version,
+                            visited,
+                        );
+                    }
+                }
+            }
+        }
+
+        nodes.push(ModrinthDepNode {
+            key,
+            label,
+            installed,
+            children,
+        });
+    }
+    nodes
+}
+
+fn flatten_modrinth_deps(nodes: &[ModrinthDepNode]) -> Vec<ModrinthFlatDep> {
+    let mut deps = Vec::new();
+    flatten_modrinth_deps_inner(nodes, &mut deps);
+    deps
+}
+
+fn flatten_modrinth_deps_inner(nodes: &[ModrinthDepNode], deps: &mut Vec<ModrinthFlatDep>) {
+    for node in nodes {
+        if !node.installed {
+            deps.push(ModrinthFlatDep {
+                key: node.key.clone(),
+                label: node.label.clone(),
+            });
+        }
+        if !node.children.is_empty() {
+            flatten_modrinth_deps_inner(&node.children, deps);
+        }
+    }
+}
+
+trait ModrinthDepSelection {
+    fn set_selected(&mut self, key: SharedString, selected: bool);
+    fn set_all_selected(&mut self, keys: &[SharedString], selected: bool);
+    fn toggle_dependency_list(&mut self);
+}
+
+impl ModrinthDepSelection for InstallDialog {
+    fn set_selected(&mut self, key: SharedString, selected: bool) {
+        if selected {
+            self.dep_selection.insert(key);
+        } else {
+            self.dep_selection.remove(&key);
+        }
+    }
+
+    fn set_all_selected(&mut self, keys: &[SharedString], selected: bool) {
+        if selected {
+            self.dep_selection = keys.iter().cloned().collect();
+        } else {
+            self.dep_selection.clear();
+        }
+    }
+
+    fn toggle_dependency_list(&mut self) {
+        self.show_dependency_list = !self.show_dependency_list;
+    }
+}
+
+
+struct ModrinthDepUiState {
+    selectable_keys: Vec<SharedString>,
+    total_selectable: usize,
+    selected_count: usize,
+    label: SharedString,
+}
+
+fn modrinth_dep_ui_state(flat_deps: &[ModrinthFlatDep], selection: &FxHashSet<SharedString>) -> ModrinthDepUiState {
+    let selectable_keys: Vec<SharedString> = flat_deps.iter().map(|dep| dep.key.clone()).collect();
+    let total_selectable = selectable_keys.len();
+    let selected_count = selection.len();
+    let label = if selected_count == 1 {
+        ts!("instance.content.install.install_dependency")
+    } else {
+        ts!("instance.content.install.install_dependencies", num = selected_count)
+    };
+
+    ModrinthDepUiState {
+        selectable_keys,
+        total_selectable,
+        selected_count,
+        label,
+    }
+}
+
+fn build_modrinth_dep_list<T: ModrinthDepSelection + 'static>(
+    flat_deps: &[ModrinthFlatDep],
+    selection: &FxHashSet<SharedString>,
+    id_prefix: &str,
+    cx: &mut Context<T>,
+) -> AnyElement {
+    let mut dep_elements = Vec::new();
+    for (index, dep) in flat_deps.iter().enumerate() {
+        let key = dep.key.clone();
+        let label = dep.label.clone();
+        dep_elements.push(
+            Checkbox::new(format!("{id_prefix}_{index}"))
+                .checked(selection.contains(&key))
+                .label(label)
+                .on_click(cx.listener(move |dialog, value, _, _| {
+                    dialog.set_selected(key.clone(), *value);
+                }))
+                .into_any_element()
+        );
+    }
+
+    v_flex().gap_1().pl_3().children(dep_elements).into_any_element()
+}
+
+fn build_modrinth_dep_header<T: ModrinthDepSelection + 'static>(
+    label: SharedString,
+    selectable_keys: Vec<SharedString>,
+    selected_count: usize,
+    total_selectable: usize,
+    show_dependency_list: bool,
+    checkbox_id: &'static str,
+    button_id: &'static str,
+    toggle_id: &'static str,
+    cx: &mut Context<T>,
+) -> AnyElement {
+    let header_checkbox_state = if selected_count == 0 {
+        0
+    } else if selected_count == total_selectable {
+        2
+    } else {
+        1
+    };
+
+    let header_checkbox = {
+        let keys = selectable_keys;
+        let state = header_checkbox_state;
+        let mut checkbox = Checkbox::new(checkbox_id)
+            .checked(state == 2)
+            .on_click(move |_, _, _| {});
+
+        if total_selectable == 0 {
+            checkbox = checkbox.disabled(true);
+        }
+
+        let click_handler = cx.listener(move |dialog, _, _, _| {
+            if state == 2 {
+                dialog.set_all_selected(&keys, false);
+            } else {
+                dialog.set_all_selected(&keys, true);
+            }
+        });
+
+        Button::new(button_id)
+            .ghost()
+            .compact()
+            .p_0()
+            .min_w_4()
+            .min_h_4()
+            .child(checkbox)
+            .on_click(click_handler)
+    };
+
+    let chevron = Button::new(toggle_id)
+        .icon(if show_dependency_list { PandoraIcon::ChevronDown } else { PandoraIcon::ChevronRight })
+        .ghost()
+        .compact()
+        .small()
+        .on_click(cx.listener(|dialog, _, _, _| {
+            dialog.toggle_dependency_list();
+        }));
+
+    h_flex()
+        .items_center()
+        .gap_2()
+        .child(header_checkbox)
+        .child(label)
+        .child(chevron)
+        .into_any_element()
+}
+fn required_modrinth_dependencies(
+    selected_mod_version: Option<&ModrinthProjectVersion>,
+    _target: Option<InstallTarget>,
+    _data: &DataEntities,
+    _cx: &App,
+) -> Vec<ModrinthDependency> {
+    let required_dependencies = selected_mod_version.and_then(|version| {
+        version.dependencies.as_ref().map(|deps| {
+            let required = deps
+                .iter()
+                .filter(|dep| {
+                    dep.project_id.is_some() && dep.dependency_type == ModrinthDependencyType::Required
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+
+            required
+        })
+    }).unwrap_or_default();
+
+    required_dependencies
+}
+
+fn modrinth_installed_projects(
+    target: Option<&InstallTarget>,
+    data: &DataEntities,
+    cx: &App,
+) -> FxHashSet<Arc<str>> {
+    let mut existing_projects = FxHashSet::default();
+    if let Some(InstallTarget::Instance(instance_id)) = target
+        && let Some(instance) = data.instances.read(cx).entries.get(instance_id)
+    {
+        let existing_mods = instance.read(cx).mods.read(cx);
+        for summary in existing_mods.iter() {
+            let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
+                continue;
+            };
+            existing_projects.insert(project_id.clone());
+        }
+    }
+    existing_projects
+}
+
+fn select_latest_modrinth_version(
+    versions: &[ModrinthProjectVersion],
+    instance_loader: Loader,
+    minecraft_version: &str,
+    project_type: ModrinthProjectType,
+) -> Option<ModrinthProjectVersion> {
+    let mut candidates: Vec<ModrinthProjectVersion> = versions
+        .iter()
+        .filter(|version| {
+            let Some(loaders) = version.loaders.clone() else {
+                return false;
+            };
+            let Some(game_versions) = &version.game_versions else {
+                return false;
+            };
+            if version.files.is_empty() {
+                return false;
+            }
+            if let Some(status) = version.status
+                && !matches!(status, ModrinthVersionStatus::Listed | ModrinthVersionStatus::Archived)
+            {
+                return false;
+            }
+
+            let mut loaders = EnumSet::from_iter(loaders.iter().copied());
+            loaders.remove(ModrinthLoader::Unknown);
+            if loaders.is_empty() {
+                return false;
+            }
+
+            let matches_game_version = game_versions.iter().any(|v| v.as_str() == minecraft_version);
+
+            if !matches_game_version {
+                return false;
+            }
+
+            if project_type == ModrinthProjectType::Mod || project_type == ModrinthProjectType::Modpack {
+                if instance_loader != Loader::Vanilla {
+                    return loaders.contains(instance_loader.as_modrinth_loader());
+                }
+            }
+
+            true
+        })
+        .cloned()
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let mut highest_release = None;
+    let mut highest_beta = None;
+    let mut highest_alpha = None;
+
+    for (index, version) in candidates.iter().enumerate() {
+        match version.version_type {
+            Some(ModrinthVersionType::Release) => {
+                highest_release = Some(index);
+                break;
+            },
+            Some(ModrinthVersionType::Beta) => {
+                if highest_beta.is_none() {
+                    highest_beta = Some(index);
+                }
+            },
+            Some(ModrinthVersionType::Alpha) => {
+                if highest_alpha.is_none() {
+                    highest_alpha = Some(index);
+                }
+            },
+            _ => {},
+        }
+    }
+
+    let highest = highest_release.or(highest_beta).or(highest_alpha);
+    highest.map(|index| candidates.swap_remove(index))
+}
+
+fn start_modrinth_install(
+    data: &DataEntities,
+    project_type: ModrinthProjectType,
+    project_id: &Arc<str>,
+    selected_version: &ModrinthProjectVersion,
+    target: InstallTarget,
+    loader_hint: Loader,
+    minecraft_version: &str,
+    selected_dependencies: Vec<ModrinthDependency>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let install_file = selected_version
+        .files
+        .iter()
+        .find(|file| file.primary)
+        .unwrap_or(selected_version.files.first().unwrap());
+
+    let path = match project_type {
+        ModrinthProjectType::Mod => RelativePath::new("mods").join(&*install_file.filename),
+        ModrinthProjectType::Modpack => RelativePath::new("mods").join(&*install_file.filename),
+        ModrinthProjectType::Resourcepack => RelativePath::new("resourcepacks").join(&*install_file.filename),
+        ModrinthProjectType::Shader => RelativePath::new("shaderpacks").join(&*install_file.filename),
+        ModrinthProjectType::Other => {
+            window.push_notification((NotificationType::Error, ts!("instance.content.install.unable_install_other")), cx);
+            return;
+        },
+    };
+
+    let Some(path) = SafePath::from_relative_path(&path) else {
+        window.push_notification((NotificationType::Error, ts!("instance.content.install.invalid_filename")), cx);
+        return;
+    };
+
+    let mut files = Vec::new();
+
+    for dep in selected_dependencies.iter() {
+        files.push(ContentInstallFile {
+            replace_old: None,
+            path: bridge::install::ContentInstallPath::Automatic,
+            download: ContentDownload::Modrinth {
+                project_id: dep.project_id.clone().unwrap(),
+                version_id: dep.version_id.clone(),
+                install_dependencies: true,
+            },
+            content_source: ContentSource::ModrinthProject { project_id: dep.project_id.clone().unwrap() },
+        })
+    }
+
+    files.push(ContentInstallFile {
+        replace_old: None,
+        path: bridge::install::ContentInstallPath::Safe(path),
+        download: ContentDownload::Url {
+            url: install_file.url.clone(),
+            sha1: install_file.hashes.sha1.clone(),
+            size: install_file.size,
+        },
+        content_source: ContentSource::ModrinthProject {
+            project_id: project_id.clone()
+        },
+    });
+
+    let content_install = ContentInstall {
+        target,
+        loader_hint,
+        version_hint: Some(minecraft_version.into()),
+        files: files.into(),
+    };
+
+    root::start_install(content_install, &data.backend_handle, window, cx);
 }

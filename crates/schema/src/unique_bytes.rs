@@ -180,6 +180,20 @@ impl <'de> Visitor<'de> for UniqueBytesVisitor {
         formatter.write_str("bytes")
     }
 
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: serde::de::SeqAccess<'de>
+    {
+        let capacity = seq.size_hint().unwrap_or(0).max(0);
+        let mut values = Vec::<u8>::with_capacity(capacity);
+
+        while let Some(element) = seq.next_element()? {
+            values.push(element);
+        }
+
+        Ok(UniqueBytes::new(&values))
+    }
+
     fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
     where
         E: serde::de::Error

@@ -149,7 +149,7 @@ pub fn start(
         cx.on_window_closed({
             let main_window_hidden = main_window_hidden.clone();
             let quit_coordinator = quit_coordinator.clone();
-            move |cx| {
+            move |cx, _window| {
                 if main_window_hidden.load(std::sync::atomic::Ordering::SeqCst) {
                     return;
                 }

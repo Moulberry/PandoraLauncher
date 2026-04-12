@@ -4,7 +4,7 @@ use bridge::{install::{ContentDownload, ContentInstall, ContentInstallFile, Inst
 use enumset::EnumSet;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Icon, Selectable, WindowExt, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, tooltip::Tooltip, v_flex
+    ActiveTheme, Icon, Selectable, WindowExt, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, v_flex
 };
 use rustc_hash::FxHashMap;
 use schema::{content::ContentSource, loader::Loader, modrinth::{
@@ -801,14 +801,10 @@ impl Render for ModrinthSearchPage {
 
 
         if self.can_install_latest {
-            let tooltip = |window: &mut Window, cx: &mut App| {
-                Tooltip::new(ts!("instance.content.install.always_latest")).build(window, cx)
-            };
-
             let install_latest = InterfaceConfig::get(cx).content_install_latest;
             top_bar = top_bar.child(Checkbox::new("install-latest")
                 .label(ts!("instance.content.install.latest"))
-                .tooltip(tooltip)
+                .tooltip(ts!("instance.content.install.always_latest"))
                 .checked(install_latest)
                 .on_click({
                     move |value, _, cx| {

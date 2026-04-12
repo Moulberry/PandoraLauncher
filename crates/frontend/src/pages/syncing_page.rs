@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::Arc};
 use bridge::{handle::BackendHandle, message::{MessageToBackend, SyncState}, safe_path::SafePath};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputState}, spinner::Spinner, tooltip::Tooltip, v_flex, ActiveTheme as _, Disableable, Sizable
+    button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputState}, spinner::Spinner, v_flex, ActiveTheme as _, Disableable, Sizable
 };
 use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
@@ -83,9 +83,7 @@ impl SyncingPage {
             .label(label)
             .disabled(disabled)
             .checked(enabled)
-            .when(disabled, |this| this.tooltip(move |window, cx| {
-                Tooltip::new(disable_tooltip.clone()).build(window, cx)
-            }))
+            .when(disabled, |this| this.tooltip(disable_tooltip))
             .on_click(cx.listener(move |page, value, _, cx| {
 
             backend_handle.send(MessageToBackend::SetSyncing {

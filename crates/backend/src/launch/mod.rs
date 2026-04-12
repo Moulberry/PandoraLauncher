@@ -2141,10 +2141,30 @@ impl LaunchContext {
 
         #[cfg(target_os = "linux")]
         if std::env::var_os("DISPLAY").is_none() {
-            use std::os::linux::net::SocketAddrExt;
-            use std::os::unix::net::{UnixStream, SocketAddr};
-            if std::fs::exists("/tmp/.X11-unix/X0").unwrap_or(false) || UnixStream::connect_addr(&SocketAddr::from_abstract_name(b"/tmp/.X11-unix/X0").unwrap()).is_ok() {
-                command.env("DISPLAY", ":0");
+            if let Ok(unix_sockets) = File::open("/proc/net/unix") {
+                use std::io::BufRead;
+
+                let mut unix_sockets = std::io::BufReader::new(unix_sockets);
+
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    let Ok(read) = unix_sockets.read_line(&mut line) else {
+                        break;
+                    };
+                    if read == 0 {
+                        break;
+                    }
+
+                    if let Some((_, last)) = line.rsplit_once(['\t', '\x0C', '\r', ' ']) {
+                        let last = last.trim_ascii().strip_prefix('@').unwrap_or(last);
+                        if last == "/tmp/.X11-unix/X0" {
+                            command.env("DISPLAY", ":0");
+                            break;
+                        }
+                    }
+
+                }
             }
         }
 

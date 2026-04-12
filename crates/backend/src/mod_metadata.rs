@@ -333,7 +333,7 @@ impl ModMetadataManager {
             hash,
             name: Some(name),
             authors,
-            version_str: format!("v{}", fabric_mod_json.version).into(),
+            version_str: create_version_string(&fabric_mod_json.version),
             rich_description: None,
             png_icon,
             extra: ContentType::Fabric
@@ -533,7 +533,7 @@ impl ModMetadataManager {
             hash,
             name: Some(modrinth_index_json.name),
             authors,
-            version_str: format!("v{}", modrinth_index_json.version_id).into(),
+            version_str: create_version_string(&modrinth_index_json.version_id),
             rich_description: None,
             png_icon,
             extra: ContentType::ModrinthModpack {
@@ -622,7 +622,7 @@ impl ModMetadataManager {
             hash,
             name: manifest_json.name,
             authors,
-            version_str: format!("v{}", manifest_json.version).into(),
+            version_str: create_version_string(&manifest_json.version),
             rich_description: None,
             png_icon,
             extra: ContentType::CurseforgeModpack {
@@ -1105,6 +1105,15 @@ impl ContentSources {
             by_first_byte,
             dirty: [0; 8]
         })
+    }
+}
+
+fn create_version_string(ver: &str) -> Arc<str> {
+    let ver = ver.trim_ascii();
+    if ver.starts_with('v') {
+        ver.into()
+    } else {
+        format!("v{ver}").into()
     }
 }
 

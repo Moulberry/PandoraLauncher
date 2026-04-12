@@ -76,6 +76,7 @@ oauth2 = { version = "5.0.0", features = ["reqwest"] }
 p256 = "0.13.2"
 base64ct = "1.8.0"
 sha2 = "0.10.9"
+zip = "8.5.1"
 url = "2.5.7"
 nt-time = { version = "0.12.1", features = ["chrono"] }
 obfstr = "0.4.4"

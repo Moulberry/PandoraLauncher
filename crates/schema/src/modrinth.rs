@@ -80,7 +80,7 @@ pub struct ModrinthHit {
     // pub featured_gallery: Option<Arc<str>>,
 }
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Deserialize)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthSideRequirement {
     Required,
@@ -248,13 +248,32 @@ pub struct ModrinthFile {
     pub size: usize,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModrinthHashes {
     pub sha1: Arc<str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha512: Option<Arc<str>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModrinthVersionFileUpdateResult(pub ModrinthProjectVersion);
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize)]
+pub struct ModrinthVersionsFromHashesRequest {
+    pub hashes: Arc<[Arc<str>]>,
+    pub algorithm: Arc<str>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModrinthVersionsFromHashesResponse(pub std::collections::HashMap<Arc<str>, Option<ModrinthProjectVersion>>);
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize)]
+pub struct ModrinthProjectsRequest {
+    pub ids: Arc<[Arc<str>]>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModrinthProjectsResponse(pub Arc<[ModrinthProjectResult]>);
 
 pub const MODRINTH_PROJECT_URL: &str = "https://api.modrinth.com/v2/project";
 

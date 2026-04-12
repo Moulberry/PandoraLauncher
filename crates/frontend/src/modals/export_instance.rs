@@ -128,14 +128,14 @@ impl ExportInstanceModalState {
 
     fn build_options(&self, cx: &mut App) -> ExportOptions {
         let modrinth_summary = self.modrinth_summary_input.read(cx).value();
-        let modrinth_summary = if modrinth_summary.trim().is_empty() {
+        let modrinth_summary = if modrinth_summary.trim_ascii().is_empty() {
             None
         } else {
             Some(Arc::<str>::from(modrinth_summary.as_str()))
         };
 
         let curseforge_author = self.curseforge_author_input.read(cx).value();
-        let curseforge_author = if curseforge_author.trim().is_empty() {
+        let curseforge_author = if curseforge_author.trim_ascii().is_empty() {
             None
         } else {
             Some(Arc::<str>::from(curseforge_author.as_str()))

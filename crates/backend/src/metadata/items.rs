@@ -19,8 +19,9 @@ use schema::{
     modrinth::{
         MODRINTH_PROJECT_URL, MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectRequest,
         ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest,
-        ModrinthProjectVersionsResult, ModrinthSearchRequest, ModrinthSearchResult,
-        ModrinthVersionFileUpdateResult
+        ModrinthProjectVersionsResult, ModrinthProjectsRequest, ModrinthProjectsResponse,
+        ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult,
+        ModrinthVersionsFromHashesRequest, ModrinthVersionsFromHashesResponse
     },
     version::MinecraftVersion,
     version_manifest::{MOJANG_VERSION_MANIFEST_URL, MinecraftVersionLink, MinecraftVersionManifest}
@@ -416,6 +417,63 @@ impl MetadataItem for ModrinthV3VersionUpdateMetadataItem {
 
     fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
         Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
+#[derive(Debug)]
+pub struct ModrinthVersionsFromHashesMetadataItem<'a>(pub &'a ModrinthVersionsFromHashesRequest);
+
+impl<'a> MetadataItem for ModrinthVersionsFromHashesMetadataItem<'a> {
+    type T = ModrinthVersionsFromHashesResponse;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        client.post("https://api.modrinth.com/v2/version_files").json(self.0)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.modrinth_versions_from_hashes.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
+#[derive(Debug)]
+pub struct ModrinthProjectsMetadataItem<'a>(pub &'a ModrinthProjectsRequest);
+
+impl<'a> MetadataItem for ModrinthProjectsMetadataItem<'a> {
+    type T = ModrinthProjectsResponse;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        let mut ids = String::from("[");
+        for (i, id) in self.0.ids.iter().enumerate() {
+            if i > 0 {
+                ids.push(',');
+            }
+            ids.push('"');
+            ids.push_str(id.as_ref());
+            ids.push('"');
+        }
+        ids.push(']');
+
+        client.get("https://api.modrinth.com/v2/projects").query(&[("ids", ids)])
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.modrinth_projects.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(ModrinthProjectsResponse(serde_json::from_slice::<Arc<[ModrinthProjectResult]>>(bytes)?))
     }
 }
 

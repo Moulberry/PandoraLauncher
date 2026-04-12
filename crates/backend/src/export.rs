@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    ffi::OsStr,
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -17,17 +16,22 @@ use schema::{
     curseforge::{CurseforgeFingerprintRequest, CurseforgeFingerprintResponse},
     instance::InstanceConfiguration,
     loader::Loader,
-    modrinth::ModrinthLoader,
+    modification::{ModrinthEnv, ModrinthModpackFileDownload},
+    modrinth::{
+        ModrinthProjectsRequest, ModrinthSideRequirement, ModrinthVersionsFromHashesRequest,
+        ModrinthVersionsFromHashesResponse,
+    },
+    mrpack::ModrinthIndexJson,
 };
 use sha1::{Digest as Sha1Digest, Sha1};
-use sha2::{Digest as Sha2Digest, Sha512};
+use sha2::Sha512;
 use walkdir::WalkDir;
-use zip::{write::FileOptions, CompressionMethod, ZipWriter};
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 use crate::{
     BackendState,
     metadata::{
-        items::{CurseforgeFingerprintMetadataItem, ModrinthVersionUpdateMetadataItem, VersionUpdateParameters},
+        items::{CurseforgeFingerprintMetadataItem, ModrinthProjectsMetadataItem, ModrinthVersionsFromHashesMetadataItem},
         manager::MetaLoadError,
     },
 };
@@ -79,7 +83,7 @@ struct ModrinthResolvedFile {
     sha512: String,
     url: String,
     size: u64,
-    optional: bool,
+    env: Option<ModrinthEnv>,
 }
 
 struct CurseforgeResolvedFile {
@@ -148,17 +152,17 @@ async fn export_instance_zip(
     modal_action: &ModalAction,
 ) -> Result<(), ExportError> {
     check_cancel(modal_action)?;
-    let tracker = ProgressTracker::new("Collecting files".into(), backend.send.clone());
+    let tracker = ProgressTracker::new("Collecting files...".into(), backend.send.clone());
     modal_action.trackers.push(tracker.clone());
 
     let files = collect_files(
         &instance.root_path,
+        &instance.dot_minecraft_path,
         options,
         &instance.sync_targets,
         &backend.directories.synced_dir,
         modal_action,
     )?;
-    tracker.set_total(files.len());
     tracker.notify();
     tracker.set_finished(ProgressTrackerFinishType::Normal);
 
@@ -180,17 +184,17 @@ async fn export_modrinth_pack(
     modal_action: &ModalAction,
 ) -> Result<(), ExportError> {
     check_cancel(modal_action)?;
-    let collect_tracker = ProgressTracker::new("Collecting files".into(), backend.send.clone());
+    let collect_tracker = ProgressTracker::new("Collecting files...".into(), backend.send.clone());
     modal_action.trackers.push(collect_tracker.clone());
 
     let files = collect_files(
+        &instance.dot_minecraft_path,
         &instance.dot_minecraft_path,
         options,
         &instance.sync_targets,
         &backend.directories.synced_dir,
         modal_action,
     )?;
-    collect_tracker.set_total(files.len());
     collect_tracker.notify();
     collect_tracker.set_finished(ProgressTrackerFinishType::Normal);
 
@@ -226,17 +230,17 @@ async fn export_curseforge_pack(
     modal_action: &ModalAction,
 ) -> Result<(), ExportError> {
     check_cancel(modal_action)?;
-    let collect_tracker = ProgressTracker::new("Collecting files".into(), backend.send.clone());
+    let collect_tracker = ProgressTracker::new("Collecting files...".into(), backend.send.clone());
     modal_action.trackers.push(collect_tracker.clone());
 
     let files = collect_files(
+        &instance.dot_minecraft_path,
         &instance.dot_minecraft_path,
         options,
         &instance.sync_targets,
         &backend.directories.synced_dir,
         modal_action,
     )?;
-    collect_tracker.set_total(files.len());
     collect_tracker.notify();
     collect_tracker.set_finished(ProgressTrackerFinishType::Normal);
 
@@ -255,6 +259,7 @@ async fn export_curseforge_pack(
     let modlist_html = build_curseforge_modlist(&resolved);
     let extra_files = vec![
         ("manifest.json".to_string(), manifest_json),
+        // This is a legacy/optional artifact included by some exporters (e.g. PrismLauncher).
         ("modlist.html".to_string(), modlist_html),
     ];
 
@@ -270,12 +275,14 @@ async fn export_curseforge_pack(
 
 fn collect_files(
     root: &Path,
+    dot_minecraft_path: &Path,
     options: &ExportOptions,
     sync_targets: &SyncTargets,
     synced_dir: &Path,
     modal_action: &ModalAction,
 ) -> Result<Vec<ExportFile>, ExportError> {
     let mut files = Vec::new();
+    let sync_target_paths = SyncTargetPaths::new(sync_targets);
     let walker = WalkDir::new(root).follow_links(true);
 
     for entry in walker.into_iter() {
@@ -294,22 +301,30 @@ fn collect_files(
             continue;
         }
 
+        let rel_to_dot_minecraft = entry
+            .path()
+            .strip_prefix(dot_minecraft_path)
+            .ok()
+            .map(Path::to_path_buf);
+
         if !options.include_synced {
             if let Ok(real_path) = entry.path().canonicalize() {
                 if real_path.starts_with(synced_dir) {
                     continue;
                 }
             }
-            if matches_sync_target(&rel, sync_targets) {
-                continue;
+            if let Some(rel_to_dot_minecraft) = rel_to_dot_minecraft.as_ref() {
+                if matches_sync_target(rel_to_dot_minecraft, &sync_target_paths) {
+                    continue;
+                }
             }
         }
 
-        if is_os_junk(&rel) {
+        if is_export_junk(&rel) {
             continue;
         }
 
-        if should_skip(&rel, options) {
+        if should_skip(&rel, rel_to_dot_minecraft.as_deref(), options) {
             continue;
         }
 
@@ -324,136 +339,175 @@ fn collect_files(
     Ok(files)
 }
 
-fn matches_sync_target(rel: &Path, sync_targets: &SyncTargets) -> bool {
-    let rel_str = rel.to_string_lossy().replace('\\', "/");
-    let rel_str = rel_str.trim_start_matches("./");
-    let mut candidates = vec![rel_str];
+struct SyncTargetPaths {
+    files: Vec<PathBuf>,
+    folders: Vec<PathBuf>,
+}
 
-    if let Some(tail) = rel_str.strip_prefix("minecraft/") {
-        candidates.push(tail);
-    }
-    if let Some(tail) = rel_str.strip_prefix(".minecraft/") {
-        candidates.push(tail);
-    }
+impl SyncTargetPaths {
+    fn new(sync_targets: &SyncTargets) -> Self {
+        let mut files = Vec::new();
+        let mut folders = Vec::new();
 
-    for candidate in candidates {
-        for target in sync_targets.folders.iter() {
-            let target = target.as_ref().replace('\\', "/");
-            if candidate == target || candidate.starts_with(&(target + "/")) {
-                return true;
-            }
-        }
         for target in sync_targets.files.iter() {
-            let target = target.as_ref().replace('\\', "/");
-            if candidate == target {
-                return true;
+            if let Some(path) = normalize_relative_target(target) {
+                files.push(path);
             }
         }
-    }
+        for target in sync_targets.folders.iter() {
+            if let Some(path) = normalize_relative_target(target) {
+                folders.push(path);
+            }
+        }
 
+        Self { files, folders }
+    }
+}
+
+fn normalize_relative_target(target: &str) -> Option<PathBuf> {
+    let mut out = PathBuf::new();
+    for component in Path::new(target).components() {
+        match component {
+            std::path::Component::Normal(name) => out.push(name),
+            std::path::Component::CurDir => {}
+            // Disallow absolute paths, prefixes, and parent traversal in config.
+            _ => return None,
+        }
+    }
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
+fn matches_sync_target(rel_to_dot_minecraft: &Path, sync_targets: &SyncTargetPaths) -> bool {
+    for folder in &sync_targets.folders {
+        if rel_to_dot_minecraft == folder || rel_to_dot_minecraft.starts_with(folder) {
+            return true;
+        }
+    }
+    for file in &sync_targets.files {
+        if rel_to_dot_minecraft == file {
+            return true;
+        }
+    }
     false
 }
 
-fn should_skip(rel: &Path, options: &ExportOptions) -> bool {
+fn should_skip(rel: &Path, rel_to_dot_minecraft: Option<&Path>, options: &ExportOptions) -> bool {
+    // Exclude log artifacts regardless of where they are in the instance.
+    if !options.include_logs {
+        if let Some(file_name) = rel.file_name() {
+            let file_name = file_name.as_encoded_bytes();
+            if ends_with_ignore_ascii_case(file_name, b".log") || ends_with_ignore_ascii_case(file_name, b".log.gz") {
+                return true;
+            }
+        }
+    }
+
+    // The common include/exclude toggles are defined relative to the .minecraft folder.
+    let rel = rel_to_dot_minecraft.unwrap_or(rel);
+
     let Some(component) = rel.components().next() else {
         return false;
     };
     let name = match component {
-        std::path::Component::Normal(name) => name.to_string_lossy(),
+        std::path::Component::Normal(name) => name.as_encoded_bytes(),
         _ => return false,
     };
 
-    if !options.include_logs && (name == "logs" || name == "crash-reports") {
+    match name {
+        b"logs" | b"crash-reports" => !options.include_logs,
+        b".cache" => !options.include_cache,
+        b"saves" => !options.include_saves,
+        b"mods" => !options.include_mods,
+        b"resourcepacks" => !options.include_resourcepacks,
+        b"config" => !options.include_configs,
+        _ => false,
+    }
+}
+
+fn is_export_junk(rel: &Path) -> bool {
+    let Some(file_name) = rel.file_name() else {
+        return false;
+    };
+    let file_name = file_name.as_encoded_bytes();
+
+    // OS junk
+    if file_name == b".DS_Store" || eq_ignore_ascii_case(file_name, b"thumbs.db") {
         return true;
     }
-    if !options.include_cache && name == ".cache" {
+
+    // Pandora internal metadata/temp files.
+    if file_name.starts_with(b".pandora") {
         return true;
     }
-    if !options.include_saves && name == "saves" {
-        return true;
-    }
-    if !options.include_mods && name == "mods" {
-        return true;
-    }
-    if !options.include_resourcepacks && name == "resourcepacks" {
-        return true;
-    }
-    if !options.include_configs && name == "config" {
+    if file_name.starts_with(b".") && file_name.ends_with(b".aux.json") {
         return true;
     }
 
     false
 }
 
-fn is_os_junk(rel: &Path) -> bool {
-    let Some(file_name) = rel.file_name().and_then(OsStr::to_str) else {
+fn eq_ignore_ascii_case(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
         return false;
-    };
-    matches!(file_name, ".DS_Store" | "Thumbs.db" | "thumbs.db")
+    }
+    a.iter().zip(b.iter()).all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
+}
+
+fn ends_with_ignore_ascii_case(haystack: &[u8], needle: &[u8]) -> bool {
+    if haystack.len() < needle.len() {
+        return false;
+    }
+    let start = haystack.len() - needle.len();
+    eq_ignore_ascii_case(&haystack[start..], needle)
 }
 
 async fn resolve_modrinth_files(
     backend: &BackendState,
-    instance: &ExportInstanceData,
+    _instance: &ExportInstanceData,
     options: &ExportOptions,
     files: &[ExportFile],
     modal_action: &ModalAction,
     tracker: &ProgressTracker,
 ) -> Result<Vec<ModrinthResolvedFile>, ExportError> {
-    if !options.include_mods {
+    let mut candidates = Vec::new();
+    for file in files {
+        if is_mod_file(&file.rel) && options.include_mods {
+            candidates.push(file);
+            continue;
+        }
+        if is_resourcepack_file(&file.rel) && options.include_resourcepacks {
+            candidates.push(file);
+        }
+    }
+
+    if candidates.is_empty() {
         return Ok(Vec::new());
     }
 
-    let modrinth_loader = instance.configuration.loader.as_modrinth_loader();
-    let minecraft_version = instance.configuration.minecraft_version;
-    let params = VersionUpdateParameters {
-        loaders: if modrinth_loader == ModrinthLoader::Unknown {
-            Arc::<[ModrinthLoader]>::from([])
-        } else {
-            Arc::from([modrinth_loader])
-        },
-        game_versions: Arc::from([minecraft_version]),
-    };
-
-    let mod_files: Vec<&ExportFile> = files
-        .iter()
-        .filter(|file| is_mod_file(&file.rel))
-        .collect();
-
-    tracker.set_total(mod_files.len());
+    tracker.set_total(candidates.len());
     tracker.notify();
 
-    let mut resolved = Vec::new();
-    for file in mod_files {
+    let mut buf = vec![0_u8; 128 * 1024];
+
+    struct CandidateInfo {
+        source_rel: PathBuf,
+        rel_path: String,
+        sha512: Arc<str>,
+        optional: bool,
+    }
+
+    let mut candidate_infos: Vec<CandidateInfo> = Vec::with_capacity(candidates.len());
+    let mut hashes: Vec<Arc<str>> = Vec::with_capacity(candidates.len());
+    for file in candidates {
         check_cancel(modal_action)?;
         tracker.add_count(1);
         tracker.notify();
 
-        let (sha1_hex, sha512_hex, size) = compute_hashes(&file.abs, modal_action)?;
-
-        if modrinth_loader == ModrinthLoader::Unknown {
-            continue;
-        }
-
-        let response = backend
-            .meta
-            .fetch(&ModrinthVersionUpdateMetadataItem {
-                sha1: sha1_hex.clone().into(),
-                params: params.clone(),
-            })
-            .await
-            .map_err(|e| format!("Error resolving Modrinth file: {}", e))?;
-
-        let file_url = response
-            .0
-            .files
-            .iter()
-            .find(|f| f.hashes.sha1.as_ref() == sha1_hex.as_str())
-            .map(|f| f.url.as_ref().to_string());
-
-        let Some(url) = file_url else {
-            continue;
-        };
+        let (_sha1_hex, sha512_hex, _size) = compute_hashes(&file.abs, modal_action, &mut buf)?;
 
         let mut rel_path = file.rel.to_string_lossy().replace('\\', "/");
         let optional = options.modrinth.optional_files && !file.enabled && rel_path.ends_with(".disabled");
@@ -461,14 +515,104 @@ async fn resolve_modrinth_files(
             rel_path = rel_path.trim_end_matches(".disabled").to_string();
         }
 
-        resolved.push(ModrinthResolvedFile {
+        let sha512: Arc<str> = sha512_hex.into();
+        hashes.push(Arc::clone(&sha512));
+
+        candidate_infos.push(CandidateInfo {
             source_rel: file.rel.clone(),
             rel_path,
-            sha1: sha1_hex,
-            sha512: sha512_hex,
-            url,
-            size,
+            sha512,
             optional,
+        });
+    }
+
+    let request = ModrinthVersionsFromHashesRequest {
+        hashes: hashes.into(),
+        algorithm: "sha512".into(),
+    };
+
+    let response: Arc<ModrinthVersionsFromHashesResponse> = backend
+        .meta
+        .fetch(&ModrinthVersionsFromHashesMetadataItem(&request))
+        .await
+        .map_err(|e| format!("Error resolving Modrinth versions: {}", e))?;
+
+    let mut versions_by_hash: HashMap<&str, &schema::modrinth::ModrinthProjectVersion> = HashMap::new();
+    for (hash, version) in response.0.iter() {
+        if let Some(version) = version.as_ref() {
+            versions_by_hash.insert(hash.as_ref(), version);
+        }
+    }
+
+    // Collect project ids for env side-support lookup.
+    let mut project_ids = HashSet::<Arc<str>>::new();
+    for info in &candidate_infos {
+        if let Some(version) = versions_by_hash.get(info.sha512.as_ref()) {
+            project_ids.insert(Arc::clone(&version.project_id));
+        }
+    }
+
+    let projects_map: HashMap<Arc<str>, schema::modrinth::ModrinthProjectResult> = if project_ids.is_empty() {
+        HashMap::new()
+    } else {
+        let ids_vec: Vec<Arc<str>> = project_ids.into_iter().collect();
+        let req = ModrinthProjectsRequest { ids: ids_vec.into() };
+        let projects: Arc<schema::modrinth::ModrinthProjectsResponse> = backend
+            .meta
+            .fetch(&ModrinthProjectsMetadataItem(&req))
+            .await
+            .map_err(|e| format!("Error resolving Modrinth projects: {}", e))?;
+
+        projects
+            .0
+            .iter()
+            .cloned()
+            .map(|p| (Arc::clone(&p.id), p))
+            .collect()
+    };
+
+    let mut resolved = Vec::new();
+    for info in candidate_infos {
+        check_cancel(modal_action)?;
+
+        let Some(version) = versions_by_hash.get(info.sha512.as_ref()) else {
+            continue;
+        };
+
+        // Match the exact file for this sha512.
+        let Some(file_entry) = version
+            .files
+            .iter()
+            .find(|f| f.hashes.sha512.as_deref() == Some(info.sha512.as_ref()))
+        else {
+            continue;
+        };
+
+        let mut env: Option<ModrinthEnv> = None;
+        if let Some(project) = projects_map.get(version.project_id.as_ref()) {
+            let mut client = project.client_side.unwrap_or(ModrinthSideRequirement::Required);
+            let mut server = project.server_side.unwrap_or(ModrinthSideRequirement::Required);
+
+            if info.optional {
+                if client != ModrinthSideRequirement::Unsupported {
+                    client = ModrinthSideRequirement::Optional;
+                }
+                if server != ModrinthSideRequirement::Unsupported {
+                    server = ModrinthSideRequirement::Optional;
+                }
+            }
+
+            env = Some(ModrinthEnv { client, server });
+        }
+
+        resolved.push(ModrinthResolvedFile {
+            source_rel: info.source_rel,
+            rel_path: info.rel_path,
+            sha1: file_entry.hashes.sha1.as_ref().to_string(),
+            sha512: info.sha512.as_ref().to_string(),
+            url: file_entry.url.as_ref().to_string(),
+            size: file_entry.size as u64,
+            env,
         });
     }
 
@@ -549,56 +693,50 @@ fn build_modrinth_index(
     options: &ExportOptions,
     resolved: &[ModrinthResolvedFile],
 ) -> Result<Vec<u8>, String> {
-    let mut out = serde_json::Map::new();
-    out.insert("formatVersion".into(), serde_json::Value::from(1));
-    out.insert("game".into(), serde_json::Value::from("minecraft"));
-    out.insert("name".into(), serde_json::Value::from(options.modrinth.name.as_ref()));
-    out.insert("versionId".into(), serde_json::Value::from(options.modrinth.version.as_ref()));
-    if let Some(summary) = options.modrinth.summary.as_ref() {
-        if !summary.is_empty() {
-            out.insert("summary".into(), serde_json::Value::from(summary.as_ref()));
-        }
-    }
-
     let config = &instance.configuration;
-    let mut deps = serde_json::Map::new();
-    deps.insert("minecraft".into(), serde_json::Value::from(config.minecraft_version.as_str()));
+
+    let mut dependencies = indexmap::IndexMap::new();
+    dependencies.insert("minecraft".into(), config.minecraft_version.as_str().into());
     if let Some(loader_version) = config.preferred_loader_version {
         match config.loader {
-            Loader::Fabric => { deps.insert("fabric-loader".into(), serde_json::Value::from(loader_version.as_str())); },
-            Loader::Forge => { deps.insert("forge".into(), serde_json::Value::from(loader_version.as_str())); },
-            Loader::NeoForge => { deps.insert("neoforge".into(), serde_json::Value::from(loader_version.as_str())); },
+            Loader::Fabric => { dependencies.insert("fabric-loader".into(), loader_version.as_str().into()); },
+            Loader::Forge => { dependencies.insert("forge".into(), loader_version.as_str().into()); },
+            Loader::NeoForge => { dependencies.insert("neoforge".into(), loader_version.as_str().into()); },
             _ => {}
         }
     }
-    out.insert("dependencies".into(), serde_json::Value::Object(deps));
 
-    let mut files_out = Vec::new();
-    for file in resolved {
-        let mut env = serde_json::Map::new();
-        if file.optional {
-            env.insert("client".into(), serde_json::Value::from("optional"));
-            env.insert("server".into(), serde_json::Value::from("optional"));
-        } else {
-            env.insert("client".into(), serde_json::Value::from("required"));
-            env.insert("server".into(), serde_json::Value::from("required"));
-        }
+    let summary = options.modrinth.summary.as_ref().and_then(|s| {
+        if s.is_empty() { None } else { Some(Arc::<str>::clone(s)) }
+    });
 
-        let mut hashes = serde_json::Map::new();
-        hashes.insert("sha1".into(), serde_json::Value::from(file.sha1.as_str()));
-        hashes.insert("sha512".into(), serde_json::Value::from(file.sha512.as_str()));
+    let files_out: Vec<ModrinthModpackFileDownload> = resolved
+        .iter()
+        .map(|file| ModrinthModpackFileDownload {
+            path: Arc::<str>::from(file.rel_path.as_str()),
+            hashes: schema::modrinth::ModrinthHashes {
+                sha1: Arc::<str>::from(file.sha1.as_str()),
+                sha512: Some(Arc::<str>::from(file.sha512.as_str())),
+            },
+            env: file.env,
+            downloads: Arc::from([Arc::<str>::from(file.url.as_str())]),
+            file_size: file.size as usize,
+        })
+        .collect();
 
-        let mut file_out = serde_json::Map::new();
-        file_out.insert("path".into(), serde_json::Value::from(file.rel_path.as_str()));
-        file_out.insert("downloads".into(), serde_json::Value::from(vec![file.url.as_str()]));
-        file_out.insert("hashes".into(), serde_json::Value::Object(hashes));
-        file_out.insert("fileSize".into(), serde_json::Value::from(file.size));
-        file_out.insert("env".into(), serde_json::Value::Object(env));
-        files_out.push(serde_json::Value::Object(file_out));
-    }
-    out.insert("files".into(), serde_json::Value::Array(files_out));
+    let index = ModrinthIndexJson {
+        format_version: 1,
+        game: "minecraft".into(),
+        version_id: Arc::<str>::clone(&options.modrinth.version),
+        name: Arc::<str>::clone(&options.modrinth.name),
+        summary,
+        files: files_out.into(),
+        dependencies,
+        authors: None,
+        author: None,
+    };
 
-    serde_json::to_vec(&serde_json::Value::Object(out)).map_err(|e| e.to_string())
+    serde_json::to_vec(&index).map_err(|e| e.to_string())
 }
 
 fn build_curseforge_manifest(
@@ -691,7 +829,7 @@ fn write_zip(
     let temp_file = File::create(&temp_path).map_err(|e| e.to_string())?;
     let result: Result<(), ExportError> = (|| {
         let mut zip = ZipWriter::new(temp_file);
-        let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
         for (name, data) in extra_files {
             check_cancel(modal_action)?;
@@ -740,20 +878,18 @@ fn write_zip(
 
 fn temp_output_path(output: &Path) -> PathBuf {
     let mut temp = output.to_path_buf();
-    let ext = output.extension().and_then(OsStr::to_str).unwrap_or("tmp");
-    temp.set_extension(format!("{}.new", ext));
+    temp.add_extension("new");
     temp
 }
 
-fn compute_hashes(path: &Path, modal_action: &ModalAction) -> Result<(String, String, u64), ExportError> {
+fn compute_hashes(path: &Path, modal_action: &ModalAction, buffer: &mut [u8]) -> Result<(String, String, u64), ExportError> {
     let mut file = File::open(path).map_err(|e| e.to_string())?;
     let mut sha1 = Sha1::new();
     let mut sha512 = Sha512::new();
-    let mut buffer = [0_u8; 8192];
     let mut size = 0_u64;
     loop {
         check_cancel(modal_action)?;
-        let read = file.read(&mut buffer).map_err(|e| e.to_string())?;
+        let read = file.read(buffer).map_err(|e| e.to_string())?;
         if read == 0 {
             break;
         }

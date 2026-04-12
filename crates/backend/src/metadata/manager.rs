@@ -16,8 +16,10 @@ use schema::{
     java_runtimes::JavaRuntimes,
     modrinth::{
         ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion,
-        ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest,
-        ModrinthSearchResult, ModrinthVersionFileUpdateResult
+        ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthProjectsRequest,
+        ModrinthProjectsResponse, ModrinthSearchRequest, ModrinthSearchResult,
+        ModrinthVersionFileUpdateResult, ModrinthVersionsFromHashesRequest,
+        ModrinthVersionsFromHashesResponse
     },
     version::MinecraftVersion, version_manifest::MinecraftVersionManifest
 };
@@ -46,9 +48,11 @@ pub struct MetadataManagerStates {
     pub(super) modrinth_search: HashMap<ModrinthSearchRequest, MetaLoadStateWrapper<ModrinthSearchResult>>,
     pub(super) modrinth_project_versions: HashMap<ModrinthProjectVersionsRequest, MetaLoadStateWrapper<ModrinthProjectVersionsResult>>,
     pub(super) modrinth_project: HashMap<ModrinthProjectRequest, MetaLoadStateWrapper<ModrinthProjectResult>>,
+    pub(super) modrinth_projects: HashMap<ModrinthProjectsRequest, MetaLoadStateWrapper<ModrinthProjectsResponse>>,
     pub(super) modrinth_versions: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthProjectVersion>>,
     pub(super) modrinth_version_v2_updates: HashMap<ModrinthVersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
     pub(super) modrinth_version_v3_updates: HashMap<ModrinthV3VersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
+    pub(super) modrinth_versions_from_hashes: HashMap<ModrinthVersionsFromHashesRequest, MetaLoadStateWrapper<ModrinthVersionsFromHashesResponse>>,
     pub(super) curseforge_search: HashMap<CurseforgeSearchRequest, MetaLoadStateWrapper<CurseforgeSearchResult>>,
     pub(super) curseforge_get_mod_files: HashMap<CurseforgeGetModFilesRequest, MetaLoadStateWrapper<CurseforgeGetModFilesResult>>,
     pub(super) curseforge_get_files: HashMap<CurseforgeGetFilesRequest, MetaLoadStateWrapper<CurseforgeGetModFilesResult>>,

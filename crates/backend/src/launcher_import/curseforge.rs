@@ -10,14 +10,27 @@ use crate::{BackendState, write_safe};
 #[serde(rename_all = "camelCase")]
 struct CurseforgeInstance {
     manifest: CurseforgeModpackManifestJson,
+    #[serde(default)]
     is_memory_override: bool,
+    #[serde(default)]
     allocated_memory: u32,
-    // memory_allocated_type: u8,
 }
 
 fn try_load_from_curseforge(config_path: &Path) -> Option<InstanceConfiguration> {
-    let instance_cfg_bytes = std::fs::read(config_path).ok()?;
-    let instance_cfg = serde_json::from_slice::<CurseforgeInstance>(&instance_cfg_bytes).ok()?;
+    let instance_cfg_bytes = match std::fs::read(config_path) {
+        Ok(instance_cfg_bytes) => instance_cfg_bytes,
+        Err(err) => {
+            log::error!("Unable to read {:?}: {:?}", config_path, err);
+            return None;
+        },
+    };
+    let instance_cfg = match serde_json::from_slice::<CurseforgeInstance>(&instance_cfg_bytes) {
+        Ok(instance_cfg) => instance_cfg,
+        Err(err) => {
+            log::error!("Unable to parse CurseforgeInstance {:?}: {:?}", config_path, err);
+            return None;
+        },
+    };
 
     let loader = instance_cfg.manifest.minecraft.get_loader().unwrap_or(Loader::Vanilla);
     let mut configuration = InstanceConfiguration::new(instance_cfg.manifest.minecraft.version?.into(), loader);

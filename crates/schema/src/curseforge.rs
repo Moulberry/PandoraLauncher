@@ -276,6 +276,7 @@ pub struct CurseforgeModpackManifestJson {
     pub minecraft: CurseforgeModpackMinecraft,
     pub version: Arc<str>,
     pub name: Option<Arc<str>>,
+    #[serde(default)]
     pub files: Arc<[CurseforgeModpackFile]>,
     pub author: Option<Arc<str>>,
     pub overrides: Option<Arc<str>>,

@@ -9,23 +9,7 @@ pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox, context: &mut
     let mut profile = OsString::from(BASE_PROFILE);
 
     let resolved_executable = command.resolve_executable_path()?;
-    if sandbox.is_jvm && let Some(java_parent) = resolved_executable.parent() && java_parent.file_name() == Some(OsStr::new("bin")) {
-        if let Some(java_parent_parent) = java_parent.parent() {
-            let lib = java_parent_parent.join("lib");
-            if lib.is_dir() {
-                allow_read(&mut profile, &lib);
-            }
-
-            let conf = java_parent_parent.join("conf");
-            if conf.is_dir() {
-                allow_read(&mut profile, &conf);
-            }
-        }
-
-        allow_read(&mut profile, &java_parent);
-    } else {
-        allow_read(&mut profile, &resolved_executable);
-    }
+    allow_read(&mut profile, &resolved_executable);
 
     if sandbox.grant_network_access {
         profile.push(NETWORK);

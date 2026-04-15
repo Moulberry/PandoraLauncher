@@ -314,24 +314,7 @@ pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox, context: &mut
         builder.bind_if_exists(BindType::ReadOnly, &directories.home_dir().join(".Xauthority"));
     }
 
-    // Bind java
-    if sandbox.is_jvm && let Some(java_parent) = resolved_executable.parent() && java_parent.file_name() == Some(OsStr::new("bin")) {
-        if let Some(java_parent_parent) = java_parent.parent() {
-            let lib = java_parent_parent.join("lib");
-            if lib.is_dir() {
-                builder.bind_if_exists(BindType::ReadOnly, &lib);
-            }
-
-            let conf = java_parent_parent.join("conf");
-            if conf.is_dir() {
-                builder.bind_if_exists(BindType::ReadOnly, &conf);
-            }
-        }
-
-        builder.bind_if_exists(BindType::ReadOnly, &java_parent);
-    } else {
-        builder.bind_if_exists(BindType::ReadOnly, &resolved_executable);
-    }
+    builder.bind_if_exists(BindType::ReadOnly, &resolved_executable);
 
     for path in sandbox.allow_read {
         builder.bind_if_exists(BindType::ReadOnly, &path);

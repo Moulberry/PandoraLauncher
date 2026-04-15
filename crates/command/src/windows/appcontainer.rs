@@ -143,21 +143,7 @@ pub fn spawn(command: PandoraCommand, sandbox: PandoraSandbox, context: &mut Spa
     }
 
     let resolved_executable = command.resolve_executable_path()?;
-    if sandbox.is_jvm && let Some(java_parent) = resolved_executable.parent() && java_parent.file_name() == Some(OsStr::new("bin")) {
-        if let Some(java_parent_parent) = java_parent.parent() {
-            let lib = java_parent_parent.join("lib");
-            if lib.is_dir() {
-                _ = add_to_acl(&app_container_sid, &lib, PermissionType::Read);
-            }
-
-            let conf = java_parent_parent.join("conf");
-            if conf.is_dir() {
-                _ = add_to_acl(&app_container_sid, &conf, PermissionType::Read);
-            }
-        }
-
-        _ = add_to_acl(&app_container_sid, &java_parent, PermissionType::Read);
-    }
+    _ = add_to_acl(&app_container_sid, &resolved_executable, PermissionType::Read);
 
     windows_spawn::spawn_with_attributes(command, context, Some(lpproc_thread_attribute_list))
 }

@@ -2131,6 +2131,26 @@ impl LaunchContext {
             }
         }
 
+        let java_path = self.java_path.canonicalize()?;
+
+        // Checks to make sure java is sane
+        let Some(java_path_parent) = java_path.parent() else {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java path is missing parent"));
+        };
+        if java_path_parent.file_name() != Some(OsStr::new("bin")) {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java parent folder must be 'bin'"));
+        }
+        let Some(java_path_parent_parent) = java_path_parent.parent() else {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java bin folder is missing parent"));
+        };
+        if !java_path_parent_parent.join("lib").is_dir() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java root folder must contain 'lib'"));
+        }
+        if !java_path_parent_parent.join("conf").is_dir() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java root folder must contain 'conf'"));
+        }
+
+
         wrapping_command.push(self.java_path.clone().into_os_string().into());
 
         let mut iter = wrapping_command.iter();
@@ -2225,13 +2245,17 @@ impl LaunchContext {
         command.arg("com.moulberry.pandora.LaunchWrapper");
 
         let mut child = if self.configuration.sandbox {
+            let mut allow_read = vec![
+                self.libraries_dir.clone(),
+                self.log_configs_dir.clone(),
+                self.launch_wrapper_path.clone(),
+                self.assets_root.clone(),
+            ];
+
+            allow_read.push(java_path_parent_parent.into());
+
             command.spawn_sandboxed(PandoraSandbox {
-                allow_read: vec![
-                    self.libraries_dir.clone(),
-                    self.log_configs_dir.clone(),
-                    self.launch_wrapper_path.clone(),
-                    self.assets_root.clone(),
-                ],
+                allow_read,
                 allow_write: vec![
                     self.game_dir.clone(),
                     self.natives_dir.clone().into(),

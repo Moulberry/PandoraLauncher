@@ -1,2 +1,2 @@
 cargo vendor
-ln -s ./gpui-component-assets ./vendor/assets
+cp -r ./vendor/gpui-component-assets ./vendor/assets

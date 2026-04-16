@@ -9,7 +9,7 @@ use rustc_hash::FxHashSet;
 use schema::{content::ContentSource, loader::Loader};
 use strum::IntoEnumIterator;
 
-use crate::{component::{path_label::PathLabel, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries}, icon::PandoraIcon, pages::page::Page, root, ts};
+use crate::{component::{path_label::PathLabel, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries}, icon::PandoraIcon, pages::page::Page, root};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
@@ -100,8 +100,8 @@ impl Render for ImportPage {
                 .gap_2()
                 .children({
                     OtherLauncher::iter().map(|launcher| {
-                        Button::new(launcher.to_string())
-                             .label(format!("Import from {}", launcher))
+                        Button::new(launcher.name())
+                             .label(format!("Import from {}", launcher.name()))
                              .w_full()
                              .on_click(cx.listener(move |page, _, _, cx| {
                                  page.import_from = Some(launcher);
@@ -159,7 +159,7 @@ impl Render for ImportPage {
             );
 
         if let Some(import_from) = self.import_from {
-            let label = format!("Import From {}", import_from);
+            let label = format!("Import From {}", import_from.name());
 
             let mut import_box = v_flex()
                 .w_full()
@@ -265,8 +265,8 @@ impl Render for ImportPage {
                 	(self.import_instances && self.disabled_due_to_name_conflict.len() + self.disabled_manually.len() != import_job.paths.len());
                 import_box = import_box.child(Button::new("doimport")
                     .tooltip(match can_import {
-                        true => ts!("import.enabled", launcher = import_from),
-                        false => ts!("import.disabled", launcher = import_from),
+                        true => t::import::enabled(import_from.name()),
+                        false => t::import::disabled(import_from.name()),
                     })
                     .disabled(!can_import)
                     .success()

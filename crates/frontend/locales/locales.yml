@@ -1,5 +1,13 @@
 _version: 2
 
+# static LANG: AtomicU8 = AtomicU8::new(0);
+# set_lang(lang: &'static str) { match lang { "en" => 0, "" }  }
+# mod modrinth { fn name() -> &'static str { match LANG.load(Ordering::Relaxed) { 0 => "Modrinth"; 1 => "Le Modrinth" } } }
+# mod other { fn thing(name: &str) -> String { match LANG.load(Ordering::Relaxed) { 0 => format!("{} blah", name); 1 => "Le Modrinth" } } }
+
+# tr!("modrinth.doesnt_exist")
+# t::modrinth::doesnt_exist();
+#
 modrinth:
   name:
     en: Modrinth

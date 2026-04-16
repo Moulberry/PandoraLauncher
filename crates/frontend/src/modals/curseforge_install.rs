@@ -18,7 +18,7 @@ use crate::{
     entity::{
         DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}
     },
-    root, ts,
+    root,
 };
 
 struct VersionMatrixLoaders {
@@ -65,7 +65,7 @@ pub fn open(
     cx: &mut App,
 ) {
     let name = SharedString::new(hit.name.clone());
-    let title = ts!("instance.content.install.title", name = name);
+    let title: SharedString = t::instance::content::install::title(&hit.name).into();
     let project_type = hit.class_id
         .map(CurseforgeClassId::from_u32)
         .unwrap_or_default();
@@ -94,12 +94,12 @@ pub fn open(
     }
 
     if version_matrix.is_empty() {
-        open_error_dialog(title.clone(), ts!("instance.content.load.versions.not_found"), window, cx);
+        open_error_dialog(title.clone(), t::instance::content::load::versions::not_found().into(), window, cx);
         return;
     }
     if let Some(install_for) = install_for {
         let Some(instance) = data.instances.read(cx).entries.get(&install_for) else {
-            open_error_dialog(title.clone(), ts!("instance.unable_to_find"), window, cx);
+            open_error_dialog(title.clone(), t::instance::unable_to_find().into(), window, cx);
             return;
         };
 
@@ -109,8 +109,8 @@ pub fn open(
         let instance_loader = instance.configuration.loader;
 
         let Some(loaders) = version_matrix.get(minecraft_version) else {
-            let error_message = ts!("instance.content.load.versions.not_found_for", ver = minecraft_version);
-            open_error_dialog(title.clone(), error_message, window, cx);
+            let error_message = t::instance::content::load::versions::not_found_for(minecraft_version);
+            open_error_dialog(title.clone(), error_message.into(), window, cx);
             return;
         };
 
@@ -120,8 +120,8 @@ pub fn open(
                 || loaders.loaders.contains(instance_loader.as_curseforge_loader());
         }
         if !valid_loader {
-            let error_message = ts!("instance.content.load.versions.not_found_for", ver = format!("{} {}", instance_loader.name(), minecraft_version));
-            open_error_dialog(title.clone(), error_message, window, cx);
+            let error_message = t::instance::content::load::versions::not_found_for_loader(instance_loader.name(), minecraft_version);
+            open_error_dialog(title.clone(), error_message.into(), window, cx);
             return;
         }
 
@@ -243,11 +243,11 @@ impl InstallDialog {
 
         if self.target.is_none() {
             let create_instance_label = match self.project_type {
-                CurseforgeClassId::Mod => ts!("instance.content.install.new_instance_with.mod"),
-                CurseforgeClassId::Modpack => ts!("instance.content.install.new_instance_with.modpack"),
-                CurseforgeClassId::Resourcepack => ts!("instance.content.install.new_instance_with.resourcepack"),
-                CurseforgeClassId::Shader => ts!("instance.content.install.new_instance_with.shader"),
-                _ => ts!("instance.content.install.new_instance_with.file"),
+                CurseforgeClassId::Mod => t::instance::content::install::new_instance_with::mod_(),
+                CurseforgeClassId::Modpack => t::instance::content::install::new_instance_with::modpack(),
+                CurseforgeClassId::Resourcepack => t::instance::content::install::new_instance_with::resourcepack(),
+                CurseforgeClassId::Shader => t::instance::content::install::new_instance_with::shader(),
+                _ => t::instance::content::install::new_instance_with::file(),
             };
 
             let content = v_flex()
@@ -264,15 +264,14 @@ impl InstallDialog {
                                 .w_full()
                                 .gap_0p5()
                                 .child(
-                                    Select::new(instances).placeholder(ts!("instance.none_selected")).title_prefix(format!("{}: ", ts!("instance.label"))),
+                                    Select::new(instances).placeholder(t::instance::none_selected()).title_prefix(format!("{}: ", t::instance::label())),
                                 )
                                 .when(self.unsupported_instances > 0, |content| {
-                                    content
-                                        .child(ts!("instance.incompatible", num = self.unsupported_instances))
+                                    content.child(t::instance::incompatible(self.unsupported_instances))
                                 }),
                         )
                         .when_some(selected_instance, |dialog, instance| {
-                            dialog.child(Button::new("instance").success().h_full().label(ts!("instance.content.install.add_to_instance")).on_click(
+                            dialog.child(Button::new("instance").success().h_full().label(t::instance::content::install::add_to_instance()).on_click(
                                 cx.listener(move |this, _, _, _| {
                                     this.target = Some(InstallTarget::Instance(instance.id));
                                     this.fixed_minecraft_version = Some(instance.configuration.minecraft_version.as_str());
@@ -286,7 +285,7 @@ impl InstallDialog {
                             ))
                         });
 
-                    content.child(button_and_dropdown).child(format!("— {} —", ts!("common.or_upper")))
+                    content.child(button_and_dropdown).child(format!("— {} —", t::common::or_upper()))
                 })
                 .child(Button::new("create").success().label(create_instance_label).on_click(cx.listener(
                     |this, _, _, _| {
@@ -500,7 +499,7 @@ impl InstallDialog {
             .and_then(|state| state.read(cx).selected_value())
             .cloned();
 
-        let filename_prefix = ts!("instance.content.filename_prefix");
+        let filename_prefix = t::instance::content::filename_prefix();
 
         let required_dependencies = selected_file.as_ref().map(|version| {
             let mut required = version.dependencies
@@ -535,12 +534,12 @@ impl InstallDialog {
             .child(
                 Select::new(self.minecraft_version_select_state.as_ref().unwrap())
                     .disabled(self.fixed_minecraft_version.is_some())
-                    .title_prefix(format!("{}: ", ts!("instance.game_version"))),
+                    .title_prefix(format!("{}: ", t::instance::game_version())),
             )
             .child(
                 Select::new(self.loader_select_state.as_ref().unwrap())
                     .disabled(self.fixed_loader.is_some() || self.skip_loader_check_for_mod_version)
-                    .title_prefix(format!("{}: ", ts!("instance.loader"))),
+                    .title_prefix(format!("{}: ", t::instance::loader())),
             )
             .when_some(self.mod_version_not_loaded_message.clone(), |modal, message| modal.child(message))
             .when_some(self.mod_version_select_state.as_ref(), |modal, mod_versions| {
@@ -548,17 +547,17 @@ impl InstallDialog {
                     .child(Select::new(mod_versions).title_prefix(filename_prefix))
                     .when(!required_dependencies.is_empty(), |modal| {
                         modal.child(Checkbox::new("install_deps").checked(self.install_dependencies).label(if required_dependencies.len() == 1 {
-                            ts!("instance.content.install.install_dependency")
+                            SharedString::new_static(t::instance::content::install::install_dependency())
                         } else {
-                            ts!("instance.content.install.install_dependencies", num = required_dependencies.len())
+                            t::instance::content::install::install_dependencies(required_dependencies.len()).into()
                         }).on_click(cx.listener(|dialog, value, _, _| {
                             dialog.install_dependencies = *value;
                         })))
                     })
-                    .child(Button::new("install").success().label(ts!("instance.content.install.label")).on_click(cx.listener(
+                    .child(Button::new("install").success().label(t::instance::content::install::label()).on_click(cx.listener(
                         move |this, _, window, cx| {
                             let Some(selected_file) = selected_file.as_ref() else {
-                                window.push_notification((NotificationType::Error, ts!("instance.content.install.no_mod_version_selected")), cx);
+                                window.push_notification((NotificationType::Error, t::instance::content::install::no_mod_version_selected()), cx);
                                 return;
                             };
 
@@ -568,13 +567,13 @@ impl InstallDialog {
                                 CurseforgeClassId::Resourcepack => RelativePath::new("resourcepacks").join(&*selected_file.file_name),
                                 CurseforgeClassId::Shader => RelativePath::new("shaderpacks").join(&*selected_file.file_name),
                                 _ => {
-                                    window.push_notification((NotificationType::Error, ts!("instance.content.install.unable_install_other")), cx);
+                                    window.push_notification((NotificationType::Error, t::instance::content::install::unable_install_other()), cx);
                                     return;
                                 },
                             };
 
                             let Some(path) = SafePath::from_relative_path(&path) else {
-                                window.push_notification((NotificationType::Error, ts!("instance.content.install.invalid_filename")), cx);
+                                window.push_notification((NotificationType::Error, t::instance::content::install::invalid_filename()), cx);
                                 return;
                             };
 
@@ -620,12 +619,12 @@ impl InstallDialog {
                                 .find(|hash| hash.algo == 1).map(|hash| hash.value.clone());
 
                             let Some(sha1) = sha1 else {
-                                window.push_notification((NotificationType::Error, ts!("instance.content.install.missing_sha1_hash")), cx);
+                                window.push_notification((NotificationType::Error, t::instance::content::install::missing_sha1_hash()), cx);
                                 return;
                             };
 
                             let Some(download_url) = selected_file.download_url.clone() else {
-                                window.push_notification((NotificationType::Error, ts!("instance.content.install.no_third_party_downloads")), cx);
+                                window.push_notification((NotificationType::Error, t::instance::content::install::no_third_party_downloads()), cx);
                                 return;
                             };
 

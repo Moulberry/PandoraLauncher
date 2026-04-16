@@ -1,7 +1,7 @@
 #![deny(unused_must_use)]
 
 use std::{
-    path::{Path, PathBuf}, sync::{Arc, atomic::AtomicBool}
+    borrow::Cow, path::{Path, PathBuf}, sync::{Arc, atomic::AtomicBool}
 };
 
 use bridge::{
@@ -34,31 +34,6 @@ pub mod root;
 pub mod skin_renderer;
 pub mod skin_thumbnail_cache;
 pub mod ui;
-
-rust_i18n::i18n!("locales");
-
-macro_rules! ts {
-    ($key:expr) => {
-        SharedString::new_static(ustr::ustr(&*rust_i18n::t!($key)).as_str())
-    };
-    ($($rest:tt)*) => {
-        SharedString::from(rust_i18n::t!($($rest)*))
-    };
-}
-pub(crate) use ts;
-
-macro_rules! ts_short {
-    ($id:expr) => {{
-        let short_key = format!("{}.short", $id);
-        let translated = rust_i18n::t!(&short_key);
-        if translated.ends_with(".short") {
-            ts!($id)
-        } else {
-            SharedString::new_static(ustr::ustr(&*translated).as_str())
-        }
-    }};
-}
-pub(crate) use ts_short;
 
 #[derive(rust_embed::RustEmbed)]
 #[folder = "../../assets"]
@@ -345,11 +320,11 @@ pub(crate) fn open_folder(path: &Path, window: &mut Window, cx: &mut App) {
     }
     if is_dir {
         if let Err(err) = open::that_detached(path) {
-            let notification: Notification = (NotificationType::Error, ts!("file_system.open_folder.error", err = err)).into();
+            let notification: Notification = (NotificationType::Error, SharedString::new(t::file_system::open_folder::error(err))).into();
             window.push_notification(notification.autohide(false), cx);
         }
     } else {
-        let notification: Notification = (NotificationType::Error, ts!("file_system.open_folder.not_a_directory")).into();
+        let notification: Notification = (NotificationType::Error, t::file_system::open_folder::not_a_directory()).into();
         window.push_notification(notification.autohide(false), cx);
     }
 }

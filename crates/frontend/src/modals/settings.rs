@@ -15,7 +15,7 @@ use gpui_component::{
 };
 use schema::backend_config::{BackendConfig, ProxyConfig, ProxyProtocol};
 
-use crate::{entity::DataEntities, icon::PandoraIcon, interface_config::InterfaceConfig, ts};
+use crate::{entity::DataEntities, icon::PandoraIcon, interface_config::InterfaceConfig};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum SettingsTab {
@@ -116,7 +116,7 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
 
     move |sheet, _, cx| {
         sheet
-            .title(ts!("settings.title"))
+            .title(t::settings::title())
             .size(px(420.))
             .p_0()
             .when(cfg!(target_os = "macos"), |this| this.pt_5())
@@ -263,30 +263,30 @@ impl Settings {
             .py_3()
             .gap_3()
             .child(crate::labelled(
-                ts!("settings.theme.title"),
+                t::settings::theme::title(),
                 Select::new(&self.theme_select)
             ))
-            .child(Button::new("open-theme-folder").info().icon(PandoraIcon::FolderOpen).label(ts!("settings.theme.open_folder")).on_click({
+            .child(Button::new("open-theme-folder").info().icon(PandoraIcon::FolderOpen).label(t::settings::theme::open_folder()).on_click({
                 let theme_folder = self.theme_folder.clone();
                 move |_, window, cx| {
                     crate::open_folder(&theme_folder, window, cx);
                 }
             }))
-            .child(Button::new("open-theme-repo").info().icon(PandoraIcon::Globe).label(ts!("settings.theme.open_repo")).on_click({
+            .child(Button::new("open-theme-repo").info().icon(PandoraIcon::Globe).label(t::settings::theme::open_repo()).on_click({
                 move |_, _, cx| {
                     cx.open_url("https://github.com/longbridge/gpui-component/tree/main/themes");
                 }
             }))
-            .child(crate::labelled(ts!("settings.delete.title"),
+            .child(crate::labelled(t::settings::delete::title(),
                 v_flex().gap_2()
                     .child(Checkbox::new("confirm-delete-mods")
-                        .label(ts!("settings.delete.skip_mod_delete_confirmation"))
+                        .label(t::settings::delete::skip_mod_delete_confirmation())
                         .checked(interface_config.quick_delete_mods)
                         .on_click(|value, _, cx| {
                             InterfaceConfig::get_mut(cx).quick_delete_mods = *value;
                         }))
                     .child(Checkbox::new("confirm-delete-instance")
-                        .label(ts!("settings.delete.skip_instance_delete_confirmation"))
+                        .label(t::settings::delete::skip_instance_delete_confirmation())
                         .checked(interface_config.quick_delete_instance).on_click(|value, _, cx| {
                             InterfaceConfig::get_mut(cx).quick_delete_instance = *value;
                         }))
@@ -296,16 +296,16 @@ impl Settings {
         if let Some(backend_config) = &self.backend_config {
             div = div
                 .child(crate::labelled(
-                    ts!("settings.windows.title"),
+                    t::settings::windows::title(),
                     v_flex().gap_2()
                         .child(Checkbox::new("hide-on-launch")
-                            .label(ts!("settings.windows.hide_main_window"))
+                            .label(t::settings::windows::hide_main_window())
                             .checked(interface_config.hide_main_window_on_launch)
                             .on_click(|value, _, cx| {
                                 InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
                             }))
                         .child(Checkbox::new("open-game-output")
-                            .label(ts!("settings.windows.open_game_output"))
+                            .label(t::settings::windows::open_game_output())
                             .checked(!backend_config.dont_open_game_output_when_launching)
                             .on_click(cx.listener({
                                 let backend_handle = self.backend_handle.clone();
@@ -317,7 +317,7 @@ impl Settings {
                                 }
                             })))
                         .child(Checkbox::new("quit-on-main-close")
-                            .label(ts!("settings.windows.close_all_when_main_closed"))
+                            .label(t::settings::windows::close_all_when_main_closed())
                             .checked(interface_config.quit_on_main_closed)
                             .on_click(|value, _, cx| {
                                 InterfaceConfig::get_mut(cx).quit_on_main_closed = *value;
@@ -327,22 +327,22 @@ impl Settings {
             div = div.child(Spinner::new().large());
         }
 
-        div = div.child(crate::labelled(ts!("settings.privacy.title"),
+        div = div.child(crate::labelled(t::settings::privacy::title(),
             v_flex().gap_2()
                 .child(Checkbox::new("hide-usernames")
-                    .label(ts!("settings.privacy.hide_usernames"))
+                    .label(t::settings::privacy::hide_usernames())
                     .checked(interface_config.hide_usernames)
                     .on_click(|value, _, cx| {
                         InterfaceConfig::get_mut(cx).hide_usernames = *value;
                     }))
                 .child(Checkbox::new("hide-skins")
-                    .label(ts!("settings.privacy.hide_skins"))
+                    .label(t::settings::privacy::hide_skins())
                     .checked(interface_config.hide_skins)
                     .on_click(|value, _, cx| {
                         InterfaceConfig::get_mut(cx).hide_skins = *value;
                     }))
                 .child(Checkbox::new("hide-server-addresses")
-                    .label(ts!("settings.privacy.hide_server_addresses"))
+                    .label(t::settings::privacy::hide_server_addresses())
                     .checked(interface_config.hide_server_addresses)
                     .on_click(|value, _, cx| {
                         InterfaceConfig::get_mut(cx).hide_server_addresses = *value;
@@ -361,10 +361,10 @@ impl Settings {
             .py_3()
             .gap_3()
             .child(crate::labelled(
-                ts!("settings.proxy.title"),
+                t::settings::proxy::title(),
                 v_flex().gap_2()
                     .child(Checkbox::new("proxy-enabled")
-                        .label(ts!("settings.proxy.enabled"))
+                        .label(t::settings::proxy::enabled())
                         .checked(proxy_enabled)
                         .on_click(cx.listener(|settings, value, _, cx| {
                             settings.proxy_enabled = *value;
@@ -373,24 +373,24 @@ impl Settings {
                         })))
                     .child(h_flex().gap_2()
                         .child(v_flex().gap_1().w_32()
-                            .child(ts!("settings.proxy.protocol"))
+                            .child(t::settings::proxy::protocol())
                             .child(Select::new(&self.proxy_protocol_select)
                                 .disabled(!proxy_enabled)
                                 .w_full()))
                         .child(v_flex().gap_1().flex_1()
-                            .child(ts!("settings.proxy.host"))
+                            .child(t::settings::proxy::host())
                             .child(Input::new(&self.proxy_host_input)
                                 .disabled(!proxy_enabled)))
                         .child(v_flex().gap_1().w_32()
-                            .child(ts!("settings.proxy.port"))
+                            .child(t::settings::proxy::port())
                             .child(NumberInput::new(&self.proxy_port_input)
                                 .disabled(!proxy_enabled))))
             ))
             .child(crate::labelled(
-                ts!("settings.proxy.auth"),
+                t::settings::proxy::auth(),
                 v_flex().gap_2()
                     .child(Checkbox::new("proxy-auth-enabled")
-                        .label(ts!("settings.proxy.use_auth"))
+                        .label(t::settings::proxy::use_auth())
                         .checked(proxy_auth_enabled)
                         .disabled(!proxy_enabled)
                         .on_click(cx.listener(|settings, value, _, cx| {
@@ -400,11 +400,11 @@ impl Settings {
                         })))
                     .child(h_flex().gap_2()
                         .child(v_flex().gap_1().flex_1()
-                            .child(ts!("settings.proxy.username"))
+                            .child(t::settings::proxy::username())
                             .child(Input::new(&self.proxy_username_input)
                                 .disabled(!proxy_enabled || !proxy_auth_enabled)))
                         .child(v_flex().gap_1().flex_1()
-                            .child(ts!("settings.proxy.password"))
+                            .child(t::settings::proxy::password())
                             .child(Input::new(&self.proxy_password_input)
                                 .disabled(!proxy_enabled || !proxy_auth_enabled))))
             ))
@@ -412,7 +412,7 @@ impl Settings {
                 .pt_2()
                 .text_sm()
                 .text_color(cx.theme().muted_foreground)
-                .child(ts!("settings.proxy.launcher_only_note")))
+                .child(t::settings::proxy::launcher_only_note()))
     }
 }
 impl Render for Settings {
@@ -426,8 +426,8 @@ impl Render for Settings {
                 SettingsTab::Network => 1,
             })
             .underline()
-            .child(Tab::new().label(ts!("settings.interface")))
-            .child(Tab::new().label(ts!("settings.network")))
+            .child(Tab::new().label(t::settings::interface()))
+            .child(Tab::new().label(t::settings::network()))
             .on_click(cx.listener(|settings, index, _window, cx| {
                 settings.selected_tab = match index {
                     0 => SettingsTab::Interface,

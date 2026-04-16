@@ -7,7 +7,7 @@ use gpui_component::{
 use crate::{
     entity::{
         instance::{InstanceAddedEvent, InstanceEntry, InstanceModifiedEvent, InstanceRemovedEvent}, DataEntities
-    }, png_render_cache, ts, root, ui
+    }, png_render_cache, root, ui
 };
 
 pub struct InstanceList {
@@ -47,17 +47,17 @@ impl InstanceList {
                         .fixed_left()
                         .movable(false)
                         .resizable(false),
-                    Column::new("name", ts!("instance.name"))
+                    Column::new("name", t::instance::name())
                         .width(150.)
                         .fixed_left()
                         .sortable()
                         .resizable(true),
-                    Column::new("version", ts!("instance.version"))
+                    Column::new("version", t::instance::version())
                         .width(150.)
                         .fixed_left()
                         .sortable()
                         .resizable(true),
-                    Column::new("loader", ts!("instance.modloader"))
+                    Column::new("loader", t::instance::modloader())
                         .width(150.)
                         .fixed_left()
                         .resizable(true),
@@ -116,7 +116,7 @@ impl InstanceList {
             ).child(h_flex()
                 .gap_2()
                 .child(play_button.flex_1().small())
-                .child(Button::new(("view", index)).flex_1().small().info().label(ts!("instance.view")).on_click({
+                .child(Button::new(("view", index)).flex_1().small().info().label(t::instance::view()).on_click({
                     let name = item.name.clone();
                     move |_, window, cx| {
                         root::switch_page(ui::PageType::InstancePage { name: name.clone() },
@@ -176,7 +176,7 @@ impl TableDelegate for InstanceList {
                         .gap_2()
                         .border_r_4()
                         .child(play_button.w_1_2().small())
-                        .child(Button::new("view").w_1_2().small().info().label(ts!("instance.view")).on_click({
+                        .child(Button::new("view").w_1_2().small().info().label(t::instance::view()).on_click({
                             let name = item.name.clone();
                             move |_, window, cx| {
                                 root::switch_page(ui::PageType::InstancePage { name: name.clone() },
@@ -186,10 +186,10 @@ impl TableDelegate for InstanceList {
                         .into_any_element()
                 },
                 "loader" => item.configuration.loader.name().into_any_element(),
-                _ => ts!("common.unknown").into_any_element(),
+                _ => t::common::unknown().into_any_element(),
             }
         } else {
-            ts!("common.unknown").into_any_element()
+            t::common::unknown().into_any_element()
         }
     }
 }
@@ -201,7 +201,7 @@ fn render_play_button(item: &InstanceEntry, index: usize, backend_handle: Backen
         InstanceStatus::NotRunning => {
             Button::new(("start_instance", index))
                 .success()
-                .label(ts!("instance.start.label"))
+                .label(t::instance::start::label())
                 .on_click(
                 move |_, window, cx| {
                     root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
@@ -221,7 +221,7 @@ fn render_play_button(item: &InstanceEntry, index: usize, backend_handle: Backen
         InstanceStatus::Running => {
             Button::new(("kill_instance", index))
                 .danger()
-                .label(ts!("instance.kill"))
+                .label(t::instance::kill())
                 .on_click({
                     let backend_handle = backend_handle.clone();
                     move |_, _, _| {

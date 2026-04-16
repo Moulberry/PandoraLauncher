@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
 	component::{horizontal_sections::HorizontalSections, named_dropdown::{NamedDropdown, NamedDropdownItem}, path_label::PathLabel},
 	entity::{DataEntities, account::{AccountEntries, AccountExt}, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}},
-	interface_config::InterfaceConfig, pages::instances_page::VersionList, png_render_cache, ts
+	interface_config::InterfaceConfig, pages::instances_page::VersionList, png_render_cache,
 };
 
 #[derive(PartialEq, Eq)]
@@ -649,12 +649,12 @@ impl InstanceSettingsSubpage {
         }
     }
 
-    pub fn select_file(&mut self, message: SharedString, handle: impl FnOnce(&mut Self, Option<Arc<Path>>) + 'static, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn select_file(&mut self, message: &'static str, handle: impl FnOnce(&mut Self, Option<Arc<Path>>) + 'static, window: &mut Window, cx: &mut Context<Self>) {
         let receiver = cx.prompt_for_paths(PathPromptOptions {
             files: true,
             directories: false,
             multiple: false,
-            prompt: Some(message)
+            prompt: Some(message.into())
         });
 
         let this_entity = cx.entity();
@@ -692,7 +692,7 @@ impl Render for InstanceSettingsSubpage {
             .gap_3()
             .mb_1()
             .ml_1()
-            .child(div().text_lg().child(ts!("settings.title")));
+            .child(div().text_lg().child(t::settings::title()));
 
         let memory_override_enabled = self.memory_override_enabled;
         let wrapper_command_enabled = self.wrapper_command_enabled;
@@ -715,15 +715,15 @@ impl Render for InstanceSettingsSubpage {
             .gap_4()
             .size_full()
             .child(crate::labelled(
-                ts!("instance.instance_name"),
+                t::instance::instance_name(),
                 h_flex()
                     .gap_2()
                     .child(Input::new(&self.new_name_input_state))
                     .when(self.new_name_change_state != NewNameChangeState::NoChange, |this| {
                         if self.new_name_change_state == NewNameChangeState::InvalidName {
-                            this.child(ts!("instance.invalid_name"))
+                            this.child(t::instance::invalid_name())
                         } else {
-                            this.child(Button::new("setname").label(ts!("common.update")).on_click({
+                            this.child(Button::new("setname").label(t::common::update()).on_click({
                                 let instance = self.instance.clone();
                                 let backend_handle = self.backend_handle.clone();
                                 let new_name = self.new_name_input_state.read(cx).value();
@@ -741,10 +741,10 @@ impl Render for InstanceSettingsSubpage {
                 )
             )
             .child(crate::labelled(
-                ts!("common.icon"),
+                t::common::icon(),
                 {
                     let mut row = h_flex().gap_2()
-                        .child(Button::new("icon").icon(crate::icon::PandoraIcon::Plus).label(ts!("instance.select_icon")).on_click({
+                        .child(Button::new("icon").icon(crate::icon::PandoraIcon::Plus).label(t::instance::select_icon()).on_click({
                             let entity = cx.entity();
                             move |_, window, cx| {
                                 let entity = entity.clone();
@@ -776,11 +776,11 @@ impl Render for InstanceSettingsSubpage {
                 version_content = version_content.child(Select::new(&self.version_select_state).w_full());
             },
             TypelessFrontendMetadataResult::Error(ref error) => {
-                version_content = version_content.child(format!("{}: {}", ts!("instance.versions_loading.error"), error))
+                version_content = version_content.child(format!("{}: {}", t::instance::versions_loading::error(), error))
             },
         }
 
-        version_content = version_content.child(Select::new(&self.loader_select_state).title_prefix(format!("{}: ", ts!("instance.modloader"))).w_full());
+        version_content = version_content.child(Select::new(&self.loader_select_state).title_prefix(format!("{}: ", t::instance::modloader())).w_full());
 
         if self.loader != Loader::Vanilla {
             match self.loader_versions_state {
@@ -789,32 +789,32 @@ impl Render for InstanceSettingsSubpage {
                 },
                 TypelessFrontendMetadataResult::Loaded => {
                     version_content = version_content.child(Select::new(&self.loader_version_select_state).title_prefix(match self.loader {
-                        Loader::Fabric => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.fabric"))),
-                        Loader::Forge => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.forge"))),
-                        Loader::NeoForge => format!("{}: ", ts!("instance.loader_version", loader = ts!("modrinth.category.neoforge"))),
-                        Loader::Vanilla | Loader::Unknown => format!("{}: ", ts!("instance.loader_version", loader = ts!("instance.loader"))),
+                        Loader::Fabric => format!("{}: ", t::instance::loader_version(t::modrinth::category::fabric())),
+                        Loader::Forge => format!("{}: ", t::instance::loader_version(t::modrinth::category::forge())),
+                        Loader::NeoForge => format!("{}: ", t::instance::loader_version(t::modrinth::category::neoforge())),
+                        Loader::Vanilla | Loader::Unknown => format!("{}: ", t::instance::loader_version(t::instance::loader())),
                     }).w_full())
                 },
                 TypelessFrontendMetadataResult::Error(ref error) => {
-                    version_content = version_content.child(format!("{}: {}", ts!("instance.versions_loading.possible_loader_error"), error))
+                    version_content = version_content.child(format!("{}: {}", t::instance::versions_loading::possible_loader_error(), error))
                 },
             }
         }
 
         basic_content = basic_content
             .child(crate::labelled(
-                ts!("instance.version"),
+                t::instance::version(),
                 version_content,
             ))
             .child(crate::labelled(
-                ts!("account.override_account"),
+                t::account::override_account(),
                 h_flex()
                 .gap_2()
                 .child(Select::new(&self.account_items).placeholder("No override").cleanable(true))
             ))
             .child(crate::labelled(
-                ts!("instance.sync.label"),
-                Checkbox::new("syncing").label(ts!("instance.sync.disable_syncing")).checked(self.disable_file_syncing).on_click(cx.listener(|page, value, _, _| {
+                t::instance::sync::label(),
+                Checkbox::new("syncing").label(t::instance::sync::disable_syncing()).checked(self.disable_file_syncing).on_click(cx.listener(|page, value, _, _| {
                     page.disable_file_syncing = *value;
                     page.backend_handle.send(MessageToBackend::SetInstanceDisableFileSyncing {
                         id: page.instance_id,
@@ -823,9 +823,9 @@ impl Render for InstanceSettingsSubpage {
                 }))
             ))
             .child(crate::labelled(
-                ts!("instance.security.label"),
+                t::instance::security::label(),
                 Checkbox::new("sandbox")
-                    .label(ts!("instance.security.sandbox"))
+                    .label(t::instance::security::sandbox())
                     .disabled(!self.sandbox && !self.sandbox_available)
                     .tooltip(if self.sandbox_available {
                         "Sandbox the instance, preventing access to files and systems it shouldn't have access to"
@@ -847,7 +847,7 @@ impl Render for InstanceSettingsSubpage {
             .size_full()
             .child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("memory").label(ts!("instance.memory")).checked(memory_override_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("memory").label(t::instance::memory()).checked(memory_override_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.memory_override_enabled != *value {
                         page.memory_override_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceMemory {
@@ -868,12 +868,12 @@ impl Render for InstanceSettingsSubpage {
                     .child(v_flex()
                         .gap_1()
                         .line_height(px(24.0))
-                        .child(ts!("common.min"))
-                        .child(ts!("common.max")))
+                        .child(t::common::min())
+                        .child(t::common::max()))
                 )
             ).child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("jvm_flags").label(ts!("instance.jvm_flags")).checked(jvm_flags_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("jvm_flags").label(t::instance::jvm_flags()).checked(jvm_flags_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.jvm_flags_enabled != *value {
                         page.jvm_flags_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceJvmFlags {
@@ -887,7 +887,7 @@ impl Render for InstanceSettingsSubpage {
             )
             .child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("jvm_binary").label(ts!("instance.jvm_binary")).checked(jvm_binary_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("jvm_binary").label(t::instance::jvm_binary()).checked(jvm_binary_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.jvm_binary_enabled != *value {
                         page.jvm_binary_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceJvmBinary {
@@ -898,7 +898,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
                 .child(PathLabel::button_opt(&self.jvm_binary_path, "select_jvm_binary").disabled(!jvm_binary_enabled).on_click(cx.listener(|this, _, window, cx| {
-                    this.select_file(ts!("instance.select_jvm_binary"), |this, path| {
+                    this.select_file(t::instance::select_jvm_binary(), |this, path| {
                         this.jvm_binary_path = path.map(|path| PathLabel::new(path, false));
                         this.backend_handle.send(MessageToBackend::SetInstanceJvmBinary {
                             id: this.instance_id,
@@ -909,7 +909,7 @@ impl Render for InstanceSettingsSubpage {
             )
             .child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("system_glfw").label(ts!("instance.glfw_lib")).checked(self.override_glfw_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("system_glfw").label(t::instance::glfw_lib()).checked(self.override_glfw_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.override_glfw_enabled != *value {
                         page.override_glfw_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
@@ -920,7 +920,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
                 .child(PathLabel::button_opt(&self.override_glfw_path, "select_glfw").disabled(!self.override_glfw_enabled).on_click(cx.listener(|this, _, window, cx| {
-                    this.select_file(ts!("instance.select_glfw_lib"), |this, path| {
+                    this.select_file(t::instance::select_glfw_lib(), |this, path| {
                         this.override_glfw_path = path.map(|path| PathLabel::new(path, false));
                         this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
                             id: this.instance_id,
@@ -930,7 +930,7 @@ impl Render for InstanceSettingsSubpage {
                 })))
             ).child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("system_openal").label(ts!("instance.openal_lib")).checked(self.override_openal_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("system_openal").label(t::instance::openal_lib()).checked(self.override_openal_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.override_openal_enabled != *value {
                         page.override_openal_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
@@ -942,7 +942,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
                 .child(PathLabel::button_opt(&self.override_openal_path, "select_openal").disabled(!self.override_openal_enabled).on_click(cx.listener(|this, _, window, cx| {
-                    this.select_file(ts!("instance.select_openal_lib"), |this, path| {
+                    this.select_file(t::instance::select_openal_lib(), |this, path| {
                         this.override_openal_path = path.map(|path| PathLabel::new(path, false));
                         this.backend_handle.send(MessageToBackend::SetInstanceSystemLibraries {
                             id: this.instance_id,
@@ -952,7 +952,7 @@ impl Render for InstanceSettingsSubpage {
                 })))
             ).child(v_flex()
                 .gap_1()
-                .child(Checkbox::new("wrapper_command").label(ts!("instance.wrapper_command")).checked(wrapper_command_enabled).on_click(cx.listener(|page, value, _, cx| {
+                .child(Checkbox::new("wrapper_command").label(t::instance::wrapper_command()).checked(wrapper_command_enabled).on_click(cx.listener(|page, value, _, cx| {
                     if page.wrapper_command_enabled != *value {
                         page.wrapper_command_enabled = *value;
                         page.backend_handle.send(MessageToBackend::SetInstanceWrapperCommand {
@@ -968,9 +968,9 @@ impl Render for InstanceSettingsSubpage {
         #[cfg(target_os = "linux")]
         let runtime_content = runtime_content.child(v_flex()
             .gap_1()
-            .child(ts!("instance.linux.label"))
+            .child(t::instance::linux::label())
             .child(Checkbox::new("use_mangohud")
-                .label(ts!("instance.linux.use_mangohud"))
+                .label(t::instance::linux::use_mangohud())
                 .checked(self.use_mangohud && self.mangohud_available)
                 .disabled(!self.mangohud_available)
                 .on_click(cx.listener(|page, value, _, cx| {
@@ -984,7 +984,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
             .child(Checkbox::new("use_gamemode")
-                .label(ts!("instance.linux.use_gamemode"))
+                .label(t::instance::linux::use_gamemode())
                 .checked(self.use_gamemode && self.gamemode_available)
                 .disabled(!self.gamemode_available)
                 .on_click(cx.listener(|page, value, _, cx| {
@@ -998,7 +998,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
             .child(Checkbox::new("use_discrete_gpu")
-                .label(ts!("instance.linux.use_discrete_gpu"))
+                .label(t::instance::linux::use_discrete_gpu())
                 .checked(self.use_discrete_gpu)
                 .on_click(cx.listener(|page, value, _, cx| {
                     if page.use_discrete_gpu != *value {
@@ -1011,7 +1011,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
             .child(Checkbox::new("disable_gl_threaded_optimizations")
-                .label(ts!("instance.linux.disable_gl_threaded_optimizations"))
+                .label(t::instance::linux::disable_gl_threaded_optimizations())
                 .checked(self.disable_gl_threaded_optimizations)
                 .on_click(cx.listener(|page, value, _, cx| {
                     if page.disable_gl_threaded_optimizations != *value {
@@ -1056,7 +1056,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })
             ))
-            .child(Button::new("shortcut").label(ts!("instance.create_shortcut")).overflow_x_hidden().success().on_click({
+            .child(Button::new("shortcut").label(t::instance::create_shortcut()).overflow_x_hidden().success().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |_: &ClickEvent, _, cx| {
@@ -1084,7 +1084,7 @@ impl Render for InstanceSettingsSubpage {
                     }).detach();
                 }
             }))
-            .child(Button::new("delete").label(ts!("instance.delete")).overflow_x_hidden().danger().on_click({
+            .child(Button::new("delete").label(t::instance::delete()).overflow_x_hidden().danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |click: &ClickEvent, window, cx| {

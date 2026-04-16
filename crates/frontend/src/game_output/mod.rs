@@ -10,7 +10,7 @@ use rustc_hash::FxBuildHasher;
 
 use bridge::{game_output::GameOutputLogLevel, keep_alive::KeepAlive};
 
-use crate::{CloseWindow, icon::PandoraIcon, ts};
+use crate::{CloseWindow, icon::PandoraIcon};
 
 struct CachedShapedLogLevels {
     fatal: Arc<ShapedLine>,
@@ -944,7 +944,7 @@ impl GameOutputRoot {
     ) -> Self {
         let scroll_state = Rc::clone(&game_output.read(cx).scroll_state);
 
-        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(ts!("common.search")).clean_on_escape());
+        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(t::common::search()).clean_on_escape());
 
         let _search_input_subscription = cx.subscribe_in(&search_state, window, Self::on_search_input_event);
 
@@ -1063,12 +1063,12 @@ impl Render for GameOutputRoot {
             .flex_1()
             .gap_4()
             .child(search)
-            .child(Button::new("top").label(ts!("common.nav.top")).on_click(cx.listener(|root, _, _, cx| {
+            .child(Button::new("top").label(t::common::nav::top()).on_click(cx.listener(|root, _, _, cx| {
                 let mut state = root.scroll_handler.state.borrow_mut();
                 state.scrolling = GameOutputScrolling::Top { offset: Pixels::ZERO };
                 cx.notify();
             })))
-            .child(Button::new("bottom").label(ts!("common.nav.bottom")).on_click(cx.listener(|root, _, _, cx| {
+            .child(Button::new("bottom").label(t::common::nav::bottom()).on_click(cx.listener(|root, _, _, cx| {
                 let mut state = root.scroll_handler.state.borrow_mut();
                 state.scrolling = GameOutputScrolling::Bottom;
                 cx.notify();

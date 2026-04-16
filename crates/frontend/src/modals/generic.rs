@@ -9,7 +9,7 @@ use gpui_component::{
 use crate::{component::{
     error_alert::ErrorAlert,
     progress_bar::{ProgressBar, ProgressBarColor},
-}, icon::PandoraIcon, ts};
+}, icon::PandoraIcon};
 
 pub fn show_notification(
     window: &mut Window,
@@ -135,7 +135,7 @@ pub fn show_modal(
             let error_widget = ErrorAlert::new(error_title.clone(), error.clone().into());
 
             return modal.title(title.clone()).child(v_flex().gap_3().child(error_widget))
-                .footer(Button::new("ok").label(ts!("common.ok")).on_click(|_, window, cx| window.close_dialog(cx)));
+                .footer(Button::new("ok").label(t::common::ok()).on_click(|_, window, cx| window.close_dialog(cx)));
         }
 
         if modal_action.refcnt() <= 1 {
@@ -248,13 +248,13 @@ pub fn show_modal(
         let modal = modal.title(title.clone()).close_button(false).child(progress).opacity(modal_opacity);
         if is_finishing {
             modal
-                .footer(Button::new("ok").with_variant(ButtonVariant::Secondary).label(ts!("common.ok"))
+                .footer(Button::new("ok").with_variant(ButtonVariant::Secondary).label(t::common::ok())
                     .on_click(|_, window, cx| window.close_dialog(cx)))
         } else {
             modal
                 .overlay_closable(false)
                 .keyboard(false)
-                .footer(Button::new("cancel").label(ts!("common.cancel")).on_click(move |_, _, _| request_cancel.cancel()))
+                .footer(Button::new("cancel").label(t::common::cancel()).on_click(move |_, _, _| request_cancel.cancel()))
         }
     });
 }

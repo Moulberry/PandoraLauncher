@@ -1,0 +1,9 @@
+[package]
+name = "t"
+version = "0.1.0"
+edition.workspace = true
+build = "build.rs"
+
+[build-dependencies]
+toml.workspace = true
+indexmap.workspace = true

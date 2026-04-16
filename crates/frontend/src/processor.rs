@@ -4,7 +4,7 @@ use bridge::{instance::InstanceStatus, message::{BridgeNotificationType, Message
 use gpui::{AnyWindowHandle, App, AppContext, Entity, SharedString, TitlebarOptions, Window, WindowDecorations, WindowHandle, WindowOptions, px, size};
 use gpui_component::{notification::{Notification, NotificationType}, Root, WindowExt};
 
-use crate::{entity::{DataEntities, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata}, game_output::{GameOutput, GameOutputRoot}, interface_config::InterfaceConfig, root::LauncherRoot, ts};
+use crate::{entity::{DataEntities, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata}, game_output::{GameOutput, GameOutputRoot}, interface_config::InterfaceConfig, root::LauncherRoot};
 
 pub struct Processor {
     data: DataEntities,
@@ -190,7 +190,7 @@ impl Processor {
                     app_id: Some("PandoraLauncher".into()),
                     window_min_size: Some(size(px(360.0), px(240.0))),
                     titlebar: Some(TitlebarOptions {
-                        title: Some(ts!("system.game_output")),
+                        title: Some(t::system::game_output().into()),
                         ..Default::default()
                     }),
                     window_decorations: Some(WindowDecorations::Server),

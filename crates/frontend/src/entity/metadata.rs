@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::ts;
 use bridge::{handle::BackendHandle, keep_alive::KeepAliveHandle, message::MessageToBackend, meta::{MetadataRequest, MetadataResult}};
 use gpui::{prelude::*, *};
 use schema::{curseforge::{CurseforgeGetModFilesResult, CurseforgeSearchResult}, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, modrinth::{ModrinthProjectResult, ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
@@ -122,7 +121,7 @@ macro_rules! define_as_metadata_result {
                     FrontendMetadataState::Loaded { result, .. } => {
                         match result {
                             Ok(MetadataResult::$t(result)) => FrontendMetadataResult::Loaded(&*result),
-                            Ok(_) => FrontendMetadataResult::Error(ts!("system.metadata_error")),
+                            Ok(_) => FrontendMetadataResult::Error(t::system::metadata_error().into()),
                             Err(error) => FrontendMetadataResult::Error(SharedString::new(error.clone())),
                         }
                     },

@@ -12,7 +12,7 @@ use gpui_component::{
 };
 
 use crate::{
-    entity::instance::InstanceEntry, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, root, ts,
+    entity::instance::InstanceEntry, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, root,
 };
 
 pub struct InstanceQuickplaySubpage {
@@ -123,8 +123,8 @@ impl Render for InstanceQuickplaySubpage {
                 .send_with_serial(MessageToBackend::RequestLoadServers { id: instance_id }, &self.servers_serial);
         }
 
-        let worlds_header = div().mb_1().ml_1().text_lg().child(ts!("instance.worlds"));
-        let servers_header = div().mb_1().ml_1().text_lg().child(ts!("instance.servers"));
+        let worlds_header = div().mb_1().ml_1().text_lg().child(t::instance::worlds());
+        let servers_header = div().mb_1().ml_1().text_lg().child(t::instance::servers());
         let total_playtime = format_playtime(playtime.total_secs);
         let current_session = if playtime.current_session_secs > 0 {
             format_playtime(playtime.current_session_secs)
@@ -140,12 +140,12 @@ impl Render for InstanceQuickplaySubpage {
                 h_flex()
                     .gap_4()
                     .child(card(
-                        ts!("instance.current_session"),
+                        t::instance::current_session(),
                         current_session.into(),
                         theme,
                     ))
                     .child(card(
-                        ts!("instance.total_playtime"),
+                        t::instance::total_playtime(),
                         total_playtime,
                         theme,
                     )),

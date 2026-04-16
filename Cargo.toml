@@ -24,6 +24,7 @@ bridge = { path = "crates/bridge" }
 command = { path = "crates/command" }
 frontend = { path = "crates/frontend" }
 schema = { path = "crates/schema" }
+t = { path = "crates/t" }
 nbt = { path = "crates/nbt" }
 reqwest_client = { path = "crates/reqwest_client" }
 

@@ -7,7 +7,7 @@ use gpui_component::{
 };
 use schema::{loader::Loader, version_manifest::{MinecraftVersionManifest, MinecraftVersionType}};
 
-use crate::{entity::{instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, png_render_cache, ts};
+use crate::{entity::{instance::InstanceEntries, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, png_render_cache};
 
 struct CreateInstanceModalState {
     metadata: Entity<FrontendMetadata>,
@@ -42,7 +42,7 @@ impl CreateInstanceModalState {
 
         let name_input_state = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder(ts!("instance.unnamed"))
+                .placeholder(t::instance::unnamed())
         });
 
         let _name_input_subscription = {
@@ -96,7 +96,7 @@ impl CreateInstanceModalState {
             .read(cx)
             .selected_value()
             .cloned()
-            .unwrap_or(ts!("instance.unnamed"));
+            .unwrap_or(t::instance::unnamed().into());
 
         if self.original_fallback_name != selected {
             self.original_fallback_name = selected.clone();
@@ -199,22 +199,22 @@ impl CreateInstanceModalState {
         if let Some(error) = self.error_loading_versions.clone() {
             let error_widget = Alert::new("error", format!("{}", error))
                 .icon(PandoraIcon::CircleX)
-                .title(ts!("instance.versions_loading.error"));
+                .title(t::instance::versions_loading::error());
 
             let metadata = self.metadata.clone();
             let reload_button =
                 Button::new("reload-versions")
                     .primary()
-                    .label(ts!("instance.versions_loading.reload"))
+                    .label(t::instance::versions_loading::reload())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.error_loading_versions = None;
                         FrontendMetadata::force_reload(&metadata, bridge::meta::MetadataRequest::MinecraftVersionManifest, cx);
                     }));
 
             return modal
-                .title(ts!("instance.create"))
+                .title(t::instance::create())
                 .child(v_flex().gap_3().child(error_widget).child(reload_button))
-                .footer(Button::new("ok").label(ts!("common.ok")).on_click(|_, window, cx| window.close_dialog(cx)));
+                .footer(Button::new("ok").label(t::common::ok()).on_click(|_, window, cx| window.close_dialog(cx)));
         }
 
         let version_dropdown;
@@ -225,14 +225,14 @@ impl CreateInstanceModalState {
             version_dropdown = Select::new(&self.minecraft_version_dropdown)
                 .w_full()
                 .disabled(true)
-                .placeholder(ts!("instance.versions_loading.game_versions"));
+                .placeholder(t::instance::versions_loading::game_versions());
             show_snapshots_button = Skeleton::new().w_full().min_h_4().max_h_4().rounded_md().into_any_element();
             loader_button_group = Skeleton::new().w_full().min_h_8().max_h_8().rounded_md().into_any_element();
         } else {
-            version_dropdown = Select::new(&self.minecraft_version_dropdown).title_prefix(format!("{}: ", ts!("instance.mc_version")));
+            version_dropdown = Select::new(&self.minecraft_version_dropdown).title_prefix(format!("{}: ", t::instance::mc_version()));
             show_snapshots_button = Checkbox::new("show_snapshots")
                 .checked(InterfaceConfig::get(cx).show_snapshots_in_create_instance)
-                .label(ts!("instance.show_snapshots"))
+                .label(t::instance::show_snapshots())
                 .on_click(cx.listener(move |this, show, window, cx| {
                     InterfaceConfig::get_mut(cx).show_snapshots_in_create_instance = *show;
                     this.reload_version_dropdown(window, cx);
@@ -243,22 +243,22 @@ impl CreateInstanceModalState {
                 .h_full()
                 .child(
                     Button::new("loader-vanilla")
-                        .label(ts!("instance.vanilla"))
+                        .label(t::instance::vanilla())
                         .selected(self.selected_loader == Loader::Vanilla),
                 )
                 .child(
                     Button::new("loader-fabric")
-                        .label(ts!("modrinth.category.fabric"))
+                        .label(t::modrinth::category::fabric())
                         .selected(self.selected_loader == Loader::Fabric),
                 )
                 .child(
                     Button::new("loader-forge")
-                        .label(ts!("modrinth.category.forge"))
+                        .label(t::modrinth::category::forge())
                         .selected(self.selected_loader == Loader::Forge),
                 )
                 .child(
                     Button::new("loader-neoforge")
-                        .label(ts!("modrinth.category.neoforge"))
+                        .label(t::modrinth::category::neoforge())
                         .selected(self.selected_loader == Loader::NeoForge),
                 )
                 .on_click(cx.listener(move |this, selected: &Vec<usize>, _, _| {
@@ -276,12 +276,12 @@ impl CreateInstanceModalState {
         let content = v_flex()
             .gap_3()
             .child(crate::labelled(
-                ts!("instance.name"),
+                t::instance::name(),
                 Input::new(&self.name_input_state).when(self.name_invalid, |this| this.border_color(cx.theme().danger)),
             ))
-            .child(crate::labelled(ts!("instance.version"), v_flex().gap_2().child(version_dropdown).child(show_snapshots_button)))
-            .child(crate::labelled(ts!("instance.modloader"), loader_button_group))
-            .child(h_flex().gap_2().child(Button::new("icon").icon(PandoraIcon::Plus).label(ts!("instance.select_icon")).on_click({
+            .child(crate::labelled(t::instance::version(), v_flex().gap_2().child(version_dropdown).child(show_snapshots_button)))
+            .child(crate::labelled(t::instance::modloader(), loader_button_group))
+            .child(h_flex().gap_2().child(Button::new("icon").icon(PandoraIcon::Plus).label(t::instance::select_icon()).on_click({
                 let entity = cx.entity();
                 move |_, window, cx| {
                     let entity = entity.clone();
@@ -309,19 +309,19 @@ impl CreateInstanceModalState {
         let name_is_invalid = self.name_invalid;
         modal
             .overlay_closable(false)
-            .title(ts!("instance.create"))
+            .title(t::instance::create())
             .child(content)
             .when(name_is_invalid, |modal| {
                 modal.footer(h_flex().gap_2().w_full()
-                    .child(Button::new("cancel").flex_1().label(ts!("common.cancel"))
+                    .child(Button::new("cancel").flex_1().label(t::common::cancel())
                         .on_click(|_, window, cx| window.close_dialog(cx)))
-                    .child(Button::new("ok").flex_1().opacity(0.5).label(ts!("common.ok"))))
+                    .child(Button::new("ok").flex_1().opacity(0.5).label(t::common::ok())))
             })
             .when(!name_is_invalid, |modal| {
                 modal.footer(h_flex().gap_2().w_full()
-                    .child(Button::new("cancel").flex_1().label(ts!("common.cancel"))
+                    .child(Button::new("cancel").flex_1().label(t::common::cancel())
                         .on_click(|_, window, cx| window.close_dialog(cx)))
-                    .child(Button::new("ok").flex_1().label(ts!("common.ok"))
+                    .child(Button::new("ok").flex_1().label(t::common::ok())
                         .on_click(cx.listener(move |this, _, window, cx| {
                             if name_is_invalid {
                                 return;

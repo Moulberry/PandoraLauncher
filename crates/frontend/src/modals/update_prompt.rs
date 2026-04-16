@@ -6,7 +6,6 @@ use gpui_component::{
 };
 use schema::pandora_update::UpdatePrompt;
 
-use crate::ts;
 
 pub fn open_update_prompt(
     update: UpdatePrompt,
@@ -14,27 +13,27 @@ pub fn open_update_prompt(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let title = ts!("system.update.title");
-    let old_version = ts!("system.update.current", ver = update.old_version);
-    let new_version = ts!("system.update.new", ver = update.new_version);
+    let title = t::system::update::title();
+    let old_version: SharedString = t::system::update::current(&update.old_version).into();
+    let new_version: SharedString = t::system::update::new(&update.new_version).into();
 
     let size = if update.exe.size < 1000*10 {
-        ts!("system.update.size", num = format!("{} bytes", update.exe.size))
+        t::system::update::size::bytes(update.exe.size)
     } else if update.exe.size < 1000*1000*10 {
-        ts!("system.update.size", num = format!("{}kB", update.exe.size/1000))
+        t::system::update::size::kb(update.exe.size/1000)
     } else if update.exe.size < 1000*1000*1000*10 {
-        ts!("system.update.size", num = format!("{}MB", update.exe.size/1000/1000))
+        t::system::update::size::mb(update.exe.size/1000/1000)
     } else {
-        ts!("system.update.size", num = format!("{}GB", update.exe.size/1000/1000/1000))
+        t::system::update::size::gb(update.exe.size/1000/1000/1000)
     };
 
-    let size = SharedString::new(size);
+    let size = SharedString::from(size);
 
     window.open_dialog(cx, move |dialog, _, _| {
         let buttons = h_flex()
             .w_full()
             .gap_2()
-            .child(Button::new("update").flex_1().label(ts!("common.update")).success().on_click({
+            .child(Button::new("update").flex_1().label(t::common::update()).success().on_click({
                 let handle = handle.clone();
                 let update = update.clone();
                 move |_, window, cx| {
@@ -44,15 +43,15 @@ pub fn open_update_prompt(
                         modal_action: modal_action.clone(),
                     });
                     window.close_all_dialogs(cx);
-                    crate::modals::generic::show_notification(window, cx, ts!("system.update.install_error"), modal_action);
+                    crate::modals::generic::show_notification(window, cx, t::system::update::install_error().into(), modal_action);
                 }
             }))
-            .child(Button::new("later").flex_1().label(ts!("system.update.later")).on_click(|_, window, cx| {
+            .child(Button::new("later").flex_1().label(t::system::update::later()).on_click(|_, window, cx| {
                 window.close_all_dialogs(cx);
             }));
 
         dialog
-            .title(title.clone())
+            .title(title)
             .overlay_closable(false)
             .child(v_flex()
                 .gap_2()

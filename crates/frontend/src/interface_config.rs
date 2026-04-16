@@ -5,7 +5,7 @@ use rand::RngCore;
 use schema::{curseforge::CurseforgeClassId, modrinth::ModrinthProjectType};
 use serde::{Deserialize, Serialize};
 
-use crate::{pages::instance::instance_page::InstanceSubpageType, ts, ui::PageType};
+use crate::{pages::instance::instance_page::InstanceSubpageType, ui::PageType};
 
 struct InterfaceConfigHolder {
     config: InterfaceConfig,
@@ -133,8 +133,8 @@ pub enum InstancesViewMode {
 impl InstancesViewMode {
     pub fn name(self) -> SharedString {
         match self {
-            InstancesViewMode::Cards => ts!("common.layout.cards").into(),
-            InstancesViewMode::List => ts!("common.layout.list").into(),
+            InstancesViewMode::Cards => t::common::layout::cards().into(),
+            InstancesViewMode::List => t::common::layout::list().into(),
         }
     }
 }

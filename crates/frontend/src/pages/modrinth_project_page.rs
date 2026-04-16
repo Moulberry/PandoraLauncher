@@ -14,7 +14,7 @@ use crate::{
     component::error_alert::ErrorAlert, entity::{
         DataEntities,
         metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult},
-    }, icon::PandoraIcon, pages::modrinth_page::{InstalledMod, PrimaryAction, env_display, format_downloads, get_primary_action, icon_for}, ts
+    }, icon::PandoraIcon, pages::modrinth_page::{InstalledMod, PrimaryAction, env_display, format_downloads, get_primary_action, icon_for}
 };
 
 pub struct ModrinthProjectPage {
@@ -185,7 +185,7 @@ impl Render for ModrinthProjectPage {
             v_flex()
                 .p_4()
                 .child(ErrorAlert::new(
-                    ts!("instance.content.error_loading"),
+                    t::instance::content::error_loading().into(),
                     error.clone(),
                 ))
                 .into_any_element()
@@ -208,7 +208,7 @@ impl Render for ModrinthProjectPage {
                 } else {
                     let text = cats
                         .iter()
-                        .map(|c| ts!(format!("modrinth.category.{}", c)))
+                        .map(|c| t::modrinth::category::get(c.as_str(), false).unwrap_or(c.as_str()))
                         .collect::<Vec<_>>()
                         .join(", ");
                     Some(h_flex()
@@ -241,7 +241,9 @@ impl Render for ModrinthProjectPage {
             let install_button: AnyElement = {
                 let data = self.data.clone();
                 let install_for = self.install_for;
-                let project_name: SharedString = project.title.as_deref().unwrap_or(ts!("instance.content.unnamed").as_str()).to_string().into();
+                let project_name = project.title.clone()
+                    .map(SharedString::new)
+                    .unwrap_or(t::instance::content::unnamed().into());
 
                 let primary_action = if install_for.is_some() {
                     self.get_primary_action(&project_id_str, cx)
@@ -263,7 +265,7 @@ impl Render for ModrinthProjectPage {
                                 primary_action.perform(project_name.as_str(), &project_id_str, project_type, install_for, &data, window, cx);
                             } else {
                                 window.push_notification(
-                                    (NotificationType::Error, ts!("instance.content.install.unknown_type")),
+                                    (NotificationType::Error, t::instance::content::install::unknown_type()),
                                     cx,
                                 );
                             }
@@ -279,7 +281,7 @@ impl Render for ModrinthProjectPage {
             let project_type_str = project.project_type.as_str().to_string();
             link_row = link_row.child(
                 Button::new("modrinth_web")
-                    .label(ts!("modrinth.name"))
+                    .label(t::modrinth::name())
                     .icon(PandoraIcon::ExternalLink)
                     .info()
                     .on_click({
@@ -292,7 +294,7 @@ impl Render for ModrinthProjectPage {
                 let url = url.clone();
                 link_row = link_row.child(
                     Button::new("source")
-                        .label(ts!("instance.content.links.source"))
+                        .label(t::instance::content::links::source())
                         .icon(PandoraIcon::CodeXml)
                         .info()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
@@ -302,7 +304,7 @@ impl Render for ModrinthProjectPage {
                 let url = url.clone();
                 link_row = link_row.child(
                     Button::new("issues")
-                        .label(ts!("instance.content.links.issues"))
+                        .label(t::instance::content::links::issues())
                         .icon(PandoraIcon::Bug)
                         .info()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
@@ -312,7 +314,7 @@ impl Render for ModrinthProjectPage {
                 let url = url.clone();
                 link_row = link_row.child(
                     Button::new("wiki")
-                        .label(ts!("instance.content.links.wiki"))
+                        .label(t::instance::content::links::wiki())
                         .info()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
@@ -321,7 +323,7 @@ impl Render for ModrinthProjectPage {
                 let url = url.clone();
                 link_row = link_row.child(
                     Button::new("discord").
-                        label(ts!("instance.content.links.discord"))
+                        label(t::instance::content::links::discord())
                         .info()
                         .on_click(move |_, _, cx| { cx.open_url(&url); }),
                 );
@@ -398,8 +400,8 @@ impl Render for ModrinthProjectPage {
                     this.active_tab = *selected_index;
                     cx.notify();
                 }))
-                .child(Tab::new().label(ts!("instance.content.tabs.description")))
-                .child(Tab::new().label(ts!("instance.content.tabs.gallery")))
+                .child(Tab::new().label(t::instance::content::tabs::description()))
+                .child(Tab::new().label(t::instance::content::tabs::gallery()))
                 .into_any_element();
 
             let body_el: AnyElement = match active_tab {
@@ -411,7 +413,7 @@ impl Render for ModrinthProjectPage {
                     } else {
                         v_flex()
                             .mt_2().pt_2()
-                            .child(div().text_sm().text_color(cx.theme().muted_foreground).child(ts!("instance.content.no_description")))
+                            .child(div().text_sm().text_color(cx.theme().muted_foreground).child(t::instance::content::no_description()))
                             .into_any_element()
                     }
                 }
@@ -440,7 +442,7 @@ impl Render for ModrinthProjectPage {
                                         )
                                 })).into_any_element()
                         } else {
-                            div().text_sm().text_color(cx.theme().muted_foreground).child(ts!("instance.content.no_gallery")).into_any_element()
+                            div().text_sm().text_color(cx.theme().muted_foreground).child(t::instance::content::no_gallery()).into_any_element()
                         })
                         .into_any_element()
                 }
@@ -451,8 +453,10 @@ impl Render for ModrinthProjectPage {
                 .child(h_flex().gap_4()
                     .child(icon.rounded_lg().size_24().min_w_24().min_h_24())
                     .child(v_flex().w_full().line_height(relative(1.1)).gap_2()
-                        .child(div().text_xl().overflow_hidden().child(project.title.as_deref().unwrap_or(ts!("instance.content.unnamed").as_str()).to_string()))
-                        .child(div().max_w(rems(40.0)).min_w_0().child(project.description.as_deref().unwrap_or("").to_string()))
+                        .child(div().text_xl().overflow_hidden().child(project.title.clone()
+                            .map(SharedString::new)
+                            .unwrap_or(t::instance::content::unnamed().into())))
+                        .child(div().max_w(rems(40.0)).min_w_0().child(project.description.clone().map(SharedString::new).unwrap_or_default()))
                         .child(info_bar))
                 )
                 .child(link_row)

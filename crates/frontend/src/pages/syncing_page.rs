@@ -8,7 +8,7 @@ use gpui_component::{
 use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 
-use crate::{entity::DataEntities, icon::PandoraIcon, pages::page::Page, ts};
+use crate::{entity::DataEntities, icon::PandoraIcon, pages::page::Page};
 
 pub struct SyncingPage {
     backend_handle: BackendHandle,
@@ -77,7 +77,7 @@ impl SyncingPage {
         let disabled = !enabled && cannot_sync_count > 0;
         let is_loading = self.loading.contains(&name);
 
-        let disable_tooltip = ts!("instance.sync.already_exists", num = cannot_sync_count, name = name);
+        let disable_tooltip = t::instance::sync::already_exists(cannot_sync_count, &name);
         let backend_handle = self.backend_handle.clone();
         let checkbox = Checkbox::new(name.clone())
             .label(label)
@@ -106,13 +106,13 @@ impl SyncingPage {
         } else {
             if (enabled || synced_count > 0) && !is_file {
                 base = base.child(h_flex().gap_1().flex_shrink().text_color(info)
-                    .child(ts!("instance.sync.folders_count", num1 = synced_count, num2 = sync_state.total_count))
+                    .child(t::instance::sync::folders_count(synced_count, sync_state.total_count))
                 );
             }
             if enabled && cannot_sync_count > 0 {
                 base = base.child(h_flex().gap_1().flex_shrink().text_color(warning)
                     .child(PandoraIcon::TriangleAlert)
-                    .child(ts!("instance.sync.unable_count", num1 = cannot_sync_count, num2 = sync_state.total_count))
+                    .child(t::instance::sync::unable_count(cannot_sync_count, sync_state.total_count))
                 );
             }
         }
@@ -136,7 +136,7 @@ impl Render for SyncingPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(sync_state) = &self.sync_state else {
             let content = v_flex().size_full().p_3().gap_3()
-                .child(ts!("instance.sync.description"))
+                .child(t::instance::sync::description())
                 .child(Spinner::new().with_size(gpui_component::Size::Large));
 
             return content;
@@ -147,46 +147,46 @@ impl Render for SyncingPage {
         let warning = cx.theme().red;
         let info = cx.theme().blue;
         let content = v_flex().size_full().p_3().gap_3()
-            .child(ts!("instance.sync.description"))
-            .child(Button::new("open").info().icon(PandoraIcon::FolderOpen).label(ts!("instance.sync.open_folder")).on_click(move |_, window, cx| {
+            .child(t::instance::sync::description())
+            .child(Button::new("open").info().icon(PandoraIcon::FolderOpen).label(t::instance::sync::open_folder()).on_click(move |_, window, cx| {
                 crate::open_folder(&sync_folder, window, cx);
             }).w_72())
-            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("instance.sync.files")))
-            .child(self.create_entry(sync_state, "options.txt".into(), true,  ts!("instance.sync.targets.options"), warning, info, cx))
-            .child(self.create_entry(sync_state, "servers.dat".into(), true, ts!("instance.sync.targets.servers"), warning, info, cx))
-            .child(self.create_entry(sync_state, "command_history.txt".into(), true, ts!("instance.sync.targets.commands"), warning, info, cx))
-            .child(self.create_entry(sync_state, "hotbar.nbt".into(), true, ts!("instance.sync.targets.hotbars"), warning, info, cx))
-            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("instance.sync.folders")))
-            .child(self.create_entry(sync_state, "saves".into(), false, ts!("instance.sync.targets.saves"), warning, info, cx))
-            .child(self.create_entry(sync_state, "config".into(), false, ts!("instance.sync.targets.config"), warning, info, cx))
-            .child(self.create_entry(sync_state, "screenshots".into(), false, ts!("instance.sync.targets.screenshots"), warning, info, cx))
-            .child(self.create_entry(sync_state, "resourcepacks".into(), false, ts!("instance.sync.targets.resourcepacks"), warning, info, cx))
-            .child(self.create_entry(sync_state, "shaderpacks".into(), false, ts!("instance.sync.targets.shaderpacks"), warning, info, cx))
-            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("instance.sync.mods")))
-            .child(self.create_entry(sync_state, "flashback".into(), false, ts!("instance.sync.targets.flashback"), warning, info, cx))
-            .child(self.create_entry(sync_state, "Distant_Horizons_server_data".into(), false, ts!("instance.sync.targets.dh"), warning, info, cx))
-            .child(self.create_entry(sync_state, ".voxy".into(), false, ts!("instance.sync.targets.voxy"), warning, info, cx))
-            .child(self.create_entry(sync_state, "xaero".into(), false, ts!("instance.sync.targets.xaero"), warning, info, cx))
-            .child(self.create_entry(sync_state, "journeymap".into(), false, ts!("instance.sync.targets.journeymap"), warning, info, cx))
-            .child(self.create_entry(sync_state, ".bobby".into(), false, ts!("instance.sync.targets.bobby"), warning, info, cx))
-            .child(self.create_entry(sync_state, "schematics".into(), false, ts!("instance.sync.targets.litematic"), warning, info, cx))
-            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(ts!("instance.sync.custom")))
+            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(t::instance::sync::files()))
+            .child(self.create_entry(sync_state, "options.txt".into(), true,  t::instance::sync::targets::options().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "servers.dat".into(), true, t::instance::sync::targets::servers().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "command_history.txt".into(), true, t::instance::sync::targets::commands().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "hotbar.nbt".into(), true, t::instance::sync::targets::hotbars().into(), warning, info, cx))
+            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(t::instance::sync::folders()))
+            .child(self.create_entry(sync_state, "saves".into(), false, t::instance::sync::targets::saves().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "config".into(), false, t::instance::sync::targets::config().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "screenshots".into(), false, t::instance::sync::targets::screenshots().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "resourcepacks".into(), false, t::instance::sync::targets::resourcepacks().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "shaderpacks".into(), false, t::instance::sync::targets::shaderpacks().into(), warning, info, cx))
+            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(t::instance::sync::mods()))
+            .child(self.create_entry(sync_state, "flashback".into(), false, t::instance::sync::targets::flashback().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "Distant_Horizons_server_data".into(), false, t::instance::sync::targets::dh().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, ".voxy".into(), false, t::instance::sync::targets::voxy().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "xaero".into(), false, t::instance::sync::targets::xaero().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "journeymap".into(), false, t::instance::sync::targets::journeymap().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, ".bobby".into(), false, t::instance::sync::targets::bobby().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "schematics".into(), false, t::instance::sync::targets::litematic().into(), warning, info, cx))
+            .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(t::instance::sync::custom()))
             .children(sync_state.targets.iter().filter_map(|(name, state)| {
                 if !state.enabled || NAMED_SYNC_TARGETS.contains(&**name) {
                     return None;
                 }
                 let label = if state.is_file {
-                    ts!("instance.sync.sync_name_file", name = name)
+                    t::instance::sync::sync_name_file(&name)
                 } else {
-                    ts!("instance.sync.sync_name_folder", name = name)
+                    t::instance::sync::sync_name_folder(&name)
                 };
-                Some(self.create_entry(sync_state, name.clone(), state.is_file, label, warning, info, cx))
+                Some(self.create_entry(sync_state, name.clone(), state.is_file, label.into(), warning, info, cx))
             }))
             .child(h_flex()
                 .w_full()
                 .gap_2()
                 .child(Input::new(&self.custom_input_state).max_w_128())
-                .child(Button::new("custom_file").label(ts!("instance.sync.sync_file")).on_click(cx.listener(|page, _, window, cx| {
+                .child(Button::new("custom_file").label(t::instance::sync::sync_file()).on_click(cx.listener(|page, _, window, cx| {
                     let input = page.custom_input_state.read(cx).value();
                     let input = input.as_str().trim_ascii();
                     if SafePath::new(input).is_some() {
@@ -206,7 +206,7 @@ impl Render for SyncingPage {
                         page.custom_input_state.update(cx, |state, cx| state.set_value("", window, cx));
                     }
                 })))
-                .child(Button::new("custom_folder").label(ts!("instance.sync.sync_folder")).on_click(cx.listener(|page, _, window, cx| {
+                .child(Button::new("custom_folder").label(t::instance::sync::sync_folder()).on_click(cx.listener(|page, _, window, cx| {
                     let input = page.custom_input_state.read(cx).value();
                     let input = input.as_str().trim_ascii();
                     if SafePath::new(input).is_some() {

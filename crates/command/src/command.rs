@@ -4,6 +4,7 @@ use std::{borrow::Cow, collections::BTreeMap, ffi::{OsStr, OsString}, io::{Error
 use crate::unix::unix_helpers::RawStringVec;
 use crate::{process::PandoraProcess, spawner::SpawnType};
 
+#[derive(Debug)]
 pub struct PandoraCommand {
     pub(crate) executable: PandoraArg,
     pub(crate) args: Vec<PandoraArg>,

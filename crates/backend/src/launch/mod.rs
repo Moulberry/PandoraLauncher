@@ -2249,6 +2249,14 @@ impl LaunchContext {
 
         command.arg("com.moulberry.pandora.LaunchWrapper");
 
+        if let Some(path) = std::env::var_os("PATH") {
+            let new_paths = std::env::split_paths(&path)
+                .chain([self.natives_dir.clone()]);
+            if let Ok(new_path_arg) = std::env::join_paths(new_paths) {
+                command.env("PATH", new_path_arg);
+            }
+        }
+
         let mut child = if self.configuration.sandbox {
             #[cfg(target_os = "linux")]
             if !command::is_command_available("bwrap") {

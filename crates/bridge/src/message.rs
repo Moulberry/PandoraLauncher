@@ -15,7 +15,7 @@ use crate::{
     account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLauncherJob, OtherLauncher}, install::ContentInstall, instance::{
         InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus,
         InstanceWorldSummary,
-    }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction,
+    }, keep_alive::KeepAliveHandle, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction,
 };
 
 #[derive(Debug)]
@@ -312,14 +312,7 @@ pub enum MessageToFrontend {
         resource_packs: Arc<[InstanceContentSummary]>,
     },
     CreateGameOutputWindow {
-        id: usize,
-        keep_alive: KeepAlive,
-    },
-    AddGameOutput {
-        id: usize,
-        time: i64,
-        level: GameOutputLogLevel,
-        text: Arc<[Arc<str>]>,
+        receiver: tokio::sync::mpsc::UnboundedReceiver<GameOutputMsg>
     },
     AddNotification {
         notification_type: BridgeNotificationType,
@@ -465,4 +458,10 @@ pub enum UrlOrFile {
     File {
         path: PathBuf,
     }
+}
+
+pub struct GameOutputMsg {
+    pub time: i64,
+    pub level: GameOutputLogLevel,
+    pub text: Arc<[Arc<str>]>,
 }

@@ -2212,6 +2212,12 @@ impl LaunchContext {
 
         self.classpath.push(self.launch_wrapper_path.to_path_buf());
 
+        // Force stdout/stderr to use UTF-8
+        command.arg("-Dstdout.encoding=UTF-8");
+        command.arg("-Dsun.stdout.encoding=UTF-8");
+        command.arg("-Dstderr.encoding=UTF-8");
+        command.arg("-Dsun.stderr.encoding=UTF-8");
+
         if let Some(arguments) = &version_info.arguments {
             self.process_arguments(&arguments.jvm, &mut |arg| {
                 command.arg(arg.to_os_string());

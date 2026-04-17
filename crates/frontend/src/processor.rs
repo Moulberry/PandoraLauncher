@@ -1,14 +1,13 @@
-use std::{collections::HashMap, sync::{Arc, atomic::AtomicBool}};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use bridge::{instance::InstanceStatus, message::{BridgeNotificationType, MessageToFrontend}, quit::QuitCoordinator};
-use gpui::{AnyWindowHandle, App, AppContext, Entity, SharedString, TitlebarOptions, Window, WindowDecorations, WindowHandle, WindowOptions, px, size};
+use gpui::{AnyWindowHandle, App, AppContext, SharedString, TitlebarOptions, Window, WindowDecorations, WindowOptions, px, size};
 use gpui_component::{notification::{Notification, NotificationType}, Root, WindowExt};
 
 use crate::{entity::{DataEntities, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata}, game_output::{GameOutput, GameOutputRoot}, interface_config::InterfaceConfig, root::LauncherRoot};
 
 pub struct Processor {
     data: DataEntities,
-    game_output_windows: HashMap<usize, (WindowHandle<Root>, Entity<GameOutput>)>,
     main_window_handle: Option<AnyWindowHandle>,
     main_window_hidden: Arc<AtomicBool>,
     waiting_for_window: Vec<MessageToFrontend>,
@@ -19,7 +18,6 @@ impl Processor {
     pub fn new(data: DataEntities, main_window_hidden: Arc<AtomicBool>, quit_coordinator: QuitCoordinator) -> Self {
         Self {
             data,
-            game_output_windows: HashMap::new(),
             main_window_handle: None,
             main_window_hidden,
             waiting_for_window: Vec::new(),
@@ -184,7 +182,7 @@ impl Processor {
                     window.close_all_dialogs(cx);
                 });
             },
-            MessageToFrontend::CreateGameOutputWindow { id, keep_alive } => {
+            MessageToFrontend::CreateGameOutputWindow { receiver } => {
                 self.quit_coordinator.set_can_quit(false);
                 let options = WindowOptions {
                     app_id: Some("PandoraLauncher".into()),
@@ -197,29 +195,11 @@ impl Processor {
                     ..Default::default()
                 };
                 _ = cx.open_window(options, |window, cx| {
-                    let game_output = cx.new(|_| GameOutput::default());
-                    let game_output_root = cx
-                        .new(|cx| GameOutputRoot::new(keep_alive, game_output.clone(), window, cx));
+                    let game_output = cx.new(|cx| GameOutput::new(receiver, cx));
+                    let game_output_root = cx.new(|cx| GameOutputRoot::new(game_output.clone(), window, cx));
                     window.activate_window();
-                    let window_handle = window.window_handle().downcast::<Root>().unwrap();
-                    self.game_output_windows.insert(id, (window_handle, game_output.clone()));
                     cx.new(|cx| Root::new(game_output_root, window, cx))
                 });
-            },
-            MessageToFrontend::AddGameOutput {
-                id,
-                time,
-                level,
-                text,
-            } => {
-                if let Some((window, game_output)) = self.game_output_windows.get(&id) {
-                    _ = window.update(cx, |_, window, cx| {
-                        game_output.update(cx, |game_output, _| {
-                            game_output.add(time, level, text);
-                        });
-                        window.refresh();
-                    });
-                }
             },
             MessageToFrontend::MoveInstanceToTop { id } => {
                 InstanceEntries::move_to_top(&self.data.instances, id, cx);

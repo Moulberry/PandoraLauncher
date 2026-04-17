@@ -51,6 +51,7 @@ pub unsafe fn environ() -> *mut *const *const c_char {
     &raw mut environ
 }
 
+#[derive(Debug)]
 pub struct RawStringVec(Vec<*mut c_char>);
 
 impl RawStringVec {

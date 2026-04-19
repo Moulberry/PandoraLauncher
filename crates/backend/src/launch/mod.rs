@@ -2453,7 +2453,7 @@ impl LaunchContext {
             ArgumentExpansionKey::AuthAccessToken => OsStr::new(if let Some(access_token) = &self.login_info.access_token {
                 access_token.secret()
             } else {
-                "offline"
+                ""
             }).into(),
             ArgumentExpansionKey::Clientid => OsStr::new("").into(), // These are just used for telemetry
             ArgumentExpansionKey::AuthXuid => OsStr::new("").into(), // These are just used for telemetry

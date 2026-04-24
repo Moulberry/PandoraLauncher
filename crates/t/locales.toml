@@ -1,808 +1,1203 @@
 [modrinth.name]
 en = "Modrinth"
+de = "Modrinth"
 
 [modrinth.category.fabric]
 en = "Fabric"
+de = "Fabric"
 [modrinth.category.forge]
 en = "Forge"
+de = "Forge"
 [modrinth.category.neoforge]
 en = "NeoForge"
+de = "NeoForge"
 [modrinth.category.quilt]
 en = "Quilt"
+de = "Quilt"
 [modrinth.category.babric]
 en = "Babric"
+de = "Babric"
 [modrinth.category.bta-babric]
 en = "BTA (Babric)"
+de = "BTA (Babric)"
 [modrinth.category.java-agent]
 en = "Java Agent"
+de = "Java Agent"
 [modrinth.category.legacy-fabric]
 en = "Legacy Fabric"
+de = "Legacy Fabric"
 [modrinth.category.liteloader]
 en = "LiteLoader"
+de = "LiteLoader"
 [modrinth.category.modloader]
 en = "Risugami's ModLoader"
+de = "Risugami's ModLoader"
 [modrinth.category.nilloader]
 en = "NilLoader"
+de = "NilLoader"
 [modrinth.category.ornithe]
 en = "Ornithe"
+de = "Ornithe"
 [modrinth.category.rift]
 en = "Rift"
+de = "Rift"
 [modrinth.category.datapack]
 en = "Data Pack"
+de = "Data Pack"
 [modrinth.category.iris]
 en = "Iris"
+de = "Iris"
 [modrinth.category.optifine]
 en = "OptiFine"
+de = "OptiFine"
 [modrinth.category.canvas]
 en = "Canvas"
+de = "Canvas"
 [modrinth.category.vanilla]
 en = "Vanilla Shader"
+de = "Vanilla Shader"
 [modrinth.category.bukkit]
 en = "Bukkit"
+de = "Bukkit"
 [modrinth.category.folia]
 en = "Folia"
+de = "Folia"
 [modrinth.category.paper]
 en = "Paper"
+de = "Paper"
 [modrinth.category.purpur]
 en = "Purpur"
+de = "Purpur"
 [modrinth.category.spigot]
 en = "Spigot"
+de = "Spigot"
 [modrinth.category.sponge]
 en = "Sponge"
+de = "Sponge"
 [modrinth.category.bungeecord]
 en = "BungeeCord"
+de = "BungeeCord"
 [modrinth.category.geyser]
 en = "Geyser"
+de = "Geyser"
 [modrinth.category.velocity]
 en = "Velocity"
+de = "Velocity"
 [modrinth.category.waterfall]
 en = "Waterfall"
+de = "Waterfall"
 [modrinth.category.cursed]
 en = "Cursed"
+de = "Seltsam"
 [modrinth.category.technology]
 en = "Technology"
+de = "Technologie"
 [modrinth.category.challenging]
 en = "Challenging"
+de = "Herausforderend"
 [modrinth.category.decoration]
 en = "Decoration"
+de = "Dekoration"
 [modrinth.category.library]
 en = "Library"
+de = "Bibiliothek"
 [modrinth.category.adventure]
 en = "Adventure"
+de = "Abenteuer"
 [modrinth.category.path-tracing]
 en = "Path Tracing"
+de = "Path Tracing"
 [modrinth.category.realistic]
 en = "Realistic"
+de = "Realistisch"
 [modrinth.category.atmosphere]
 en = "Atmosphere"
+de = "Atmosphere"
 [modrinth.category.fantasy]
 en = "Fantasy"
+de = "Fantasie"
 [modrinth.category.foliage]
 en = "Foliage"
+de = "Vegetation"
 [modrinth.category.bloom]
 en = "Bloom"
+de = "Bloom"
 [modrinth.category.vanilla-like]
 en = "Vanilla-like"
+de = "Vanilla-Ähnlich"
 [modrinth.category.cartoon]
 en = "Cartoon"
+de = "Cartoon"
 [modrinth.category.shadows]
 en = "Shadows"
+de = "Schatten"
 [modrinth.category.pbr]
 en = "PBR"
+de = "PBR"
 [modrinth.category.semi-realistic]
 en = "Semi-realistic"
+de = "Semi-Realistisch"
 [modrinth.category.reflections]
 en = "Reflections"
+de = "Reflektionen"
 [modrinth.category.colored-lighting]
 en = "Colored Lighting"
+de = "Farbige Lichter"
 [modrinth.category.economy]
 en = "Economy"
+de = "Wirtschaft"
 [modrinth.category.management]
 en = "Management"
+de = "Verwaltung"
 [modrinth.category.optimization]
 en = "Optimization"
+de = "Optimierung"
 [modrinth.category.mobs]
 en = "Mobs"
+de = "Mobs"
 [modrinth.category.transportation]
 en = "Transportation"
+de = "Transportation"
 [modrinth.category.kitchen-sink]
 en = "Kitchen sink"
+de = "Etwas von allem"
 [modrinth.category.blocks]
 en = "Blocks"
+de = "Blöcke"
 [modrinth.category.audio]
 en = "Audio"
+de = "Audio"
 [modrinth.category.combat]
 en = "Combat"
+de = "Kampf"
 [modrinth.category.modded]
 en = "Modded"
+de = "Modifiziert"
 [modrinth.category.environment]
 en = "Environment"
+de = "Umgebung"
 [modrinth.category.entities]
 en = "Entities"
+de = "Entitäten"
 [modrinth.category.game-mechanics]
 en = "Game Mechanics"
+de = "Spielmechaniken"
 [modrinth.category.utility]
 en = "Utility"
+de = "Nützlich"
 [modrinth.category.core-shaders]
 en = "Core Shaders"
+de = "Core-Shaders"
 [modrinth.category.tweaks]
 en = "Tweaks"
+de = "Optimierungen"
 [modrinth.category.items]
 en = "Items"
+de = "Gegenstände"
 [modrinth.category.models]
 en = "Models"
+de = "Modelle"
 [modrinth.category.equipment]
 en = "Equipment"
+de = "Ausrüstung"
 [modrinth.category.fonts]
 en = "Fonts"
+de = "Schriftarten"
 [modrinth.category.simplistic]
 en = "Simplistic"
+de = "Einfach"
 [modrinth.category.themed]
 en = "Themed"
+de = "Thematisch"
 [modrinth.category.magic]
 en = "Magic"
+de = "Magie"
 [modrinth.category.storage]
 en = "Storage"
+de = "Lagerung"
 [modrinth.category.food]
 en = "Food"
+de = "Essen"
 [modrinth.category.gui]
 en = "GUI"
+de = "GUI"
 [modrinth.category.worldgen]
 en = "World Generation"
 en_short = "Worldgen"
+de = "Weltgenerierung"
+de_short = "Weltgenerierung"
 [modrinth.category.multiplayer]
 en = "Multiplayer"
+de = "Mehrspieler"
 [modrinth.category.quests]
 en = "Quests"
+de = "Aufgaben"
 [modrinth.category.lightweight]
 en = "Lightweight"
+de = "Leichtgewichtig"
 [modrinth.category.social]
 en = "Social"
+de = "Sozial"
 [modrinth.category.minigame]
 en = "Minigame"
+de = "Minispiel"
 [modrinth.category.locale]
 en = "Locale"
+de = "Localisierung"
 [modrinth.category.potato]
 en = "Potato"
+de = "Katoffel"
 [modrinth.category.low]
 en = "Low"
+de = "Niedrig"
 [modrinth.category.medium]
 en = "Medium"
+de = "Mittel"
 [modrinth.category.high]
 en = "High"
+de = "Hoch"
 [modrinth.category.screenshot]
 en = "Screenshot"
+de = "Screenshot"
 [modrinth.category.8x-]
 en = "8x or lower"
+de = "8x oder weniger"
 [modrinth.category.16x]
 en = "16x"
+de = "16x"
 [modrinth.category.32x]
 en = "32x"
+de = "32x"
 [modrinth.category.48x]
 en = "48x"
+de = "48x"
 [modrinth.category.64x]
 en = "64x"
+de = "64x"
 [modrinth.category.128x]
 en = "128x"
+de = "128x"
 [modrinth.category.256x]
 en = "256x"
+de = "256x"
 [modrinth.category."512x+"]
 en = "512x or higher"
+de = "512x oder höher"
 
 [modrinth.sort.relevance]
 en = "Relevance"
+de = "Relevanz"
 [modrinth.sort.downloads]
 en = "Downloads"
+de = "Downloads"
 [modrinth.sort.follows]
 en = "Follows"
+de = "Follower"
 [modrinth.sort.newest]
 en = "Newest"
+de = "Neuste"
 [modrinth.sort.updated]
 en = "Updated"
+de = "Aktualisiert"
 
 [modrinth.environment.client_and_server]
 en = "Client and server"
+de = "Client und Server"
 [modrinth.environment.client_only]
 en = "Client only"
+de = "Nur Client"
 [modrinth.environment.client_only_server_optional]
 en = "Client (server optional)"
+de = "Client (Server Optional)"
 [modrinth.environment.server_only]
 en = "Server only"
+de = "Nur Server"
 [modrinth.environment.server_only_client_optional]
 en = "Server (client optional)"
+de = "Server (Client Optional)"
 [modrinth.environment.client_or_server]
 en = "Client or server"
+de = "Client oder Server"
 [modrinth.environment.unknown_environment]
 en = "Unknown environment"
+de = "Unbekannte Umgebung"
 
 [modrinth.versions.alpha]
 en = "${name: &str} (Alpha)"
+de = "${name: &str} (Alpha)"
 [modrinth.versions.beta]
 en = "${name: &str} (Beta)"
+de = "${name: &str} (Beta)"
 
 [curseforge.name]
 en = "Curseforge"
+de = "Curseforge"
 
 [curseforge.sort.popularity]
 en = "Popularity"
+de = "Popularität"
 [curseforge.sort.downloads]
 en = "Downloads"
+de = "Downloads"
 [curseforge.sort.updated]
 en = "Updated"
+de = "Aktualisiert"
 [curseforge.sort.name]
 en = "Name"
+de = "Name"
 [curseforge.sort.author]
 en = "Author"
+de = "Autor"
 
 [common.app_name]
 en = "Pandora"
+de = "Pandora"
 [common.unknown]
 en = "Unknown"
+de = "Unbekannt"
 [common.search]
 en = "Search"
+de = "Suche"
 [common.error]
 en = "Error"
+de = "Fehler"
 [common.latest]
 en = "Latest"
+de = "Neuste"
 [common.update]
 en = "Update"
+de = "Aktualisiert"
 [common.min]
 en = "Min"
+de = "Minimum"
 [common.max]
 en = "Max"
+de = "Maximum"
 [common.or_upper]
 en = "OR"
+de = "ODER"
 [common.unset]
 en = "<unset>"
+de = "<ungesetzt>"
 [common.custom]
 en = "Custom"
+de = "Benutzerdefiniert"
 [common.cancel]
 en = "Cancel"
+de = "Abbrechen"
 [common.reset]
 en = "Reset"
+de = "Zurücksetzen"
 [common.icon]
 en = "Icon"
+de = "Bild"
 [common.apply_changes]
 en = "Apply Changes"
+de = "Veränderungen anwenden"
 [common.ok]
 en = "OK"
+de = "OK"
 [common.nav.top]
 en = "Go to Top"
+de = "Nach Oben"
 [common.nav.bottom]
 en = "Go to Bottom"
+de = "Nach Unten"
 [common.layout.cards]
 en = "Cards"
+de = "Karten"
 [common.layout.list]
 en = "List"
+de = "Liste"
 
 [file_system.open_folder.error]
 en = "Unable to open folder: ${err: std::io::Error}"
+de = "Konnte Ordner nicht öffnen: ${err: std::io::Error}"
 [file_system.open_folder.not_a_directory]
 en = "Unable to open folder: not a directory"
+de = "Konnte Ordner nicht öffnen: ist kein Ordner"
 
 [system.backend_shutdown]
 en = "Backend has abruptly shutdown"
+de = "Das Backend ist unerwartet abgestürzt"
 [system.metadata_error]
 en = "Wrong metadata type! Pandora bug!"
+de = "Falscher Metadaten Type! Pandora Fehler!"
 [system.game_output]
 en = "Minecraft Game Output"
+de = "Minecraft Log Ausgabe"
 
 [system.update.title]
 en = "Update Pandora?"
+de = "Pandora aktualisieren?"
 [system.update.current]
 en = "Current version: ${ver: &str}"
+de = "Aktuelle Version: ${ver: &str}"
 [system.update.new]
 en = "New version: ${ver: &str}"
+de = "Neue Version: ${ver: &str}"
 [system.update.size.bytes]
 en = "Update size: ${num: usize} bytes"
+de = "Größe der Aktualisierung: ${num: usize} bytes"
 [system.update.size.kb]
 en = "Update size: ${num: usize}kB"
+de = "Größe der Aktualisierung: ${num: usize}kB"
 [system.update.size.mb]
 en = "Update size: ${num: usize}MB"
+de = "Größe der Aktualisierung: ${num: usize}MB"
 [system.update.size.gb]
 en = "Update size: ${num: usize}GB"
+de = "Größe der Aktualisierung: ${num: usize}GB"
 [system.update.later]
 en = "Later"
+de = "Später"
 [system.update.install_error]
 en = "Unable to install update"
+de = "Aktualisierung konnte nicht installiert werden"
 
 [account.title]
 en = "Accounts"
+de = "Konten"
 [account.override_account]
 en = "Override Account"
+de = "Konto Überschreiben"
 [account.none]
 en = "No Account"
+de = "Kein Konto"
 [account.name]
 en = "Name"
+de = "Name"
 [account.uuid]
 en = "UUID"
+de = "UUID"
 [account.uuid_random]
 en = "Random"
+de = "Zufällig"
 [account.add.title]
 en = "Adding new account"
+de = "Füge neues Konto hinzu"
 [account.add.label]
 en = "Add account"
+de = "Konto hinzufügen"
 [account.add.submit]
 en = "Add"
+de = "Hinzufügen"
 [account.add.offline]
 en = "Add Offline Account"
+de = "Offline Konto hinzufügen"
 [account.add.error]
 en = "Error adding account"
+de = "Fehler beim Konto hinzufügen"
 
 [instance.title]
 en = "Instances"
+de = "Instanzen"
 [instance.label]
 en = "Instance"
+de = "Instanz"
 [instance.recent]
 en = "Recent Instances"
+de = "Letze Instanzen"
 [instance.none_selected]
 en = "Select an instance"
+de = "Wähle eine Instanz aus"
 [instance.unnamed]
 en = "Unnamed Instance"
+de = "Unbekannte Instanz"
 [instance.incompatible]
 en = "(${num: usize} instances were incompatible)"
+de = "(${num: usize} instanzen waren inkompatiebel)"
 [instance.new]
 en = "New Instance"
+de = "Neue Instanz"
 [instance.quickplay]
 en = "Quickplay"
+de = "Schnellspiel"
 [instance.worlds]
 en = "Worlds"
+de = "Welten"
 [instance.servers]
 en = "Servers"
+de = "Server"
 [instance.total_playtime]
 en = "Total Playtime"
+de = "Insgesammte Spielzeit"
 [instance.current_session]
 en = "Current Session"
+de = "Aktuelle Sitzung"
 [instance.vanilla]
 en = "Vanilla"
+de = "Vanilla"
 [instance.unable_to_find]
 en = "Unable to find instance"
+de = "Instanz konnte nicht gefunden werden"
 [instance.start.title]
 en = "Launching ${name: &str}"
+de = "Starte ${name: &str}"
 [instance.start.label]
 en = "Start"
+de = "Start"
 [instance.start.starting]
 en = "Launching..."
+de = "Startet..."
 [instance.start.stopping]
 en = "Stopping..."
+de = "Stoppen..."
 [instance.start.error]
 en = "Error starting instance"
+de = "Fehler beim Starten der Instanz"
 [instance.play]
 en = "Play"
+de = "Spiel"
 [instance.view]
 en = "View"
+de = "Ansehen"
 [instance.kill]
 en = "Kill"
+de = "Stoppen"
 [instance.kill_instance]
 en = "Kill Instance"
+de = "Stope Instanz"
 [instance.delete]
 en = "Delete this instance"
+de = "Lösche diese Instanz"
 [instance.create_shortcut]
 en = "Create shortcut"
+de = "Verknüpfung erstellen"
 [instance.open_folder]
 en = "Open .minecraft folder"
+de = "Öffne .minecraft Ordner"
 [instance.create]
 en = "Create Instance"
+de = "Erstelle Instanz"
 [instance.name]
 en = "Name"
+de = "Name"
 [instance.name_placeholder]
 en = "<instance name>"
+de = "<Instanz Name>"
 [instance.version]
 en = "Version"
+de = "Version"
 [instance.loader]
 en = "Loader"
+de = "Loader"
 [instance.loader_version]
 en = "${loader: &str} Version"
+de = "${loader: &str} Version"
 [instance.game_version]
 en = "Game Version"
+de = "Spielversion"
 [instance.mc_version]
 en = "Minecraft Version"
+de = "Minecraft Version"
 [instance.show_snapshots]
 en = "Show Snapshots"
+de = "Vorabversionen anzeigen"
 [instance.modloader]
 en = "Modloader"
+de = "Modloader"
 [instance.select_icon]
 en = "Select Icon"
+de = "Bild auswählen"
 [instance.select_png_icon]
 en = "Select PNG Icon"
+de = "PNG Bild auswählen"
 [instance.instance_name]
 en = "Instance name"
+de = "Instanzname"
 [instance.invalid_name]
 en = "Invalid name"
+de = "Invalieder Name"
 [instance.versions_loading.game_versions]
 en = "Loading Minecraft Versions..."
+de = "Lade Minecraft Versionen..."
 [instance.versions_loading.reload]
 en = "Reload Versions"
+de = "Versionen neuladen"
 [instance.versions_loading.possible_loader_error]
 en = "Error loading possible loader versions"
+de = "Fehler beim Laden möglicher Modloader-Versionen"
 [instance.versions_loading.error]
 en = "Error loading Minecraft versions"
+de = "Fehler beim laden von Minecraft Versionen"
 [instance.memory]
 en = "Set Memory"
+de = "Arbeitsspeicher"
 [instance.wrapper_command]
 en = "Add Wrapper Command"
+de = "Füge Wrapper Befehl hinzu"
 [instance.jvm_flags]
 en = "Add JVM Flags"
+de = "Fügen JVM Argumente hinzu"
 [instance.jvm_binary]
 en = "Override JVM Binary"
+de = "Überschreibe JVM Binary"
 [instance.select_jvm_binary]
 en = "Select JVM Binary"
+de = "Wähle JVM Binary aus"
 [instance.glfw_lib]
 en = "Use System GLFW"
+de = "Verwende System GLFW"
 [instance.select_glfw_lib]
 en = "Select GLFW Library"
+de = "Wähle GLFW Bibiliothek aus"
 [instance.openal_lib]
 en = "Use System OpenAL"
+de = "Verwende System OpenAL"
 [instance.select_openal_lib]
 en = "Select OpenAL Library"
+de = "Wähle OpenAL Bibiliothek aus"
 
 [instance.security.label]
 en = "Security"
+de = "Sicherheit"
 [instance.security.sandbox]
 en = "Sandbox"
+de = "Isolierung"
 
 [instance.linux.label]
 en = "Linux Performance"
+de = "Linux Performance"
 [instance.linux.use_mangohud]
 en = "Use MangoHud"
+de = "Nutze MangoHud"
 [instance.linux.use_gamemode]
 en = "Use GameMode"
+de = "Nutze GameMode"
 [instance.linux.use_discrete_gpu]
 en = "Use Discrete GPU"
+de = "Diskrete GPU verwenden"
 [instance.linux.disable_gl_threaded_optimizations]
 en = "Disable GL Threaded Optimizations"
+de = "GL-Thread-Optimierungen deaktivieren"
 
 [instance.delete_dialog.title]
 en = "Delete Instance: ${name: &str}"
+de = "Lösche Instanz: ${name: &str}"
 [instance.delete_dialog.label]
 en = "I want to delete this instance"
+de = "Ich möchte diese Instaz löschen"
 [instance.delete_dialog.check]
 en = "I have read and understand these effects"
+de = "Ich habe die Konsequenzen gelesen und verstanden"
 [instance.delete_dialog.confirm_text]
 en = "To confirm, type '${name: &str}' in the box below"
+de = "Um zu bestätigen gebe „${name: &str}“ ein"
 [instance.delete_dialog.warning]
 en = "This will permanently delete the '${name: &str}' instance and associated saves, resourcepacks, mods, configuration files, and more. These files will not be recoverable"
+de = "Dadurch will die Instanz „${name: &str}“ sowie die zugehörigen Spielstände, Ressourcenpakete, Mods, Konfigurationsdateien und weitere Elemente endgültig gelöscht. Diese Dateien können nicht wiederhergestellt werden."
 
 [instance.logs.title]
 en = "Logs"
+de = "Protokolle"
 [instance.logs.none]
 en = "No available logs"
+de = "Keine verfügbare Protokolle"
 [instance.logs.loading]
 en = "Loading available logs..."
+de = "Lade verfügbare Protokolle..."
 [instance.logs.cleanup.bytes]
 en = "Cleanup old log files (${num: usize} bytes)"
+de = "Räume alte Protokolle auf (${num: usize} bytes)"
 [instance.logs.cleanup.kb]
 en = "Cleanup old log files (${num: usize}kB)"
+de = "Räume alte Protokolle auf (${num: usize}kB)"
 [instance.logs.cleanup.mb]
 en = "Cleanup old log files (${num: usize}MB)"
+de = "Räume alte Protokolle auf (${num: usize}MB)"
 [instance.logs.cleanup.gb]
 en = "Cleanup old log files (${num: usize}GB)"
+de = "Räume alte Protokolle auf (${num: usize}GB)"
 [instance.logs.select_file]
 en = "Select log file"
+de = "Wähle Protokolle aus"
 [instance.logs.upload.label]
 en = "Upload"
+de = "Hochladen"
 [instance.logs.upload.title]
 en = "Uploading log file"
+de = "Lade Protokolle"
 [instance.logs.upload.error]
 en = "Error uploading log file"
+de = "Fehler beim Hochladen von Protokollen"
 
 [instance.content.title]
 en = "Content"
+de = "Inhalt"
 [instance.content.mods]
 en = "Mods"
+de = "Mods"
 [instance.content.modpacks]
 en = "Modpacks"
+de = "Modpakete"
 [instance.content.resourcepacks]
 en = "Resourcepacks"
+de = "Ressourcenpakete"
 [instance.content.shaders]
 en = "Shaders"
+de = "Shaders"
 [instance.content.filename_prefix]
 en = "Filename: "
+de = "Dateiname: "
 [instance.content.version.mod]
 en = "Mod Version"
+de = "Mod Version"
 [instance.content.version.modpack]
 en = "Modpack Version"
+de = "Modpaket Version"
 [instance.content.version.resourcepack]
 en = "Pack Version"
+de = "Paket Version"
 [instance.content.version.shader]
 en = "Shader Version"
+de = "Shader Version"
 [instance.content.version.file]
 en = "File Version"
+de = "Dateiversion"
 [instance.content.search.mod]
 en = "Search mods..."
+de = "Suche Mods..."
 [instance.content.search.modpack]
 en = "Search modpacks..."
+de = "Suche Modpakete..."
 [instance.content.search.resourcepack]
 en = "Search resourcepacks..."
+de = "Suche Ressourcenpakete..."
 [instance.content.search.shader]
 en = "Search shaders..."
+de = "Suche Shader..."
 [instance.content.search.file]
 en = "Search..."
+de = "Suche..."
 [instance.content.requesting_from_modrinth_error]
 en = "Error requesting from Modrinth"
+de = "Fehler beim Abrufen von Modrinth"
 [instance.content.unnamed]
 en = "Unnamed"
+de = "Unbenannt"
 [instance.content.open_page]
 en = "Open Page"
+de = "Öffne Seite"
 [instance.content.by]
 en = "by ${name: &str}"
+de = "von ${name: &str}"
 [instance.content.no_description]
 en = "No Description"
+de = "Keine Beschreibung"
 [instance.content.error_loading]
 en = "Error loading project"
+de = "Fehler beim laden vom Projekt"
 [instance.content.no_gallery]
 en = "No gallery images"
+de = "Keine Bilder"
 [instance.content.tabs.description]
 en = "Description"
+de = "Beschreibung"
 [instance.content.tabs.gallery]
 en = "Gallery"
+de = "Gallerie"
 [instance.content.links.source]
 en = "Source"
+de = "Quellcode"
 [instance.content.links.issues]
 en = "Issues"
+de = "Fehler melden"
 [instance.content.links.wiki]
 en = "Wiki"
+de = "Wiki"
 [instance.content.links.discord]
 en = "Discord"
+de = "Discord"
 [instance.content.categories]
 en = "Categories"
+de = "Kategorien"
 [instance.content.sort]
 en = "Sort by"
+de = "Sortieren nach"
 [instance.content.downloads.b]
 en = "${num: f64}B Downloads"
+de = "${num: f64}Mrd. Downloads"
 [instance.content.downloads.m]
 en = "${num: f64}M Downloads"
+de = "${num: f64}Mil. Downloads"
 [instance.content.downloads.k]
 en = "${num: f64}K Downloads"
+de = "${num: f64}Tsd. Downloads"
 [instance.content.downloads.n]
 en = "${num: u64} Downloads"
+de = "${num: u64} Downloads"
 [instance.content.load.versions.title]
 en = "Loading mod versions..."
+de = "Lade Mod Versionen..."
 [instance.content.load.versions.not_found]
 en = "No mod versions found"
+de = "Keine Mod Versionen gefunden"
 [instance.content.load.versions.not_found_for]
 en = "No mod versions found for ${ver: &str}"
+de = "Keine Mod Version für ${ver: &str} gefunden"
 [instance.content.load.versions.not_found_for_loader]
 en = "No mod versions found for ${loader: &str} ${ver: &str}"
+de = "Keine Mod Version für ${loader: &str} ${ver: &str} gefunden"
 [instance.content.load.versions_from_modrinth.title]
 en = "Loading project versions from Modrinth..."
+de = "Lade Projektversionen von Modrinth..."
 [instance.content.load.versions_from_modrinth.error]
 en = "Error loading project versions from Modrinth: ${err: &str}"
+de = "Fehler beim laden von Projektversionen von Modrinth: ${err: &str}"
 [instance.content.install.label]
 en = "Install"
+de = "Installieren"
 [instance.content.install.title]
 en = "Install ${name: &str}"
+de = "Installiere ${name: &str}"
 [instance.content.install.reinstall]
 en = "Reinstall"
+de = "Neuinstallieren"
 [instance.content.install.latest]
 en = "Install Latest"
+de = "Installiere neuste Version"
 [instance.content.install.error]
 en = "Error installing content"
+de = "Fehler beim installieren von Inhalt"
 [instance.content.install.always_latest]
 en = "Always install the latest version. Untick to be able to choose older versions of content to install"
+de = "Installiert immer die neuste Version. Deaktivieren um ältere Versionen installieren zu können"
 [instance.content.install.from_modrinth]
 en = "Add from Modrinth"
+de = "Von Modrinth hinzufügen"
 [instance.content.install.from_curseforge]
 en = "Add from Curseforge"
+de = "Von Curseforge hinzufügen"
 [instance.content.install.from_file]
 en = "Add from file"
+de = "Von Datei hinzufügen"
 [instance.content.install.unable_other_type]
 en = "Unable to install 'other' project type"
+de = "Konnte Projektart „anderes“ nicht Installieren"
 [instance.content.install.invalid_filename]
 en = "Invalid/dangerous filename"
+de = "Invalieder/Gefährlicher Dateinname"
 [instance.content.install.missing_sha1_hash]
 en = "Missing sha1 hash"
+de = "Fehlender sha1 Hash"
 [instance.content.install.no_third_party_downloads]
 en = "The mod author has blocked downloads from third-party launchers"
+de = "Der Mod Autor hat das herunterladen von Drittanbietern blockiert"
 [instance.content.install.select_mods]
 en = "Select mods to install"
+de = "Wähle zu installierende Mods aus"
 [instance.content.install.new_instance_with.mod]
 en = "Create new instance with this mod"
+de = "Erstelle neue Instanz mit dieser Mod"
 [instance.content.install.new_instance_with.modpack]
 en = "Create new instance with this modpack"
+de = "Erstelle eine neue Instanz mit diesem Modpaket"
 [instance.content.install.new_instance_with.resourcepack]
 en = "Create new instance with this resourcepack"
+de = "Erstelle eine neue Instanz mit diesem Ressourcenpaket"
 [instance.content.install.new_instance_with.shader]
 en = "Create new instance with this shader"
+de = "Erstelle eine neue Instanz mit diesem Shader"
 [instance.content.install.new_instance_with.file]
 en = "Create new instance with this file"
+de = "Erstelle eine neue Instanz mit dieser Datei"
 [instance.content.install.add_to_instance]
 en = "Add to instance"
+de = "Zu Instanz hinzufügen"
 [instance.content.install.install_dependency]
 en = "Install 1 dependency"
+de = "Installiere 1 Abhängigkeit"
 [instance.content.install.install_dependencies]
 en = "Install ${num: usize} dependencies"
+de = "Installiere ${num: usize} Abhängigkeiten"
 [instance.content.install.no_mod_version_selected]
 en = "No mod version selected"
+de = "Keine Modversion ausgewählt"
 [instance.content.install.unable_install_other]
 en = "Unable to install 'other' project type"
+de = "Konnte Projekttype „Anderes“ nicht installieren"
 [instance.content.install.no_matching_versions]
 en = "Unable to find matching version of project"
+de = "Es konnte keine passende Version des Projekts gefunden werden"
 [instance.content.install.unknown_type]
 en = "Don't know how to handle this type of content"
+de = "Keine Ahnung wie man diesem Typ von Inhalt installiert"
 [instance.content.install.select_resourcepacks]
 en = "Select resource packs to install"
+de = "Wähle Ressourcenpakete aus um sie zu installieren"
 [instance.content.update.label]
 en = "Update"
+de = "Aktualisieren"
 [instance.content.update.check.label]
 en = "Check for updates"
 en_short = "Update Check"
+de = "Nach Aktualisieren suchen"
+de_short = "Aktualisierungs Prüfung"
 [instance.content.update.check.title]
 en = "Checking for updates"
+de = "Suche nach Aktualisierungen"
 [instance.content.update.check.error]
 en = "Error checking for updates"
+de = "Fehler beim suchen nach Aktualisierungen"
 [instance.content.update.check.error_404]
 en = "Error while checking updates - 404 not found"
+de = "Fehler beim suchen nach Aktualisierungen - 404 nicht gefunden"
 [instance.content.update.check.invalid_hash_error]
 en = "Error while checking updates - returned invalid hash"
+de = "Fehler beim suchen nach Aktualisierungen - falscher hash"
 [instance.content.update.check.last_up_to_date]
 en = "Up-to-date as of last check"
+de = "Aktuell, Stand letzter Überprüfung"
 [instance.content.update.check.up_to_date]
 en = "Up-to-date"
+de = "Aktuell"
 [instance.content.update.download.error]
 en = "Error downloading update"
+de = "Fehler beim herunterladen von der Aktuallisierung"
 [instance.content.update.download.from_modrinth]
 en = "Download update from Modrinth"
+de = "Lade Aktuallisierung von Modrinth herunter"
 [instance.content.update.download.from_curseforge]
 en = "Download update from Curseforge"
+de = "Lade Aktuallisierung von Curseforge herunter"
 [instance.content.update.error]
 en = "Error updating mod"
+de = "Fehler beim Aktualisieren"
 [instance.content.update.installed_manually]
 en = "Installed manually - cannot automatically update"
+de = "Manuell installiert – kann nicht automatisch aktualisiert werden"
 
 [instance.sync.label]
 en = "Syncing"
+de = "Synchronisierung"
 [instance.sync.description]
 en = "These options allow for syncing various files/folders across instances"
+de = "Diese Optionen ermöglichen die Synchronisierung verschiedener Dateien/Ordner über verschiedene Instanzen hinweg"
 [instance.sync.open_folder]
 en = "Open synced folders directory"
+de = "Öffne synchronisierte Ordner"
 [instance.sync.already_exists]
 en = "${num: usize} instance(s) already contain a '${name: &str}' folder. Please safely backup and remove the folders to enable syncing"
+de = "${num: usize} Instanzen enthalten einen „${name: &str}“ Ordner. Bitte erstelle eine sicherheits Kopie und lösche den Ordner um zu synchronisieren"
 [instance.sync.folders_count]
 en = "(${count: usize}/${total: usize} folders synced)"
+de = "(${count: usize}/${total: usize} Ordner synchronisiert)"
 [instance.sync.unable_count]
 en = "${count: usize}/${total: usize} instances are unable to be synced!"
+de = "${count: usize}/${total: usize} Instanzen konnten nicht synchronisiert werden!"
 [instance.sync.files]
 en = "Files"
+de = "Datein"
 [instance.sync.folders]
 en = "Folders"
+de = "Ordner"
 [instance.sync.mods]
 en = "Mods"
+de = "Mods"
 [instance.sync.custom]
 en = "Custom"
+de = "Benutzerdefiniert"
 [instance.sync.sync_name_file]
 en = "Sync ${name: &str} file"
+de = "Synchronisiere ${name: &str}"
 [instance.sync.sync_name_folder]
 en = "Sync ${name: &str} folder"
+de = "Synchronisiere ${name: &str}"
 [instance.sync.sync_file]
 en = "Sync file"
+de = "Synchronisiere Datei"
 [instance.sync.sync_folder]
 en = "Sync folder"
+de = "Synchronisiere Ordner"
 [instance.sync.disable_syncing]
 en = "Disable Instance File Syncing"
+de = "Deaktiviere Dateinsynchronisierung"
 [instance.sync.targets.options]
 en = "Sync options.txt"
+de = "Synchronisiere options.txt"
 [instance.sync.targets.servers]
 en = "Sync servers.dat"
+de = "Synchronisiere servers.dat"
 [instance.sync.targets.commands]
 en = "Sync command_history.txt"
+de = "Synchronisiere command_history.txt"
 [instance.sync.targets.hotbars]
 en = "Sync hotbar.nbt"
+de = "Synchronisiere hotbar.nbt"
 [instance.sync.targets.saves]
 en = "Sync saves folder"
+de = "Synchronisiere Welten Ordner"
 [instance.sync.targets.config]
 en = "Sync config folder"
+de = "Synchronisiere Konfigurationsordner"
 [instance.sync.targets.screenshots]
 en = "Sync screenshots folder"
+de = "Synchronisiere Bildschirmaufnahmen"
 [instance.sync.targets.resourcepacks]
 en = "Sync resourcepacks folder"
+de = "Synchronisiere Ressourcenpakete"
 [instance.sync.targets.shaderpacks]
 en = "Sync shaderpacks folder"
+de = "Synchronisiere Shaderpakete"
 [instance.sync.targets.flashback]
 en = "Sync Flashback (flashback) folder"
+de = "Synchronisiere Flashback Ordner (flashback)"
 [instance.sync.targets.dh]
 en = "Sync Distant Horizons (Distant_Horizons_server_data) folder"
+de = "Synchronisiere Distant Horizons (Distant_Horizons_server_data) Ordner"
 [instance.sync.targets.voxy]
 en = "Sync Voxy (.voxy) folder"
+de = "Synchronisiere Voxy Ordner (.voxy)"
 [instance.sync.targets.xaero]
 en = "Sync Xaero's Minimap (xaero) folder"
+de = "Synchronisiere Xaero's Minimap Ordner (xaero)"
 [instance.sync.targets.journeymap]
 en = "Sync Journeymap (journeymap) folder"
+de = "Synchronisiere Journeymap Ordner (journeymap)"
 [instance.sync.targets.bobby]
 en = "Sync Bobby (.bobby) folder"
+de = "Synchronisiere Bobby Ordner (.bobby)"
 [instance.sync.targets.litematic]
 en = "Sync Litematic (schematic) folder"
+de = "Synchronisiere Litematic Ordner (schematic)"
 
 [settings.title]
 en = "Settings"
+de = "Einstellungen"
 [settings.interface]
 en = "Interface"
+de = "Benutzeroberfläche"
 [settings.network]
 en = "Network"
+de = "Netzwerk"
 [settings.theme.title]
 en = "Theme"
+de = "Farbschema"
 [settings.theme.open_folder]
 en = "Open theme folder"
+de = "Öffne Farbschema Ordner"
 [settings.theme.open_repo]
 en = "Open theme repository"
+de = "Öffne Farbschema Repository"
 [settings.delete.title]
 en = "Deletion"
+de = "Löschung"
 [settings.delete.skip_mod_delete_confirmation]
 en = "Shift+Click to skip mod delete confirmation"
+de = "Shift+Klick um Mod-Löschungsbestätigung zu überspringen"
 [settings.delete.skip_instance_delete_confirmation]
 en = "Shift+Click to skip instance delete confirmation"
+de = "Shift+Klick um Instanz-Löschungsbestätigung zu überspringen"
 [settings.windows.title]
 en = "Windows"
+de = "Fenster"
 [settings.windows.hide_main_window]
 en = "Hide main window on launch"
+de = "Verstecke Hauptfenster beim Start"
 [settings.windows.open_game_output]
 en = "Open game output on launch"
+de = "Öffne Spiel Ausgabe beim Start"
 [settings.windows.close_all_when_main_closed]
 en = "Close all other windows when main window closed"
+de = "Schließe alle anderen Fenster when das Hauptfenster geschlossen ist"
 [settings.privacy.title]
 en = "Privacy"
+de = "Privatsphäre"
 [settings.privacy.hide_usernames]
 en = "Hide usernames"
+de = "Verstecke Nutzernamen"
 [settings.privacy.hide_skins]
 en = "Hide skins"
+de = "Verstecke Skins"
 [settings.privacy.hide_server_addresses]
 en = "Hide server addresses"
+de = "Verstecke Server Addresse"
 [settings.proxy.title]
 en = "Proxy Settings"
+de = "Proxy Einstellung"
 [settings.proxy.enabled]
 en = "Enable Proxy"
+de = "Aktiviere Proxy"
 [settings.proxy.protocol]
 en = "Protocol"
+de = "Protokoll"
 [settings.proxy.host]
 en = "Host"
+de = "Host"
 [settings.proxy.port]
 en = "Port"
+de = "Port"
 [settings.proxy.auth]
 en = "Authentication"
+de = "Authentifizierung"
 [settings.proxy.use_auth]
 en = "Use Authentication"
+de = "Nutze Authentifizierung"
 [settings.proxy.username]
 en = "Username"
+de = "Nutzername"
 [settings.proxy.password]
 en = "Password"
+de = "Passwort"
 [settings.proxy.launcher_only_note]
 en = "Note - Proxy settings only apply to the launcher, not the game itself"
+de = "Achtung - Proxyeinstellungen sind nur für Pandora, nicht für Minecraft"
 
 [skins.title]
 en = "Skins"
+de = "Skins"
 [skins.capes]
 en = "Capes"
+de = "Umhänge"
 [skins.login_to_view_edit]
 en = "Login to view/edit ${username: &str}'s skin"
+de = "Einloggen um ${username: &str}s Skin anzusehen/bearbeiten"
 [skins.unable_to_load]
 en = "Unable to load ${username: &str}'s skin"
+de = "Konnte ${username: &str}s Skin nicht laden"
 [skins.loading]
 en = "Loading ${username: &str}'s skin..."
+de = "Lade ${username: &str}s Skin..."
 [skins.no_offline]
 en = "Skins cannot be applied to offline accounts"
+de = "Skins können nicht auf Offline Konte angewant werden"
 [skins.add_from_file]
 en = "Add from file"
+de = "Füge von Datei hinzu"
 [skins.select_skin]
 en = "Select Skin"
+de = "Wähle ein Skin aus"
 [skins.copy_from_player]
 en = "Copy from player"
+de = "Von Spieler kopieren"
 [skins.copy]
 en = "Copy"
+de = "Kopiern"
 [skins.add_from_url]
 en = "Add from url"
+de = "Von URL hinzufügen"
 [skins.download]
 en = "Download"
+de = "Herunterladen"
 [skins.open_folder]
 en = "Open folder"
+de = "Öffne Ordner"
 [skins.switch_view.texture]
 en = "Switch to texture"
+de = "Wechle zu Textur"
 [skins.switch_view.model]
 en = "Switch to model"
+de = "Wechsle zu Model"
 [login.title]
 en = "Login"
+de = "Einloggen"
 [login.error]
 en = "Error while logging in"
+de = "Fehler beim einloggen"
 [import.disabled]
 en = "Please select one of the above to import from ${launcher: &str}"
+de = "Bitte wähle etwas oben aus um es von ${launcher: &str} zu importieren"
 [import.enabled]
 en = "Import the above selected from ${launcher: &str}"
+de = "Importiere das oben ausgewählte von ${launcher: &str}"

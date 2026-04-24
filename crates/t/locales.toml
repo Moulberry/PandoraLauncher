@@ -886,7 +886,7 @@ en = "The mod author has blocked downloads from third-party launchers"
 de = "Der Mod Autor hat das herunterladen von Drittanbietern blockiert"
 [instance.content.install.select_mods]
 en = "Select mods to install"
-de = "Wähle Mods aus um sie zu installieren"
+de = "Wähle zu installierende Mods aus"
 [instance.content.install.new_instance_with.mod]
 en = "Create new instance with this mod"
 de = "Erstelle neue Instanz mit dieser Mod"

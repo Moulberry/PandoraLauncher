@@ -639,7 +639,7 @@ pub mod instance {
             }
             pub fn select_mods() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                    1 => "Wähle Mods aus um sie zu installieren",
+                    1 => "Wähle zu installierende Mods aus",
                     _ => "Select mods to install",
                 }
             }

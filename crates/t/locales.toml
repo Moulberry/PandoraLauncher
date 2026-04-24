@@ -103,7 +103,7 @@ en = "Library"
 de = "Bibiliothek"
 [modrinth.category.adventure]
 en = "Adventure"
-de = "Abenteure"
+de = "Abenteuer"
 [modrinth.category.path-tracing]
 en = "Path Tracing"
 de = "Path Tracing"
@@ -286,7 +286,7 @@ de = "512x oder höher"
 
 [modrinth.sort.relevance]
 en = "Relevance"
-de = "Relevance"
+de = "Relevanz"
 [modrinth.sort.downloads]
 en = "Downloads"
 de = "Downloads"
@@ -302,7 +302,7 @@ de = "Aktualisiert"
 
 [modrinth.environment.client_and_server]
 en = "Client and server"
-de = "Client und server"
+de = "Client und Server"
 [modrinth.environment.client_only]
 en = "Client only"
 de = "Nur Client"
@@ -317,7 +317,7 @@ en = "Server (client optional)"
 de = "Server (Client Optional)"
 [modrinth.environment.client_or_server]
 en = "Client or server"
-de = "Client oder server"
+de = "Client oder Server"
 [modrinth.environment.unknown_environment]
 en = "Unknown environment"
 de = "Unbekannte Umgebung"
@@ -372,7 +372,7 @@ en = "Min"
 de = "Minimum"
 [common.max]
 en = "Max"
-de = "Maximal"
+de = "Maximum"
 [common.or_upper]
 en = "OR"
 de = "ODER"
@@ -506,7 +506,7 @@ en = "Unnamed Instance"
 de = "Unbekannte Instanz"
 [instance.incompatible]
 en = "(${num: usize} instances were incompatible)"
-de = "(${num: usize} waren inkompatiebel)"
+de = "(${num: usize} instanzen waren inkompatiebel)"
 [instance.new]
 en = "New Instance"
 de = "Neue Instanz"
@@ -590,10 +590,10 @@ en = "Game Version"
 de = "Spielversion"
 [instance.mc_version]
 en = "Minecraft Version"
-de = "Minecraftversion"
+de = "Minecraft Version"
 [instance.show_snapshots]
 en = "Show Snapshots"
-de = "Zeige Vorabversionen an"
+de = "Vorabversionen anzeigen"
 [instance.modloader]
 en = "Modloader"
 de = "Modloader"
@@ -611,7 +611,7 @@ en = "Invalid name"
 de = "Invalieder Name"
 [instance.versions_loading.game_versions]
 en = "Loading Minecraft Versions..."
-de = "Lade Minecraftversionen..."
+de = "Lade Minecraft Versionen..."
 [instance.versions_loading.reload]
 en = "Reload Versions"
 de = "Versionen neuladen"
@@ -620,7 +620,7 @@ en = "Error loading possible loader versions"
 de = "Fehler beim Laden möglicher Modloader-Versionen"
 [instance.versions_loading.error]
 en = "Error loading Minecraft versions"
-de = "Fehler beim laden von Minecraftversionen"
+de = "Fehler beim laden von Minecraft Versionen"
 [instance.memory]
 en = "Set Memory"
 de = "Arbeitsspeicher"
@@ -690,10 +690,10 @@ de = "Dadurch will die Instanz „${name: &str}“ sowie die zugehörigen Spiels
 
 [instance.logs.title]
 en = "Logs"
-de = "Logs"
+de = "Protokolle"
 [instance.logs.none]
 en = "No available logs"
-de = "Keine verfügbare Protokollede"
+de = "Keine verfügbare Protokolle"
 [instance.logs.loading]
 en = "Loading available logs..."
 de = "Lade verfügbare Protokolle..."
@@ -730,7 +730,7 @@ en = "Mods"
 de = "Mods"
 [instance.content.modpacks]
 en = "Modpacks"
-de = "Modpacks"
+de = "Modpakete"
 [instance.content.resourcepacks]
 en = "Resourcepacks"
 de = "Ressourcenpakete"
@@ -742,16 +742,16 @@ en = "Filename: "
 de = "Dateiname: "
 [instance.content.version.mod]
 en = "Mod Version"
-de = "Modversion"
+de = "Mod Version"
 [instance.content.version.modpack]
 en = "Modpack Version"
-de = "Modpaketversion"
+de = "Modpaket Version"
 [instance.content.version.resourcepack]
 en = "Pack Version"
-de = "Paketeversion"
+de = "Paket Version"
 [instance.content.version.shader]
 en = "Shader Version"
-de = "Shaderversion"
+de = "Shader Version"
 [instance.content.version.file]
 en = "File Version"
 de = "Dateiversion"
@@ -811,7 +811,7 @@ en = "Discord"
 de = "Discord"
 [instance.content.categories]
 en = "Categories"
-de = "Kategorienen"
+de = "Kategorien"
 [instance.content.sort]
 en = "Sort by"
 de = "Sortieren nach"
@@ -829,16 +829,16 @@ en = "${num: u64} Downloads"
 de = "${num: u64} Downloads"
 [instance.content.load.versions.title]
 en = "Loading mod versions..."
-de = "Lade Modversionen..."
+de = "Lade Mod Versionen..."
 [instance.content.load.versions.not_found]
 en = "No mod versions found"
-de = "Keine Modversionen gefunden"
+de = "Keine Mod Versionen gefunden"
 [instance.content.load.versions.not_found_for]
 en = "No mod versions found for ${ver: &str}"
-de = "Keine Modversion für ${ver: &str} gefunden"
+de = "Keine Mod Version für ${ver: &str} gefunden"
 [instance.content.load.versions.not_found_for_loader]
 en = "No mod versions found for ${loader: &str} ${ver: &str}"
-de = "Keine Modversion für ${loader: &str} ${ver: &str} gefunden"
+de = "Keine Mod Version für ${loader: &str} ${ver: &str} gefunden"
 [instance.content.load.versions_from_modrinth.title]
 en = "Loading project versions from Modrinth..."
 de = "Lade Projektversionen von Modrinth..."
@@ -862,7 +862,7 @@ en = "Error installing content"
 de = "Fehler beim installieren von Inhalt"
 [instance.content.install.always_latest]
 en = "Always install the latest version. Untick to be able to choose older versions of content to install"
-de = "Installiert immer die neuste Version. Deaktiviere die Checkbox um ältere versionen installieren zu können"
+de = "Installiert immer die neuste Version. Deaktivieren um ältere Versionen installieren zu können"
 [instance.content.install.from_modrinth]
 en = "Add from Modrinth"
 de = "Von Modrinth hinzufügen"
@@ -883,7 +883,7 @@ en = "Missing sha1 hash"
 de = "Fehlender sha1 Hash"
 [instance.content.install.no_third_party_downloads]
 en = "The mod author has blocked downloads from third-party launchers"
-de = "Der Mod Autor hat das herunterladen von drit"
+de = "Der Mod Autor hat das herunterladen von Drittanbietern blockiert"
 [instance.content.install.select_mods]
 en = "Select mods to install"
 de = "Wähle Mods aus um sie zu installieren"
@@ -928,7 +928,7 @@ en = "Select resource packs to install"
 de = "Wähle Ressourcenpakete aus um sie zu installieren"
 [instance.content.update.label]
 en = "Update"
-de = "Aktualisierung"
+de = "Aktualisieren"
 [instance.content.update.check.label]
 en = "Check for updates"
 en_short = "Update Check"
@@ -973,6 +973,7 @@ en = "Syncing"
 de = "Synchronisierung"
 [instance.sync.description]
 en = "These options allow for syncing various files/folders across instances"
+de = "Diese Optionen ermöglichen die Synchronisierung verschiedener Dateien/Ordner über verschiedene Instanzen hinweg"
 [instance.sync.open_folder]
 en = "Open synced folders directory"
 de = "Öffne synchronisierte Ordner"
@@ -1008,7 +1009,7 @@ en = "Sync file"
 de = "Synchronisiere Datei"
 [instance.sync.sync_folder]
 en = "Sync folder"
-de = "Ordner"
+de = "Synchronisiere Ordner"
 [instance.sync.disable_syncing]
 en = "Disable Instance File Syncing"
 de = "Deaktiviere Dateinsynchronisierung"
@@ -1066,7 +1067,7 @@ en = "Settings"
 de = "Einstellungen"
 [settings.interface]
 en = "Interface"
-de = "Instanz"
+de = "Benutzeroberfläche"
 [settings.network]
 en = "Network"
 de = "Netzwerk"

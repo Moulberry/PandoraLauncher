@@ -189,7 +189,7 @@ pub mod common {
     }
     pub fn max() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-            1 => "Maximal",
+            1 => "Maximum",
             _ => "Max",
         }
     }
@@ -431,7 +431,7 @@ pub mod instance {
         }
         pub fn categories() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Kategorienen",
+                1 => "Kategorien",
                 _ => "Categories",
             }
         }
@@ -507,7 +507,7 @@ pub mod instance {
             }
             pub fn always_latest() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                    1 => "Installiert immer die neuste Version. Deaktiviere die Checkbox um ältere versionen installieren zu können",
+                    1 => "Installiert immer die neuste Version. Deaktivieren um ältere Versionen installieren zu können",
                     _ => "Always install the latest version. Untick to be able to choose older versions of content to install",
                 }
             }
@@ -627,7 +627,7 @@ pub mod instance {
             }
             pub fn no_third_party_downloads() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                    1 => "Der Mod Autor hat das herunterladen von drit",
+                    1 => "Der Mod Autor hat das herunterladen von Drittanbietern blockiert",
                     _ => "The mod author has blocked downloads from third-party launchers",
                 }
             }
@@ -720,25 +720,25 @@ pub mod instance {
                 }
                 pub fn not_found() -> &'static str {
                     match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                        1 => "Keine Modversionen gefunden",
+                        1 => "Keine Mod Versionen gefunden",
                         _ => "No mod versions found",
                     }
                 }
                 pub fn not_found_for(ver: &str) -> String {
                     match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                        1 => format!("Keine Modversion für {ver} gefunden"),
+                        1 => format!("Keine Mod Version für {ver} gefunden"),
                         _ => format!("No mod versions found for {ver}"),
                     }
                 }
                 pub fn not_found_for_loader(loader: &str, ver: &str) -> String {
                     match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                        1 => format!("Keine Modversion für {loader} {ver} gefunden"),
+                        1 => format!("Keine Mod Version für {loader} {ver} gefunden"),
                         _ => format!("No mod versions found for {loader} {ver}"),
                     }
                 }
                 pub fn title() -> &'static str {
                     match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                        1 => "Lade Modversionen...",
+                        1 => "Lade Mod Versionen...",
                         _ => "Loading mod versions...",
                     }
                 }
@@ -766,7 +766,7 @@ pub mod instance {
         }
         pub fn modpacks() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Modpacks",
+                1 => "Modpakete",
                 _ => "Modpacks",
             }
         }
@@ -1000,7 +1000,7 @@ pub mod instance {
             }
             pub fn label() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                    1 => "Aktualisierung",
+                    1 => "Aktualisieren",
                     _ => "Update",
                 }
             }
@@ -1024,25 +1024,25 @@ pub mod instance {
             }
             pub fn mod_() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                    1 => "Modversion",
+                    1 => "Mod Version",
                     _ => "Mod Version",
                 }
             }
             pub fn modpack() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                    1 => "Modpaketversion",
+                    1 => "Modpaket Version",
                     _ => "Modpack Version",
                 }
             }
             pub fn resourcepack() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                    1 => "Paketeversion",
+                    1 => "Paket Version",
                     _ => "Pack Version",
                 }
             }
             pub fn shader() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                    1 => "Shaderversion",
+                    1 => "Shader Version",
                     _ => "Shader Version",
                 }
             }
@@ -1125,7 +1125,7 @@ pub mod instance {
     }
     pub fn incompatible(num: usize) -> String {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-            1 => format!("({num} waren inkompatiebel)"),
+            1 => format!("({num} instanzen waren inkompatiebel)"),
             _ => format!("({num} instances were incompatible)"),
         }
     }
@@ -1269,7 +1269,7 @@ pub mod instance {
         }
         pub fn none() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Keine verfügbare Protokollede",
+                1 => "Keine verfügbare Protokolle",
                 _ => "No available logs",
             }
         }
@@ -1281,7 +1281,7 @@ pub mod instance {
         }
         pub fn title() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Logs",
+                1 => "Protokolle",
                 _ => "Logs",
             }
         }
@@ -1316,7 +1316,7 @@ pub mod instance {
     }
     pub fn mc_version() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-            1 => "Minecraftversion",
+            1 => "Minecraft Version",
             _ => "Minecraft Version",
         }
     }
@@ -1445,7 +1445,7 @@ pub mod instance {
     }
     pub fn show_snapshots() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-            1 => "Zeige Vorabversionen an",
+            1 => "Vorabversionen anzeigen",
             _ => "Show Snapshots",
         }
     }
@@ -1520,6 +1520,7 @@ pub mod instance {
         }
         pub fn description() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Diese Optionen ermöglichen die Synchronisierung verschiedener Dateien/Ordner über verschiedene Instanzen hinweg",
                 _ => "These options allow for syncing various files/folders across instances",
             }
         }
@@ -1573,7 +1574,7 @@ pub mod instance {
         }
         pub fn sync_folder() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Ordner",
+                1 => "Synchronisiere Ordner",
                 _ => "Sync folder",
             }
         }
@@ -1763,13 +1764,13 @@ pub mod instance {
         }
         pub fn error() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Fehler beim laden von Minecraftversionen",
+                1 => "Fehler beim laden von Minecraft Versionen",
                 _ => "Error loading Minecraft versions",
             }
         }
         pub fn game_versions() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Lade Minecraftversionen...",
+                1 => "Lade Minecraft Versionen...",
                 _ => "Loading Minecraft Versions...",
             }
         }
@@ -1982,7 +1983,7 @@ pub mod modrinth {
         }
         pub fn adventure() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Abenteure",
+                1 => "Abenteuer",
                 _ => "Adventure",
             }
         }
@@ -2506,7 +2507,7 @@ pub mod modrinth {
         }
         pub fn client_and_server() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Client und server",
+                1 => "Client und Server",
                 _ => "Client and server",
             }
         }
@@ -2524,7 +2525,7 @@ pub mod modrinth {
         }
         pub fn client_or_server() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Client oder server",
+                1 => "Client oder Server",
                 _ => "Client or server",
             }
         }
@@ -2584,7 +2585,7 @@ pub mod modrinth {
         }
         pub fn relevance() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Relevance",
+                1 => "Relevanz",
                 _ => "Relevance",
             }
         }
@@ -2649,7 +2650,7 @@ pub mod settings {
     }
     pub fn interface() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-            1 => "Instanz",
+            1 => "Benutzeroberfläche",
             _ => "Interface",
         }
     }

@@ -243,11 +243,22 @@ impl BackendState {
 
                 let _ = std::fs::create_dir_all(target_path.parent().unwrap());
 
-                if let Some(replace) = install.replace {
-                    self.replace_aux_path(&replace, &install.mod_summary, &target_path);
-                    let _ = std::fs::remove_file(replace);
+                match crate::hard_link_or_copy(&install.from, &target_path) {
+                    Ok(()) => {
+                        if let Some(replace) = install.replace {
+                            self.replace_aux_path(&replace, &install.mod_summary, &target_path);
+                            let replace_path: &Path = &replace;
+                            if replace_path != target_path.as_path() {
+                                let _ = std::fs::remove_file(&replace);
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        log::error!("Failed to install content to {:?}: {err}", target_path);
+                        let message = format!("Failed to install content to {}: {err}", target_path.display());
+                        modal_action.set_error_message(Arc::from(message.as_str()));
+                    },
                 }
-                let _ = std::fs::hard_link(install.from, target_path);
             }
         }
     }

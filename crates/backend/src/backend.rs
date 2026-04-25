@@ -992,7 +992,9 @@ impl BackendState {
                     } else if let Some(filename) = dest_path.file_name() {
                         let filename = format!(".pandora.{filename}");
                         let hidden_dest_path = mod_dir.join(filename);
-                        let _ = std::fs::hard_link(path, hidden_dest_path);
+                        if let Err(err) = crate::hard_link_or_copy(&path, &hidden_dest_path) {
+                            log::error!("Failed to install modpack mod to {:?}: {err}", hidden_dest_path);
+                        }
                     }
                 } else {
                     let dest_path = dest_path.to_path(&dot_minecraft_path);
@@ -1034,7 +1036,9 @@ impl BackendState {
                         } else if let Some(filename) = rel_path.file_name() {
                             let filename = format!(".pandora.{filename}");
                             let hidden_dest_path = mod_dir.join(filename);
-                            let _ = std::fs::hard_link(path, hidden_dest_path);
+                            if let Err(err) = crate::hard_link_or_copy(&path, &hidden_dest_path) {
+                                log::error!("Failed to install modpack override mod to {:?}: {err}", hidden_dest_path);
+                            }
                         }
                     } else {
                         let dest_path = rel_path.to_path(&dot_minecraft_path);

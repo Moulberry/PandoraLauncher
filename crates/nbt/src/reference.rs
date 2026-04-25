@@ -713,6 +713,16 @@ impl<'a> ListRefMut<'a> {
         self.get_self_node().1.len()
     }
 
+    pub fn remove_index(&mut self, index: usize) -> bool {
+        let (_, children) = self.get_self_node_mut();
+        if index >= children.len() {
+            return false;
+        }
+        let idx = children.remove(index);
+        self.nbt.remove_node(idx);
+        true
+    }
+
     pub fn move_index(&mut self, from: usize, to: usize) -> bool {
         let (_, children) = self.get_self_node_mut();
         if from >= children.len() || to >= children.len() || from == to {

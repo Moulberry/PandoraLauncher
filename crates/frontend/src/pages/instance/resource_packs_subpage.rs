@@ -10,7 +10,7 @@ use gpui_component::{
 use schema::{content::ContentSource, curseforge::CurseforgeClassId, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
-use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, root, ui::PageType};
+use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::{InstanceContentSortKey, InterfaceConfig}, root, ui::PageType};
 
 pub struct InstanceResourcePacksSubpage {
     instance: InstanceID,
@@ -39,7 +39,14 @@ impl InstanceResourcePacksSubpage {
 
         let resource_packs_state = instance.resource_packs_state.clone();
 
-        let mut resource_packs_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone(), instance_loader, instance_version);
+        let mut resource_packs_list_delegate = ContentListDelegate::new(
+            instance_id,
+            backend_handle.clone(),
+            instance_loader,
+            instance_version,
+            InstanceContentSortKey::Filename,
+            false,
+        );
         resource_packs_list_delegate.set_content(instance.resource_packs.read(cx));
 
         let resource_packs = instance.resource_packs.clone();

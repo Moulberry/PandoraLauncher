@@ -1,6 +1,6 @@
 use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{
     Arc, atomic::{AtomicUsize, Ordering}
-}};
+}, time::UNIX_EPOCH};
 
 use bridge::{
     handle::BackendHandle, instance::{ContentSummary, ContentType, InstanceContentID, InstanceContentSummary, InstanceID, UNKNOWN_CONTENT_SUMMARY}, message::MessageToBackend, modal_action::ModalAction
@@ -14,7 +14,7 @@ use rustc_hash::FxHashSet;
 use schema::{loader::Loader, text_component::FlatTextComponent};
 use ustr::Ustr;
 
-use crate::{component::error_alert::ErrorAlert, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache};
+use crate::{component::error_alert::ErrorAlert, icon::PandoraIcon, interface_config::{InstanceContentSortKey, InterfaceConfig}, png_render_cache};
 
 #[derive(Clone)]
 struct ContentEntryChild {
@@ -39,6 +39,8 @@ pub struct ContentListDelegate {
     for_loader: Loader,
     for_version: Ustr,
     backend_handle: BackendHandle,
+    sort_key: InstanceContentSortKey,
+    enabled_first: bool,
     content: Vec<InstanceContentSummary>,
     searched: Option<Vec<SummaryOrChild>>,
     children: Vec<Vec<ContentEntryChild>>,
@@ -52,12 +54,21 @@ pub struct ContentListDelegate {
 }
 
 impl ContentListDelegate {
-    pub fn new(id: InstanceID, backend_handle: BackendHandle, for_loader: Loader, for_version: Ustr) -> Self {
+    pub fn new(
+        id: InstanceID,
+        backend_handle: BackendHandle,
+        for_loader: Loader,
+        for_version: Ustr,
+        sort_key: InstanceContentSortKey,
+        enabled_first: bool,
+    ) -> Self {
         Self {
             id,
             for_loader,
             for_version,
             backend_handle,
+            sort_key,
+            enabled_first,
             content: Vec::new(),
             searched: None,
             children: Vec::new(),
@@ -69,6 +80,11 @@ impl ContentListDelegate {
             selected_range: FxHashSet::default(),
             last_clicked_non_range: None,
         }
+    }
+
+    pub fn set_sort_options(&mut self, sort_key: InstanceContentSortKey, enabled_first: bool) {
+        self.sort_key = sort_key;
+        self.enabled_first = enabled_first;
     }
 
     pub fn render_summary(&self, summary: &InstanceContentSummary, selected: bool, expanded: bool, can_expand: bool, ix: usize, cx: &mut Context<ListState<Self>>) -> ListItem {
@@ -436,14 +452,36 @@ impl ContentListDelegate {
     pub fn set_content(&mut self, new_content: &[InstanceContentSummary]) {
         let last_mods_len = self.content.len();
 
-        let mut mods = Vec::with_capacity(new_content.len());
-        let mut children = Vec::with_capacity(new_content.len());
+        struct Item {
+            modification: InstanceContentSummary,
+            children: Vec<ContentEntryChild>,
+            sort_key: Arc<str>,
+            modified_unix_ms: Option<u128>,
+            file_size: Option<u64>,
+        }
+
+        let mut items = Vec::with_capacity(new_content.len());
 
         for modification in new_content.iter() {
-            mods.push(modification.clone());
+            let sort_key_source: &str = match self.sort_key {
+                InstanceContentSortKey::Filename => modification.filename.as_ref(),
+                InstanceContentSortKey::Name => modification.content_summary.name.as_deref().unwrap_or(modification.filename.as_ref()),
+                InstanceContentSortKey::ModifiedTime | InstanceContentSortKey::FileSize => modification.content_summary.name.as_deref().unwrap_or(modification.filename.as_ref()),
+            };
+            let sort_key: Arc<str> = sort_key_source.to_ascii_lowercase().into();
 
+            let (modified_unix_ms, file_size) = std::fs::metadata(modification.path.as_ref())
+                .ok()
+                .map(|meta| {
+                    let modified_unix_ms = meta.modified().ok().and_then(|t| {
+                        t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_millis() as u128)
+                    });
+                    (modified_unix_ms, Some(meta.len()))
+                })
+                .unwrap_or((None, None));
+
+            let mut inner_children = Vec::new();
             if let ContentType::ModrinthModpack { downloads, summaries, .. } = &modification.content_summary.extra {
-                let mut inner_children = Vec::new();
                 for (index, download) in downloads.iter().enumerate() {
                     if !download.path.starts_with("mods/") {
                         continue;
@@ -461,11 +499,11 @@ impl ContentListDelegate {
                         !modification.disabled_children.disabled_filenames.contains(&*download.path)
                     };
 
-                    let lowercase_filename: Arc<str> = download.path.to_lowercase().into();
+                    let lowercase_filename: Arc<str> = download.path.to_ascii_lowercase().into();
 
                     let lowercase_search_keys = summary.id.clone().into_iter()
                         .chain(summary.name.clone().into_iter())
-                        .chain(std::iter::once(lowercase_filename))
+                        .chain(std::iter::once(lowercase_filename.clone()))
                         .collect();
 
                     inner_children.push(ContentEntryChild {
@@ -480,12 +518,7 @@ impl ContentListDelegate {
                         is_missing,
                     });
                 }
-                inner_children.sort_by(|a, b| {
-                    lexical_sort::natural_lexical_cmp(&a.lowercase_search_keys.last().unwrap(), &b.lowercase_search_keys.last().unwrap())
-                });
-                children.push(inner_children);
             } else if let ContentType::CurseforgeModpack { files, summaries, .. } = &modification.content_summary.extra {
-                let mut inner_children = Vec::new();
                 for (index, download) in files.iter().enumerate() {
                     let (summary, cached_info) = summaries.get(index).cloned().unwrap_or((None, None));
 
@@ -506,7 +539,7 @@ impl ContentListDelegate {
                         !modification.disabled_children.disabled_filenames.contains(&*filename)
                     };
 
-                    let lowercase_filename: Arc<str> = filename.to_lowercase().into();
+                    let lowercase_filename: Arc<str> = filename.to_ascii_lowercase().into();
                     let lowercase_search_keys = summary.id.clone().into_iter()
                         .chain(summary.name.clone().into_iter())
                         .chain(std::iter::once(lowercase_filename))
@@ -527,14 +560,69 @@ impl ContentListDelegate {
                         is_missing,
                     });
                 }
-                inner_children.sort_by(|a, b| {
-                    lexical_sort::natural_lexical_cmp(&a.lowercase_search_keys.last().unwrap(), &b.lowercase_search_keys.last().unwrap())
-                });
-                children.push(inner_children);
-            } else {
-                children.push(Vec::new());
             }
+
+            items.push(Item {
+                modification: modification.clone(),
+                children: inner_children,
+                sort_key,
+                modified_unix_ms,
+                file_size,
+            });
         }
+
+        let enabled_first = self.enabled_first;
+        let sort_key = self.sort_key;
+
+        items.sort_by(|a, b| {
+            if enabled_first && a.modification.enabled != b.modification.enabled {
+                return b.modification.enabled.cmp(&a.modification.enabled);
+            }
+
+            match sort_key {
+                InstanceContentSortKey::ModifiedTime => {
+                    match (a.modified_unix_ms, b.modified_unix_ms) {
+                        (Some(a), Some(b)) => b.cmp(&a),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => lexical_sort::natural_lexical_cmp(a.sort_key.as_ref(), b.sort_key.as_ref()),
+                    }
+                }
+                InstanceContentSortKey::FileSize => {
+                    match (a.file_size, b.file_size) {
+                        (Some(a), Some(b)) => b.cmp(&a),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => lexical_sort::natural_lexical_cmp(a.sort_key.as_ref(), b.sort_key.as_ref()),
+                    }
+                }
+                _ => lexical_sort::natural_lexical_cmp(a.sort_key.as_ref(), b.sort_key.as_ref()),
+            }
+        });
+
+        for item in &mut items {
+            item.children.sort_by(|a, b| {
+                if enabled_first && a.enabled != b.enabled {
+                    return b.enabled.cmp(&a.enabled);
+                }
+
+                let key_a: &str = match sort_key {
+                    InstanceContentSortKey::Filename => a.path.as_ref(),
+                    InstanceContentSortKey::Name => a.summary.name.as_deref().unwrap_or(a.path.as_ref()),
+                    InstanceContentSortKey::ModifiedTime | InstanceContentSortKey::FileSize => a.path.as_ref(),
+                };
+                let key_b: &str = match sort_key {
+                    InstanceContentSortKey::Filename => b.path.as_ref(),
+                    InstanceContentSortKey::Name => b.summary.name.as_deref().unwrap_or(b.path.as_ref()),
+                    InstanceContentSortKey::ModifiedTime | InstanceContentSortKey::FileSize => b.path.as_ref(),
+                };
+
+                lexical_sort::natural_lexical_cmp(&key_a.to_ascii_lowercase(), &key_b.to_ascii_lowercase())
+            });
+        }
+
+        let mods: Vec<_> = items.iter().map(|i| i.modification.clone()).collect();
+        let children: Vec<_> = items.into_iter().map(|i| i.children).collect();
 
         let mut updating = self.updating.lock();
         if !updating.is_empty() {

@@ -1,16 +1,16 @@
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{
-    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::InstanceID, message::{BridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
+    handle::BackendHandle, install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{InstanceContentSummary, InstanceID}, message::{BridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Sizable, WindowExt, button::{Button, ButtonVariants}, h_flex, input::SelectAll, list::ListState, notification::{Notification, NotificationType}, v_flex
+    ActiveTheme as _, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, h_flex, input::SelectAll, list::ListState, notification::{Notification, NotificationType}, select::{Select, SelectEvent, SelectState}, switch::Switch, v_flex
 };
 use schema::{content::ContentSource, curseforge::CurseforgeClassId, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
-use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, root, ui::PageType};
+use crate::{component::{content_list::ContentListDelegate, named_dropdown::{NamedDropdown, NamedDropdownItem}}, entity::instance::InstanceEntry, interface_config::{InstanceContentSortKey, InterfaceConfig}, root, ui::PageType};
 
 pub struct InstanceModsSubpage {
     instance: InstanceID,
@@ -20,6 +20,8 @@ pub struct InstanceModsSubpage {
     backend_handle: BackendHandle,
     mods_state: BridgeDataLoadState,
     mod_list: Entity<ListState<ContentListDelegate>>,
+    mods: Entity<Arc<[InstanceContentSummary]>>,
+    sort_dropdown: Entity<SelectState<NamedDropdown<InstanceContentSortKey>>>,
     load_serial: AtomicOptionSerial,
     _add_from_file_task: Option<Task<()>>,
 }
@@ -39,13 +41,32 @@ impl InstanceModsSubpage {
 
         let mods_state = instance.mods_state.clone();
 
-        let mut mods_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone(), instance_loader, instance_version);
+        let sort_key = InterfaceConfig::get(cx).instance_mods_sort_key;
+        let enabled_first = InterfaceConfig::get(cx).instance_mods_enabled_first;
+
+        let mut mods_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone(), instance_loader, instance_version, sort_key, enabled_first);
         mods_list_delegate.set_content(instance.mods.read(cx));
 
         let mods = instance.mods.clone();
 
+        let sort_dropdown = cx.new(|cx| {
+            let items = [
+                InstanceContentSortKey::Filename,
+                InstanceContentSortKey::Name,
+                InstanceContentSortKey::ModifiedTime,
+                InstanceContentSortKey::FileSize,
+            ].into_iter().map(|key| {
+                NamedDropdownItem { name: key.name(), item: key }
+            }).collect::<Vec<_>>();
+
+            let current = InterfaceConfig::get(cx).instance_mods_sort_key;
+            let row = items.iter().position(|v| v.item == current).unwrap_or(0);
+            SelectState::new(NamedDropdown::new(items), Some(IndexPath::new(row)), window, cx)
+        });
+
+        let mods_for_observe = mods.clone();
         let mod_list = cx.new(move |cx| {
-            cx.observe(&mods, |list: &mut ListState<ContentListDelegate>, mods, cx| {
+            cx.observe(&mods_for_observe, |list: &mut ListState<ContentListDelegate>, mods, cx| {
                 let actual_mods = mods.read(cx);
                 list.delegate_mut().set_content(actual_mods);
                 cx.notify();
@@ -53,6 +74,25 @@ impl InstanceModsSubpage {
 
             ListState::new(mods_list_delegate, window, cx).selectable(false).searchable(true)
         });
+
+        cx.subscribe(&sort_dropdown, |this, _, event: &SelectEvent<NamedDropdown<InstanceContentSortKey>>, cx| {
+            let SelectEvent::Confirm(Some(value)) = event else {
+                return;
+            };
+
+            let sort_key = value.item;
+            let enabled_first = InterfaceConfig::get(cx).instance_mods_enabled_first;
+            InterfaceConfig::get_mut(cx).instance_mods_sort_key = sort_key;
+
+            let mods_snapshot = this.mods.read(cx).clone();
+            let mod_list = this.mod_list.clone();
+            cx.update_entity(&mod_list, |list, cx| {
+                list.delegate_mut().set_sort_options(sort_key, enabled_first);
+                list.delegate_mut().set_content(mods_snapshot.as_ref());
+                cx.notify();
+            });
+            cx.notify();
+        }).detach();
 
         Self {
             instance: instance_id,
@@ -62,6 +102,8 @@ impl InstanceModsSubpage {
             backend_handle,
             mods_state,
             mod_list,
+            mods,
+            sort_dropdown,
             load_serial: AtomicOptionSerial::default(),
             _add_from_file_task: None,
         }
@@ -159,10 +201,39 @@ impl Render for InstanceModsSubpage {
                 })
             }));
 
+        let filter_bar_controls = h_flex()
+            .gap_3()
+            .items_center()
+            .child(div().child(Select::new(&self.sort_dropdown).small().title_prefix("Sort: ".to_string())))
+            .child(h_flex().gap_1()
+                .child(div().text_sm().child("Enabled first"))
+                .child(Switch::new("mods_enabled_first")
+                    .checked(InterfaceConfig::get(cx).instance_mods_enabled_first)
+                    .on_click(cx.listener(|this, checked, _, cx| {
+                        let sort_key = InterfaceConfig::get(cx).instance_mods_sort_key;
+                        let enabled_first = *checked;
+                        InterfaceConfig::get_mut(cx).instance_mods_enabled_first = enabled_first;
+
+                        let mods_snapshot = this.mods.read(cx).clone();
+                        let mod_list = this.mod_list.clone();
+                        cx.update_entity(&mod_list, |list, cx| {
+                            list.delegate_mut().set_sort_options(sort_key, enabled_first);
+                            list.delegate_mut().set_content(mods_snapshot.as_ref());
+                            cx.notify();
+                        });
+                        cx.notify();
+                    }))
+                )
+            )
+            .absolute()
+            .top(px(6.0))
+            .right(px(12.0));
+
         v_flex().p_4().size_full()
             .child(header)
             .child(div()
                 .id("mod-list-area")
+                .relative()
                 .drag_over(|style, _: &ExternalPaths, _, cx| {
                     style.bg(cx.theme().accent)
                 })
@@ -174,6 +245,7 @@ impl Render for InstanceModsSubpage {
                 .rounded(theme.radius)
                 .border_color(theme.border)
                 .child(self.mod_list.clone())
+                .child(filter_bar_controls)
                 .on_click({
                     let mod_list = self.mod_list.clone();
                     move |_, _, cx| {

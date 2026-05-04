@@ -31,6 +31,10 @@ pub struct InterfaceConfig {
     pub quick_delete_mods: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub quick_delete_instance: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instance_mods_sort_key: InstanceContentSortKey,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instance_mods_enabled_first: bool,
     #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
     pub content_install_latest: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -61,6 +65,27 @@ pub struct InterfaceConfig {
     pub skin_list_show_3d: bool,
 }
 
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum InstanceContentSortKey {
+    #[default]
+    Filename,
+    Name,
+    ModifiedTime,
+    FileSize,
+}
+
+impl InstanceContentSortKey {
+    pub fn name(self) -> SharedString {
+        match self {
+            InstanceContentSortKey::Filename => "File name".into(),
+            InstanceContentSortKey::Name => "Mod name".into(),
+            InstanceContentSortKey::ModifiedTime => "Modified time".into(),
+            InstanceContentSortKey::FileSize => "File size".into(),
+        }
+    }
+}
+
 fn default_modrinth_project_type() -> ModrinthProjectType {
     ModrinthProjectType::Mod
 }
@@ -79,6 +104,8 @@ impl Default for InterfaceConfig {
             page_path: Default::default(),
             quick_delete_mods: Default::default(),
             quick_delete_instance: Default::default(),
+            instance_mods_sort_key: Default::default(),
+            instance_mods_enabled_first: Default::default(),
             content_install_latest: true,
             content_filter_version: Default::default(),
             modrinth_page_project_type: default_modrinth_project_type(),

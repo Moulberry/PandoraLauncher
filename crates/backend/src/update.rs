@@ -344,6 +344,10 @@ fn launch_update_helper(old_exe_path: PathBuf, new_exe_path: PathBuf, new_exe_da
 
     let id_string = format!("{}", std::process::id());
 
+    ps_arguments.push(OsStr::new("Write-Host"));
+    ps_arguments.push(OsStr::new("Waiting for launcher to close..."));
+    ps_arguments.push(OsStr::new(";"));
+
     ps_arguments.push(OsStr::new("Wait-Process"));
     ps_arguments.push(OsStr::new("-Id"));
     ps_arguments.push(OsStr::new(&id_string));

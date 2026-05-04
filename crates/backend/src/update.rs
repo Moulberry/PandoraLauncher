@@ -344,6 +344,10 @@ fn launch_update_helper(old_exe_path: PathBuf, new_exe_path: PathBuf, new_exe_da
 
     let id_string = format!("{}", std::process::id());
 
+    ps_arguments.push(OsStr::new("Write-Host"));
+    ps_arguments.push(OsStr::new("Waiting for launcher to close..."));
+    ps_arguments.push(OsStr::new(";"));
+
     ps_arguments.push(OsStr::new("Wait-Process"));
     ps_arguments.push(OsStr::new("-Id"));
     ps_arguments.push(OsStr::new(&id_string));
@@ -479,7 +483,8 @@ fn install_app_update(current_app_folder: PathBuf, bytes: &[u8], temp_extract: &
         }
     };
 
-    if temp_backup.exists() {
+    if needs_authorization && temp_backup.exists() {
+        _ = std::fs::rename(&temp_backup, &current_app_folder);
         return Err("Rename from current .app to temp backup errored, but then succeeded".into());
     }
 

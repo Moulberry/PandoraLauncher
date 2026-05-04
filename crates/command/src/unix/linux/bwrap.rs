@@ -9,6 +9,7 @@ use crate::{PandoraArg, PandoraChild, PandoraCommand, PandoraSandbox, spawner::S
 const DEV_BINDS: &[&str] = &[
     // Graphics
     "/dev/dri",
+    "/dev/udmabuf",
     // Graphics (mali)
     "/dev/mali",
     "/dev/mali0",
@@ -22,6 +23,8 @@ const DEV_BINDS: &[&str] = &[
     "/dev/loop",
     "/dev/mapper",
     "/dev/ram",
+    // NT Sync Primitives (Wine)
+    "/dev/ntsync",
     // Raw ALSA
     "/dev/snd"
 ];

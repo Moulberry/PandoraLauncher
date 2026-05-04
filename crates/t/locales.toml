@@ -725,7 +725,7 @@ en = "Delete Instance: ${name: &str}"
 de = "Lösche Instanz: ${name: &str}"
 [instance.delete_dialog.label]
 en = "I want to delete this instance"
-de = "Ich möchte diese Instaz löschen"
+de = "Ich möchte diese Instanz löschen"
 [instance.delete_dialog.check]
 en = "I have read and understand these effects"
 de = "Ich habe die Konsequenzen gelesen und verstanden"
@@ -1036,7 +1036,7 @@ en = "${count: usize}/${total: usize} instances are unable to be synced!"
 de = "${count: usize}/${total: usize} Instanzen konnten nicht synchronisiert werden!"
 [instance.sync.files]
 en = "Files"
-de = "Datein"
+de = "Dateien"
 [instance.sync.folders]
 en = "Folders"
 de = "Ordner"
@@ -1060,7 +1060,7 @@ en = "Sync folder"
 de = "Synchronisiere Ordner"
 [instance.sync.disable_syncing]
 en = "Disable Instance File Syncing"
-de = "Deaktiviere Dateinsynchronisierung"
+de = "Deaktiviere Datensynchronisierung"
 [instance.sync.targets.options]
 en = "Sync options.txt"
 de = "Synchronisiere options.txt"
@@ -1160,7 +1160,7 @@ en = "Hide skins"
 de = "Verstecke Skins"
 [settings.privacy.hide_server_addresses]
 en = "Hide server addresses"
-de = "Verstecke Server Addresse"
+de = "Verstecke Server Adresse"
 [settings.proxy.title]
 en = "Proxy Settings"
 de = "Proxy Einstellung"

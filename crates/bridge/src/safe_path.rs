@@ -27,6 +27,10 @@ impl SafePath {
         Some(Self(Arc::from(relative.normalize())))
     }
 
+    pub fn from_std_path(path: &Path) -> Option<SafePath> {
+        Self::from_relative_path(RelativePath::from_path(path).ok()?)
+    }
+
     pub fn new(path: &str) -> Option<SafePath> {
         let trimmed = path.trim_ascii();
         if trimmed.is_empty() {
@@ -61,5 +65,11 @@ impl SafePath {
 
     pub fn file_name(&self) -> Option<&str> {
         self.0.file_name()
+    }
+}
+
+impl AsRef<RelativePath> for SafePath {
+    fn as_ref(&self) -> &RelativePath {
+        &self.0
     }
 }

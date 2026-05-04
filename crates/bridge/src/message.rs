@@ -37,7 +37,6 @@ pub struct ExportModrinthOptions {
     pub name: Arc<str>,
     pub version: Arc<str>,
     pub summary: Option<Arc<str>>,
-    pub optional_files: bool,
 }
 
 #[derive(Debug, Clone)]

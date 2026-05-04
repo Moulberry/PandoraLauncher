@@ -1,5 +1,0 @@
-{
-  "i18n-ally.localesPaths": ["tests/locales"],
-  "i18n-ally.pathMatcher": "**/(*.)?{locale}.yml",
-  "i18n-ally.keystyle": "nested"
-}

@@ -409,6 +409,54 @@ en = "Select PNG Icon"
 en = "Instance name"
 [instance.invalid_name]
 en = "Invalid name"
+[instance.export.action]
+en = "Export"
+[instance.export.title]
+en = "Export Instance"
+[instance.export.progress]
+en = "Exporting instance"
+[instance.export.error]
+en = "Error exporting instance"
+[instance.export.format.label]
+en = "Format"
+[instance.export.format.zip]
+en = "Instance Zip"
+[instance.export.format.modrinth]
+en = "Modrinth Pack (.mrpack)"
+[instance.export.format.curseforge]
+en = "CurseForge Pack (.zip)"
+[instance.export.options]
+en = "Export Options"
+[instance.export.modrinth_options]
+en = "Modrinth Options"
+[instance.export.curseforge_options]
+en = "CurseForge Options"
+[instance.export.include_saves]
+en = "Include saves"
+[instance.export.include_mods]
+en = "Include mods"
+[instance.export.include_resourcepacks]
+en = "Include resourcepacks"
+[instance.export.include_configs]
+en = "Include configs"
+[instance.export.include_logs]
+en = "Include logs/crash reports"
+[instance.export.include_cache]
+en = "Include cache files"
+[instance.export.include_synced]
+en = "Include synced folders"
+[instance.export.name]
+en = "Name"
+[instance.export.version]
+en = "Version"
+[instance.export.summary]
+en = "Summary"
+[instance.export.author]
+en = "Author"
+[instance.export.recommended_ram]
+en = "Recommended RAM"
+[instance.export.optional_files]
+en = "Treat .disabled as optional files"
 [instance.versions_loading.game_versions]
 en = "Loading Minecraft Versions..."
 [instance.versions_loading.reload]

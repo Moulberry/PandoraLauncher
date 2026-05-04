@@ -72,8 +72,6 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 ustr = { version = "1.1.0", features = ["serde"] }
 base64 = "0.22.1"
 oauth2 = { version = "5.0.0", features = ["reqwest"] }
-p256 = "0.13.2"
-base64ct = "1.8.0"
 sha2 = "0.10.9"
 zip = "8.5.1"
 url = "2.5.7"

@@ -1,0 +1,161 @@
+name: tests
+
+on: [push, pull_request]
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Run tests
+    strategy:
+      matrix:
+        toolchain: [1.85.0, stable, beta, nightly]
+        os: [ubuntu-latest, macos-latest, windows-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ matrix.os }}-cargo-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock','**/Cargo.toml') }}
+      - run: rustup toolchain install ${{ matrix.toolchain }} --profile=minimal --no-self-update
+      - run: rustup default ${{ matrix.toolchain }}
+      - run: rustup override set ${{ matrix.toolchain }}
+      - run: rustc --verbose --version
+      - run: cargo --verbose --version
+      - run: cargo build --verbose
+      - run: cargo build --verbose --no-default-features
+      - run: cargo build --verbose --release
+      - run: cargo build --verbose --release --no-default-features
+      - run: cargo test --verbose
+      - run: cargo test --verbose --no-default-features
+      - run: cargo test --verbose --release
+      - run: cargo test --verbose --release --no-default-features
+      - name: Cross-compile x86_64-unknown-linux-gnu
+        env:
+          TARGET: x86_64-unknown-linux-gnu
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile i686-unknown-linux-gnu
+        env:
+          TARGET: i686-unknown-linux-gnu
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile aarch64-unknown-linux-gnu
+        env:
+          TARGET: aarch64-unknown-linux-gnu
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile armv7-unknown-linux-gnueabihf
+        env:
+          TARGET: armv7-unknown-linux-gnueabihf
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile aarch64-apple-darwin
+        env:
+          TARGET: aarch64-apple-darwin
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile riscv64gc-unknown-linux-gnu
+        env:
+          TARGET: riscv64gc-unknown-linux-gnu
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile riscv32imafc-unknown-none-elf
+        env:
+          TARGET: riscv32imafc-unknown-none-elf
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile loongarch64-unknown-linux-gnu
+        env:
+          TARGET: loongarch64-unknown-linux-gnu
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile s390x-unknown-linux-gnu
+        env:
+          TARGET: s390x-unknown-linux-gnu
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile wasm32-unknown-unknown
+        env:
+          TARGET: wasm32-unknown-unknown
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Cross-compile wasm32-wasip1
+        env:
+          TARGET: wasm32-wasip1
+        run: |
+          rustup target add ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }}
+          cargo build --verbose --target ${{ env.TARGET }} --no-default-features
+          cargo build --verbose --release --target ${{ env.TARGET }}
+          cargo build --verbose --release --target ${{ env.TARGET }} --no-default-features
+      - name: Count instructions
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          cargo test --verbose --release --features count_instructions_test
+          cargo test --verbose --release --no-default-features --features count_instructions_test
+
+  miri:
+    name: Run tests under Miri
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ubuntu-latest-cargo-nightly-${{ hashFiles('**/Cargo.lock','**/Cargo.toml') }}-miri
+      - run: rustup toolchain install nightly --profile=minimal --no-self-update
+      - run: rustup default nightly
+      - run: rustup override set nightly
+      - run: rustup component add miri
+      - run: rustc --verbose --version
+      - run: cargo --verbose --version
+      - run: cargo miri test --verbose
+      - run: cargo miri test --verbose --no-default-features

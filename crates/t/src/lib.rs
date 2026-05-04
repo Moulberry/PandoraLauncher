@@ -979,6 +979,164 @@ pub mod instance {
             }
         }
     }
+    pub mod export {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "action" => Some(action()),
+                "author" => Some(author()),
+                "curseforge_options" => Some(curseforge_options()),
+                "error" => Some(error()),
+                "include_cache" => Some(include_cache()),
+                "include_configs" => Some(include_configs()),
+                "include_logs" => Some(include_logs()),
+                "include_mods" => Some(include_mods()),
+                "include_resourcepacks" => Some(include_resourcepacks()),
+                "include_saves" => Some(include_saves()),
+                "include_synced" => Some(include_synced()),
+                "modrinth_options" => Some(modrinth_options()),
+                "name" => Some(name()),
+                "optional_files" => Some(optional_files()),
+                "options" => Some(options()),
+                "progress" => Some(progress()),
+                "recommended_ram" => Some(recommended_ram()),
+                "summary" => Some(summary()),
+                "title" => Some(title()),
+                "version" => Some(version()),
+                _ => None,
+            }
+        }
+        pub fn action() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Export",
+            }
+        }
+        pub fn author() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Author",
+            }
+        }
+        pub fn curseforge_options() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "CurseForge Options",
+            }
+        }
+        pub fn error() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Error exporting instance",
+            }
+        }
+        pub mod format {
+            pub fn get(key: &str) -> Option<&'static str> {
+                match key {
+                    "curseforge" => Some(curseforge()),
+                    "label" => Some(label()),
+                    "modrinth" => Some(modrinth()),
+                    "zip" => Some(zip()),
+                    _ => None,
+                }
+            }
+            pub fn curseforge() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    _ => "CurseForge Pack (.zip)",
+                }
+            }
+            pub fn label() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    _ => "Format",
+                }
+            }
+            pub fn modrinth() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    _ => "Modrinth Pack (.mrpack)",
+                }
+            }
+            pub fn zip() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    _ => "Instance Zip",
+                }
+            }
+        }
+        pub fn include_cache() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Include cache files",
+            }
+        }
+        pub fn include_configs() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Include configs",
+            }
+        }
+        pub fn include_logs() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Include logs/crash reports",
+            }
+        }
+        pub fn include_mods() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Include mods",
+            }
+        }
+        pub fn include_resourcepacks() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Include resourcepacks",
+            }
+        }
+        pub fn include_saves() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Include saves",
+            }
+        }
+        pub fn include_synced() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Include synced folders",
+            }
+        }
+        pub fn modrinth_options() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Modrinth Options",
+            }
+        }
+        pub fn name() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Name",
+            }
+        }
+        pub fn optional_files() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Treat .disabled as optional files",
+            }
+        }
+        pub fn options() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Export Options",
+            }
+        }
+        pub fn progress() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Exporting instance",
+            }
+        }
+        pub fn recommended_ram() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Recommended RAM",
+            }
+        }
+        pub fn summary() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Summary",
+            }
+        }
+        pub fn title() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Export Instance",
+            }
+        }
+        pub fn version() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Version",
+            }
+        }
+    }
     pub fn game_version() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
             _ => "Game Version",

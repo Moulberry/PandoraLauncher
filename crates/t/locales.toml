@@ -243,7 +243,7 @@ en = "Minigame"
 de = "Minispiel"
 [modrinth.category.locale]
 en = "Locale"
-de = "Localisierung"
+de = "Lokalisierung"
 [modrinth.category.potato]
 en = "Potato"
 de = "Kartoffel"

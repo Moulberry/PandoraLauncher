@@ -344,11 +344,16 @@ pub fn hard_link_or_copy(from: &Path, to: &Path) -> std::io::Result<()> {
         Err(err) if err.kind() == ErrorKind::NotFound => {},
         Err(err) => return Err(err),
     }
-    if std::fs::hard_link(from, to).is_ok() {
-        return Ok(());
+
+    if let Err(err) = std::fs::hard_link(from, to) {
+        if err.kind() == ErrorKind::CrossesDevices {
+            // Cannot hard link across devices, do a copy instead
+            return std::fs::copy(from, to).map(|_| ());
+        }
+        Err(err)
+    } else {
+        Ok(())
     }
-    log::trace!("hard_link failed for {:?} -> {:?}, falling back to copy", from, to);
-    std::fs::copy(from, to).map(|_| ())
 }
 
 pub fn rename_with_fallback_across_devices(from: &Path, to: &Path) -> std::io::Result<()> {

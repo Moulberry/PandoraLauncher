@@ -2,9 +2,9 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use schema::{auxiliary::AuxDisabledChildren, content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeModpackFile, CurseforgeModpackMinecraft}, loader::Loader, modification::ModrinthModpackFileDownload, server_status::ServerStatus, text_component::FlatTextComponent};
+use schema::{auxiliary::AuxDisabledChildren, content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeModpackFile, CurseforgeModpackMinecraft}, loader::Loader, modification::ModrinthModpackFileDownload, server_status::ServerStatus, text_component::FlatTextComponent, unique_bytes::UniqueBytes};
 
-use crate::safe_path::SafePath;
+use crate::{safe_path::SafePath};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InstanceID {
@@ -41,6 +41,7 @@ pub enum InstanceStatus {
     NotRunning,
     Launching,
     Running,
+    Stopping,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -56,14 +57,14 @@ pub struct InstanceWorldSummary {
     pub subtitle: Arc<str>,
     pub level_path: Arc<Path>,
     pub last_played: i64,
-    pub png_icon: Option<Arc<[u8]>>,
+    pub png_icon: Option<UniqueBytes>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InstanceServerSummary {
     pub name: Arc<str>,
     pub ip: Arc<str>,
-    pub png_icon: Option<Arc<[u8]>>,
+    pub png_icon: Option<UniqueBytes>,
     pub pinging: bool,
     pub status: Option<Arc<ServerStatus>>,
     pub ping: Option<Duration>,
@@ -92,7 +93,7 @@ pub struct ContentSummary {
     pub version_str: Arc<str>,
     pub rich_description: Option<Arc<FlatTextComponent>>,
     pub authors: Arc<str>,
-    pub png_icon: Option<Arc<[u8]>>,
+    pub png_icon: Option<UniqueBytes>,
     pub extra: ContentType,
 }
 

@@ -60,6 +60,14 @@ impl BackendReceiver {
         }
         Some(message)
     }
+
+    pub fn try_recv(&mut self) -> Option<MessageToBackend> {
+        let (message, serial) = self.receiver.try_recv().ok()?;
+        if let Some(serial) = serial {
+            self.processed_serial.set(serial);
+        }
+        Some(message)
+    }
 }
 
 #[derive(Debug)]

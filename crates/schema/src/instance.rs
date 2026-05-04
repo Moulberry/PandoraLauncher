@@ -31,6 +31,8 @@ pub struct InstanceConfiguration {
     pub instance_fallback_icon: Option<Ustr>,
     #[serde(default, deserialize_with = "crate::try_deserialize")]
     pub disable_file_syncing: bool,
+    #[serde(default, deserialize_with = "crate::try_deserialize")]
+    pub sandbox: bool, // Default sandbox to false when loading old configuration json
 }
 
 impl InstanceConfiguration {
@@ -48,6 +50,7 @@ impl InstanceConfiguration {
             system_libraries: None,
             instance_fallback_icon: None,
             disable_file_syncing: false,
+            sandbox: false,  // todo: for now, off by default. In the future, turn this on by default
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::{ffi::OsString, sync::Arc};
+use std::ffi::OsString;
 
 use bridge::{
     handle::BackendHandle,
@@ -8,11 +8,11 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Colorize, IndexPath, Theme, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, v_flex
+    ActiveTheme as _, Colorize, Disableable, IndexPath, Sizable, Theme, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, v_flex
 };
 
 use crate::{
-    entity::instance::InstanceEntry, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, root, ts,
+    entity::instance::InstanceEntry, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, root,
 };
 
 pub struct InstanceQuickplaySubpage {
@@ -54,6 +54,7 @@ impl InstanceQuickplaySubpage {
             backend_handle: backend_handle.clone(),
             servers: instance.servers.read(cx).to_vec(),
             searched: instance.servers.read(cx).to_vec(),
+            search_query: String::new(),
         };
 
         let worlds = instance.worlds.clone();
@@ -77,8 +78,7 @@ impl InstanceQuickplaySubpage {
             cx.observe(&servers, |list: &mut ListState<ServersListDelegate>, servers, cx| {
                 let servers = servers.read(cx).to_vec();
                 let delegate = list.delegate_mut();
-                delegate.servers = servers.clone();
-                delegate.searched = servers;
+                delegate.set_servers(servers);
                 cx.notify();
             })
             .detach();
@@ -123,8 +123,8 @@ impl Render for InstanceQuickplaySubpage {
                 .send_with_serial(MessageToBackend::RequestLoadServers { id: instance_id }, &self.servers_serial);
         }
 
-        let worlds_header = div().mb_1().ml_1().text_lg().child(ts!("instance.worlds"));
-        let servers_header = div().mb_1().ml_1().text_lg().child(ts!("instance.servers"));
+        let worlds_header = div().mb_1().ml_1().text_lg().child(t::instance::worlds());
+        let servers_header = div().mb_1().ml_1().text_lg().child(t::instance::servers());
         let total_playtime = format_playtime(playtime.total_secs);
         let current_session = if playtime.current_session_secs > 0 {
             format_playtime(playtime.current_session_secs)
@@ -140,12 +140,12 @@ impl Render for InstanceQuickplaySubpage {
                 h_flex()
                     .gap_4()
                     .child(card(
-                        ts!("instance.current_session"),
+                        t::instance::current_session(),
                         current_session.into(),
                         theme,
                     ))
                     .child(card(
-                        ts!("instance.total_playtime"),
+                        t::instance::total_playtime(),
                         total_playtime,
                         theme,
                     )),
@@ -231,7 +231,7 @@ impl ListDelegate for WorldsListDelegate {
         let summary = self.searched.get(ix.row)?;
 
         let icon = if let Some(png_icon) = summary.png_icon.as_ref() {
-            png_render_cache::render(Arc::clone(png_icon), cx)
+            png_render_cache::render(png_icon.clone(), cx)
         } else {
             gpui::img(ImageSource::Resource(Resource::Embedded("images/default_world.png".into())))
         };
@@ -291,6 +291,7 @@ pub struct ServersListDelegate {
     backend_handle: BackendHandle,
     servers: Vec<InstanceServerSummary>,
     searched: Vec<InstanceServerSummary>,
+    search_query: String,
 }
 
 impl ListDelegate for ServersListDelegate {
@@ -311,9 +312,10 @@ impl ListDelegate for ServersListDelegate {
         let hide_server_addresses = interface_config.hide_server_addresses;
 
         let summary = self.searched.get(ix.row)?;
+        let can_reorder = self.can_reorder();
 
         let icon = if let Some(png_icon) = summary.png_icon.as_ref() {
-            png_render_cache::render(Arc::clone(png_icon), cx)
+            png_render_cache::render(png_icon.clone(), cx)
         } else {
             gpui::img(ImageSource::Resource(Resource::Embedded("images/default_world.png".into())))
         };
@@ -389,26 +391,62 @@ impl ListDelegate for ServersListDelegate {
         let name = self.name.clone();
         let backend_handle = self.backend_handle.clone();
         let target = OsString::from(summary.ip.to_string());
-        let item = ListItem::new(ix).p_1().child(
-            h_flex()
-                .gap_1()
-                .child(
-                    div()
-                        .child(Button::new(ix).success().icon(PandoraIcon::Play).on_click(move |_, window, cx| {
-                            root::start_instance(
-                                id,
-                                name.clone(),
-                                Some(QuickPlayLaunch::Multiplayer(target.clone())),
-                                &backend_handle,
-                                window,
-                                cx,
-                            );
-                        }))
+        let row_index = ix.row;
+
+        let move_up = Button::new(("server-up", row_index))
+            .compact()
+            .small()
+            .icon(PandoraIcon::ArrowUp)
+            .disabled(!can_reorder || row_index == 0)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                let delegate = this.delegate_mut();
+                if !delegate.can_reorder() || row_index == 0 {
+                    return;
+                }
+                delegate.reorder_servers(row_index, row_index.saturating_sub(1), cx);
+            }));
+
+        let move_down = Button::new(("server-down", row_index))
+            .compact()
+            .small()
+            .icon(PandoraIcon::ArrowDown)
+            .disabled(!can_reorder || row_index + 1 >= self.searched.len())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                let delegate = this.delegate_mut();
+                if !delegate.can_reorder() || row_index + 1 >= delegate.searched.len() {
+                    return;
+                }
+                delegate.reorder_servers(row_index, row_index + 1, cx);
+            }));
+
+        let item = ListItem::new(ix)
+            .p_1()
+            .child(
+                h_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .child(Button::new(ix).success().icon(PandoraIcon::Play).on_click(move |_, window, cx| {
+                                root::start_instance(
+                                    id,
+                                    name.clone(),
+                                    Some(QuickPlayLaunch::Multiplayer(target.clone())),
+                                    &backend_handle,
+                                    window,
+                                    cx,
+                                );
+                            }))
+                            .px_2(),
+                    )
+                    .child(icon.size_16().min_w_16().min_h_16())
+                    .child(description)
+                    .child(v_flex()
+                        .gap_1()
+                        .child(move_up)
+                        .child(move_down)
                         .px_2(),
-                )
-                .child(icon.size_16().min_w_16().min_h_16())
-                .child(description),
-        );
+                    ),
+            );
 
         Some(item)
     }
@@ -417,8 +455,41 @@ impl ListDelegate for ServersListDelegate {
     }
 
     fn perform_search(&mut self, query: &str, _window: &mut Window, _cx: &mut Context<ListState<Self>>) -> Task<()> {
-        self.searched = self.servers.iter().filter(|w| w.name.contains(query)).cloned().collect();
+        self.search_query = query.to_string();
+        self.searched = self.apply_search(query);
 
         Task::ready(())
+    }
+}
+
+impl ServersListDelegate {
+    fn can_reorder(&self) -> bool {
+        self.search_query.is_empty()
+    }
+
+    fn set_servers(&mut self, servers: Vec<InstanceServerSummary>) {
+        self.servers = servers;
+        self.searched = self.apply_search(&self.search_query);
+    }
+
+    fn apply_search(&self, query: &str) -> Vec<InstanceServerSummary> {
+        if query.is_empty() {
+            self.servers.clone()
+        } else {
+            self.servers.iter().filter(|w| w.name.contains(query)).cloned().collect()
+        }
+    }
+
+    fn reorder_servers(&mut self, from_index: usize, to_index: usize, cx: &mut Context<ListState<Self>>) {
+        if !self.can_reorder() {
+            return;
+        }
+
+        self.backend_handle.send(MessageToBackend::ReorderServers {
+            id: self.id,
+            from_index,
+            to_index,
+        });
+        cx.notify();
     }
 }

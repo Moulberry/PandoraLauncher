@@ -9,8 +9,8 @@ fi
 version=${1#v}
 export PANDORA_RELEASE_VERSION=$version
 
-cargo build --release --target aarch64-apple-darwin
-cargo build --release --target x86_64-apple-darwin
+cargo build --release --frozen --target aarch64-apple-darwin
+cargo build --release --frozen --target x86_64-apple-darwin
 
 strip target/aarch64-apple-darwin/release/pandora_launcher
 strip target/x86_64-apple-darwin/release/pandora_launcher

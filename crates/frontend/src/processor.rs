@@ -1,27 +1,27 @@
-use std::{collections::HashMap, sync::{Arc, atomic::AtomicBool}};
+use std::sync::{Arc, atomic::AtomicBool};
 
-use bridge::{instance::InstanceStatus, message::{BridgeNotificationType, MessageToFrontend}};
-use gpui::{AnyWindowHandle, App, AppContext, Entity, SharedString, TitlebarOptions, Window, WindowDecorations, WindowHandle, WindowOptions, px, size};
+use bridge::{instance::InstanceStatus, message::{BridgeNotificationType, MessageToFrontend}, quit::QuitCoordinator};
+use gpui::{AnyWindowHandle, App, AppContext, SharedString, TitlebarOptions, Window, WindowDecorations, WindowOptions, px, size};
 use gpui_component::{notification::{Notification, NotificationType}, Root, WindowExt};
 
-use crate::{entity::{DataEntities, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata}, game_output::{GameOutput, GameOutputRoot}, interface_config::InterfaceConfig, root::LauncherRoot, ts};
+use crate::{entity::{DataEntities, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata}, game_output::{GameOutput, GameOutputRoot}, interface_config::InterfaceConfig, root::LauncherRoot};
 
 pub struct Processor {
     data: DataEntities,
-    game_output_windows: HashMap<usize, (WindowHandle<Root>, Entity<GameOutput>)>,
     main_window_handle: Option<AnyWindowHandle>,
     main_window_hidden: Arc<AtomicBool>,
     waiting_for_window: Vec<MessageToFrontend>,
+    quit_coordinator: QuitCoordinator,
 }
 
 impl Processor {
-    pub fn new(data: DataEntities, main_window_hidden: Arc<AtomicBool>) -> Self {
+    pub fn new(data: DataEntities, main_window_hidden: Arc<AtomicBool>, quit_coordinator: QuitCoordinator) -> Self {
         Self {
             data,
-            game_output_windows: HashMap::new(),
             main_window_handle: None,
             main_window_hidden,
             waiting_for_window: Vec::new(),
+            quit_coordinator,
         }
     }
 
@@ -109,6 +109,7 @@ impl Processor {
                     }
                 } else if status == InstanceStatus::NotRunning {
                     if self.main_window_handle.is_none() && self.main_window_hidden.load(std::sync::atomic::Ordering::SeqCst) {
+                        self.quit_coordinator.set_can_quit(false);
                         self.main_window_handle = Some(crate::open_main_window(&self.data, cx));
                         self.main_window_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
                         self.process_messages_waiting_for_window(cx);
@@ -170,6 +171,9 @@ impl Processor {
                     window.refresh();
                 });
             },
+            MessageToFrontend::Quit => {
+                cx.quit();
+            },
             MessageToFrontend::CloseModal => {
                 let Some(handle) = self.main_window_handle else {
                     return;
@@ -178,41 +182,24 @@ impl Processor {
                     window.close_all_dialogs(cx);
                 });
             },
-            MessageToFrontend::CreateGameOutputWindow { id, keep_alive } => {
+            MessageToFrontend::CreateGameOutputWindow { receiver } => {
+                self.quit_coordinator.set_can_quit(false);
                 let options = WindowOptions {
                     app_id: Some("PandoraLauncher".into()),
                     window_min_size: Some(size(px(360.0), px(240.0))),
                     titlebar: Some(TitlebarOptions {
-                        title: Some(ts!("system.game_output")),
+                        title: Some(t::system::game_output().into()),
                         ..Default::default()
                     }),
                     window_decorations: Some(WindowDecorations::Server),
                     ..Default::default()
                 };
                 _ = cx.open_window(options, |window, cx| {
-                    let game_output = cx.new(|_| GameOutput::default());
-                    let game_output_root = cx
-                        .new(|cx| GameOutputRoot::new(keep_alive, game_output.clone(), window, cx));
+                    let game_output = cx.new(|cx| GameOutput::new(receiver, cx));
+                    let game_output_root = cx.new(|cx| GameOutputRoot::new(game_output.clone(), window, cx));
                     window.activate_window();
-                    let window_handle = window.window_handle().downcast::<Root>().unwrap();
-                    self.game_output_windows.insert(id, (window_handle, game_output.clone()));
                     cx.new(|cx| Root::new(game_output_root, window, cx))
                 });
-            },
-            MessageToFrontend::AddGameOutput {
-                id,
-                time,
-                level,
-                text,
-            } => {
-                if let Some((window, game_output)) = self.game_output_windows.get(&id) {
-                    _ = window.update(cx, |_, window, cx| {
-                        game_output.update(cx, |game_output, _| {
-                            game_output.add(time, level, text);
-                        });
-                        window.refresh();
-                    });
-                }
             },
             MessageToFrontend::MoveInstanceToTop { id } => {
                 InstanceEntries::move_to_top(&self.data.instances, id, cx);
@@ -240,6 +227,22 @@ impl Processor {
                         }
                     }
                 });
+            },
+            MessageToFrontend::OpenOrFocusMainWindow => {
+                self.quit_coordinator.set_can_quit(false);
+
+                if let Some(handle) = self.main_window_handle {
+                    let res = handle.update(cx, |_, window, _| {
+                        window.activate_window();
+                    });
+                    if res.is_ok() {
+                        return;
+                    }
+                }
+
+                self.main_window_handle = Some(crate::open_main_window(&self.data, cx));
+                self.main_window_hidden.store(false, std::sync::atomic::Ordering::SeqCst);
+                self.process_messages_waiting_for_window(cx);
             }
         }
     }

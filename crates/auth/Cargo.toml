@@ -6,24 +6,14 @@ edition.workspace = true
 [dependencies]
 schema.workspace = true
 reqwest.workspace = true
-cvlib.workspace = true
 oauth2.workspace = true
-p256.workspace = true
-base64ct.workspace = true
 chrono.workspace = true
 serde.workspace = true
-sha2.workspace = true
-rand.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
 url.workspace = true
-nt-time.workspace = true
-anyhow.workspace = true
 uuid.workspace = true
-keyring.workspace = true
-obfstr.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
 httparse.workspace = true
 log.workspace = true
 

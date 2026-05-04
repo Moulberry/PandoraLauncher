@@ -8,10 +8,10 @@ use gpui_component::{
 ;
 use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
-use schema::minecraft_profile::{SkinState, SkinVariant};
+use schema::{minecraft_profile::{SkinState, SkinVariant}, unique_bytes::UniqueBytes};
 use uuid::Uuid;
 use crate::{
-    component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, ts
+    component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, skin_thumbnail_cache::SkinThumbnailCache, skin_renderer::determine_skin_variant,
 };
 
 pub struct SkinsPage {
@@ -20,18 +20,21 @@ pub struct SkinsPage {
     pending_login: Option<ModalAction>,
     applying_to_account: Option<Uuid>,
     request_account_skin: Option<Task<()>>,
-    selected_skin: Arc<[u8]>,
+    selected_skin: UniqueBytes,
     selected_cape: Option<(Uuid, Arc<str>)>,
     active_cape: Option<(Uuid, Arc<str>)>,
     pending_apply_cape: bool,
     player_model_widget: Entity<PlayerModelWidget>,
     skin_download_popover_open: bool,
     skin_download_input: Entity<InputState>,
+    copy_skin_popover_open: bool,
+    copy_skin_input: Entity<InputState>,
     add_from_file_task: Task<()>,
     data: DataEntities,
+    skin_thumbnail_cache: Entity<SkinThumbnailCache>,
 }
 
-static DEFAULT_SKIN: Lazy<Arc<[u8]>> = Lazy::new(|| Arc::from(*include_bytes!("../../../../assets/images/default_skin.png")));
+static DEFAULT_SKIN: Lazy<UniqueBytes> = Lazy::new(|| UniqueBytes::new(include_bytes!("../../../../assets/images/default_skin.png")));
 
 impl SkinsPage {
     pub fn new(data: &DataEntities, window: &mut Window, cx: &mut App) -> Self {
@@ -48,8 +51,11 @@ impl SkinsPage {
             player_model_widget: cx.new(|cx| PlayerModelWidget::new(cx, DEFAULT_SKIN.clone())),
             skin_download_popover_open: false,
             skin_download_input: cx.new(|cx| InputState::new(window, cx)),
+            copy_skin_popover_open: false,
+            copy_skin_input: cx.new(|cx| InputState::new(window, cx)),
             add_from_file_task: Task::ready(()),
             data: data.clone(),
+            skin_thumbnail_cache: SkinThumbnailCache::new(cx),
         }
     }
 
@@ -60,7 +66,7 @@ impl SkinsPage {
         !self.has_pending_login()
     }
 
-    fn select_skin(&mut self, skin: Arc<[u8]>, variant: SkinVariant, cx: &mut Context<Self>) {
+    fn select_skin(&mut self, skin: UniqueBytes, variant: SkinVariant, cx: &mut Context<Self>) {
         self.selected_skin = skin.clone();
         self.player_model_widget.update(cx, |widget, cx| {
             widget.set_skin(cx, skin, variant);
@@ -198,7 +204,7 @@ impl Render for SkinsPage {
             let uuid = account.uuid;
             let username = account.username(InterfaceConfig::get(cx).hide_usernames);
             if account.offline {
-                controls = ts!("skins.no_offline").into_any_element();
+                controls = t::skins::no_offline().into_any_element();
             } else if self.applying_to_account == Some(uuid) {
                 if let Some(AccountSkinResult::Success { skin, variant }) = self.account_skins.get(&uuid) {
                     active_skin = skin.clone();
@@ -208,11 +214,11 @@ impl Render for SkinsPage {
                 controls = h_flex()
                     .gap_2()
                     .child(Button::new("reset-changes")
-                        .label(ts!("common.reset"))
+                        .label(t::common::reset())
                         .disabled(true))
                     .child(Button::new("apply-changes")
                         .flex_1()
-                        .label(ts!("common.apply_changes"))
+                        .label(t::common::apply_changes())
                         .success()
                         .icon(Spinner::new())
                         .loading(true))
@@ -224,7 +230,7 @@ impl Render for SkinsPage {
                         active_skin_variant = Some(*variant);
                         let selected_variant = self.player_model_widget.read(cx).get_variant();
                         let can_apply_changes = if let Some(skin) = skin {
-                            !Arc::ptr_eq(skin, &self.selected_skin)
+                            *skin != self.selected_skin
                                 || *variant != selected_variant
                                 || self.active_cape != self.selected_cape
                         } else {
@@ -233,7 +239,7 @@ impl Render for SkinsPage {
                         controls = h_flex()
                             .gap_2()
                             .child(Button::new("reset-changes")
-                                .label(ts!("common.reset"))
+                                .label(t::common::reset())
                                 .disabled(!can_apply_changes)
                                 .on_click({
                                     let skin = skin.clone();
@@ -253,13 +259,13 @@ impl Render for SkinsPage {
                                 }))
                             .child(Button::new("apply-changes")
                                 .flex_1()
-                                .label(ts!("common.apply_changes"))
+                                .label(t::common::apply_changes())
                                 .success()
                                 .disabled(!can_apply_changes)
                                 .on_click({
                                     let skin = skin.clone();
                                     cx.listener(move |page, _, _, cx| {
-                                        if let Some(skin) = &skin && !Arc::ptr_eq(&skin, &page.selected_skin) {
+                                        if let Some(skin) = &skin && skin != &page.selected_skin {
                                             page.data.backend_handle.send(MessageToBackend::SetAccountSkin {
                                                 account: uuid,
                                                 skin: page.selected_skin.clone(),
@@ -281,7 +287,7 @@ impl Render for SkinsPage {
                     },
                     Some(AccountSkinResult::NeedsLogin) => {
                         controls = Button::new("login")
-                            .label(ts!("skins.login_to_view_edit", username = username))
+                            .label(t::skins::login_to_view_edit(&username))
                             .success()
                             .on_click(cx.listener(move |page, _, window, cx| {
                                 let modal_action = ModalAction::default();
@@ -294,19 +300,19 @@ impl Render for SkinsPage {
                                     modal_action: modal_action.clone(),
                                 });
 
-                                let title: SharedString = ts!("login.title");
-                                crate::modals::generic::show_modal(window, cx, title, ts!("login.error"), modal_action);
+                                let title: SharedString = t::login::title().into();
+                                crate::modals::generic::show_modal(window, cx, title, t::login::error().into(), modal_action);
                             })
                         ).into_any_element();
                     },
                     Some(AccountSkinResult::UnableToLoadSkin) => {
-                        controls = ts!("skins.unable_to_load", username = username).into_any_element();
+                        controls = t::skins::unable_to_load(&username).into_any_element();
                     },
                     None => {
                         if self.can_request_account_skin() {
                             self.request_account_skin(uuid, cx);
                         }
-                        controls = ts!("skins.loading", username = username).into_any_element();
+                        controls = t::skins::loading(&username).into_any_element();
                     }
                 }
             }
@@ -317,7 +323,7 @@ impl Render for SkinsPage {
                         library = library
                             .child(h_flex()
                                 .id("toggle-capes")
-                                .child(ts!("skins.capes"))
+                                .child(t::skins::capes())
                                 .child(PandoraIcon::ChevronLeft)
                                 .on_click(|_, _, cx| {
                                     InterfaceConfig::get_mut(cx).collapse_capes_in_skins_page = false;
@@ -391,7 +397,7 @@ impl Render for SkinsPage {
                         library = library
                             .child(h_flex()
                                 .id("toggle-capes")
-                                .child(ts!("skins.capes"))
+                                .child(t::skins::capes())
                                 .child(PandoraIcon::ChevronDown)
                                 .on_click(|_, _, cx| {
                                     InterfaceConfig::get_mut(cx).collapse_capes_in_skins_page = true;
@@ -412,9 +418,9 @@ impl Render for SkinsPage {
             .child(h_flex()
                 .gap_3()
                 .mb_1()
-                .child(ts!("skins.title"))
+                .child(t::skins::title())
                 .child(Button::new("add-file")
-                    .label("Add from file")
+                    .label(t::skins::add_from_file())
                     .icon(PandoraIcon::File)
                     .success()
                     .small()
@@ -425,7 +431,7 @@ impl Render for SkinsPage {
                                 files: true,
                                 directories: false,
                                 multiple: true,
-                                prompt: Some("Select Skin".into())
+                                prompt: Some(t::skins::select_skin().into())
                             });
 
                             let entity = cx.entity();
@@ -457,8 +463,42 @@ impl Render for SkinsPage {
                             page.add_from_file_task = add_from_file_task;
                         })
                     }))
+                .child(Popover::new("copy-skin-popover")
+                    .trigger(Button::new("copy-skin").label(t::skins::copy_from_player()).icon(PandoraIcon::Download).success().small().compact())
+                    .gap_2()
+                    .w_full()
+                    .items_start()
+                    .child(Input::new(&self.copy_skin_input).w_128())
+                    .open(self.copy_skin_popover_open)
+                    .on_open_change({
+                        let copy_skin_input = self.copy_skin_input.clone();
+                        cx.listener(move |page, open, window, cx| {
+                            if *open {
+                                copy_skin_input.update(cx, |input, cx| {
+                                    input.focus(window, cx);
+                                });
+                            }
+                            page.copy_skin_popover_open = *open;
+                        })
+                    })
+                    .child(Button::new("copy-skin-confirm")
+                        .label(t::skins::copy())
+                        .success()
+                        .on_click({
+                            cx.listener(move |page, _, _, cx| {
+                                let value = page.copy_skin_input.read(cx).value();
+                                let username: Arc<str> = value.into();
+                                if !username.trim().is_empty() {
+                                    page.data.backend_handle.send(MessageToBackend::CopyPlayerSkin {
+                                        username,
+                                    });
+                                }
+                                page.copy_skin_popover_open = false;
+                                cx.notify();
+                            })
+                        })))
                 .child(Popover::new("add-url-popover")
-                    .trigger(Button::new("add-url").label("Add from url").icon(PandoraIcon::Link).success().small().compact())
+                    .trigger(Button::new("add-url").label(t::skins::add_from_url()).icon(PandoraIcon::Link).success().small().compact())
                     .gap_2()
                     .w_full()
                     .items_start()
@@ -476,7 +516,7 @@ impl Render for SkinsPage {
                         })
                     })
                     .child(Button::new("download-skin")
-                        .label("Download")
+                        .label(t::skins::download())
                         .success()
                         .on_click({
                             cx.listener(move |page, _, _, cx| {
@@ -490,7 +530,7 @@ impl Render for SkinsPage {
                             })
                         })))
                 .child(Button::new("open-folder")
-                    .label("Open folder")
+                    .label(t::skins::open_folder())
                     .icon(PandoraIcon::FolderOpen)
                     .info()
                     .small()
@@ -500,24 +540,66 @@ impl Render for SkinsPage {
                         this.on_click(move |_, window, cx| {
                             crate::open_folder(&folder, window, cx);
                         })
-                    })))
+                    }))
+                .child(Button::new("toggle-3d")
+                    .icon(if InterfaceConfig::get(cx).skin_list_show_3d { PandoraIcon::Image } else { PandoraIcon::Box })
+                    .label(if InterfaceConfig::get(cx).skin_list_show_3d { t::skins::switch_view::texture() } else { t::skins::switch_view::model() })
+                    .small()
+                    .compact()
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        InterfaceConfig::get_mut(cx).skin_list_show_3d ^= true;
+                    }))))
             .child(h_flex().w_full().gap_2().flex_wrap().children(skins.filter_map(|(i, skin)| {
-                let skin_img = crate::png_render_cache::render_with_transform(skin.clone(),
-                    ImageTransformation::ResizeToWidth { width: 128 },  cx);
-                let selected = Arc::ptr_eq(&self.selected_skin, skin);
+                let selected = &self.selected_skin == skin;
                 let active = if let Some(active_skin) = &active_skin {
-                    Arc::ptr_eq(active_skin, skin)
+                    active_skin == skin
                 } else {
                     false
                 };
                 if active && i > 0 {
                     return None;
                 }
+
+                let variant = if active && let Some(v) = active_skin_variant {
+                    v
+                } else {
+                    crate::skin_renderer::determine_skin_variant(skin).unwrap_or(SkinVariant::Classic)
+                };
+
+                let show_3d = InterfaceConfig::get(cx).skin_list_show_3d;
+
                 let padding = if selected {
                     px(7.0)
                 } else {
                     px(8.0)
                 };
+
+                let skin_child: AnyElement = if show_3d {
+                    let thumbnail = self.skin_thumbnail_cache.update(cx, |cache, cx| {
+                        cache.get_or_queue(skin, variant, cx)
+                    });
+                    let thumb_w = px(crate::skin_thumbnail_cache::THUMB_WIDTH as f32);
+                    let thumb_h = px(crate::skin_thumbnail_cache::THUMB_HEIGHT as f32);
+                    if let Some(img) = thumbnail {
+                        gpui::img(img)
+                            .w(thumb_w)
+                            .h(thumb_h)
+                            .into_any_element()
+                    } else {
+                        Skeleton::new()
+                            .w(thumb_w)
+                            .h(thumb_h)
+                            .bg(secondary_skeleton)
+                            .into_any_element()
+                    }
+                } else {
+                    crate::png_render_cache::render_with_transform(
+                        skin.clone(),
+                        ImageTransformation::ResizeToWidth { width: 128 },
+                        cx,
+                    ).into_any_element()
+                };
+
                 Some(div()
                     .id(("select-skin", i))
                     .rounded(radius)
@@ -532,10 +614,43 @@ impl Render for SkinsPage {
                         this.bg(secondary)
                             .hover(|style| style.bg(secondary_hover))
                     })
-                    .when(active, |this| {
+                    .child(skin_child)
+                    .when_else(active, |this| {
                         this.child(Icon::new(PandoraIcon::Flag).absolute().right(padding).bottom(padding))
+                    }, |this| {
+                        this.child(Button::new("delete-skin")
+                            .icon(PandoraIcon::Trash2)
+                            .occlude()
+                            .danger()
+                            .outline()
+                            .compact()
+                            .absolute()
+                            .small()
+                            .left(padding)
+                            .bottom(padding)
+                            .on_click({
+                                let skin = skin.clone();
+                                let active_skin = active_skin.clone();
+                                cx.listener(move |page, _, window, cx| {
+                                    page.data.backend_handle.send(MessageToBackend::RemoveFromSkinLibrary {
+                                        skin: { skin.clone() }
+                                    });
+                                    cx.stop_propagation();
+                                    window.prevent_default();
+                                    if skin == page.selected_skin {
+                                        if let Some(active_skin) = active_skin.clone() {
+                                            let variant = if let Some(active_skin_variant) = active_skin_variant {
+                                                active_skin_variant
+                                            } else {
+                                                determine_skin_variant(&active_skin).unwrap_or(SkinVariant::Classic)
+                                            };
+                                            page.select_skin(active_skin, variant, cx);
+                                        }
+                                    }
+                                })
+                            })
+                        )
                     })
-                    .child(skin_img)
                     .on_click({
                         let skin = skin.clone();
                         cx.listener(move |page, _, _, cx| {

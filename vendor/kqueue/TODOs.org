@@ -1,0 +1,23 @@
+* TODOs
+
+** Breaking
+
+*** TODO Why does ~add_pid~ take a ~filter~
+*** TODO Don't expose all of the constants from ~kqueue-sys~
+*** TODO Express which filters are appropriate for which functions in the type system
+*** TODO Watcher is a trait, ~UncheckedWatcher~ and ~UncheckedWatcher~ impl it
+*** TODO Redo API kinda like notify's
+*** TODO use ~OwnedFd~ instead of ~RawFd~
+
+** Non-breaking
+
+*** TODO Why does remove_* call ~kevent~ and not add_*? (may be breaking)
+*** TODO Try and abstract away ~NOTE_TRACK~ and ~NOTE_CHILD~ if possible and non-breaking
+*** TODO ~get_event~ should probably check ~started~ status
+*** TODO Make sure that filters and flags are sensible
+*** TODO Why does ~as_size~ exist?
+*** TODO implement ~timer~ and ~signal~
+*** TODO ummm add ~stop~?
+*** TODO iterator with a timeout?
+*** TODO ~UncheckedWatcher~
+*** TODO async api

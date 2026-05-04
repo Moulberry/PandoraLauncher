@@ -1,0 +1,166 @@
+---
+.macos_saas_runners:
+  tags:
+    - saas-macos-medium-m1
+  image: macos-15-xcode-16
+  before_script: |
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      asdf plugin remove rust
+      brew install rustup-init
+      rustup-init -y --default-toolchain nightly
+      source ~/.cargo/env
+      export PATH="~/.cargo/bin:${PATH}"
+      cargo install gitlab-report cargo-audit
+    fi
+  variables:
+    HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
+    HOMEBREW_NO_AUTO_UPDATE: 1
+    HOMEBREW_NO_INSTALL_CLEANUP: 1
+    HOMEBREW_NO_ANALYTICS: 1
+
+stages:
+  - build
+  - test
+  - perf
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+.test:reports:
+  allow_failure: true
+  stage: test
+  script:
+    - rustc --version && cargo --version  # Print version info for debugging
+    - cargo clippy --message-format=json --all-targets --all-features
+        -- -D warnings
+        | gitlab-report -p clippy
+        > gl-code-quality-report.json
+        || true
+    # Coverage testing would go here. However, OpenBSD rust is not built
+    # with the required tooling for profiling builds.
+    - cargo test --workspace --verbose
+        -- --format json
+        | gitlab-report -p test
+        > report.xml
+        || true
+    - cargo audit --json
+        | gitlab-report -p audit -f gl-dep-scan
+        > gl-dep-report.json
+        || true
+  variables:
+    RUST_BACKTRACE: full
+    CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  artifacts:
+    name: dhat-report
+    paths:
+      - dhat-heap.json
+    reports:
+      junit: report.xml
+      codequality: gl-code-quality-report.json
+      dependency_scanning: gl-dep-report.json
+    expire_in: 1 month
+  cache:
+    key: deps
+    paths:
+      - target/debug/build
+      - target/debug/deps
+      - target/debug/examples
+      - target/debug/incremental
+
+test:reports:openbsd:
+  extends:
+    - .test:reports
+  tags:
+    - openbsd
+
+test:reports:macos:
+  extends:
+    - .macos_saas_runners
+    - .test:reports
+
+# Unfortunately, the easiest way to get good reports is to separate
+# the human-readable test phase from the report-generating test phase.
+# Normally, Gitlab does this via having a separate step for generating
+# reports. Since we do this specially, we have to cobble it together.
+# Thanks to caching, this shouldn't have a huge impact on build times.
+.test:cargo:
+  stage: test
+  script:
+    - rustc --version && cargo --version  # Print version info for debugging
+    - cargo fmt -- --check
+    - cargo clippy --all-targets --all-features -- -D warnings
+    - cargo test --workspace --verbose
+  variables:
+    RUST_BACKTRACE: full
+    CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  cache:
+    key: deps
+    paths:
+      - target/debug/build
+      - target/debug/deps
+      - target/debug/examples
+      - target/debug/incremental
+
+test:cargo:openbsd:
+  extends:
+    - .test:cargo
+  tags:
+    - openbsd
+
+test:cargo:macos:
+  extends:
+    - .macos_saas_runners
+    - .test:cargo
+
+cross:cargo:
+  image: rust:1.68-slim
+  stage: build
+  tags:
+    - gitlab-org-docker
+  parallel:
+    matrix:
+      - TARGET: x86_64-unknown-netbsd
+      - TARGET: x86_64-unknown-freebsd
+      - TARGET: i686-unknown-freebsd
+      - TARGET: aarch64-apple-darwin
+      - TARGET: x86_64-apple-darwin
+      - TARGET: aarch64-apple-ios
+      - TARGET: x86_64-apple-ios
+  before_script:
+    - rustup target add $TARGET
+  script:
+    - rustc --version && cargo --version  # Print version info for debugging
+    - cargo build --target $TARGET
+
+perf:criterion:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "src/**.rs"
+  stage: perf
+  tags:
+    - openbsd
+  script:
+    - rustc --version && cargo --version  # Print version info for debugging
+    - git checkout "origin/${CI_DEFAULT_BRANCH}"
+    - cargo bench
+    - git checkout "origin/${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+    - cargo bench
+  variables:
+    RUST_BACKTRACE: full
+    CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  artifacts:
+    name: criterion-report
+    paths:
+      - target/criterion
+  cache:
+    key: perf
+    paths:
+      - target/release/build
+      - target/release/deps
+      - target/release/examples
+      - target/release/incremental

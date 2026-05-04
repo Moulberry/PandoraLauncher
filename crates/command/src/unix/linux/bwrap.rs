@@ -1,10 +1,10 @@
 use std::{ffi::{OsStr, OsString}, io::{Error, ErrorKind}, os::fd::{AsRawFd, FromRawFd, RawFd}, path::{Path, PathBuf}};
 
 use libseccomp::{ScmpAction, ScmpArgCompare, ScmpCompareOp, ScmpFilterContext, ScmpSyscall};
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::Lazy;
 use rustc_hash::FxHashSet;
 
-use crate::{PandoraArg, PandoraChild, PandoraCommand, PandoraSandbox, unix::unix_helpers::cvt};
+use crate::{PandoraArg, PandoraChild, PandoraCommand, PandoraSandbox, spawner::SpawnContext, unix::unix_helpers::cvt};
 
 const DEV_BINDS: &[&str] = &[
     // Graphics
@@ -13,10 +13,6 @@ const DEV_BINDS: &[&str] = &[
     "/dev/mali",
     "/dev/mali0",
     "/dev/umplock",
-    // Graphics (nvidia)
-    "/dev/nvidiactl",
-    "/dev/nvidia0",
-    "/dev/nvidia",
     // Graphics (adreno)
     "/dev/kgsl-3d0",
     "/dev/ion",
@@ -179,7 +175,7 @@ fn get_card_names() -> Vec<OsString> {
     card_names
 }
 
-pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox) -> std::io::Result<PandoraChild> {
+pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox, context: &mut SpawnContext) -> std::io::Result<PandoraChild> {
     let resolved_executable = if command.executable.0.as_encoded_bytes().contains(&b'/') {
         let path = Path::new(&command.executable.0);
         let Ok(path) = path.canonicalize() else {
@@ -191,8 +187,6 @@ pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox) -> std::io::R
     } else {
         return Err(Error::new(ErrorKind::NotFound, "unable to resolve executable"));
     };
-
-    dbg!(&resolved_executable);
 
     let Some(bwrap) = crate::path_cache::get_command_path(OsStr::new("bwrap")) else {
         return Err(Error::new(ErrorKind::NotFound, "unable to find 'bwrap'"));
@@ -210,7 +204,9 @@ pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox) -> std::io::R
 
     builder.push_str("--die-with-parent");
     builder.push_str("--unshare-all");
-    builder.push_str("--share-net");
+    if sandbox.grant_network_access {
+        builder.push_str("--share-net");
+    }
 
     builder.push_str("--proc");
     builder.push_str("/proc");
@@ -223,6 +219,20 @@ pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox) -> std::io::R
 
     for dev_bind in DEV_BINDS {
         builder.bind_if_exists(BindType::Device, Path::new(*dev_bind));
+    }
+    if let Ok(read_dir) = std::fs::read_dir("/dev") {
+        for entry in read_dir {
+            let Ok(entry) = entry else {
+                break;
+            };
+            let path = entry.path();
+            let Some(file_name) = path.file_name() else {
+                continue;
+            };
+            if file_name.as_encoded_bytes().starts_with(b"nvidia") {
+                builder.bind_if_exists(BindType::Device, &path);
+            }
+        }
     }
 
     for file_ro in SYSTEM_FILES_RO {
@@ -314,24 +324,7 @@ pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox) -> std::io::R
         builder.bind_if_exists(BindType::ReadOnly, &directories.home_dir().join(".Xauthority"));
     }
 
-    // Bind java
-    if sandbox.is_jvm && let Some(java_parent) = resolved_executable.parent() && java_parent.file_name() == Some(OsStr::new("bin")) {
-        if let Some(java_parent_parent) = java_parent.parent() {
-            let lib = java_parent_parent.join("lib");
-            if lib.is_dir() {
-                builder.bind_if_exists(BindType::ReadOnly, &lib);
-            }
-
-            let conf = java_parent_parent.join("conf");
-            if conf.is_dir() {
-                builder.bind_if_exists(BindType::ReadOnly, &conf);
-            }
-        }
-
-        builder.bind_if_exists(BindType::ReadOnly, &java_parent);
-    } else {
-        builder.bind_if_exists(BindType::ReadOnly, &resolved_executable);
-    }
+    builder.bind_if_exists(BindType::ReadOnly, &resolved_executable);
 
     for path in sandbox.allow_read {
         builder.bind_if_exists(BindType::ReadOnly, &path);
@@ -360,13 +353,17 @@ pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox) -> std::io::R
     builder.push_os_string(format!("{}", seccomp_fd.as_raw_fd()).into());
     command.pass_fds.push(seccomp_fd);
 
-    let dbus_proxy = DBUS_PROXY.get_or_try_init(|| {
-        start_dbus_proxy(&sandbox.sandbox_dir)
-    })?;
+    let dbus_proxy = if let Some(dbus_proxy) = &context.dbus_proxy {
+        dbus_proxy
+    } else {
+        let dbus_proxy = start_dbus_proxy(&sandbox.sandbox_dir, context)?;
+        context.dbus_proxy = Some(dbus_proxy);
+        context.dbus_proxy.as_ref().unwrap()
+    };
 
-    if let Some(dbus_proxy) = dbus_proxy {
+    if let Some(session_bus_proxy) = &dbus_proxy.session_bus_proxy {
         builder.push_str("--bind");
-        builder.push_os_string(dbus_proxy.session_bus_proxy.clone().into_os_string());
+        builder.push_os_string(session_bus_proxy.clone().into_os_string());
         let runtime_dir = directories.runtime_dir().unwrap_or(Path::new("/run/user/1000"));
         let mapped_bus_dir = runtime_dir.join("bus").into_os_string();
         builder.push_os_string(mapped_bus_dir.clone());
@@ -383,18 +380,18 @@ pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox) -> std::io::R
     }
 
     command.args.splice(0..0, builder.command);
-    command.spawn()
+    crate::unix::unix_spawn::spawn(command, context)
 }
 
-static DBUS_PROXY: OnceCell<Option<DbusProxy>> = OnceCell::new();
-
-struct DbusProxy {
-    session_bus_proxy: PathBuf,
+pub struct DbusProxy {
+    session_bus_proxy: Option<PathBuf>,
 }
 
-fn start_dbus_proxy(sandbox_dir: &Path) -> std::io::Result<Option<DbusProxy>> {
+fn start_dbus_proxy(sandbox_dir: &Path, context: &mut SpawnContext) -> std::io::Result<DbusProxy> {
     let Some(session_bus_address) = std::env::var_os("DBUS_SESSION_BUS_ADDRESS") else {
-        return Ok(None);
+        return Ok(DbusProxy {
+            session_bus_proxy: None,
+        });
     };
     let Some(proxy_executable) = crate::path_cache::get_command_path(OsStr::new("xdg-dbus-proxy")) else {
         return Err(Error::new(ErrorKind::NotFound, "unable to find 'xdg-dbus-proxy'"))
@@ -418,11 +415,11 @@ fn start_dbus_proxy(sandbox_dir: &Path) -> std::io::Result<Option<DbusProxy>> {
     command.arg("--talk=org.freedesktop.portal.*");
     command.arg("--talk=org.mpris.MediaPlayer2.*");
 
-    _ = command.spawn()?;
+    _ = crate::unix::unix_spawn::spawn(command, context)?;
 
-    Ok(Some(DbusProxy {
-        session_bus_proxy,
-    }))
+    Ok(DbusProxy {
+        session_bus_proxy: Some(session_bus_proxy),
+    })
 }
 
 // Syscall allowlist copied from https://github.com/moby/profiles/blob/fa50b7287199d1c781284d1a34d1395a62e57f1e/seccomp/default.json

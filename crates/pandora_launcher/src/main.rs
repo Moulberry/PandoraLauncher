@@ -1,33 +1,47 @@
 #![deny(unused_must_use)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::fmt::Write;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
-use bridge::message::MessageToFrontend;
-use bridge::modal_action::ModalAction;
+use bridge::handle::{BackendHandle, FrontendHandle};
+use bridge::message::{MessageToBackend, MessageToFrontend};
+use bridge::quit::QuitCoordinator;
 use clap::Parser;
-use command::PandoraSandbox;
 use fern::colors::ColoredLevelConfig;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use native_dialog::DialogBuilder;
 use parking_lot::RwLock;
 
 #[derive(Parser, Debug)]
 #[command()]
-struct Args {
+struct Cli {
     /// Instance to launch, instead of opening the launcher
     #[arg(long)]
     run_instance: Option<String>,
+    /// Internal function to set traversable ACLs in an elevated context
+    #[cfg(windows)]
+    #[arg(long, hide = false, num_args = 2..)]
+    internal_set_traverse_acls: Option<Vec<std::ffi::OsString>>,
 }
 
 pub mod panic;
 
 fn main() {
-    let args = Args::parse();
+    let cli = Cli::parse();
+
+    #[cfg(windows)]
+    if let Some(internal_set_traverse_acls) = cli.internal_set_traverse_acls {
+        if let Err(err) = command::set_traverse_acls(internal_set_traverse_acls) {
+            eprintln!("Unable to set traverse ACLs: {err}");
+            std::process::exit(1);
+        } else {
+            std::process::exit(0);
+        }
+    }
 
     let data_dir = if let Some(portable_dir) = get_portable_dir() {
         portable_dir
@@ -37,15 +51,348 @@ fn main() {
     };
 
     let launcher_dir = data_dir.join("PandoraLauncher");
+    _ = std::fs::create_dir_all(&launcher_dir);
     _ = std::env::set_current_dir(&launcher_dir);
 
-    let log_path = launcher_dir.join("launcher.log");
-    if log_path.exists() {
-        let old_log_path = launcher_dir.join("launcher.log.old");
-        _ = std::fs::rename(log_path, old_log_path);
+    let socket = launcher_dir.join("launcher.sock");
+
+    let lockfile_path = launcher_dir.join("launcher.lock");
+    let lockfile = match OpenOptions::new().read(true).write(true).create(true).open(&lockfile_path) {
+        Ok(lockfile) => lockfile,
+        Err(err) => {
+            show_error_eprintln(format!("Unable open launcher.lock file: {err}"));
+            return;
+        },
+    };
+
+    if lockfile.try_lock().is_ok() {
+        setup_launcher_logging(&launcher_dir);
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("Failed to initialize Tokio runtime");
+
+        _ = std::fs::remove_file(&socket);
+
+        log::info!("Starting local socket: {socket:?}");
+        let enter_guard = runtime.enter();
+
+        #[cfg(unix)]
+        let bind = PlatformListener::bind(&socket);
+        #[cfg(windows)]
+        let bind = PlatformListener::bind(std::ffi::OsStr::new("pandora-launcher-socket"));
+
+        let mut listener = match bind {
+            Ok(listener) => listener,
+            Err(err) => {
+                show_error(format!("Unable to start listener: {err}"));
+                return;
+            },
+        };
+        drop(enter_guard);
+
+        let panic_message = Arc::new(RwLock::new(None));
+        let deadlock_message = Arc::new(RwLock::new(None));
+
+        let (backend_recv, backend_handle, frontend_recv, frontend_handle) = bridge::handle::create_pair();
+
+        crate::panic::install_hook(panic_message.clone(), frontend_handle.clone());
+        start_deadlock_detection(&deadlock_message, &frontend_handle);
+
+        let listen_cancel = tokio_util::sync::CancellationToken::new();
+
+        // note: there are many possible race conditions with the whole single-process architecture
+        // it's possible for a command to be sent to the main process while it is shutting down
+        // it's possible for the socket to be dropped while the file lock is still present
+        // it's possible for the file lock to be locked and the socket hasn't started yet
+        // most of these can be fixed by implementing some sort of retry logic on the calling process
+        // we might also need a semaphore between the listening logic and the shutdown logic, and to
+        // potentially cancel the shutdown if we receive a command that results in the shutdown no longer
+        // being necessary
+
+        runtime.spawn({
+            let frontend_handle = frontend_handle.clone();
+            let backend_handle = backend_handle.clone();
+            let listen_cancel = listen_cancel.clone();
+            let mut args = Vec::new();
+
+            async move {
+                'listen: loop {
+                    tokio::select! {
+                        conn = listener.accept() => {
+                            let conn = match conn {
+                                Ok(conn) => conn,
+                                Err(err) => {
+                                    log::error!("An error occurred trying to handle an incoming connection: {err}");
+                                    continue;
+                                },
+                            };
+                            let mut conn = tokio::io::BufReader::new(conn);
+
+                            use tokio::io::AsyncReadExt;
+                            use tokio::io::AsyncBufReadExt;
+
+                            let mut argc = [0; 1];
+                            if let Err(err) = conn.read_exact(&mut argc).await {
+                                log::error!("Error reading data from listener: {err}");
+                                continue;
+                            }
+
+                            args.clear();
+                            for _ in 0..argc[0] {
+                                let mut buf = Vec::new();
+                                if let Err(err) = conn.read_until(b'\0', &mut buf).await {
+                                    log::error!("Error reading data from listener: {err}");
+                                    continue 'listen;
+                                }
+
+                                if buf.last().copied() != Some(0) {
+                                    log::error!("Error reading data from listener: expected last byte to be NUL byte");
+                                    continue 'listen;
+                                }
+
+                                buf.truncate(buf.len() - 1);
+                                args.push(unsafe { OsString::from_encoded_bytes_unchecked(buf) });
+                            }
+
+                            match Cli::try_parse_from(&args) {
+                                Ok(cli) => run_cli(cli, &frontend_handle, &backend_handle),
+                                Err(err) => {
+                                    log::error!("Error while parsing received arguments: {err}");
+                                    continue 'listen;
+                                },
+                            }
+                        },
+                        _ = listen_cancel.cancelled() => {
+                            break;
+                        }
+                    }
+                }
+
+                drop(listener);
+                _ = std::fs::remove_file(&socket);
+                drop(lockfile);
+            }
+        });
+
+        let quit_handler = {
+            let backend_handle = backend_handle.clone();
+            QuitCoordinator::new(Box::new(move || {
+                listen_cancel.cancel();
+                backend_handle.send(MessageToBackend::Quit);
+                // backend will send Quit to frontend when done
+                // when frontend is done, frontend::start will be unblocked and program will exit
+            }))
+        };
+
+        run_cli(cli, &frontend_handle, &backend_handle);
+
+        backend::start(runtime, launcher_dir.clone(), frontend_handle, backend_handle.clone(), backend_recv, quit_handler.fork());
+        frontend::start(launcher_dir.clone(), panic_message, deadlock_message, backend_handle, frontend_recv, quit_handler);
+        log::info!("Quiting...");
+    } else {
+        eprintln!("Connecting to existing local socket: {socket:?}");
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("Failed to initialize Tokio runtime");
+
+        runtime.block_on(async {
+            #[cfg(unix)]
+            let connect = PlatformClientStream::connect(&socket).await;
+            #[cfg(windows)]
+            let connect = PlatformClientStream::connect(std::ffi::OsStr::new("pandora-launcher-socket")).await;
+
+            let mut conn = match connect {
+                Ok(conn) => conn,
+                Err(err) => {
+                    show_error_eprintln(format!("Error connecting to local socket: {err}"));
+                    return;
+                },
+            };
+
+            let argc = std::env::args_os().len();
+            if argc >= u8::MAX as usize {
+                show_error_eprintln(format!("Too many arguments"));
+                return;
+            }
+
+            let mut bytes = Vec::new();
+            bytes.push(argc as u8);
+            for arg in std::env::args_os() {
+                bytes.extend(arg.as_encoded_bytes());
+                bytes.push(0);
+            }
+
+            use tokio::io::AsyncWriteExt;
+            if let Err(err) = conn.write_all(&bytes).await {
+                show_error_eprintln(format!("Error sending request to local socket: {err}"));
+                return;
+            }
+        });
+    }
+}
+
+struct PlatformListener {
+    #[cfg(unix)]
+    listener: tokio::net::UnixListener,
+    #[cfg(windows)]
+    pipe_name: std::ffi::OsString,
+    #[cfg(windows)]
+    pipe: tokio::net::windows::named_pipe::NamedPipeServer,
+}
+
+struct PlatformServerStream {
+    #[cfg(unix)]
+    stream: tokio::net::UnixStream,
+    #[cfg(windows)]
+    server: tokio::net::windows::named_pipe::NamedPipeServer,
+}
+
+struct PlatformClientStream {
+    #[cfg(unix)]
+    stream: tokio::net::UnixStream,
+    #[cfg(windows)]
+    client: tokio::net::windows::named_pipe::NamedPipeClient,
+}
+
+#[cfg(unix)]
+impl PlatformListener {
+    fn bind(local_path: &Path) -> std::io::Result<Self> {
+        Ok(Self {
+            listener: tokio::net::UnixListener::bind(local_path)?
+        })
     }
 
-    if let Err(error) = setup_logging(log::LevelFilter::Debug) {
+    async fn accept(&mut self) -> std::io::Result<PlatformServerStream> {
+        let (stream, _) = self.listener.accept().await?;
+        Ok(PlatformServerStream { stream })
+    }
+}
+
+#[cfg(windows)]
+impl PlatformListener {
+    fn bind(global_name: &std::ffi::OsStr) -> std::io::Result<Self> {
+        let mut pipe_name = std::ffi::OsString::new();
+        pipe_name.push(r"\\.\pipe\");
+        pipe_name.push(global_name);
+
+        let pipe = tokio::net::windows::named_pipe::ServerOptions::new()
+            .access_outbound(false)
+            .first_pipe_instance(true)
+            .create(&pipe_name)?;
+
+        Ok(Self { pipe_name, pipe, })
+    }
+
+    async fn accept(&mut self) -> std::io::Result<PlatformServerStream> {
+        self.pipe.connect().await?;
+        let old_pipe = std::mem::replace(&mut self.pipe, tokio::net::windows::named_pipe::ServerOptions::new()
+            .access_outbound(false)
+            .create(&self.pipe_name)?);
+        Ok(PlatformServerStream {
+            server: old_pipe
+        })
+    }
+}
+
+impl PlatformServerStream {
+    #[cfg(unix)]
+    fn project(self: std::pin::Pin<&mut Self>) -> std::pin::Pin<&mut tokio::net::UnixStream> {
+        unsafe { self.map_unchecked_mut(|s| { &mut s.stream }) }
+    }
+
+    #[cfg(windows)]
+    fn project(self: std::pin::Pin<&mut Self>) -> std::pin::Pin<&mut tokio::net::windows::named_pipe::NamedPipeServer> {
+        unsafe { self.map_unchecked_mut(|s| { &mut s.server }) }
+    }
+}
+
+impl tokio::io::AsyncRead for PlatformServerStream {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        tokio::io::AsyncRead::poll_read(self.project(), cx, buf)
+    }
+}
+
+#[cfg(unix)]
+impl PlatformClientStream {
+    async fn connect(local_path: &Path) -> std::io::Result<Self> {
+        Ok(Self { stream: tokio::net::UnixStream::connect(local_path).await? })
+    }
+
+    fn project(self: std::pin::Pin<&mut Self>) -> std::pin::Pin<&mut tokio::net::UnixStream> {
+        unsafe { self.map_unchecked_mut(|s| { &mut s.stream }) }
+    }
+}
+
+#[cfg(windows)]
+impl PlatformClientStream {
+    async fn connect(global_name: &std::ffi::OsStr) -> std::io::Result<Self> {
+        let mut pipe_name = std::ffi::OsString::new();
+        pipe_name.push(r"\\.\pipe\");
+        pipe_name.push(global_name);
+
+        loop {
+            match tokio::net::windows::named_pipe::ClientOptions::new().read(false).open(&pipe_name) {
+                Ok(client) => return Ok(Self { client }),
+                Err(e) if e.raw_os_error() == Some(231) => (), // ERROR_PIPE_BUSY
+                Err(e) => return Err(e),
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+
+    fn project(self: std::pin::Pin<&mut Self>) -> std::pin::Pin<&mut tokio::net::windows::named_pipe::NamedPipeClient> {
+        unsafe { self.map_unchecked_mut(|s| { &mut s.client }) }
+    }
+}
+
+impl tokio::io::AsyncWrite for PlatformClientStream {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        tokio::io::AsyncWrite::poll_write(self.project(), cx, buf)
+    }
+
+    fn poll_flush(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+        tokio::io::AsyncWrite::poll_flush(self.project(), cx)
+    }
+
+    fn poll_shutdown(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
+        tokio::io::AsyncWrite::poll_shutdown(self.project(), cx)
+    }
+}
+
+fn run_cli(cli: Cli, frontend: &FrontendHandle, backend: &BackendHandle) {
+    frontend.send(MessageToFrontend::OpenOrFocusMainWindow);
+
+    if let Some(run_instance) = cli.run_instance {
+        backend.send(bridge::message::MessageToBackend::StartInstanceByName {
+            name: run_instance,
+            quick_play: None,
+        });
+    }
+}
+
+fn setup_launcher_logging(launcher_dir: &Path) {
+    let log_file = launcher_dir.join("launcher.log");
+    if log_file.exists() {
+        let old_log_file = launcher_dir.join("launcher.log.old");
+        _ = std::fs::rename(&log_file, old_log_file);
+    }
+
+    if let Err(error) = init_logging(log::LevelFilter::Debug, &log_file) {
         eprintln!("Unable to enable logging: {error:?}");
     }
 
@@ -53,34 +400,6 @@ fn main() {
     log::trace!("TRACE logging enabled");
 
     panic::install_logging_hook();
-
-    if let Some(run_instance) = args.run_instance {
-        let (backend_recv, backend_handle, mut frontend_recv, frontend_handle) = bridge::handle::create_pair();
-
-        backend::start(launcher_dir.clone(), frontend_handle, backend_handle.clone(), backend_recv);
-
-        while let Some(message) = frontend_recv.try_recv() {
-            if let MessageToFrontend::InstanceAdded { id, name, .. } = message {
-                if name.as_str() == run_instance.as_str() {
-                    println!("Starting instance {}", run_instance);
-                    let modal_action = ModalAction::default();
-                    backend_handle.send(bridge::message::MessageToBackend::StartInstance {
-                        id,
-                        quick_play: None,
-                        modal_action: modal_action.clone()
-                    });
-                    run_modal_action(modal_action);
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    return;
-                }
-            }
-        }
-
-        show_error(format!("Unable to find instance {}", run_instance));
-        std::process::exit(1);
-    } else {
-        run_gui(launcher_dir);
-    }
 }
 
 fn show_error(error: String) {
@@ -93,86 +412,17 @@ fn show_error(error: String) {
         .show();
 }
 
-fn run_modal_action(modal_action: ModalAction) {
-    let m = MultiProgress::new();
-    let sty = ProgressStyle::with_template(
-        "[{elapsed_precise}] {bar:40.cyan/blue} {msg}",
-    )
-    .unwrap()
-    .progress_chars("##-");
-
-    let mut opened = HashSet::new();
-    let mut progress_bars = HashMap::new();
-
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        if let Some(error) = &*modal_action.error.read() {
-            show_error(error.to_string());
-            return;
-        }
-
-        if modal_action.refcnt() <= 1 {
-            modal_action.set_finished();
-        }
-
-        if modal_action.get_finished_at().is_some() {
-            return;
-        }
-
-        if let Some(visit_url) = &*modal_action.visit_url.write() {
-            if opened.insert(visit_url.url.clone()) {
-                _ = m.println(format!("Open this URL in your browser to continue: {}", visit_url.url));
-                let open = DialogBuilder::message()
-                    .set_title("Open URL")
-                    .set_text(&visit_url.message)
-                    .confirm()
-                    .show()
-                    .unwrap_or(true);
-                if open {
-                    _ = open::that_detached(&*visit_url.url);
-                } else {
-                    return;
-                }
-            }
-        }
-
-        let trackers = modal_action.trackers.trackers.read();
-        for tracker in &*trackers {
-            let id = tracker.id();
-
-            let pb = progress_bars.entry(id).or_insert_with(|| {
-                let pb = m.add(ProgressBar::new(200));
-                pb.set_style(sty.clone());
-                pb
-            });
-
-            if pb.is_finished() && tracker.get_finished_at().is_some() {
-                continue;
-            }
-
-            let (count, total) = tracker.get();
-            pb.set_length(total as u64);
-            pb.set_position(count as u64);
-            pb.set_message(tracker.get_title().to_string());
-
-            if tracker.get_finished_at().is_some() {
-                pb.finish();
-            }
-        }
-        drop(trackers);
-    }
+fn show_error_eprintln(error: String) {
+    eprintln!("{}", error);
+    _ = DialogBuilder::message()
+        .set_level(native_dialog::MessageLevel::Error)
+        .set_title("An error occurred")
+        .set_text(error)
+        .alert()
+        .show();
 }
 
-fn run_gui(launcher_dir: PathBuf) {
-    let panic_message = Arc::new(RwLock::new(None));
-    let deadlock_message = Arc::new(RwLock::new(None));
-
-    let (backend_recv, backend_handle, frontend_recv, frontend_handle) = bridge::handle::create_pair();
-
-    crate::panic::install_hook(panic_message.clone(), frontend_handle.clone());
-
-    // Start deadlock detection
+fn start_deadlock_detection(deadlock_message: &Arc<parking_lot::lock_api::RwLock<parking_lot::RawRwLock, Option<String>>>, frontend_handle: &bridge::handle::FrontendHandle) {
     std::thread::spawn({
         let deadlock_message = deadlock_message.clone();
         let frontend_handle = frontend_handle.clone();
@@ -196,17 +446,14 @@ fn run_gui(launcher_dir: PathBuf) {
 
                 log::error!("{}", message);
                 *deadlock_message.write() = Some(message);
-                frontend_handle.send(bridge::message::MessageToFrontend::Refresh);
+                frontend_handle.send(MessageToFrontend::Refresh);
                 return;
             }
         }
     });
-
-    backend::start(launcher_dir.clone(), frontend_handle, backend_handle.clone(), backend_recv);
-    frontend::start(launcher_dir.clone(), panic_message, deadlock_message, backend_handle, frontend_recv);
 }
 
-fn setup_logging(level: log::LevelFilter) -> Result<(), fern::InitError> {
+fn init_logging(level: log::LevelFilter, log_file: &Path) -> Result<(), fern::InitError> {
     let base_config = fern::Dispatch::new()
         .level_for("pandora_launcher", level)
         .level_for("auth", level)
@@ -229,7 +476,7 @@ fn setup_logging(level: log::LevelFilter) -> Result<(), fern::InitError> {
                 message = message
             ))
         })
-        .chain(fern::log_file("launcher.log")?);
+        .chain(fern::log_file(log_file)?);
 
     let stdout_config = fern::Dispatch::new()
         .format(move |out, message, record| {

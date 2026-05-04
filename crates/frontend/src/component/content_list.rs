@@ -14,7 +14,7 @@ use rustc_hash::FxHashSet;
 use schema::{loader::Loader, text_component::FlatTextComponent};
 use ustr::Ustr;
 
-use crate::{component::error_alert::ErrorAlert, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache, ts};
+use crate::{component::error_alert::ErrorAlert, icon::PandoraIcon, interface_config::InterfaceConfig, png_render_cache};
 
 #[derive(Clone)]
 struct ContentEntryChild {
@@ -73,7 +73,7 @@ impl ContentListDelegate {
 
     pub fn render_summary(&self, summary: &InstanceContentSummary, selected: bool, expanded: bool, can_expand: bool, ix: usize, cx: &mut Context<ListState<Self>>) -> ListItem {
         let icon = if let Some(png_icon) = summary.content_summary.png_icon.as_ref() {
-            png_render_cache::render(Arc::clone(png_icon), cx)
+            png_render_cache::render(png_icon.clone(), cx)
         } else {
             gpui::img(ImageSource::Resource(Resource::Embedded("images/default_mod.png".into())))
         };
@@ -141,24 +141,24 @@ impl ContentListDelegate {
             bridge::instance::ContentUpdateStatus::Unknown => None,
             bridge::instance::ContentUpdateStatus::ManualInstall => Some(
                 Button::new(("update", element_id)).warning().icon(PandoraIcon::FileQuestionMark)
-                    .tooltip(ts!("instance.content.update.installed_manually"))
+                    .tooltip(t::instance::content::update::installed_manually())
             ),
             bridge::instance::ContentUpdateStatus::ErrorNotFound => Some(
                 Button::new(("update", element_id)).danger().icon(PandoraIcon::TriangleAlert)
-                    .tooltip(ts!("instance.content.update.check.error_404"))
+                    .tooltip(t::instance::content::update::check::error_404())
             ),
             bridge::instance::ContentUpdateStatus::ErrorInvalidHash => Some(
                 Button::new(("update", element_id)).danger().icon(PandoraIcon::TriangleAlert)
-                    .tooltip(ts!("instance.content.update.check.invalid_hash_error"))
+                    .tooltip(t::instance::content::update::check::invalid_hash_error())
             ),
             bridge::instance::ContentUpdateStatus::AlreadyUpToDate => Some(
                 Button::new(("update", element_id)).icon(PandoraIcon::Check)
-                    .tooltip(ts!("instance.content.update.check.last_up_to_date"))
+                    .tooltip(t::instance::content::update::check::last_up_to_date())
             ),
             bridge::instance::ContentUpdateStatus::Modrinth | bridge::instance::ContentUpdateStatus::Curseforge => {
                 let tooltip = match status {
-                    bridge::instance::ContentUpdateStatus::Modrinth => ts!("instance.content.update.download.from_modrinth"),
-                    bridge::instance::ContentUpdateStatus::Curseforge => ts!("instance.content.update.download.from_curseforge"),
+                    bridge::instance::ContentUpdateStatus::Modrinth => t::instance::content::update::download::from_modrinth(),
+                    bridge::instance::ContentUpdateStatus::Curseforge => t::instance::content::update::download::from_curseforge(),
                     _ => unreachable!()
                 };
 
@@ -357,7 +357,7 @@ impl ContentListDelegate {
     fn render_child_entry(&self, child: &ContentEntryChild, cx: &mut App) -> ListItem {
         let summary = &child.summary;
         let icon = if let Some(png_icon) = summary.png_icon.as_ref() {
-            png_render_cache::render(Arc::clone(png_icon), cx)
+            png_render_cache::render(png_icon.clone(), cx)
         } else {
             gpui::img(ImageSource::Resource(Resource::Embedded("images/default_mod.png".into())))
         };

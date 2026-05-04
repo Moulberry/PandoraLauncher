@@ -1,0 +1,21 @@
+[package]
+name = "svgtypes"
+version = "0.15.3"
+license = "Apache-2.0 OR MIT"
+edition = "2021"
+description = "SVG types parser."
+repository = "https://github.com/linebender/svgtypes"
+keywords = ["svg", "parser", "tokenizer"]
+categories = ["parser-implementations"]
+readme = "README.md"
+# Keep in sync with RUST_MIN_VER in .github/workflows/ci.yml and with the relevant README.md files.
+# and with the MSRV in the `Unreleased` section of CHANGELOG.md.
+rust-version = "1.65"
+exclude = [".github", ".clippy.toml", ".gitignore", ".typos.toml", "benches/", "codegen/", "fuzz/"]
+
+[workspace]
+members = ["benches"]
+
+[dependencies]
+siphasher = "1.0" # perfect hash implementation for color names
+kurbo = "0.11" # ArcTo to CurveTo(s)

@@ -1,0 +1,36 @@
+[package]
+name = "ustr"
+version = "1.1.0"
+authors = ["Anders Langlands <anderslanglands@gmail.com>"]
+edition = "2021"
+license = "BSD-2-Clause-Patent"
+description = "Fast, FFI-friendly string interning."
+documentation = "https://docs.rs/ustr"
+repository = "https://github.com/anderslanglands/ustr"
+readme = "README.md"
+keywords = ["string", "interning", "FFI"]
+categories = ["caching", "data-structures"]
+
+[badges]
+travis-ci = { repository = "anderslanglands/ustr", branch = "master" }
+
+[dependencies]
+byteorder = "1.5"
+lazy_static = "1.5"
+parking_lot = "0.12"
+serde = { version = "1", optional = true }
+ahash = { version = "0.8.3", default-features = false }
+
+
+[dev-dependencies]
+criterion = "0.4"
+crossbeam-channel = "0.5"
+crossbeam-utils = "0.8"
+libc = "0.2"
+serde_json = "1"
+string-interner = "0.13"
+string_cache = "0.8"
+
+[[bench]]
+name = "creation"
+harness = false

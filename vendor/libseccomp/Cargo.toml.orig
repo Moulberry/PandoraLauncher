@@ -1,0 +1,31 @@
+[package]
+name = "libseccomp"
+version = "0.4.0"
+authors = ["Manabu Sugimoto <Manabu.Sugimoto@sony.com>"]
+license = "MIT OR Apache-2.0"
+description = "Rust Language Bindings for the libseccomp Library"
+repository = "https://github.com/libseccomp-rs/libseccomp-rs"
+keywords = ["bindings", "seccomp", "linux", "containers", "security"]
+categories = ["os", "api-bindings"]
+rust-version = "1.67"
+edition = "2021"
+readme = "../README.md"
+
+[dependencies]
+bitflags = "2.9.0"
+cfg-if = { version = "1.0.0", optional = true }
+libc = "0.2.108"
+libseccomp-sys = { version = "0.3.0", path = "../libseccomp-sys" }
+
+[build-dependencies]
+pkg-config = "0.3.19"
+
+[package.metadata.docs.rs]
+all-features = true
+rustc-args = ["--cfg", "docsrs"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(libseccomp_v2_6)"] }
+
+[features]
+const-syscall = ["cfg-if"]

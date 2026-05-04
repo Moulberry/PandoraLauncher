@@ -1,6 +1,6 @@
 use std::{
     rc::Rc,
-    sync::{Arc, Mutex, atomic::Ordering},
+    sync::{Arc, atomic::Ordering},
     time::{Duration, Instant},
 };
 
@@ -9,6 +9,7 @@ use gpui::{App, RenderImage};
 use image::{imageops::FilterType, Frame};
 use intrusive_collections::{LinkedList, LinkedListLink, intrusive_adapter};
 use rustc_hash::FxHashMap;
+use schema::unique_bytes::UniqueBytes;
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ImageTransformation {
@@ -31,8 +32,7 @@ pub enum ImageTransformation {
 
 struct CacheEntry {
     link: LinkedListLink,
-    ptrs: Mutex<Vec<usize>>,
-    source: Arc<[u8]>,
+    source: UniqueBytes,
     transform: ImageTransformation,
     expiring: AtomicInstant,
     value: Option<Arc<RenderImage>>,
@@ -42,8 +42,7 @@ intrusive_adapter!(CacheEntryAdapter = Rc<CacheEntry>: CacheEntry { link: Linked
 
 #[derive(Default)]
 struct PngRenderCache {
-    by_ptr: FxHashMap<(usize, ImageTransformation), Rc<CacheEntry>>,
-    by_arc: FxHashMap<(Arc<[u8]>, ImageTransformation), Rc<CacheEntry>>,
+    map: FxHashMap<(UniqueBytes, ImageTransformation), Rc<CacheEntry>>,
     expiring: LinkedList<CacheEntryAdapter>,
     submitted_cleanup: bool,
 }
@@ -52,11 +51,11 @@ impl gpui::Global for PngRenderCache {}
 
 const EXPIRY_SECONDS: u64 = 1;
 
-pub fn render(image: Arc<[u8]>, cx: &mut App) -> gpui::Img {
+pub fn render(image: UniqueBytes, cx: &mut App) -> gpui::Img {
     render_with_transform(image, ImageTransformation::None, cx)
 }
 
-pub fn render_with_transform(image: Arc<[u8]>, transform: ImageTransformation, cx: &mut App) -> gpui::Img {
+pub fn render_with_transform(image: UniqueBytes, transform: ImageTransformation, cx: &mut App) -> gpui::Img {
     let cache = cx.default_global::<PngRenderCache>();
 
     let result = if let Some(result) = cache.get_or_create(image, transform) {
@@ -74,10 +73,7 @@ pub fn render_with_transform(image: Arc<[u8]>, transform: ImageTransformation, c
                 while let Some(entry) = cursor.get() {
                     if now > entry.expiring.load(Ordering::Relaxed) {
                         let entry = cursor.remove().expect("present");
-                        for ptr in entry.ptrs.lock().unwrap().iter() {
-                            cache.by_ptr.remove(&(*ptr, entry.transform)).expect("present");
-                        }
-                        cache.by_arc.remove(&(entry.source.clone(), entry.transform)).expect("present");
+                        cache.map.remove(&(entry.source.clone(), entry.transform)).expect("present");
 
                         debug_assert_eq!(Rc::strong_count(&entry), 1);
 
@@ -97,10 +93,10 @@ pub fn render_with_transform(image: Arc<[u8]>, transform: ImageTransformation, c
 }
 
 impl PngRenderCache {
-    fn get_or_create(&mut self, image: Arc<[u8]>, transform: ImageTransformation) -> Option<Arc<RenderImage>> {
-        let ptr = Arc::as_ptr(&image).addr();
+    fn get_or_create(&mut self, image: UniqueBytes, transform: ImageTransformation) -> Option<Arc<RenderImage>> {
+        let key = (image, transform);
 
-        if let Some(result) = self.by_ptr.get(&(ptr, transform)) {
+        if let Some(result) = self.map.get(&key) {
             // Update expiry
             result.expiring.store(Instant::now() + Duration::from_secs(EXPIRY_SECONDS), Ordering::Relaxed);
             unsafe {
@@ -111,22 +107,7 @@ impl PngRenderCache {
             return result.value.clone();
         }
 
-        if let Some(result) = self.by_arc.get(&(image.clone(), transform)) {
-            // Update expiry
-            result.expiring.store(Instant::now() + Duration::from_secs(EXPIRY_SECONDS), Ordering::Relaxed);
-            unsafe {
-                self.expiring.cursor_mut_from_ptr(Rc::as_ptr(result)).remove();
-            }
-            self.expiring.push_back(result.clone());
-
-            // Add ptr
-            result.ptrs.lock().unwrap().push(ptr);
-            self.by_ptr.insert((ptr, transform), result.clone());
-
-            return result.value.clone();
-        }
-
-        let result = image::load_from_memory_with_format(&image, image::ImageFormat::Png).map(|mut image| {
+        let result = image::load_from_memory_with_format(&key.0, image::ImageFormat::Png).map(|mut image| {
             match transform {
                 ImageTransformation::None => {},
                 ImageTransformation::Resize { width, height } => {
@@ -181,14 +162,12 @@ impl PngRenderCache {
 
         let entry = Rc::new(CacheEntry {
             link: LinkedListLink::new(),
-            ptrs: Mutex::new(vec![ptr]),
-            source: Arc::clone(&image),
+            source: key.0.clone(),
             transform,
             expiring: AtomicInstant::new(Instant::now() + Duration::from_secs(EXPIRY_SECONDS)),
             value: render_image.clone(),
         });
-        self.by_ptr.insert((ptr, transform), entry.clone());
-        self.by_arc.insert((Arc::clone(&image), transform), entry.clone());
+        self.map.insert(key, entry.clone());
         self.expiring.push_back(entry);
 
         render_image

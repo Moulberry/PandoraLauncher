@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use gpui::{App, AppContext, AvailableSpace, Bounds, Element, Entity, IntoElement, RenderImage, Size, Style, Task, px, size};
-use schema::minecraft_profile::SkinVariant;
+use schema::{minecraft_profile::SkinVariant, unique_bytes::UniqueBytes};
 
 pub const DEFAULT_YAW: f64 = 22.5;
 pub const DEFAULT_PITCH: f64 = 10.5;
@@ -9,8 +9,8 @@ pub const DEFAULT_ANIMATION: f64 = 1.0/16.0;
 
 struct RenderedPlayerModel {
     image: Arc<RenderImage>,
-    skin: Arc<[u8]>,
-    cape: Option<Arc<[u8]>>,
+    skin: UniqueBytes,
+    cape: Option<UniqueBytes>,
     variant: SkinVariant,
     yaw: f64,
     pitch: f64,
@@ -20,8 +20,8 @@ struct RenderedPlayerModel {
 }
 
 pub struct PlayerModelState {
-    pub skin: Arc<[u8]>,
-    pub cape: Option<Arc<[u8]>>,
+    pub skin: UniqueBytes,
+    pub cape: Option<UniqueBytes>,
     pub variant: SkinVariant,
     pub yaw: f64,
     pub pitch: f64,
@@ -31,7 +31,7 @@ pub struct PlayerModelState {
 }
 
 impl PlayerModelState {
-    pub fn new(cx: &mut App, skin: Arc<[u8]>, variant: SkinVariant) -> Entity<Self> {
+    pub fn new(cx: &mut App, skin: UniqueBytes, variant: SkinVariant) -> Entity<Self> {
         let entity = cx.new(|_| Self {
             skin,
             cape: None,
@@ -54,22 +54,9 @@ impl PlayerModelState {
         let Some(rendered) = &self.rendered else {
             return true;
         };
-        if rendered.width != width || rendered.height != height || rendered.yaw != self.yaw
+        return rendered.width != width || rendered.height != height || rendered.yaw != self.yaw
             || rendered.pitch != self.pitch || rendered.animation != self.animation
-            || rendered.variant != self.variant
-            || !Arc::ptr_eq(&rendered.skin, &self.skin)
-        {
-                return true;
-        }
-        if let Some(rendered_cape) = &rendered.cape {
-            if let Some(self_cape) = &self.cape {
-                !Arc::ptr_eq(rendered_cape, self_cape)
-            } else {
-                true
-            }
-        } else {
-            self.cape.is_some()
-        }
+            || rendered.variant != self.variant || rendered.skin != self.skin || rendered.cape != self.cape;
     }
 }
 
@@ -169,7 +156,7 @@ impl Element for PlayerModel {
                 let (send, recv) = tokio::sync::oneshot::channel();
 
                 cx.background_executor().spawn(async move {
-                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation))
+                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation, 0.0, 1.0))
                 }).detach();
 
                 let skin = state.skin.clone();

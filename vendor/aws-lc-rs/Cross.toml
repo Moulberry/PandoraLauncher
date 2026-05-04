@@ -1,0 +1,10 @@
+[build]
+dockerfile = "../docker/linux-cross/Dockerfile"
+
+[build.env]
+passthrough = [
+    "CROSS_CMAKE_SYSTEM_PROCESSOR",
+    "RUST_BACKTRACE",
+    "RUST_LOG",
+    "AWS_LC_RS_DISABLE_SLOW_TESTS",
+]

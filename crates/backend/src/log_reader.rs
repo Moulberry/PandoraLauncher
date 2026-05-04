@@ -1,12 +1,7 @@
-use std::{
-    borrow::Cow,
-    io::{BufRead, BufReader},
-    process::{ChildStderr, ChildStdout},
-    sync::{atomic::AtomicUsize, Arc},
-};
+use std::{borrow::Cow, io::{BufRead, BufReader, PipeReader}, sync::Arc};
 
 use bridge::{
-    game_output::GameOutputLogLevel, handle::FrontendHandle, keep_alive::KeepAlive, message::MessageToFrontend,
+    game_output::GameOutputLogLevel, handle::FrontendHandle, message::{GameOutputMsg, MessageToFrontend},
 };
 use chrono::Utc;
 use memchr::memchr;
@@ -14,7 +9,6 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use thiserror::Error;
 
-static GAME_OUTPUT_ID: AtomicUsize = AtomicUsize::new(0);
 static REPLACEMENTS: Lazy<[(Regex, &'static str); 7]> = Lazy::new(|| {
     [
         // Access token replacements
@@ -39,34 +33,39 @@ pub fn replace(string: &str) -> Cow<'_, str> {
     replaced
 }
 
-pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sender: FrontendHandle) {
-    let id = GAME_OUTPUT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let keep_alive = KeepAlive::new();
-    let keep_alive_handle = keep_alive.create_handle();
-    sender.send(MessageToFrontend::CreateGameOutputWindow { id, keep_alive });
+pub fn start_game_output(stdout: PipeReader, stderr: Option<PipeReader>, frontend: FrontendHandle) {
+    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+    frontend.send(MessageToFrontend::CreateGameOutputWindow { receiver });
 
     if let Some(stderr) = stderr {
         let sender = sender.clone();
-        let keep_alive_handle = keep_alive_handle.clone();
         std::thread::spawn(move || {
             let mut raw_text = String::new();
             let mut reader = BufReader::new(stderr);
 
-            while keep_alive_handle.is_alive() {
+            loop {
                 match reader.read_line(&mut raw_text) {
                     Err(e) => panic!("Error while reading stderr: {:?}", e),
                     Ok(0) => {
-                        break; // EOF
+                        return; // EOF
                     },
                     Ok(_) => {
                         let replaced = replace(&*raw_text);
+                        let replaced = replaced.trim_end();
 
-                        sender.send(MessageToFrontend::AddGameOutput {
-                            id,
+                        #[cfg(debug_assertions)]
+                        if replaced.contains('\n') {
+                            panic!("Line contains newline: {replaced:?}")
+                        }
+
+                        let res = sender.send(GameOutputMsg {
                             time: Utc::now().timestamp_millis(),
                             level: GameOutputLogLevel::Error,
-                            text: Arc::new([replaced.trim_end().into()]),
+                            text: Arc::new([replaced.into()]),
                         });
+                        if res.is_err() {
+                            return; // Window closed
+                        }
                         raw_text.clear();
                     },
                 }
@@ -78,7 +77,6 @@ pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sende
         let reader = BufReader::new(stdout);
         let mut log_reader = LogReader {
             stack: Vec::new(),
-            id,
             sender: sender.clone(),
             empty_message: "<empty>".into()
         };
@@ -103,11 +101,12 @@ pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sende
                         },
                     };
 
-                    sender.send(MessageToFrontend::AddGameOutput {
-                        id,
+                    let panic_message = format!("(Pandora) There was an error while reading the log: {panic_error_str}");
+
+                    _ = sender.send(GameOutputMsg {
                         time: Utc::now().timestamp_millis(),
                         level: GameOutputLogLevel::Fatal,
-                        text: Arc::new([format!("(Pandora) There was an error while reading the log: {panic_error_str}").into()]),
+                        text: panic_message.lines().map(Arc::from).collect::<Arc<[_]>>(),
                     });
                     return;
                 },
@@ -116,12 +115,17 @@ pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sende
         #[cfg(not(debug_assertions))]
         let result = log_reader.handle_output(&mut log_input);
 
+        if let Err(HandleOutputError::ReceiverClosed) = result {
+            return;
+        }
+
         if let Err(error) = result {
-            sender.send(MessageToFrontend::AddGameOutput {
-                id,
+            let error_message = format!("(Pandora) There was an error while reading the log: {error}");
+
+            _ = sender.send(GameOutputMsg {
                 time: Utc::now().timestamp_millis(),
                 level: GameOutputLogLevel::Fatal,
-                text: Arc::new([format!("(Pandora) There was an error while reading the log: {error}").into()]),
+                text: error_message.lines().map(Arc::from).collect::<Arc<[_]>>(),
             });
         }
     });
@@ -141,18 +145,19 @@ enum HandleOutputError {
     InvalidComment,
     #[error("Unmatched element")]
     UnmatchedElement(String),
+    #[error("Receiver closed")]
+    ReceiverClosed,
 }
 
 struct LogReader {
     stack: Vec<LogOutputState>,
-    id: usize,
-    sender: FrontendHandle,
+    sender: tokio::sync::mpsc::UnboundedSender<GameOutputMsg>,
     empty_message: Arc<str>,
 }
 
 struct LogInput {
     buffer: Vec<u8>,
-    reader: BufReader<ChildStdout>
+    reader: BufReader<PipeReader>
 }
 
 #[derive(Debug)]
@@ -781,11 +786,14 @@ impl LogReader {
             return Err(HandleOutputError::InvalidCdata);
         };
 
-        let str = str::from_utf8(cdata)?;
+        let str = match str::from_utf8(cdata) {
+            Ok(str) => Cow::Borrowed(str),
+            Err(err) => Cow::Owned(format!("{}", HandleOutputError::Utf8Error(err))),
+        };
 
         match self.stack.last_mut() {
             None => {
-                self.send_raw_text(str)?;
+                self.send_raw_text(&str)?;
             },
             Some(LogOutputState::Message { content }) => {
                 *content = Some(str.into());
@@ -904,12 +912,14 @@ impl LogReader {
                 } else {
                     Arc::new([self.empty_message.clone()])
                 };
-                self.sender.send(MessageToFrontend::AddGameOutput {
-                    id: self.id,
+                let res = self.sender.send(GameOutputMsg {
                     time: timestamp.unwrap_or(Utc::now().timestamp_millis()),
                     level: level.unwrap_or(GameOutputLogLevel::Other),
                     text: final_lines,
                 });
+                if res.is_err() {
+                    return Err(HandleOutputError::ReceiverClosed);
+                }
             },
             Some(LogOutputState::Message { .. }) => {
                 if name != b"log4j:Message" {
@@ -1035,30 +1045,35 @@ impl LogReader {
 
     fn finish_text(&mut self, remaining: &[u8], buffer: &mut Vec<u8>) -> Result<(), HandleOutputError> {
         let line = if buffer.is_empty() {
-            str::from_utf8(remaining)?
+            str::from_utf8(remaining)
         } else {
             buffer.extend_from_slice(remaining);
-            str::from_utf8(&buffer)?
+            str::from_utf8(&buffer)
         };
 
-        let result = self.send_raw_text(line);
+        let result = match line {
+            Ok(str) => self.send_raw_text(&str),
+            Err(err) => self.send_raw_text(&format!("{}", HandleOutputError::Utf8Error(err))),
+        };
 
         buffer.clear();
 
         result
     }
 
-    fn send_raw_text(&mut self, line: &str) -> Result<(), HandleOutputError> {
-        if line.trim_ascii().is_empty() {
+    fn send_raw_text(&mut self, text: &str) -> Result<(), HandleOutputError> {
+        if text.trim_ascii().is_empty() {
             return Ok(());
         }
 
-        self.sender.send(MessageToFrontend::AddGameOutput {
-            id: self.id,
+        let res = self.sender.send(GameOutputMsg {
             time: Utc::now().timestamp_millis(),
             level: GameOutputLogLevel::Info,
-            text: Arc::new([line.into()]),
+            text: text.lines().map(Arc::from).collect::<Arc<[_]>>(),
         });
+        if res.is_err() {
+            return Err(HandleOutputError::ReceiverClosed);
+        }
 
         Ok(())
     }

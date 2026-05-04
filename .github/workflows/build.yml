@@ -41,11 +41,11 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: Install needed packages on Linux
-        run: sudo apt-get update --yes && sudo apt-get install --yes libssl-dev libdbus-1-dev libx11-xcb1 libxkbcommon-x11-dev pkg-config
+        run: sudo apt-get update --yes && sudo apt-get install --yes libssl-dev libdbus-1-dev libx11-xcb1 libxkbcommon-x11-dev pkg-config libseccomp-dev libfontconfig-dev
         if: contains(matrix.platform.os, 'ubuntu')
 
       - name: Install mold linker
         uses: rui314/setup-mold@v1
 
       - name: Run build command
-        run: cargo build --release --target ${{ matrix.platform.target }}
+        run: cargo build --release --frozen --target ${{ matrix.platform.target }}

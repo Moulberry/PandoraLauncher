@@ -1,0 +1,58 @@
+name: loc 
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - 'COPYRIGHT'
+      - 'LICENSE*'
+      - '**.md'
+      - '**.txt'
+      - 'art'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'COPYRIGHT'
+      - 'LICENSE*'
+      - '**.md'
+      - '**.txt'
+      - 'art'
+  workflow_dispatch:
+
+jobs:
+  loc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        run: |
+          rustup update stable && rustup default stable
+          rustup component add clippy
+          rustup component add rustfmt
+      
+      - name: Install tokeit
+        run: |
+          cargo install tokeit --force
+      
+      - name: Count total lines of code
+        run: |
+          tokeit
+      - name: Upload total loc to GitHub Gist
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GIST_PAT }}
+          script: |
+            const fs = require('fs');
+            const output = fs.readFileSync('tokeit.json', 'utf8');
+            const gistId = '327b2a8aef9003246e45c6e47fe63937';
+            await github.rest.gists.update({
+              gist_id: gistId,
+              files: {
+                "atomic-time": {
+                  content: output
+                }
+              }
+            });

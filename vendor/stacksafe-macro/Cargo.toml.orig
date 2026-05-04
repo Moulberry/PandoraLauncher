@@ -1,0 +1,22 @@
+[package]
+name = "stacksafe-macro"
+
+categories = ["memory-management", "rust-patterns"]
+description = "Procedural macro implementation for the stacksafe crate."
+documentation = "https://docs.rs/stacksafe-macro"
+keywords = ["recursion", "recursive", "stacker", "stack", "overflow"]
+readme = "README.md"
+
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro-error2 = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true, features = ["full"] }

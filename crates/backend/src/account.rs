@@ -3,7 +3,7 @@ use std::sync::Arc;
 use auth::models::MinecraftAccessToken;
 use bridge::{account::Account, message::MessageToFrontend};
 use rustc_hash::FxHashMap;
-use schema::minecraft_profile::MinecraftProfileResponse;
+use schema::{minecraft_profile::MinecraftProfileResponse, unique_bytes::UniqueBytes};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -43,7 +43,7 @@ pub struct BackendAccount {
     pub username: Arc<str>,
     #[serde(default)]
     pub offline: bool,
-    pub head: Option<Arc<[u8]>>,
+    pub head: Option<UniqueBytes>,
 }
 
 impl BackendAccount {

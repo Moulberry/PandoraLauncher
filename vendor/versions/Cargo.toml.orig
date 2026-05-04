@@ -1,0 +1,23 @@
+[package]
+name = "versions"
+version = "7.0.0"
+authors = ["Colin Woodbury <colin@fosskers.ca>"]
+edition = "2024"
+description = "A library for parsing and comparing software version numbers."
+homepage = "https://github.com/fosskers/rs-versions"
+repository = "https://github.com/fosskers/rs-versions"
+readme = "README.md"
+license = "MIT"
+keywords = ["version", "compare", "semantic"]
+categories = ["parser-implementations"]
+rust-version = "1.85.0"
+
+[dependencies]
+itertools = "0.14"
+nom = "8.0"
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[dev-dependencies]
+semver = "1.0"
+semver-parser = "0.10"
+serde_json = "1.0"

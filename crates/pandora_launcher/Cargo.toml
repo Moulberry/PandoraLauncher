@@ -1,25 +1,24 @@
 [package]
 name = "pandora_launcher"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 build = "build.rs"
 
 [dependencies]
 frontend.workspace = true
 backend.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 bridge.workspace = true
 backtrace.workspace = true
 parking_lot.workspace = true
 directories.workspace = true
 clap.workspace = true
-indicatif.workspace = true
-open.workspace = true
 native-dialog.workspace = true
 fern.workspace = true
 log.workspace = true
 humantime.workspace = true
 command.workspace = true
 
-[build-dependencies]
+[target.'cfg(target_os = "windows")'.build-dependencies]
 winresource = "0.1.29"

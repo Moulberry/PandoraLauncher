@@ -1,0 +1,99 @@
+4C 00 00 00 
+
+01 14 02 00 00 00 00 00 C0 00 00 00
+00 00 00 46   Clsid
+
+ 9B 00 08 00  lkflags
+ 
+ 20 00 00 00 fileattr
+ 
+  D0 E9 EE F2 15 15 C9 01
+
+ D0 E9 EE F2 15 15 C9 01 
+ 
+ D0 E9 EE F2 15 15 C9 01  write time
+ 
+ 00 00 00 00 
+ 
+ 00 00 00 00 iconindex
+ 
+  01 00 00 00 
+
+
+00 00 hot key
+
+ 00 00 00 00 00 00 00 00 00 00  reserveds
+ 
+ BD 00 idlist size
+ 
+  14 00 item size
+
+1F root folder shell item
+ 50 sort index
+  E0 4F D0 20 EA 3A 69 10 A2 D8 
+ 08 00 2B 30 30 9D   data computer
+
+ 19 00 size
+ 
+ 2F volume shell item
+  43 3A 5C 00 00 00 00 00 00 00 00 
+  00 00 00 00 00 00 00 00 00 00 00  data  C:\
+ 
+  46 00 size
+  
+   31 folder type
+    00 	Unknown (Empty value)
+     00 00 00 00 filesize
+      2C 39 69 A3 mtime
+      10 00 fileattr
+       74 65 73 74 00 test+terminalid00
+        32 00 extension block size 50 Includes the 2 bytes of the size
+         09 00 extension version
+          04 00 EF BE extension signature
+           2C 39 65 A3 Ctime
+            2C 39 69 A3 acesstime
+            2E 00 win 8,10 Unknown (version or identifier?)
+              00 00 00 00  Unknown (empty values) >=8
+             
+
+              74 00 65 00 73 00 74 00 test
+               00 00
+                14 00
+ 
+ 
+  48 00 // start from 0x 00(48)  72
+   32 00 filetype
+    00 00 00 00 filesize
+     2C 39 69 A3 mtime
+     20 00 fileattr
+     here is 0x14-> 61 2E 74 78 74 00 a.txt+terminalid00 
+       34 00 extension block size  52
+        09 00 extension version
+         04 00 EF BE  extension signature
+ 2C 39 69 A3 Ctime
+ 2C 39 69 A3 acesstime
+  26 00
+   00 00
+    2D 6E 00 00 00 00 96 01 NTFS file reference
+     00 00 00 00 00 00 00 00 	Unknown
+     00 00 
+
+ 61 00 2E 00 74 00 78 00 74 00 a.txt
+
+  00 00 
+  14 00 fisrt extension block version offset
+  
+   00 00 3C 00 00 00 1C
+ 00 00 00 01 00 00 00 1C 00 00 00 2D 00 00 00 00
+ 00 00 00 3B 00 00 00 11 00 00 00 03 00 00 00 81
+ 8A 7A 30 10 00 00 00 00 43 3A 5C 74 65 73 74 5C
+61 2E 74 78 74 00 00 07 00 2E 00 5C 00 61 00 2E
+ 00 74 00 78 00 74 00 07 00 43 00 3A 00 5C 00 74
+00 65 00 73 00 74 00 60 00 00 00 03 00 00 A0 58
+ 00 00 00 00 00 00 00 63 68 72 69 73 2D 78 70 73
+ 00 00 00 00 00 00 00 40 78 C7 94 47 FA C7 46 B3
+ 56 5C 2D C6 B6 D1 15 EC 46 CD 7B 22 7F DD 11 94
+ 99 00 13 72 16 87 4A 40 78 C7 94 47 FA C7 46 B3
+ 56 5C 2D C6 B6 D1 15 EC 46 CD 7B 22 7F DD 11 94
+ 99 00 13 72 16 87 4A 00 00 00 00
+

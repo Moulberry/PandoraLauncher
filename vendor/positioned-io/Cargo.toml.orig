@@ -1,0 +1,28 @@
+[package]
+name = "positioned-io"
+version = "0.3.5" # remember to update html_root_url, changelog and readme example
+authors = ["Dave Vasilevsky <dave@vasilevsky.ca>", "Niklas Fiekas <niklas.fiekas@backscattering.de>"]
+description = "Reading and writing at an offset"
+keywords = ["read", "offset", "pread", "pwrite", "endian"]
+categories = ["filesystem", "os"]
+license = "MIT"
+repository = "https://github.com/vasi/positioned-io"
+readme = "README.md"
+rust-version = "1.71"
+edition = "2021"
+
+[features]
+default = ["byteorder"]
+
+[dependencies]
+byteorder = { version = "1.2", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["basetsd", "minwindef", "handleapi", "fileapi", "sysinfoapi", "memoryapi", "winnt"] }
+
+[dev-dependencies]
+quickcheck = "1"
+tempfile = "3.0"

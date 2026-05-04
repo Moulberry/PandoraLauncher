@@ -3,7 +3,7 @@ use std::{cell::RefCell, ops::Range, path::{Component, Path}, rc::Rc, sync::{Arc
 use gpui::{AvailableSpace, Element, ElementId, IntoElement, ParentElement, ShapedLine, SharedString, Size, Style, Styled, TextStyle, px};
 use gpui_component::button::{Button, ButtonVariants};
 
-use crate::{icon::PandoraIcon, ts};
+use crate::{icon::PandoraIcon};
 
 #[derive(Clone)]
 pub struct PathLabel {
@@ -35,7 +35,7 @@ impl PathLabel {
         if let Some(label) = label {
             label.button(id)
         } else {
-            Button::new(id).success().icon(PandoraIcon::File).overflow_x_hidden().label(ts!("common.unset"))
+            Button::new(id).success().icon(PandoraIcon::File).overflow_x_hidden().label(t::common::unset())
         }
     }
 }

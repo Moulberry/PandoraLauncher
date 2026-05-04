@@ -1,0 +1,41 @@
+[package]
+name = "nanorand"
+description = "A tiny, fast, zero-dep library for random number generation."
+repository = "https://github.com/Absolucy/nanorand-rs"
+keywords = ["rand", "random", "no-std", "entropy"]
+categories = ["algorithms", "no-std"]
+readme = "README.md"
+version = "0.7.0"
+authors = ["Lucy <lucy@absolucy.moe>"]
+edition = "2021"
+license = "Zlib"
+
+[features]
+default = ["std", "tls", "wyrand", "pcg64", "chacha"]
+alloc = []
+std = ["alloc"]
+tls = ["std", "wyrand"]
+wyrand = []
+pcg64 = []
+chacha = []
+rdseed = ["std"]
+
+[dependencies]
+zeroize = { version = "1.5.3", optional = true, features = ["zeroize_derive"] }
+getrandom = { version = "0.2.5", optional = true, features = ["rdrand", "js"] }
+
+[dev-dependencies]
+hex = "0.4.3"
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "x86_64-unknown-linux-gnu"
+targets = ["x86_64-pc-windows-msvc"]
+
+
+[workspace]
+members = ["nanorand-abi", "nanorand-bench"]
+default-members = ["."]
+
+[profile.bench]
+lto = "thin"

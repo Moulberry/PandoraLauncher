@@ -10,7 +10,7 @@ use gpui_component::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entity::{DataEntities, instance::InstanceEntry}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, page::Page}, root, ts
+    entity::{DataEntities, instance::InstanceEntry}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, page::Page}, root,
 };
 
 pub struct InstancePage {
@@ -45,21 +45,34 @@ impl Page for InstancePage {
 
         let button = match instance.status {
             InstanceStatus::NotRunning => {
-                Button::new("start_instance").success().icon(PandoraIcon::Play).label(ts!("instance.start.label")).on_click(
+                Button::new("start_instance").success().icon(PandoraIcon::Play).label(t::instance::start::label()).on_click(
                     move |_, window, cx| {
                         root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
                     },
                 ).into_any_element()
             },
             InstanceStatus::Launching => {
-                Button::new("launching").warning().icon(PandoraIcon::Loader).label(ts!("instance.start.starting")).into_any_element()
+                Button::new("launching").warning().icon(PandoraIcon::Loader).label(t::instance::start::starting()).into_any_element()
+            },
+            InstanceStatus::Stopping => {
+                Button::new("stopping")
+                    .danger()
+                    .icon(PandoraIcon::Loader)
+                    .label(t::instance::start::stopping())
+                    .on_click({
+                        let backend_handle = backend_handle.clone();
+                        move |_, _, _| {
+                            backend_handle.send(MessageToBackend::KillInstance { id });
+                        }
+                    })
+                    .into_any_element()
             },
             InstanceStatus::Running => {
                 ButtonGroup::new("running")
                     .child(Button::new("kill_instance")
                         .danger()
                         .icon(PandoraIcon::Close)
-                        .label(ts!("instance.kill_instance"))
+                        .label(t::instance::kill_instance())
                         .on_click({
                             let backend_handle = backend_handle.clone();
                             move |_, _, _| {
@@ -111,7 +124,7 @@ impl Page for InstancePage {
         let open_dot_minecraft_button = Button::new("open_dot_minecraft")
             .info()
             .icon(PandoraIcon::FolderOpen)
-            .label(ts!("instance.open_folder"))
+            .label(t::instance::open_folder())
             .on_click({
             let dot_minecraft = instance.dot_minecraft_folder.clone();
             move |_, window, cx| {
@@ -149,11 +162,11 @@ impl Render for InstancePage {
                     .prefix(div().w_4())
                     .selected_index(selected_index)
                     .underline()
-                    .child(Tab::new().label(ts!("instance.quickplay")))
-                    .child(Tab::new().label(ts!("instance.logs.title")))
-                    .child(Tab::new().label(ts!("instance.content.mods")))
-                    .child(Tab::new().label(ts!("instance.content.resourcepacks")))
-                    .child(Tab::new().label(ts!("settings.title")))
+                    .child(Tab::new().label(t::instance::quickplay()))
+                    .child(Tab::new().label(t::instance::logs::title()))
+                    .child(Tab::new().label(t::instance::content::mods()))
+                    .child(Tab::new().label(t::instance::content::resourcepacks()))
+                    .child(Tab::new().label(t::settings::title()))
                     .on_click(cx.listener(|_, index, _, cx| {
                         let page_type = match *index {
                             0 => InstanceSubpageType::Quickplay,

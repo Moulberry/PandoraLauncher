@@ -1,14 +1,13 @@
-use std::sync::Arc;
-
 use futures::AsyncReadExt;
 use gpui::{App, Asset, Resource};
+use schema::unique_bytes::UniqueBytes;
 
 #[derive(Clone)]
 pub enum DataAssetLoader {}
 
 impl Asset for DataAssetLoader {
     type Source = Resource;
-    type Output = Option<Arc<[u8]>>;
+    type Output = Option<UniqueBytes>;
 
     fn load(
         source: Self::Source,

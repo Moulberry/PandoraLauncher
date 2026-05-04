@@ -10,7 +10,7 @@ use gpui_component::{
 use schema::{content::ContentSource, curseforge::CurseforgeClassId, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
-use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, root, ts, ui::PageType};
+use crate::{component::content_list::ContentListDelegate, entity::instance::InstanceEntry, interface_config::InterfaceConfig, root, ui::PageType};
 
 pub struct InstanceModsSubpage {
     instance: InstanceID,
@@ -98,15 +98,15 @@ impl Render for InstanceModsSubpage {
             .gap_3()
             .mb_1()
             .ml_1()
-            .child(div().text_lg().child(ts!("instance.content.mods")))
-            .child(Button::new("update").label(ts!("instance.content.update.check.label")).success().compact().small().on_click({
+            .child(div().text_lg().child(t::instance::content::mods()))
+            .child(Button::new("update").label(t::instance::content::update::check::label(false)).success().compact().small().on_click({
                 let backend_handle = self.backend_handle.clone();
                 let instance_id = self.instance;
                 move |_, window, cx| {
                     crate::root::start_update_check(instance_id, &backend_handle, window, cx);
                 }
             }))
-            .child(Button::new("addmr").label(ts!("instance.content.install.from_modrinth")).success().compact().small().on_click({
+            .child(Button::new("addmr").label(t::instance::content::install::from_modrinth()).success().compact().small().on_click({
                 let instance_name = self.instance_name.clone();
                 move |_, window, cx| {
                     let page = crate::ui::PageType::Modrinth { installing_for: Some(instance_name.clone()) };
@@ -115,7 +115,7 @@ impl Render for InstanceModsSubpage {
                     root::switch_page(page, path, window, cx);
                 }
             }))
-            .child(Button::new("addcf").label(ts!("instance.content.install.from_curseforge")).success().compact().small().on_click({
+            .child(Button::new("addcf").label(t::instance::content::install::from_curseforge()).success().compact().small().on_click({
                 let instance_name = self.instance_name.clone();
                 move |_, window, cx| {
                     let page = crate::ui::PageType::Curseforge { installing_for: Some(instance_name.clone()) };
@@ -124,13 +124,13 @@ impl Render for InstanceModsSubpage {
                     root::switch_page(page, path, window, cx);
                 }
             }))
-            .child(Button::new("addfile").label(ts!("instance.content.install.from_file")).success().compact().small().on_click({
+            .child(Button::new("addfile").label(t::instance::content::install::from_file()).success().compact().small().on_click({
                 cx.listener(move |this, _, window, cx| {
                     let receiver = cx.prompt_for_paths(PathPromptOptions {
                         files: true,
                         directories: false,
                         multiple: true,
-                        prompt: Some(ts!("instance.content.install.select_mods"))
+                        prompt: Some(t::instance::content::install::select_mods().into())
                     });
 
                     let entity = cx.entity();

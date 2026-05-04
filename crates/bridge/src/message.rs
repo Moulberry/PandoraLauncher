@@ -6,7 +6,7 @@ use schema::{
     backend_config::{BackendConfig, ProxyConfig}, instance::{
         InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
         InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration,
-    }, loader::Loader, minecraft_profile::{MinecraftProfileCape, SkinVariant}, pandora_update::UpdatePrompt
+    }, loader::Loader, minecraft_profile::{MinecraftProfileCape, SkinVariant}, pandora_update::UpdatePrompt, unique_bytes::UniqueBytes
 };
 use ustr::Ustr;
 use uuid::Uuid;
@@ -15,7 +15,7 @@ use crate::{
     account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLauncherJob, OtherLauncher}, install::ContentInstall, instance::{
         InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus,
         InstanceWorldSummary,
-    }, keep_alive::{KeepAlive, KeepAliveHandle}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction
+    }, keep_alive::KeepAliveHandle, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction,
 };
 
 #[derive(Debug)]
@@ -107,6 +107,10 @@ pub enum MessageToBackend {
         id: InstanceID,
         disable_file_syncing: bool,
     },
+    SetInstanceSandboxing {
+        id: InstanceID,
+        sandbox: bool,
+    },
     SetInstanceMemory {
         id: InstanceID,
         memory: InstanceMemoryConfiguration,
@@ -138,6 +142,10 @@ pub enum MessageToBackend {
     KillInstance {
         id: InstanceID,
     },
+    StartInstanceByName {
+        name: String,
+        quick_play: Option<QuickPlayLaunch>
+    },
     StartInstance {
         id: InstanceID,
         quick_play: Option<QuickPlayLaunch>,
@@ -148,6 +156,11 @@ pub enum MessageToBackend {
     },
     RequestLoadServers {
         id: InstanceID,
+    },
+    ReorderServers {
+        id: InstanceID,
+        from_index: usize,
+        to_index: usize,
     },
     RequestLoadMods {
         id: InstanceID,
@@ -266,7 +279,7 @@ pub enum MessageToBackend {
     },
     SetAccountSkin {
         account: Uuid,
-        skin: Arc<[u8]>,
+        skin: UniqueBytes,
         variant: SkinVariant,
     },
     GetAccountCapes {
@@ -278,13 +291,20 @@ pub enum MessageToBackend {
         cape: Option<Uuid>,
     },
     RequestSkinLibrary,
+    RemoveFromSkinLibrary{
+        skin: UniqueBytes,
+    },
     AddToSkinLibrary {
         source: UrlOrFile,
+    },
+    CopyPlayerSkin {
+        username: Arc<str>,
     },
     Login {
         account: Uuid,
         modal_action: ModalAction,
-    }
+    },
+    Quit,
 }
 
 #[derive(Debug)]
@@ -292,7 +312,7 @@ pub enum MessageToFrontend {
     InstanceAdded {
         id: InstanceID,
         name: Ustr,
-        icon: Option<Arc<[u8]>>,
+        icon: Option<UniqueBytes>,
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
@@ -308,7 +328,7 @@ pub enum MessageToFrontend {
     InstanceModified {
         id: InstanceID,
         name: Ustr,
-        icon: Option<Arc<[u8]>>,
+        icon: Option<UniqueBytes>,
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
@@ -336,14 +356,7 @@ pub enum MessageToFrontend {
         resource_packs: Arc<[InstanceContentSummary]>,
     },
     CreateGameOutputWindow {
-        id: usize,
-        keep_alive: KeepAlive,
-    },
-    AddGameOutput {
-        id: usize,
-        time: i64,
-        level: GameOutputLogLevel,
-        text: Arc<[Arc<str>]>,
+        receiver: tokio::sync::mpsc::UnboundedReceiver<GameOutputMsg>
     },
     AddNotification {
         notification_type: BridgeNotificationType,
@@ -354,6 +367,7 @@ pub enum MessageToFrontend {
         selected_account: Option<Uuid>,
     },
     Refresh,
+    Quit,
     CloseModal,
     MoveInstanceToTop {
         id: InstanceID,
@@ -369,6 +383,7 @@ pub enum MessageToFrontend {
     UpdateAvailable {
         update: UpdatePrompt,
     },
+    OpenOrFocusMainWindow,
 }
 
 #[derive(Debug, Default)]
@@ -452,14 +467,13 @@ pub enum QuickPlayLaunch {
 #[derive(Debug, Clone)]
 pub enum EmbeddedOrRaw {
     Embedded(Arc<str>),
-    Raw(Arc<[u8]>),
+    Raw(UniqueBytes),
 }
-
 
 #[derive(Debug, Clone)]
 pub enum AccountSkinResult {
     Success {
-        skin: Option<Arc<[u8]>>,
+        skin: Option<UniqueBytes>,
         variant: SkinVariant,
     },
     NeedsLogin,
@@ -477,7 +491,7 @@ pub enum AccountCapesResult {
 #[derive(Clone, Debug)]
 pub struct SkinLibrary {
     pub state: BridgeDataLoadState,
-    pub skins: Arc<[Arc<[u8]>]>,
+    pub skins: Arc<[UniqueBytes]>,
     pub folder: Arc<Path>
 }
 
@@ -488,4 +502,10 @@ pub enum UrlOrFile {
     File {
         path: PathBuf,
     }
+}
+
+pub struct GameOutputMsg {
+    pub time: i64,
+    pub level: GameOutputLogLevel,
+    pub text: Arc<[Arc<str>]>,
 }

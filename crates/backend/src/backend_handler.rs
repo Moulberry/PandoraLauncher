@@ -1,8 +1,8 @@
-use std::{borrow::Cow, io::{BufRead, Read}, sync::Arc, time::{Duration, Instant, SystemTime}};
+use std::{borrow::Cow, io::{BufRead, Read}, sync::{Arc, atomic::Ordering}, time::{Duration, Instant, SystemTime}};
 
 use auth::{credentials::AccountCredentials, models::MinecraftAccessToken, secret::PlatformSecretStorage};
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentSummary, ContentType}, keep_alive::KeepAlive, message::{AccountCapesResult, AccountSkinResult, BackendConfigWithPassword, EmbeddedOrRaw, LogFiles, MessageToBackend, MessageToFrontend}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath, serial::AtomicOptionSerial
+    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentSummary, ContentType, InstanceID}, keep_alive::KeepAlive, message::{AccountCapesResult, AccountSkinResult, BackendConfigWithPassword, EmbeddedOrRaw, LogFiles, MessageToBackend, MessageToFrontend, QuickPlayLaunch}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath, serial::AtomicOptionSerial
 };
 use futures::TryFutureExt;
 use schema::{auxiliary::AuxiliaryContentMeta, content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, minecraft_profile::{MinecraftProfileResponse, SkinVariant}, modrinth::{ModrinthLoader, ModrinthSideRequirement}, version::{LaunchArgument, LaunchArgumentValue}};
@@ -75,6 +75,9 @@ impl BackendState {
             MessageToBackend::RequestLoadServers { id } => {
                 tokio::task::spawn(Instance::load_servers(self.clone(), id));
             },
+            MessageToBackend::ReorderServers { id, from_index, to_index } => {
+                tokio::task::spawn(Instance::reorder_servers(self.clone(), id, from_index, to_index));
+            },
             MessageToBackend::RequestLoadMods { id } => {
                 tokio::task::spawn(Instance::load_content(self.clone(), id, ContentFolder::Mods));
             },
@@ -137,6 +140,13 @@ impl BackendState {
                     });
                 }
                 self.apply_syncing_to_instance(id);
+            },
+            MessageToBackend::SetInstanceSandboxing { id, sandbox } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.sandbox = sandbox;
+                    });
+                }
             },
             MessageToBackend::SetInstanceMemory { id, memory } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
@@ -244,117 +254,60 @@ impl BackendState {
                     return;
                 };
 
-                if instance.processes.is_empty() {
+                if instance.processes.is_empty() && instance.closing_processes.is_empty() {
                     self.send.send_error("Can't kill instance, instance wasn't running");
                     return;
                 }
 
-                for mut process in instance.processes.drain(..) {
+                for (process, _) in instance.closing_processes.drain(..) {
                     let result = process.kill();
-                    if result.is_err() {
+
+                    if let Err(err) = result {
                         self.send.send_error("Failed to kill instance");
-                        log::error!("Failed to kill instance: {:?}", result.unwrap_err());
+                        log::error!("Failed to kill instance: {err:?}");
+                    }
+                }
+
+                let now = Instant::now();
+                for mut process in instance.processes.drain(..) {
+                    let mut result = process.close();
+                    if result.is_err() {
+                        result = process.kill();
+                    } else {
+                        instance.closing_processes.push((process, now + Duration::from_secs(3)));
+                    }
+
+                    if let Err(err) = result {
+                        self.send.send_error("Failed to kill instance");
+                        log::error!("Failed to kill instance: {err:?}");
                     }
                 }
 
                 instance.update_session();
                 self.send.send(instance.create_modify_message());
             },
+            MessageToBackend::StartInstanceByName { name, quick_play } => {
+                let mut id = None;
+
+                for instance in self.instance_state.read().instances.iter() {
+                    if instance.name == &name {
+                        id = Some(instance.id);
+                        break;
+                    } else if instance.name.eq_ignore_ascii_case(&name) {
+                        id = Some(instance.id);
+                    }
+                }
+
+                if let Some(id) = id {
+                    self.start_instance(id, quick_play, Default::default()).await
+                }
+            },
             MessageToBackend::StartInstance {
                 id,
                 quick_play,
                 modal_action,
             } => {
-                let keepalive = KeepAlive::new();
-
-                let (dot_minecraft, configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    if let Some(launch_keepalive) = &instance.launch_keepalive && launch_keepalive.is_alive() {
-                        modal_action.set_error_message("Can't launch instance, already launching".into());
-                        modal_action.set_finished();
-                        return;
-                    }
-
-                    instance.launch_keepalive = Some(keepalive.create_handle());
-
-                    self.send.send(MessageToFrontend::MoveInstanceToTop {
-                        id
-                    });
-                    self.send.send(instance.create_modify_message());
-
-                    (instance.dot_minecraft_path.clone(), instance.configuration.get().clone())
-                } else {
-                    self.send.send_error("Can't launch instance, unknown id");
-                    modal_action.set_error_message("Can't launch instance, unknown id".into());
-                    modal_action.set_finished();
-                    return;
-                };
-
-                scopeguard::defer! {
-                    modal_action.set_finished();
-                    drop(keepalive);
-                    if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                        if let Some(launch_keepalive) = &instance.launch_keepalive && !launch_keepalive.is_alive() {
-                            instance.launch_keepalive = None;
-                        }
-                        self.send.send(instance.create_modify_message());
-                    }
-                }
-
-                let Some(login_info) = self.get_login_info(&modal_action, configuration.preferred_account).await else {
-                    modal_action.set_error_message("Unable to log in to Minecraft account".into());
-                    return;
-                };
-
-                let add_mods = tokio::select! {
-                    add_mods = self.prelaunch(id, &modal_action) => add_mods,
-                    _ = modal_action.request_cancel.cancelled() => {
-                        self.send.send(MessageToFrontend::CloseModal);
-                        return;
-                    }
-                };
-
-                if modal_action.error.read().is_some() {
-                    self.send.send(MessageToFrontend::Refresh);
-                    return;
-                }
-
-                let launch_tracker = ProgressTracker::new(Arc::from("Launching"), self.send.clone());
-                modal_action.trackers.push(launch_tracker.clone());
-
-                let result = self.launcher.launch(&self.redirecting_http_client, dot_minecraft, configuration, quick_play, login_info, add_mods, &launch_tracker, &modal_action).await;
-
-                if matches!(result, Err(LaunchError::CancelledByUser)) {
-                    self.send.send(MessageToFrontend::CloseModal);
-                    return;
-                }
-
-                let is_err = result.is_err();
-                match result {
-                    Ok(mut child) => {
-                        if !self.config.write().get().dont_open_game_output_when_launching {
-                            if let Some(stdout) = child.stdout.take() {
-                                log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
-                            }
-                        }
-
-                        // Close handles if unused
-                        child.stderr.take();
-                        child.stdin.take();
-                        child.stdout.take();
-
-                        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                            instance.processes.push(child);
-                            instance.update_session();
-                        }
-                    },
-                    Err(ref err) => {
-                        log::error!("Failed to launch due to error: {:?}", &err);
-                        modal_action.set_error_message(format!("{}", &err).into());
-                    },
-                }
-
-                launch_tracker.set_finished(ProgressTrackerFinishType::from_err(is_err));
-                launch_tracker.notify();
+                self.start_instance(id, quick_play, modal_action).await
             },
             MessageToBackend::SetContentEnabled { id, content_ids: mod_ids, enabled } => {
                 let mut instance_state = self.instance_state.write();
@@ -545,9 +498,12 @@ impl BackendState {
                 self.download_all_metadata().await;
             },
             MessageToBackend::InstallContent { content, modal_action } => {
-                self.install_content(content, modal_action.clone()).await;
-                modal_action.set_finished();
-                self.send.send(MessageToFrontend::Refresh);
+                let this = self.clone();
+                tokio::spawn(async move {
+                    this.install_content(content, modal_action.clone()).await;
+                    modal_action.set_finished();
+                    this.send.send(MessageToFrontend::Refresh);
+                });
             },
             MessageToBackend::DeleteContent { id, content_ids: mod_ids } => {
                 let mut instance_state = self.instance_state.write();
@@ -1014,13 +970,34 @@ impl BackendState {
                     return;
                 }
 
-                let mut line: Vec<u8> = buffer.into();
+                let initial_data: Vec<u8> = buffer.into();
                 let file = reader.into_inner();
                 let mut reader = tokio::io::BufReader::new(tokio::fs::File::from_std(file));
 
                 tokio::task::spawn(async move {
-                    let mut first = true;
                     let mut factory = ArcStrFactory::default();
+                    let mut remaining = initial_data.as_slice();
+                    while let Some(index) = memchr::memchr(b'\n', remaining) {
+                        let line = &remaining[..index+1];
+                        remaining = &remaining[index+1..];
+
+                        if send_log_line(&line, &send, &mut factory).await.is_err() {
+                            return;
+                        }
+                        frontend.send_with_serial(MessageToFrontend::Refresh, &serial);
+                    }
+
+                    let remaining = remaining.trim_ascii_end();
+                    let remaining_len = remaining.len();
+                    let mut line = initial_data;
+                    if remaining_len == 0 {
+                        line.clear();
+                    } else {
+                        let from = line.len() - remaining_len;
+                        line.copy_within(from.., 0);
+                        line.truncate(remaining_len);
+                    };
+
                     loop {
                         tokio::select! {
                             _ = send.closed() => {
@@ -1033,33 +1010,16 @@ impl BackendState {
                                     tokio::time::sleep(Duration::from_millis(250)).await;
                                 },
                                 Ok(_) => {
-                                    match str::from_utf8(&*line) {
-                                        Ok(utf8) => {
-                                            if first {
-                                                first = false;
-                                                for line in utf8.split('\n') {
-                                                    let replaced = log_reader::replace(line.trim_ascii_end());
-                                                    if send.send(factory.create(&replaced)).await.is_err() {
-                                                        return;
-                                                    }
-                                                }
-                                            } else {
-                                                let replaced = log_reader::replace(utf8.trim_ascii_end());
-                                                if send.send(factory.create(&replaced)).await.is_err() {
-                                                    return;
-                                                }
-                                            }
-                                        },
-                                        Err(e) => {
-                                            let error = format!("Invalid UTF8: {e}");
-                                            for line in error.split('\n') {
-                                                let replaced = log_reader::replace(line.trim_ascii_end());
-                                                if send.send(factory.create(&replaced)).await.is_err() {
-                                                    return;
-                                                }
-                                            }
-                                        },
+                                    if line.last() != Some(&b'\n') {
+                                        // Didn't read the full line, wait a bit and try again
+                                        tokio::time::sleep(Duration::from_millis(250)).await;
+                                        continue;
                                     }
+
+                                    if send_log_line(&line, &send, &mut factory).await.is_err() {
+                                        return;
+                                    }
+
                                     frontend.send_with_serial(MessageToFrontend::Refresh, &serial);
                                     line.clear();
                                 },
@@ -1693,6 +1653,9 @@ impl BackendState {
             MessageToBackend::RequestSkinLibrary => {
                 SkinManager::load_skin_library(&self);
             },
+            MessageToBackend::RemoveFromSkinLibrary { skin } => {
+                SkinManager::remove_skin(&self, skin);
+            },
             MessageToBackend::AddToSkinLibrary { source } => {
                 let (bytes, filename) = match source {
                     bridge::message::UrlOrFile::Url { url } => {
@@ -1789,11 +1752,269 @@ impl BackendState {
                     self.send.send_error("Error while saving skin, see logs for more details");
                 }
             },
+            MessageToBackend::CopyPlayerSkin { username } => {
+                let lookup_url = format!(
+                    "https://api.mojang.com/minecraft/profile/lookup/name/{}",
+                    username
+                );
+                let response = match self.http_client.get(&lookup_url).send().await {
+                    Ok(r) => r,
+                    Err(err) => {
+                        log::error!("CopyPlayerSkin: failed to request Mojang API: {:?}", err);
+                        self.send.send_error("Failed to request Mojang API");
+                        return;
+                    }
+                };
+                if response.status() == reqwest::StatusCode::NOT_FOUND {
+                    self.send.send_error(format!("Player '{}' not found", username));
+                    return;
+                }
+                if !response.status().is_success() {
+                    log::error!("CopyPlayerSkin: Mojang API returned status {}", response.status());
+                    self.send.send_error(format!("Failed to request Mojang API: status {}", response.status()));
+                    return;
+                }
+                let body = match response.text().await {
+                    Ok(b) => b,
+                    Err(err) => {
+                        log::error!("CopyPlayerSkin: failed to read Mojang API response: {:?}", err);
+                        self.send.send_error("Failed to read Mojang API response");
+                        return;
+                    }
+                };
+                let profile_lookup: serde_json::Value = match serde_json::from_str(&body) {
+                    Ok(v) => v,
+                    Err(err) => {
+                        log::error!("CopyPlayerSkin: failed to deserialize Mojang API response: {:?}", err);
+                        self.send.send_error("Failed to deserialize Mojang API response");
+                        return;
+                    }
+                };
+                let uuid = match profile_lookup["id"].as_str() {
+                    Some(id) => id.to_owned(),
+                    None => {
+                        log::error!("CopyPlayerSkin: missing 'id' field in Mojang API response");
+                        self.send.send_error("Failed to deserialize Mojang API response");
+                        return;
+                    }
+                };
+
+                let session_url = format!(
+                    "https://sessionserver.mojang.com/session/minecraft/profile/{}",
+                    uuid
+                );
+                let response = match self.http_client.get(&session_url).send().await {
+                    Ok(r) => r,
+                    Err(err) => {
+                        log::error!("CopyPlayerSkin: failed to request session server: {:?}", err);
+                        self.send.send_error("Failed to request Mojang session server");
+                        return;
+                    }
+                };
+                if !response.status().is_success() {
+                    log::error!("CopyPlayerSkin: session server returned status {}", response.status());
+                    self.send.send_error(format!("Failed to request Mojang session server: status {}", response.status()));
+                    return;
+                }
+                let body = match response.text().await {
+                    Ok(b) => b,
+                    Err(err) => {
+                        log::error!("CopyPlayerSkin: failed to read session server response: {:?}", err);
+                        self.send.send_error("Failed to read Mojang session server response");
+                        return;
+                    }
+                };
+
+                let skin_url = match Self::extract_skin_url_from_profile(&body) {
+                    Some(url) => url,
+                    None => {
+                        self.send.send_error(format!("Player '{}' has no skin", username));
+                        return;
+                    }
+                };
+
+                let url = match url::Url::parse(&*skin_url) {
+                    Ok(url) => url,
+                    Err(err) => {
+                        log::error!("CopyPlayerSkin: failed to parse skin URL: {}", err);
+                        self.send.send_error("Failed to parse skin URL");
+                        return;
+                    }
+                };
+
+                let filename = format!("{}.png", username);
+
+                let response = match self.redirecting_http_client.get(url).send().await {
+                    Ok(r) => r,
+                    Err(err) => {
+                        log::error!("CopyPlayerSkin: failed to request skin texture: {:?}", err);
+                        self.send.send_error("Error while requesting skin, see logs for more details");
+                        return;
+                    }
+                };
+                if !response.status().is_success() {
+                    log::error!("CopyPlayerSkin: skin texture request returned status {}", response.status());
+                    self.send.send_error(format!("Failed to request skin texture: status {}", response.status()));
+                    return;
+                }
+                let bytes = match response.bytes().await {
+                    Ok(bytes) => bytes.to_vec(),
+                    Err(err) => {
+                        log::error!("CopyPlayerSkin: failed to read skin texture: {:?}", err);
+                        self.send.send_error("Error while downloading skin, see logs for more details");
+                        return;
+                    }
+                };
+
+                let image = match image::load_from_memory_with_format(&bytes, image::ImageFormat::Png) {
+                    Ok(image) => image,
+                    Err(_) => {
+                        self.send.send_error("Player skin is not a valid PNG image");
+                        return;
+                    }
+                };
+                if !SkinManager::is_valid_size(&image) {
+                    self.send.send_error("Player skin has invalid dimensions. Must be 64x64 or 64x32.");
+                    return;
+                }
+
+                let filename = sanitize_filename::sanitize_with_options(filename, sanitize_filename::Options { windows: true, ..Default::default() });
+
+                let mut path = self.directories.skin_library_dir.join(&filename);
+                if path.exists() {
+                    for i in 1..32 {
+                        let new_filename = format!("{filename} ({i})");
+                        let new_path = self.directories.skin_library_dir.join(&new_filename);
+                        if !new_path.exists() {
+                            path = new_path;
+                            break;
+                        }
+                    }
+                }
+
+                if let Err(err) = crate::write_safe(&path, &bytes) {
+                    log::error!("CopyPlayerSkin: failed to save skin: {:?}", err);
+                    self.send.send_error("Error while saving skin, see logs for more details");
+                }
+            },
             MessageToBackend::Login { account, modal_action } => {
                 self.login_flow(&modal_action, Some(account)).await;
                 modal_action.set_finished();
             },
+            MessageToBackend::Quit => {
+                self.should_quit.store(true, Ordering::Relaxed);
+            },
         }
+    }
+
+    async fn start_instance(self: &Arc<Self>, id: InstanceID, quick_play: Option<QuickPlayLaunch>, modal_action: ModalAction) {
+        let keepalive = KeepAlive::new();
+
+        let (dot_minecraft, configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+            if let Some(launch_keepalive) = &instance.launch_keepalive && launch_keepalive.is_alive() {
+                modal_action.set_error_message("Can't launch instance, already launching".into());
+                modal_action.set_finished();
+                return;
+            }
+
+            instance.launch_keepalive = Some(keepalive.create_handle());
+
+            self.send.send(MessageToFrontend::MoveInstanceToTop {
+                id
+            });
+            self.send.send(instance.create_modify_message());
+
+            (instance.dot_minecraft_path.clone(), instance.configuration.get().clone())
+        } else {
+            self.send.send_error("Can't launch instance, unknown id");
+            modal_action.set_error_message("Can't launch instance, unknown id".into());
+            modal_action.set_finished();
+            return;
+        };
+
+        scopeguard::defer! {
+            modal_action.set_finished();
+            drop(keepalive);
+            if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                if let Some(launch_keepalive) = &instance.launch_keepalive && !launch_keepalive.is_alive() {
+                    instance.launch_keepalive = None;
+                }
+                self.send.send(instance.create_modify_message());
+            }
+        }
+
+        let Some(login_info) = self.get_login_info(&modal_action, configuration.preferred_account).await else {
+            modal_action.set_error_message("Unable to log in to Minecraft account".into());
+            return;
+        };
+
+        let add_mods = tokio::select! {
+            add_mods = self.prelaunch(id, &modal_action) => add_mods,
+            _ = modal_action.request_cancel.cancelled() => {
+                self.send.send(MessageToFrontend::CloseModal);
+                return;
+            }
+        };
+
+        if modal_action.error.read().is_some() {
+            self.send.send(MessageToFrontend::Refresh);
+            return;
+        }
+
+        let game_output = !self.config.write().get().dont_open_game_output_when_launching;
+
+        let launch_tracker = ProgressTracker::new(Arc::from("Launching"), self.send.clone());
+        modal_action.trackers.push(launch_tracker.clone());
+        let result = self.launcher.launch(&self.redirecting_http_client, dot_minecraft, configuration, quick_play, login_info, add_mods, game_output, &launch_tracker, &modal_action).await;
+
+        if matches!(result, Err(LaunchError::CancelledByUser)) {
+            self.send.send(MessageToFrontend::CloseModal);
+            return;
+        }
+
+        let is_err = result.is_err();
+        match result {
+            Ok(mut child) => {
+                if game_output {
+                    if let Some(stdout) = child.stdout.take() {
+                        log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
+                    }
+                }
+
+                // Close handles if unused
+                child.stderr.take();
+                child.stdin.take();
+                child.stdout.take();
+
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.processes.push(child.process);
+                    instance.update_session();
+                    self.quit_coordinator.set_can_quit(false);
+                }
+            },
+            Err(ref err) => {
+                log::error!("Failed to launch due to error: {:?}", &err);
+                modal_action.set_error_message(format!("{}", &err).into());
+            },
+        }
+
+        launch_tracker.set_finished(ProgressTrackerFinishType::from_err(is_err));
+        launch_tracker.notify();
+    }
+
+    fn extract_skin_url_from_profile(profile_json: &str) -> Option<Arc<str>> {
+        use base64::Engine;
+        let parsed: serde_json::Value = serde_json::from_str(profile_json).ok()?;
+        for prop in parsed["properties"].as_array()? {
+            if prop["name"].as_str() == Some("textures") {
+                let encoded = prop["value"].as_str()?;
+                let decoded = base64::engine::general_purpose::STANDARD.decode(encoded).ok()?;
+                let textures: serde_json::Value = serde_json::from_slice(&decoded).ok()?;
+                let url = textures["textures"]["SKIN"]["url"].as_str()?;
+                return Some(url.into());
+            }
+        }
+        None
     }
 
     pub async fn get_minecraft_profile(&self, account: Uuid) -> Option<MinecraftProfileResponse> {
@@ -2107,4 +2328,21 @@ fn check_argument_expansions(argument: &str) {
             dollar_last = false;
         }
     }
+}
+
+async fn send_log_line(line: &[u8], send: &tokio::sync::mpsc::Sender<Arc<str>>, factory: &mut ArcStrFactory) -> Result<(), tokio::sync::mpsc::error::SendError<Arc<str>>> {
+    match str::from_utf8(&*line) {
+        Ok(utf8) => {
+            let replaced = log_reader::replace(utf8.trim_ascii_end());
+            send.send(factory.create(&replaced)).await?;
+        },
+        Err(e) => {
+            let error = format!("Invalid UTF8: {e}");
+            for line in error.split('\n') {
+                let replaced = log_reader::replace(line.trim_ascii_end());
+                send.send(factory.create(&replaced)).await?;
+            }
+        },
+    }
+    Ok(())
 }

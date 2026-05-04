@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
     component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath, resize_panel::{ResizePanel, ResizePanelState}, shrinking_text::ShrinkingText, title_bar::TitleBar}, entity::{
         DataEntities, account::AccountExt, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{curseforge_page::CurseforgeSearchPage, import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, page::Page, skins_page::SkinsPage, syncing_page::SyncingPage}, png_render_cache, ts
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{curseforge_page::CurseforgeSearchPage, import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, page::Page, skins_page::SkinsPage, syncing_page::SyncingPage}, png_render_cache,
 };
 
 pub struct LauncherUI {
@@ -59,24 +59,24 @@ pub enum PageType {
 impl PageType {
     pub fn title(&self, data: &DataEntities, cx: &App) -> SharedString {
         match self {
-            PageType::Instances => ts!("instance.title"),
-            PageType::Skins => ts!("skins.title"),
+            PageType::Instances => t::instance::title().into(),
+            PageType::Skins => t::skins::title().into(),
             PageType::Modrinth { installing_for } => {
                 if installing_for.is_some() {
-                    ts!("instance.content.install.from_modrinth")
+                    t::instance::content::install::from_modrinth().into()
                 } else {
-                    ts!("modrinth.name")
+                    t::modrinth::name().into()
                 }
             },
             PageType::Curseforge { installing_for } => {
                 if installing_for.is_some() {
-                    ts!("instance.content.install.from_curseforge")
+                    t::instance::content::install::from_curseforge().into()
                 } else {
-                    ts!("curseforge.name")
+                    t::curseforge::name().into()
                 }
             },
             PageType::Import => "Import".into(),
-            PageType::Syncing => ts!("instance.sync.label"),
+            PageType::Syncing => t::instance::sync::label().into(),
             PageType::ModrinthProject { project_title, .. } => project_title.clone(),
             PageType::InstancePage { name } => {
                 InstanceEntries::find_title_by_name(&data.instances, name, cx)
@@ -371,24 +371,24 @@ impl Render for LauncherUI {
         let page_type = InterfaceConfig::get(cx).main_page.clone();
 
         let library_group = MenuGroup::new("Minecraft")
-            .child(MenuGroupItem::new(ts!("instance.title"))
+            .child(MenuGroupItem::new(t::instance::title())
                 .active(page_type == PageType::Instances)
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Instances, &[], window, cx);
                 })))
-            .child(MenuGroupItem::new(ts!("skins.title"))
+            .child(MenuGroupItem::new(t::skins::title())
                 .active(page_type == PageType::Skins)
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Skins, &[], window, cx);
                 })));
 
-        let content_group = MenuGroup::new(ts!("instance.content.title"))
-            .child(MenuGroupItem::new(ts!("modrinth.name"))
+        let content_group = MenuGroup::new(t::instance::content::title())
+            .child(MenuGroupItem::new(t::modrinth::name())
                 .active(matches!(page_type, PageType::Modrinth { installing_for: None } | PageType::ModrinthProject { install_for: None, .. }))
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Modrinth { installing_for: None }, &[], window, cx);
                 })))
-            .child(MenuGroupItem::new(ts!("curseforge.name"))
+            .child(MenuGroupItem::new(t::curseforge::name())
                 .active(matches!(page_type, PageType::Curseforge { installing_for: None }))
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Curseforge { installing_for: None }, &[], window, cx);
@@ -400,7 +400,7 @@ impl Render for LauncherUI {
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Import, &[], window, cx);
                 })))
-            .child(MenuGroupItem::new(ts!("instance.sync.label"))
+            .child(MenuGroupItem::new(t::instance::sync::label())
                 .active(page_type == PageType::Syncing)
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Syncing, &[], window, cx);
@@ -413,7 +413,7 @@ impl Render for LauncherUI {
         let _ = groups.push(files_group);
 
         if !self.recent_instances.is_empty() {
-            let mut recent_instances_group = MenuGroup::new(ts!("instance.recent"));
+            let mut recent_instances_group = MenuGroup::new(t::instance::recent());
 
             for (_, name) in &self.recent_instances {
                 let name = name.clone();
@@ -432,9 +432,13 @@ impl Render for LauncherUI {
         let accounts = self.data.accounts.read(cx);
         let (account_head, account_name) = if let Some(account) = &accounts.selected_account {
             let account_name = account.username(InterfaceConfig::get(cx).hide_usernames);
-            let head = if let Some(head) = &account.head {
+            let hide_skins = InterfaceConfig::get(cx).hide_skins;
+
+            let head = if hide_skins {
+                gpui::img(ImageSource::Resource(Resource::Embedded("images/hidden_head.png".into())))
+            } else if let Some(head) = &account.head {
                 let resize = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
-                png_render_cache::render_with_transform(Arc::clone(head), resize, cx)
+                png_render_cache::render_with_transform(head.clone(), resize, cx)
             } else {
                 gpui::img(ImageSource::Resource(Resource::Embedded("images/default_head.png".into())))
             };
@@ -442,7 +446,7 @@ impl Render for LauncherUI {
         } else {
             (
                 gpui::img(ImageSource::Resource(Resource::Embedded("images/default_head.png".into()))),
-                ts!("account.none"),
+                t::account::none().into(),
             )
         };
 
@@ -474,15 +478,19 @@ impl Render for LauncherUI {
                     let accounts = accounts.clone();
                     let backend_handle = backend_handle.clone();
                     window.open_sheet_at(gpui_component::Placement::Left, cx, move |sheet, _, cx| {
+                        let hide_skins = InterfaceConfig::get(cx).hide_skins;
+
                         let (accounts, selected_account) = {
                             let accounts = accounts.read(cx);
                             (accounts.accounts.clone(), accounts.selected_account_uuid)
                         };
 
                         let items = accounts.iter().map(|account| {
-                            let head = if let Some(head) = &account.head {
+                            let head = if hide_skins {
+                                gpui::img(ImageSource::Resource(Resource::Embedded("images/hidden_head.png".into())))
+                            } else if let Some(head) = &account.head {
                                 let resize = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
-                                png_render_cache::render_with_transform(Arc::clone(head), resize, cx)
+                                png_render_cache::render_with_transform(head.clone(), resize, cx)
                             } else {
                                 gpui::img(ImageSource::Resource(Resource::Embedded("images/default_head.png".into())))
                             };
@@ -528,23 +536,23 @@ impl Render for LauncherUI {
 
                         sheet
                             .when(cfg!(target_os = "macos"), |this| this.pt_5())
-                            .title(ts!("account.title"))
+                            .title(t::account::title())
                             .child(v_flex()
                                 .gap_2()
-                                .child(Button::new("add-account").h_10().success().icon(PandoraIcon::Plus).label(ts!("account.add.label")).on_click({
+                                .child(Button::new("add-account").h_10().success().icon(PandoraIcon::Plus).label(t::account::add::label()).on_click({
                                     let backend_handle = backend_handle.clone();
                                     move |_, window, cx| {
                                         crate::root::start_new_account_login(&backend_handle, window, cx);
                                     }
                                 }))
-                                .child(Button::new("add-offline").h_10().success().icon(PandoraIcon::Plus).label(ts!("account.add.offline")).on_click({
+                                .child(Button::new("add-offline").h_10().success().icon(PandoraIcon::Plus).label(t::account::add::offline()).on_click({
                                     let backend_handle = backend_handle.clone();
                                     move |_, window, cx| {
                                         let name_input = cx.new(|cx| {
                                             InputState::new(window, cx)
                                         });
                                         let uuid_input = cx.new(|cx| {
-                                            InputState::new(window, cx).placeholder(ts!("account.uuid_random"))
+                                            InputState::new(window, cx).placeholder(t::account::uuid_random())
                                         });
                                         let backend_handle = backend_handle.clone();
                                         window.open_dialog(cx, move |dialog, _, cx| {
@@ -557,7 +565,7 @@ impl Render for LauncherUI {
                                             let valid = valid_name && valid_uuid;
 
                                             let backend_handle = backend_handle.clone();
-                                            let mut add_button = Button::new("add").label(ts!("account.add.submit")).disabled(!valid).on_click(move |_, window, cx| {
+                                            let mut add_button = Button::new("add").label(t::account::add::submit()).disabled(!valid).on_click(move |_, window, cx| {
                                                 window.close_all_dialogs(cx);
 
                                                 let uuid = if let Ok(uuid) = Uuid::try_parse(&uuid) {
@@ -578,11 +586,11 @@ impl Render for LauncherUI {
                                                 add_button = add_button.success();
                                             }
 
-                                            dialog.title(ts!("account.add.offline"))
+                                            dialog.title(t::account::add::offline())
                                                 .child(v_flex()
                                                     .gap_2()
-                                                    .child(crate::labelled(ts!("account.name"), Input::new(&name_input)))
-                                                    .child(crate::labelled(ts!("account.uuid"), Input::new(&uuid_input)))
+                                                    .child(crate::labelled(t::account::name(), Input::new(&name_input)))
+                                                    .child(crate::labelled(t::account::uuid(), Input::new(&uuid_input)))
                                                     .child(add_button)
                                                 )
                                         });
@@ -638,7 +646,7 @@ impl Render for LauncherUI {
             .justify_center()
             .text_size(rems(0.9375))
             .child(Icon::new(PandoraIcon::Pandora).size_8().min_w_8().min_h_8())
-            .child(ts!("common.app_name"));
+            .child(t::common::app_name());
         let footer_buttons = h_flex().child(settings_button).child(bug_report_button);
         let footer = v_flex().pb_2().px_2().items_center().min_w_full().max_w_full().w_full().child(footer_buttons).child(account_button);
         let sidebar = v_flex()

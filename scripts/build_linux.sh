@@ -9,8 +9,8 @@ fi
 version=${1#v}
 export PANDORA_RELEASE_VERSION=$version
 
-sudo apt-get update --yes && sudo apt-get install --yes libssl-dev libdbus-1-dev libx11-xcb1 libxkbcommon-x11-dev pkg-config
-cargo build --release --target x86_64-unknown-linux-gnu
+sudo apt-get update --yes && sudo apt-get install --yes libssl-dev libdbus-1-dev libx11-xcb1 libxkbcommon-x11-dev pkg-config libseccomp-dev libfontconfig-dev
+cargo build --release --frozen --target x86_64-unknown-linux-gnu
 strip target/x86_64-unknown-linux-gnu/release/pandora_launcher
 mkdir -p dist
 mv target/x86_64-unknown-linux-gnu/release/pandora_launcher dist/PandoraLauncher-Linux-x86_64

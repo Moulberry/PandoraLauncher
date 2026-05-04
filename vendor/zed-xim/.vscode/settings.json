@@ -1,0 +1,8 @@
+{
+    "rust-analyzer.cargo.features": [
+         "x11rb-client",
+         "xlib-client",
+         "x11rb-server",
+         "x11rb-xcb"
+    ]
+}

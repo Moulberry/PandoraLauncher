@@ -1,0 +1,18 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 7f14fd6a36e10d8368a4449345fd910a76ff55da46fb70858c87ab17b4f01a0b # shrinks to cr_or_lf = false, idx = 3095542431969162165, ref start_text = "\n\n\n\n\r\n\n\r\n\r\n\n\n\n\n\r\n\n\r\n\n\n\n\r\n\n\n\n\n\r\n\n\n\n\n\n\r\n\r\n\r\n\n\n\n\n\n\n\r\n\n\r\r"
+cc fe05c35d6679571b6078ad689a14d11fbf66d48ae0df1b47364d07dd76d5599b # shrinks to cr_or_lf = true, idx = 890428971038572995, ref start_text = "\n\n\n\r\n\r\n\n\r\n\n\n\n\r\n\n\r\n\n\r\n\n\r\n\r\n\n"
+cc 6faeccd636016f5f7d05297bf249146f49d14b2e21c96371f04195c794d86704 # shrinks to idx1 = 0, idx2 = 0, ref text = ""
+cc 504bbb3746cd2c2268f1ccc60360ac66ef696a66b3bb3d3998dbfd78e86468ee # shrinks to idx1 = 3490, idx2 = 1
+cc 04646f55998941ae26261bb38ff4b2ce6c7f3c649e0a3b1f8f4da132bde66157 # shrinks to cr_or_lf = true, idx = 7818814094539335736, ref start_text = "\n\r\n\r\n\n\n\n\r\n\n\n\r\n\n\n\n\n\n\r\n\n\n\r\n\n\n\n\n\n\n\n\r\n\n\n\n\r\n\r\n\r\n\n\n\n\n\r\n\r\n\r\n\n\n\r\n\r\n\n\n\n\n\n\n\r\n\n\n\n\n\n\r\n\n\n\r\n\r\n\n\n\r\n\n\n\n\n\n\n\n\n\n\r\n\n\n\n\n\n\r\n\r\n\r\n\r\n\r\n\n\n\n\n\r\n\n\n\n\n\n\n\n\n"
+cc 8463e33822d9b6a4e429bbe189c346c24f02f5dda6acde3c600c0d831979d49c # shrinks to cr_or_lf = true, idx = 7128437099767799560, ref start_text = "\n\n\n\n\n\r\n\n\n\n\n\n\n\r\n\n\r\n\r\n\n\n\r\n\n\n\n\n\n\n\r\n\n\n\n\n\r\n\r\n\r\n\n\r\n\n\n\r\n\r\n\n\n\r\n\n\n\n\n\r\n\n\n\n\n\r\n\n\n\r\n\n\r\r\n\r\n\n\n\n\n\r\n\r\n\r\n\n\n\n\n\r\n\n\n\r\n\r\n\n\r\n\n\n\n\r\n\n\n\n\n\n\r\n\r\n\r\n\n\r\n\n\n\n\n\n\n\r\n\n\r\n\n\n\n\n\r\n\r"
+cc 49b6dd3a76653741d8d887dcc6dfeb471adb3b29988273157c044cd630e2073a # shrinks to cr_or_lf = false, idx = 4336248276999450282, ref start_text = "\n\r\n\n\n\r\n\n\r\n\r\n\n\n\n\r\n\n\n\r\n\n\n\r\n\n\r\n\r\n\r\n\r\n\n\n\n\n\n\n\n\r\n\n\n\n\n\r\n\r\n\n\r\n\n\r\n\r\n\r\n\n\r\n\n\n\r\n\r\n\r\n\n\n\r\n\n\n\n\r\n\n\n\n\r\n\r\n\n\n\n\n\n\r\n\r\n\n\n\r\n\n\n\r\n\r\n\n\n\n\r\n\n\n\n\n\n\r\n\n\n\r\n\n\r\n\n\n\n\n\r\n\n\n\n\r\n\n\n\r\n\n\n\n\n\r\n\r\n"
+cc 6377d2cb86e312791541676a9c3290ddef8077bb9c7a6fa9e970717f70f11938 # shrinks to cr_or_lf = true, idx = 7331593705414961574, ref start_text = "\n\n\r\n\n\r\n\n\n\n\r\n\n\r\n\n\n\n\r\n\n\n\r\n\r\n\r\n\n\n\n\n\n\n\n\n\r\n\n\n\r\n\n\n\n\n\r\n\n\n\n\n\n\r\n\r\n\n\n\r\n\r\n\n\n\n\n\n\r\n\n\n\r\n\r\n\n\n\n\r\n\r\n\n\r\n\r\n\n\r\n\n\n\r\n\n\n\r\n\r\n\r\n\n\n\n\n\n\n\n\n\r\n\n\n\r\n\n\n\n\n\n\n\n\r\n\n\n\r\n\n\n\n\n\n\n\r\n\r"
+cc 31ca249da33062dae02f6e28c021ff4b546fd6f6bc185649cced5c135096962d # shrinks to idx1 = 5645, idx2 = 4129
+cc 8cd7359ffa8e2547341770d9b7b42696b14e8dae0a1ef5f1358619d432ea3ae8 # shrinks to idx1 = 2340232170653615457, idx2 = 10537908417523125664, ref start_text = "\n\n\r\n\n\n\r\n\n\n\r\n\n\n\n\r\n\r\n\r\n\n\r\n\r\n\n\n\n\r\n\n\n\n\n\r\n\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\r\n\n\r\n\n\n\n\n\n\n\r\n\r\n\n\r\n\n\r\n\n\r\n\r\n\n\n\r\n\n\n\n\n\n\n\r\n\n\r\n\n\n\n\n\n\r\n\n\n\r\n"
+cc 5f50d7d1a1972bff62ee0a74078a3871087c38b3b15157e413cb2d1a27e69ad1 # shrinks to idx1 = 1342978293682873894, idx2 = 4047232886260011216, ref start_text = "\n\r\n\r\n\r\n\n\r\n\n\n\n\n\n\n\n\n\n\n\n\r\n\r\n\n\r\n\n\r\n\n\n\n\n\r\n\n\r\n\n\n\n"
+cc 39216e62424b616932e267e1055fb92d5aa28b6d467f20918c11a13d0939287a # shrinks to idx1 = 3474504184948313577, idx2 = 8308930146528975939, ref start_text = "\n\n\r\n\n\r\n\n\n\n\r"

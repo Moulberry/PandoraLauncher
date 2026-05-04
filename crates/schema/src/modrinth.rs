@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 use ustr::Ustr;
 
 pub const MODRINTH_SEARCH_URL: &str = "https://api.modrinth.com/v2/search";
@@ -21,14 +22,27 @@ pub struct ModrinthProjectVersionsRequest {
     pub loaders: Option<Arc<[ModrinthLoader]>>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Default, Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthSearchIndex {
+    #[default]
     Relevance,
     Downloads,
     Follows,
     Newest,
     Updated,
+}
+
+impl ModrinthSearchIndex {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ModrinthSearchIndex::Relevance => "relevance",
+            ModrinthSearchIndex::Downloads => "downloads",
+            ModrinthSearchIndex::Follows => "follows",
+            ModrinthSearchIndex::Newest => "newest",
+            ModrinthSearchIndex::Updated => "updated",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -48,7 +62,7 @@ pub struct ModrinthHit {
     pub client_side: Option<ModrinthSideRequirement>,
     pub server_side: Option<ModrinthSideRequirement>,
     pub project_type: ModrinthProjectType,
-    pub downloads: usize,
+    pub downloads: u64,
     pub icon_url: Option<Arc<str>>,
     // pub color: Option<u32>,
     // pub thread_id: Option<Arc<str>>,
@@ -276,7 +290,7 @@ pub struct ModrinthProjectResult {
     pub description: Option<Arc<str>>,
     pub body: Option<Arc<str>>,
     pub project_type: ModrinthProjectType,
-    pub downloads: usize,
+    pub downloads: u64,
     pub followers: usize,
     pub icon_url: Option<Arc<str>>,
     pub client_side: Option<ModrinthSideRequirement>,

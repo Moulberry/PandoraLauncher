@@ -5,7 +5,7 @@ use rand::RngCore;
 use schema::{curseforge::CurseforgeClassId, modrinth::ModrinthProjectType};
 use serde::{Deserialize, Serialize};
 
-use crate::{pages::instance::instance_page::InstanceSubpageType, ts, ui::PageType};
+use crate::{pages::instance::instance_page::InstanceSubpageType, ui::PageType};
 
 struct InterfaceConfigHolder {
     config: InterfaceConfig,
@@ -46,6 +46,8 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_usernames: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub hide_skins: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_server_addresses: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub show_snapshots_in_create_instance: bool,
@@ -55,6 +57,8 @@ pub struct InterfaceConfig {
     pub instance_subpage: InstanceSubpageType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub collapse_capes_in_skins_page: bool,
+    #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
+    pub skin_list_show_3d: bool,
 }
 
 fn default_modrinth_project_type() -> ModrinthProjectType {
@@ -83,10 +87,12 @@ impl Default for InterfaceConfig {
             quit_on_main_closed: false,
             hide_server_addresses: false,
             hide_usernames: false,
+            hide_skins: false,
             show_snapshots_in_create_instance: Default::default(),
             instances_view_mode: Default::default(),
             instance_subpage: Default::default(),
             collapse_capes_in_skins_page: false,
+            skin_list_show_3d: true,
         }
     }
 }
@@ -127,8 +133,8 @@ pub enum InstancesViewMode {
 impl InstancesViewMode {
     pub fn name(self) -> SharedString {
         match self {
-            InstancesViewMode::Cards => ts!("common.layout.cards").into(),
-            InstancesViewMode::List => ts!("common.layout.list").into(),
+            InstancesViewMode::Cards => t::common::layout::cards().into(),
+            InstancesViewMode::List => t::common::layout::list().into(),
         }
     }
 }

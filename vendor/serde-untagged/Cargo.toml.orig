@@ -1,0 +1,35 @@
+[package]
+name = "serde-untagged"
+version = "0.1.9"
+authors = ["David Tolnay <dtolnay@gmail.com>"]
+categories = ["encoding", "no-std"]
+description = "Serde `Visitor` implementation for deserializing untagged enums"
+documentation = "https://docs.rs/serde-untagged"
+edition = "2021"
+keywords = ["serde", "untagged"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dtolnay/serde-untagged"
+rust-version = "1.61"
+
+[dependencies]
+erased-serde = { version = "0.4.2", default-features = false, features = ["alloc"] }
+serde_core = { version = "1.0.220", default-features = false, features = ["alloc"] }
+typeid = "1"
+
+[target.'cfg(any())'.dependencies]
+serde = { version = "1.0.220", default-features = false }
+
+[dev-dependencies]
+serde = "1.0.220"
+serde_derive = "1.0.220"
+serde_json = "1.0.110"
+toml = "0.9"
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+rustdoc-args = [
+    "--generate-link-to-definition",
+    "--extern-html-root-url=core=https://doc.rust-lang.org",
+    "--extern-html-root-url=alloc=https://doc.rust-lang.org",
+    "--extern-html-root-url=std=https://doc.rust-lang.org",
+]

@@ -9,7 +9,7 @@ use parking_lot::{RwLock, RwLockReadGuard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rc_zip_sync::EntryHandle;
 use rustc_hash::{FxHashMap, FxHashSet};
-use schema::{content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeFile, CurseforgeModpackManifestJson}, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, loader::Loader, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta};
+use schema::{content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeFile, CurseforgeModpackManifestJson}, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, loader::Loader, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta, unique_bytes::UniqueBytes};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DeserializeAs};
 use sha1::{Digest, Sha1};
@@ -317,7 +317,7 @@ impl ModMetadataManager {
             None => None,
         };
 
-        let mut png_icon: Option<Arc<[u8]>> = None;
+        let mut png_icon: Option<UniqueBytes> = None;
         if let Some(icon) = icon && let Some(icon_file) = archive.by_name(&icon) {
             png_icon = load_icon(icon_file);
         }
@@ -333,7 +333,7 @@ impl ModMetadataManager {
             hash,
             name: Some(name),
             authors,
-            version_str: format!("v{}", fabric_mod_json.version).into(),
+            version_str: create_version_string(&fabric_mod_json.version),
             rich_description: None,
             png_icon,
             extra: ContentType::Fabric
@@ -355,7 +355,7 @@ impl ModMetadataManager {
 
         let name = first.display_name.clone().unwrap_or_else(|| Arc::clone(&first.mod_id));
 
-        let mut png_icon: Option<Arc<[u8]>> = None;
+        let mut png_icon: Option<UniqueBytes> = None;
         if let Some(icon) = &first.logo_file && let Some(icon_file) = archive.by_name(&icon) {
             png_icon = load_icon(icon_file);
         }
@@ -405,7 +405,7 @@ impl ModMetadataManager {
 
         drop(file);
 
-        let mut png_icon: Option<Arc<[u8]>> = None;
+        let mut png_icon: Option<UniqueBytes> = None;
         if let Some(icon) = &first.logo_file && let Some(icon_file) = archive.by_name(&icon) {
             png_icon = load_icon(icon_file);
         }
@@ -533,7 +533,7 @@ impl ModMetadataManager {
             hash,
             name: Some(modrinth_index_json.name),
             authors,
-            version_str: format!("v{}", modrinth_index_json.version_id).into(),
+            version_str: create_version_string(&modrinth_index_json.version_id),
             rich_description: None,
             png_icon,
             extra: ContentType::ModrinthModpack {
@@ -622,7 +622,7 @@ impl ModMetadataManager {
             hash,
             name: manifest_json.name,
             authors,
-            version_str: format!("v{}", manifest_json.version).into(),
+            version_str: create_version_string(&manifest_json.version),
             rich_description: None,
             png_icon,
             extra: ContentType::CurseforgeModpack {
@@ -751,7 +751,7 @@ impl ModMetadataManager {
 }
 
 
-fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) -> Option<Arc<[u8]>> {
+fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) -> Option<UniqueBytes> {
     let Ok(icon_bytes) = icon_file.bytes() else {
         return None;
     };
@@ -759,7 +759,7 @@ fn load_icon<R: rc_zip_sync::HasCursor>(icon_file: rc_zip_sync::EntryHandle<R>) 
     load_icon_bytes(&icon_bytes)
 }
 
-fn load_icon_bytes(icon_bytes: &[u8]) -> Option<Arc<[u8]>> {
+fn load_icon_bytes(icon_bytes: &[u8]) -> Option<UniqueBytes> {
     let Ok(mut image) = image::load_from_memory(&icon_bytes) else {
         return None;
     };
@@ -1105,6 +1105,15 @@ impl ContentSources {
             by_first_byte,
             dirty: [0; 8]
         })
+    }
+}
+
+fn create_version_string(ver: &str) -> Arc<str> {
+    let ver = ver.trim_ascii();
+    if ver.starts_with('v') {
+        ver.into()
+    } else {
+        format!("v{ver}").into()
     }
 }
 

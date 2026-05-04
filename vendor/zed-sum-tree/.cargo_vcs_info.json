@@ -1,0 +1,7 @@
+{
+  "git": {
+    "sha1": "7c49ef4bd4075fa007c60f9e1d2f88b3fb256860",
+    "dirty": true
+  },
+  "path_in_vcs": "crates/sum_tree"
+}

@@ -1,0 +1,22 @@
+[package]
+name = "ownable"
+version = "0.6.2"
+authors = ["ALeX Kazik <alex@kazik.de>"]
+edition = "2021"
+description = "Derive macro for structs/enums with Cow, which can convert Type<'a> to Type<'static> and more"
+repository = "https://github.com/alexkazik/ownable"
+license = "MIT OR Apache-2.0"
+keywords = ["into_owned", "derive", "owned", "no_std"]
+categories = ["rust-patterns", "no-std"]
+
+[dependencies]
+ownable-macro = { version = "0.6", path = "../ownable-macro" }
+
+[features]
+default = ['std']
+std = []
+
+[package.metadata.docs.rs]
+all-features = true
+# enable unstable features in the documentation
+rustdoc-args = ["--cfg", "docsrs"]

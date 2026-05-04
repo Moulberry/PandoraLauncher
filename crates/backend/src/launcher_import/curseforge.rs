@@ -1,26 +1,69 @@
 use std::{path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{import::ImportFromOtherLauncherJob, modal_action::{ModalAction, ProgressTracker}};
-use schema::{curseforge::CurseforgeModpackManifestJson, instance::{InstanceConfiguration, InstanceMemoryConfiguration}, loader::Loader};
+use schema::{curseforge::{CurseforgeModLoaderType}, instance::{InstanceConfiguration, InstanceMemoryConfiguration}, loader::Loader};
 use serde::Deserialize;
+use ustr::Ustr;
 
 use crate::{BackendState, write_safe};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CurseforgeInstanceBaseModLoader {
+    r#type: u32,
+    latest: bool,
+    recommended: bool,
+    #[serde(rename = "forgeVersion")]
+    loader_version: Option<Arc<str>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CurseforgeInstance {
-    manifest: CurseforgeModpackManifestJson,
+    base_mod_loader: Option<CurseforgeInstanceBaseModLoader>,
+    game_version: Ustr,
+    #[serde(default)]
     is_memory_override: bool,
+    #[serde(default)]
     allocated_memory: u32,
-    // memory_allocated_type: u8,
 }
 
 fn try_load_from_curseforge(config_path: &Path) -> Option<InstanceConfiguration> {
-    let instance_cfg_bytes = std::fs::read(config_path).ok()?;
-    let instance_cfg = serde_json::from_slice::<CurseforgeInstance>(&instance_cfg_bytes).ok()?;
+    let instance_cfg_bytes = match std::fs::read(config_path) {
+        Ok(instance_cfg_bytes) => instance_cfg_bytes,
+        Err(err) => {
+            log::error!("CurseForge import: Unable to read {:?}: {:?}", config_path, err);
+            return None;
+        },
+    };
+    let instance_cfg = match serde_json::from_slice::<CurseforgeInstance>(&instance_cfg_bytes) {
+        Ok(instance_cfg) => instance_cfg,
+        Err(err) => {
+            log::error!("Unable to parse CurseforgeInstance {:?}: {:?}", config_path, err);
+            return None;
+        },
+    };
 
-    let loader = instance_cfg.manifest.minecraft.get_loader().unwrap_or(Loader::Vanilla);
-    let mut configuration = InstanceConfiguration::new(instance_cfg.manifest.minecraft.version?.into(), loader);
+    let (loader, preferred_loader_version) = if let Some(base_mod_loader) = instance_cfg.base_mod_loader {
+        let loader = CurseforgeModLoaderType::from_u32(base_mod_loader.r#type);
+        if loader == CurseforgeModLoaderType::Any {
+            log::warn!("CurseForge import: unknown mod loader type id {}", base_mod_loader.r#type);
+            (Loader::Vanilla, None)
+        } else if !base_mod_loader.latest && !base_mod_loader.recommended && let Some(loader_version) = base_mod_loader.loader_version {
+            let preferred_loader_version = if loader == CurseforgeModLoaderType::Forge {
+                format!("{}-{}", instance_cfg.game_version, loader_version).into()
+            } else {
+                loader_version.into()
+            };
+            (loader.as_pandora(), Some(preferred_loader_version))
+        } else {
+            (loader.as_pandora(), None)
+        }
+    } else {
+        (Loader::Vanilla, None)
+    };
+    let mut configuration = InstanceConfiguration::new(instance_cfg.game_version, loader);
+    configuration.preferred_loader_version = preferred_loader_version;
     if instance_cfg.is_memory_override {
         configuration.memory = Some(InstanceMemoryConfiguration {
             enabled: true,

@@ -124,7 +124,7 @@ impl ServerListPinger {
             } else {
                 (&*server, None)
             };
-            let status = backend.server_list_pinger.request_status(host, port, 774).await;
+            let status = backend.server_list_pinger.request_status(host, port, protocol_version).await;
             let Ok((status, ping)) = status else {
                 backend.server_list_pinger.data.write().insert(key.clone(), PingEntry::Failed);
                 return;

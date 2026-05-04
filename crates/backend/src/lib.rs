@@ -409,6 +409,7 @@ pub fn join_windows_shell(args: &[&str]) -> String {
                 for _ in 0..backslashes {
                     string.push('\\');
                 }
+                backslashes = 0;
                 string.push(char);
             }
         }
@@ -469,6 +470,7 @@ pub fn join_windows_shell_os(args: &[&OsStr]) -> OsString {
                 for _ in 0..backslashes {
                     string.push(b'\\');
                 }
+                backslashes = 0;
                 string.push(*byte);
             }
         }

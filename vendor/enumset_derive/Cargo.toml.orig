@@ -1,0 +1,26 @@
+[package]
+name = "enumset_derive"
+version = "0.14.0"
+authors = ["Alissa Rao <aura@aura.moe>"]
+edition = "2021"
+
+description = "An internal helper crate for enumset. Not public API."
+
+documentation = "https://docs.rs/enumset_derive/latest/enumset_derive/"
+repository = "https://github.com/Lymia/enumset"
+
+license = "MIT/Apache-2.0"
+
+[lib]
+proc-macro = true
+
+[features]
+std_deprecation_warning = []
+serde2_deprecation_warning = []
+
+[dependencies]
+darling = { version = "0.21", default-features = false }
+syn = "2"
+quote = "1"
+proc-macro2 = "1"
+proc-macro-crate = { version = "3", optional = true }

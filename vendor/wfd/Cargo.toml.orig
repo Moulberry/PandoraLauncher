@@ -1,0 +1,19 @@
+[package]
+name = "wfd"
+version = "0.1.8"
+authors = ["Ben Wallis <atomyc+github@gmail.com>"]
+description = "A simple to use abstraction over the Open and Save dialogs in the Windows API"
+edition = "2018"
+license = "MIT"
+repository = "https://www.github.com/ben-wallis/wfd"
+readme = "README.md"
+keywords = ["file", "open", "save", "dialog", "windows"]
+categories = ["os::windows-apis"]
+exclude = [".github/*"]
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+
+[dependencies]
+winapi = { version = ">=0.3.9", features = ["winuser", "objbase", "shobjidl", "shobjidl_core", "winerror", "shellapi"] }
+libc = "0.2"

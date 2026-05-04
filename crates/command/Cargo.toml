@@ -9,11 +9,19 @@ parking_lot.workspace = true
 rustc-hash.workspace = true
 directories.workspace = true
 log.workspace = true
+tokio.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libseccomp.workspace = true
-libc.workspace = true
 
-# [target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(target_os = "macos")'.dependencies]
 security-framework.workspace = true
 security-framework-sys.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows.workspace = true
+junction.workspace = true
+scopeguard.workspace = true

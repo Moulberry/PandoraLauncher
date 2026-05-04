@@ -1,0 +1,33 @@
+[package]
+name = "ntest"
+version = "0.9.5"
+authors = [ "Armin Becher <becherarmin@gmail.com>",]
+edition = "2018"
+description = "Testing framework for rust which enhances the built-in library with some useful features."
+keywords = [ "test", "tests", "unit", "testing",]
+categories = [ "development-tools", "development-tools::testing",]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/becheran/ntest"
+documentation = "https://docs.rs/ntest"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies.ntest_test_cases]
+version = "0.9.5"
+path = "../ntest_test_cases"
+
+[dependencies.ntest_timeout]
+version = "0.9.5"
+path = "../ntest_timeout"
+
+[badges.maintenance]
+status = "actively-developed"
+
+[profile.dev]
+panic = "unwind"
+
+[dev-dependencies.tokio]
+version = "1.48"
+features = [ "rt", "macros",]

@@ -1,0 +1,30 @@
+# Use cargo to test the project
+test:cargo:
+  stage: test
+  tags:
+    - openbsd
+  script:
+    - rustc --version && cargo --version  # Print version info for debugging
+    - cargo fmt -- --check
+    - cargo clippy
+    - cargo test --workspace --verbose
+
+cross:cargo:
+  image: rust:1.54-slim
+  stage: build
+  tags:
+    - docker
+  parallel:
+    matrix:
+      - TARGET: x86_64-unknown-netbsd
+      - TARGET: i686-unknown-freebsd
+      - TARGET: x86_64-unknown-freebsd
+      - TARGET: x86_64-apple-darwin
+      - TARGET: aarch64-apple-darwin
+      - TARGET: x86_64-apple-ios
+      - TARGET: aarch64-apple-ios
+  before_script:
+    - rustup target add $TARGET
+  script:
+    - rustc --version && cargo --version  # Print version info for debugging
+    - cargo build --target $TARGET

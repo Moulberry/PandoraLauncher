@@ -1,0 +1,30 @@
+[package]
+description = "Macro for rust-i18n crate."
+edition = "2021"
+license = "MIT"
+name = "rust-i18n-macro"
+readme = "../../README.md"
+repository = "https://github.com/longbridge/rust-i18n"
+version = "3.1.5"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+glob.workspace = true
+once_cell.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+rust-i18n-support.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+syn.workspace = true
+
+[dev-dependencies]
+rust-i18n.workspace = true
+
+[lib]
+proc-macro = true
+
+[features]
+log-miss-tr = []

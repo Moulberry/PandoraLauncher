@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "huacnlee.autocorrect",
+    "redhat.vscode-yaml",
+    "rust-lang.rust-analyzer",
+    "lokalise.i18n-ally"
+  ]
+}

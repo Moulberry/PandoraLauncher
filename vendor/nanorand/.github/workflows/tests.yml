@@ -1,0 +1,131 @@
+name: "Run Tests"
+on:
+  push:
+    paths:
+      - '**/*.rs'
+      - '.github/workflows/*.yml'
+  pull_request:
+    paths:
+      - '**/*.rs'
+      - '.github/workflows/*.yml'
+jobs:
+  version-tests:
+    name: Test on Rust ${{ matrix.toolchain }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install stable Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          override: true
+          profile: minimal
+          toolchain: ${{ matrix.toolchain }}
+      - name: Run 'cargo check'
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-features
+      - name: Run 'cargo test'
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features
+    strategy:
+        matrix:
+            toolchain:
+                - 1.56.0
+                - stable
+                - beta
+                - nightly
+  linux-tests:
+    name: Test on ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install stable Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          override: true
+          profile: minimal
+          toolchain: stable
+      - name: Run 'cargo check'
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --all-features
+      - name: Run 'cargo check --no-default-features'
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --no-default-features
+      - name: Run 'cross test'
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: test
+          args: --all-features --target ${{ matrix.target }}
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - arm-unknown-linux-gnueabihf
+          - armv5te-unknown-linux-gnueabi
+          - armv7-unknown-linux-gnueabihf
+          - mips64-unknown-linux-gnuabi64
+          - mips64el-unknown-linux-gnuabi64
+          - powerpc-unknown-linux-gnu
+          - powerpc64le-unknown-linux-gnu
+          - riscv64gc-unknown-linux-gnu
+  windows-tests:
+      name: Test on Windows
+      runs-on: windows-latest
+      steps:
+        - uses: actions/checkout@v2
+        - name: Install stable Rust toolchain
+          uses: actions-rs/toolchain@v1
+          with:
+            override: true
+            profile: minimal
+            toolchain: stable
+        - name: Run 'cargo check'
+          uses: actions-rs/cargo@v1
+          with:
+            command: check
+            args: --all-features
+        - name: Run 'cargo check --no-default-features'
+          uses: actions-rs/cargo@v1
+          with:
+            command: check
+            args: --no-default-features
+        - name: Run 'cargo test'
+          uses: actions-rs/cargo@v1
+          with:
+            command: test
+            args: --all-features
+  macos-tests:
+      name: Test on macOS
+      runs-on: macos-latest
+      steps:
+        - uses: actions/checkout@v2
+        - name: Install stable Rust toolchain
+          uses: actions-rs/toolchain@v1
+          with:
+            override: true
+            profile: minimal
+            toolchain: stable
+        - name: Run 'cargo check'
+          uses: actions-rs/cargo@v1
+          with:
+            command: check
+            args: --all-features
+        - name: Run 'cargo check --no-default-features'
+          uses: actions-rs/cargo@v1
+          with:
+            command: check
+            args: --no-default-features
+        - name: Run 'cargo test'
+          uses: actions-rs/cargo@v1
+          with:
+            command: test
+            args: --all-features

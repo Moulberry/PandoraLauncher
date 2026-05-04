@@ -7,7 +7,7 @@ use bridge::{
 use gpui::{prelude::*, *};
 use gpui_component::select::SelectItem;
 use indexmap::IndexMap;
-use schema::instance::InstanceConfiguration;
+use schema::{instance::InstanceConfiguration, unique_bytes::UniqueBytes};
 
 pub struct InstanceEntries {
     pub entries: IndexMap<InstanceID, Entity<InstanceEntry>>,
@@ -18,7 +18,7 @@ impl InstanceEntries {
         entity: &Entity<Self>,
         id: InstanceID,
         name: SharedString,
-        icon: Option<Arc<[u8]>>,
+        icon: Option<UniqueBytes>,
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
@@ -94,7 +94,7 @@ impl InstanceEntries {
         entity: &Entity<Self>,
         id: InstanceID,
         name: SharedString,
-        icon: Option<Arc<[u8]>>,
+        icon: Option<UniqueBytes>,
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
@@ -213,7 +213,7 @@ impl InstanceEntries {
 pub struct InstanceEntry {
     pub id: InstanceID,
     pub name: SharedString,
-    pub icon: Option<Arc<[u8]>>,
+    pub icon: Option<UniqueBytes>,
     pub title: SharedString,
     pub root_path: Arc<Path>,
     pub dot_minecraft_folder: Arc<Path>,

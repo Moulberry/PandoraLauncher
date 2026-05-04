@@ -1,8 +1,8 @@
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use gpui::{prelude::*, *};
 use gpui_component::{Selectable, Sizable, button::Button, h_flex, slider::{Slider, SliderEvent, SliderState}, v_flex};
-use schema::minecraft_profile::SkinVariant;
+use schema::{minecraft_profile::SkinVariant, unique_bytes::UniqueBytes};
 
 use crate::{component::player_model::{self, PlayerModel, PlayerModelState}, icon::PandoraIcon};
 
@@ -21,7 +21,7 @@ pub struct PlayerModelWidget {
 }
 
 impl PlayerModelWidget {
-    pub fn new(cx: &mut Context<Self>, skin: Arc<[u8]>) -> Self {
+    pub fn new(cx: &mut Context<Self>, skin: UniqueBytes) -> Self {
         let yaw_slider_state = cx.new(|_| {
             SliderState::new().min(-180.0).max(180.0).default_value(player_model::DEFAULT_YAW as f32)
         });
@@ -53,14 +53,14 @@ impl PlayerModelWidget {
         }
     }
 
-    pub fn set_skin(&mut self, cx: &mut App, skin: Arc<[u8]>, variant: SkinVariant) {
+    pub fn set_skin(&mut self, cx: &mut App, skin: UniqueBytes, variant: SkinVariant) {
         self.variant = variant;
         let mut state = self.player_model_state.as_mut(cx);
         state.skin = skin;
         state.variant = variant;
     }
 
-    pub fn set_cape(&mut self, cx: &mut App, cape: Option<Arc<[u8]>>) {
+    pub fn set_cape(&mut self, cx: &mut App, cape: Option<UniqueBytes>) {
         self.player_model_state.as_mut(cx).cape = cape;
     }
 
@@ -73,7 +73,7 @@ impl PlayerModelWidget {
         self.variant
     }
 
-    pub fn set_skin_and_cape(&mut self, cx: &mut App, skin: Arc<[u8]>, variant: SkinVariant, cape: Option<Arc<[u8]>>) {
+    pub fn set_skin_and_cape(&mut self, cx: &mut App, skin: UniqueBytes, variant: SkinVariant, cape: Option<UniqueBytes>) {
         self.variant = variant;
         let mut state = self.player_model_state.as_mut(cx);
         state.skin = skin;

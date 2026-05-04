@@ -1,0 +1,19 @@
+[package]
+name = "enum-iterator-derive"
+version = "1.5.0"
+authors = ["Stephane Raux <stephaneyfx@gmail.com>"]
+edition = "2021"
+description = "Procedural macro to derive Sequence"
+license = "0BSD"
+homepage = "https://github.com/stephaneyfx/enum-iterator"
+repository = "https://github.com/stephaneyfx/enum-iterator.git"
+documentation = "https://docs.rs/enum-iterator-derive"
+keywords = ["enum", "variants", "iterator", "enumerate", "cardinality"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.39"
+quote = "1.0.18"
+syn = { version = "2.0.15", features = ["extra-traits"] }

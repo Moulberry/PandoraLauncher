@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, process::Child, sync::Arc, time::{Instant, SystemTime, UNIX_EPOCH}
+    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, io::Read, path::Path, sync::Arc, time::{Instant, SystemTime, UNIX_EPOCH}
 };
 
 use anyhow::Context;
@@ -7,12 +7,13 @@ use base64::Engine;
 use bridge::{
     instance::{
         ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
-    }, keep_alive::KeepAliveHandle, message::{BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle}
+    }, keep_alive::KeepAliveHandle, message::{BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle},
 };
+use command::PandoraProcess;
 use futures::FutureExt;
 use relative_path::RelativePath;
 use rustc_hash::FxHashSet;
-use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration, loader::Loader};
+use schema::{auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta}, instance::InstanceConfiguration, loader::Loader, unique_bytes::UniqueBytes};
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use thiserror::Error;
@@ -29,12 +30,13 @@ pub struct Instance {
     pub server_dat_path: Arc<Path>,
     pub saves_path: Arc<Path>,
     pub name: Ustr,
-    pub icon: Option<Arc<[u8]>>,
+    pub icon: Option<UniqueBytes>,
     pub configuration: Persistent<InstanceConfiguration>,
     pub stats: Persistent<InstanceStats>,
 
     pub launch_keepalive: Option<KeepAliveHandle>,
-    pub processes: Vec<Child>,
+    pub processes: Vec<PandoraProcess>,
+    pub closing_processes: Vec<(PandoraProcess, Instant)>,
     session_started_at: Option<Instant>,
 
     pub worlds_state: BridgeDataLoadState,
@@ -382,6 +384,62 @@ impl Instance {
         Self::load_servers_inner(backend, id).await
     }
 
+    pub async fn reorder_servers(
+        backend: Arc<BackendState>,
+        id: InstanceID,
+        from_index: usize,
+        to_index: usize,
+    ) {
+        let server_dat_path = {
+            let guard = backend.instance_state.read();
+            let Some(instance) = guard.instances.get(id) else {
+                return;
+            };
+            instance.server_dat_path.clone()
+        };
+
+        if !server_dat_path.is_file() {
+            backend.send.send_error("server.dat is not a file");
+            return;
+        }
+
+        let raw = match std::fs::read(&server_dat_path) {
+            Ok(raw) => raw,
+            Err(err) => {
+                log::error!("Error while reading server.dat: {err:?}");
+                backend.send.send_error("Error while reading server.dat: {err}");
+                return;
+            },
+        };
+        let mut nbt_data = raw.as_slice();
+        let mut result = match nbt::decode::read_named(&mut nbt_data) {
+            Ok(result) => result,
+            Err(err) => {
+                log::error!("Error while decoding server.dat: {err:?}");
+                backend.send.send_error("Error while decoding server.dat: {err}");
+                return;
+            },
+        };
+
+        let Some(mut root) = result.as_compound_mut() else {
+            backend.send.send_error("Unable to get root compound");
+            return;
+        };
+        let Some(mut servers) = root.find_list_mut("servers", nbt::TAG_COMPOUND_ID) else {
+            backend.send.send_error("Unable to get servers list");
+            return;
+        };
+
+        if servers.move_index(from_index, to_index) {
+            let bytes = nbt::encode::write_named(&result);
+            if let Err(err) = crate::write_safe(&server_dat_path, &bytes) {
+                log::error!("Error while writing server.dat: {err:?}");
+                backend.send.send_error("Error while writing server.dat: {err}");
+                return;
+            }
+        }
+    }
+
     fn load_servers_inner(
         backend: Arc<BackendState>,
         id: InstanceID,
@@ -714,6 +772,7 @@ impl Instance {
 
             launch_keepalive: None,
             processes: Vec::new(),
+            closing_processes: Vec::new(),
             session_started_at: None,
 
             worlds_state: BridgeDataLoadState::default(),
@@ -858,6 +917,8 @@ impl Instance {
     pub fn status(&self) -> InstanceStatus {
         if !self.processes.is_empty() {
             InstanceStatus::Running
+        } else if !self.closing_processes.is_empty() {
+            InstanceStatus::Stopping
         } else if let Some(keepalive) = &self.launch_keepalive && keepalive.is_alive() {
             InstanceStatus::Launching
         } else {
@@ -1061,7 +1122,7 @@ fn load_world_summary(path: &Path) -> anyhow::Result<InstanceWorldSummary> {
 
     let icon_path = path.join("icon.png");
     let icon = if icon_path.is_file() {
-        std::fs::read(icon_path).map(Arc::from).ok()
+        std::fs::read(icon_path).map(UniqueBytes::from).ok()
     } else {
         None
     };
@@ -1112,11 +1173,11 @@ fn load_servers_summary(server_dat_path: &Path, backend: &Arc<BackendState>, ver
             .map(|v| Arc::from(v.as_str()))
             .unwrap_or_else(|| Arc::from("<unnamed>"));
 
-        let mut icon: Option<Arc<[u8]>> = if let Some(status) = &status
+        let mut icon: Option<UniqueBytes> = if let Some(status) = &status
             && let Some(icon) = &status.favicon
             && let Some(base64) = icon.strip_prefix("data:image/png;base64,")
         {
-            base64::engine::general_purpose::STANDARD.decode(base64.replace('\n', "")).map(Arc::from).ok()
+            base64::engine::general_purpose::STANDARD.decode(base64.replace('\n', "")).map(UniqueBytes::from).ok()
         } else {
             None
         };
@@ -1124,7 +1185,7 @@ fn load_servers_summary(server_dat_path: &Path, backend: &Arc<BackendState>, ver
         if icon.is_none() {
             icon = server
                 .find_string("icon")
-                .and_then(|v| base64::engine::general_purpose::STANDARD.decode(v).map(Arc::from).ok());
+                .and_then(|v| base64::engine::general_purpose::STANDARD.decode(v).map(UniqueBytes::from).ok());
         }
 
         summaries.push(InstanceServerSummary {

@@ -9,7 +9,6 @@ use rustc_hash::FxHashSet;
 use schema::{content::ContentSource, curseforge::{CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, modrinth::{ModrinthDependencyType, ModrinthLoader, ModrinthProjectVersionsRequest}};
 use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
-use tokio::sync::Semaphore;
 
 use crate::{BackendState, instance::{ContentFolder, Instance}, lockfile::Lockfile, metadata::{items::{CurseforgeGetFilesMetadataItem, CurseforgeGetModFilesMetadataItem, MinecraftVersionManifestMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthVersionMetadataItem}, manager::MetaLoadError}};
 
@@ -136,11 +135,10 @@ impl BackendState {
             None
         };
 
-        let semaphore = tokio::sync::Semaphore::new(8);
         let mut tasks = Vec::new();
 
         for content_file in content.files.iter() {
-            tasks.push(self.install_into_content_library(&content, &modal_action, content_file, &semaphore, installed_content_ids.as_ref(), false));
+            tasks.push(self.install_into_content_library(&content, &modal_action, content_file, installed_content_ids.as_ref(), false));
         }
 
         let result: Result<Vec<InstallFromContentLibrary>, ContentInstallError> = futures::future::try_join_all(tasks).await;
@@ -162,7 +160,7 @@ impl BackendState {
             let mut new_tasks = Vec::new();
 
             for dependency in &dependencies {
-                new_tasks.push(self.install_into_content_library(&content, &modal_action, dependency, &semaphore, installed_content_ids.as_ref(), true));
+                new_tasks.push(self.install_into_content_library(&content, &modal_action, dependency, installed_content_ids.as_ref(), true));
             }
 
             let new_results = futures::future::join_all(new_tasks).await;
@@ -259,7 +257,6 @@ impl BackendState {
         content: &ContentInstall,
         modal_action: &ModalAction,
         content_file: &ContentInstallFile,
-        semaphore: &Semaphore,
         installed_content_ids: Option<&Mutex<InstalledContentIds>>,
         skip_if_already_installed: bool,
     ) -> Result<InstallFromContentLibrary, ContentInstallError> {
@@ -272,7 +269,7 @@ impl BackendState {
                     }
                 }
 
-                let permit = semaphore.acquire().await;
+                let permit = self.content_install_semaphore.acquire().await;
 
                 let title = format!("Fetching versions for Modrinth project {}", project_id);
                 let tracker = ProgressTracker::new(title.into(), self.send.clone());
@@ -344,7 +341,6 @@ impl BackendState {
                     result?.0.first().map(|v| Arc::new(v.clone()))
                 };
 
-
                 drop(permit);
 
                 let Some(version) = version else {
@@ -374,7 +370,7 @@ impl BackendState {
                 };
 
                 let (path, hash, mod_summary) = self.download_file_into_library(&modal_action,
-                    (&safe_filename).into(), url, sha1, size, &semaphore).await?;
+                    (&safe_filename).into(), url, sha1, size).await?;
 
                 if is_wrong_version && mod_summary.extra.is_strict_minecraft_version() {
                     return Err(ContentInstallError::UnableToFindVersion);
@@ -461,7 +457,7 @@ impl BackendState {
                     }
                 }
 
-                let permit = semaphore.acquire().await;
+                let permit = self.content_install_semaphore.acquire().await;
 
                 let title = format!("Fetching versions for Curseforge project {}", project_id);
                 let tracker = ProgressTracker::new(title.into(), self.send.clone());
@@ -557,7 +553,7 @@ impl BackendState {
                 };
 
                 let (path, hash, mod_summary) = self.download_file_into_library(&modal_action,
-                    (&safe_filename).into(), url, sha1, size, &semaphore).await?;
+                    (&safe_filename).into(), url, sha1, size).await?;
 
                 if is_wrong_version && mod_summary.extra.is_strict_minecraft_version() {
                     return Err(ContentInstallError::UnableToFindVersion);
@@ -624,7 +620,7 @@ impl BackendState {
                 };
 
                 let (path, hash, mod_summary) = self.download_file_into_library(&modal_action,
-                    name, url, sha1, size, &semaphore).await?;
+                    name, url, sha1, size).await?;
 
                 let install_path = match &content_file.path {
                     ContentInstallPath::Raw(path) => path.clone(),
@@ -769,8 +765,8 @@ impl BackendState {
         }
     }
 
-    async fn download_file_into_library(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: &Arc<str>, size: usize, semaphore: &tokio::sync::Semaphore) -> Result<(PathBuf, [u8; 20], Arc<ContentSummary>), ContentInstallError> {
-        let mut result = self.download_file_into_library_inner(modal_action, name, url, sha1, size, semaphore).await?;
+    async fn download_file_into_library(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: &Arc<str>, size: usize) -> Result<(PathBuf, [u8; 20], Arc<ContentSummary>), ContentInstallError> {
+        let mut result = self.download_file_into_library_inner(modal_action, name, url, sha1, size).await?;
 
         if let ContentType::ModrinthModpack { downloads, .. } = &result.2.extra {
             let mut tasks = Vec::new();
@@ -786,7 +782,7 @@ impl BackendState {
                 };
 
                 tasks.push(self.download_file_into_library_inner(modal_action, name,
-                    &download.downloads[0], &download.hashes.sha1, download.file_size, semaphore));
+                    &download.downloads[0], &download.hashes.sha1, download.file_size));
             }
 
             _ = futures::future::try_join_all(tasks).await;
@@ -843,7 +839,7 @@ impl BackendState {
                         };
 
                         tasks.push(self.download_file_into_library_inner(modal_action, name,
-                            &download_url, sha1, file.file_length as usize, semaphore));
+                            &download_url, sha1, file.file_length as usize));
                     }
 
                     _ = futures::future::try_join_all(tasks).await;
@@ -855,7 +851,7 @@ impl BackendState {
         Ok(result)
     }
 
-    async fn download_file_into_library_inner(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: &Arc<str>, size: usize, semaphore: &tokio::sync::Semaphore) -> Result<(PathBuf, [u8; 20], Arc<ContentSummary>), ContentInstallError> {
+    async fn download_file_into_library_inner(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: &Arc<str>, size: usize) -> Result<(PathBuf, [u8; 20], Arc<ContentSummary>), ContentInstallError> {
         let mut expected_hash = [0u8; 20];
         let Ok(_) = hex::decode_to_slice(&**sha1, &mut expected_hash) else {
             log::warn!("Content install has invalid sha1: {}", sha1);
@@ -873,7 +869,7 @@ impl BackendState {
             path.set_extension(extension);
         }
 
-        let _permit = semaphore.acquire().await.unwrap();
+        let _permit = self.content_install_semaphore.acquire().await.unwrap();
 
         let lockfile = Lockfile::create(path.with_added_extension("lock").into()).await;
 

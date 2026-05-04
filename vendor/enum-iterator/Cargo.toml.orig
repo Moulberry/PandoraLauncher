@@ -1,0 +1,14 @@
+[package]
+name = "enum-iterator"
+version = "2.3.0"
+authors = ["Stephane Raux <stephaneyfx@gmail.com>"]
+edition = "2021"
+description = "Tools to iterate over all values of a type (e.g. all variants of an enumeration)"
+license = "0BSD"
+homepage = "https://github.com/stephaneyfx/enum-iterator"
+repository = "https://github.com/stephaneyfx/enum-iterator.git"
+documentation = "https://docs.rs/enum-iterator"
+keywords = ["enum", "variants", "iterator", "enumerate", "cardinality"]
+
+[dependencies]
+enum-iterator-derive = { path = "../enum-iterator-derive", version = "1.5.0" }

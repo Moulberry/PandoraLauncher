@@ -1,0 +1,30 @@
+[package]
+name = "stacksafe"
+
+categories = ["memory-management", "rust-patterns"]
+description = "Prevent stack overflow in deeply recursive functions with automatic stack management."
+documentation = "https://docs.rs/stacksafe"
+keywords = ["recursion", "recursive", "stacker", "stack", "overflow"]
+readme = "../README.md"
+
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+# Provides stack-safe visitor pattern implementations for `StackSafe<T>`.
+derive-visitor = ["dep:derive-visitor"]
+# Provides stack-safe serialization and deserialization for `StackSafe<T>`.
+serde = ["dep:serde"]
+
+[dependencies]
+derive-visitor = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+stacker = { workspace = true }
+stacksafe-macro = { workspace = true }

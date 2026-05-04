@@ -6,7 +6,7 @@ use gpui_component::{
 use strum::IntoEnumIterator;
 
 use crate::{
-    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::FrontendMetadata}, icon::PandoraIcon, interface_config::{InstancesViewMode, InterfaceConfig}, pages::page::Page, ts
+    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::FrontendMetadata}, icon::PandoraIcon, interface_config::{InstancesViewMode, InterfaceConfig}, pages::page::Page,
 };
 
 pub struct InstancesPage {
@@ -55,14 +55,14 @@ impl Page for InstancesPage {
         let create_instance = Button::new("create_instance")
             .success()
             .icon(PandoraIcon::Plus)
-            .label(ts!("instance.create"))
+            .label(t::instance::create())
             .on_click(cx.listener(|this, _, window, cx| {
                 crate::modals::create_instance::open_create_instance(this.metadata.clone(), this.instances.clone(),
                     this.backend_handle.clone(), window, cx);
             }));
         // wrapping in div makes it not take up the full space of the titlebar
         let select_view = div()
-            .child(Select::new(&self.view_dropdown).title_prefix(format!("{}: ", ts!("instance.view"))));
+            .child(Select::new(&self.view_dropdown).title_prefix(format!("{}: ", t::instance::view())));
 
         h_flex().gap_3().child(create_instance).child(select_view)
     }

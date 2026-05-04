@@ -1,0 +1,35 @@
+[package]
+name = "lexical-sort"
+version = "0.3.1"
+authors = ["Ludwig Stecher <ludwig.stecher@gmx.de>"]
+description = "Sort Unicode strings lexically"
+categories = ["text-processing", "internationalization"]
+documentation = "https://docs.rs/lexical-sort"
+homepage = "https://lib.rs/crates/lexical-sort"
+repository = "https://github.com/Aloso/lexical-sort"
+readme = "README.md"
+exclude = ["deny.toml", "docs/Diagrams.ods"]
+edition = "2018"
+
+keywords = ["Unicode", "transliteration", "lexicographical", "sort", "no_std"]
+license = "MIT OR Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+std = []
+default = ["std"]
+
+[dependencies]
+any_ascii = "^0.1.6"
+
+[dev-dependencies]
+criterion = "0.3"
+alphanumeric-sort = "1.1"
+rust_icu_ucol = "0.3"
+rust_icu_ustring = "0.3"
+
+[[bench]]
+name = "comparing"
+path = "benches/comparing.rs"
+harness = false

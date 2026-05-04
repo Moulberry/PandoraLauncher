@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap, path::{Path, PathBuf}, sync::Arc, time::{Duration, Instant, SystemTime}
+    collections::HashMap, path::{Path, PathBuf}, sync::{Arc, atomic::{AtomicBool, Ordering}}, time::{Duration, Instant, SystemTime}
 };
 
 use auth::{
@@ -10,7 +10,7 @@ use auth::{
     serve_redirect::{self, ProcessAuthorizationError},
 };
 use bridge::{
-    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, InstanceID}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, InstanceID}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, quit::QuitCoordinator, safe_path::SafePath
 };
 use image::ImageFormat;
 use indexmap::IndexSet;
@@ -58,13 +58,7 @@ fn build_http_clients(user_agent: &str, proxy_config: &ProxyConfig, proxy_passwo
     (http_client, redirecting_http_client)
 }
 
-pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHandle, recv: BackendReceiver) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .expect("Failed to initialize Tokio runtime");
-
+pub fn start(runtime: tokio::runtime::Runtime, launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHandle, recv: BackendReceiver, quit_handler: QuitCoordinator) {
     let user_agent = if let Some(version) = option_env!("PANDORA_RELEASE_VERSION") {
         format!("PandoraLauncher/{version} (https://github.com/Moulberry/PandoraLauncher)")
     } else {
@@ -147,6 +141,9 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         cached_minecraft_profiles: Default::default(),
         skin_manager: Default::default(),
         server_list_pinger: Arc::new(ServerListPinger::new()),
+        quit_coordinator: quit_handler,
+        should_quit: AtomicBool::new(false),
+        content_install_semaphore: Semaphore::new(8),
     };
 
     log::debug!("Doing initial backend load");
@@ -205,6 +202,9 @@ pub struct BackendState {
     pub cached_minecraft_profiles: Arc<RwLock<FxHashMap<Uuid, CachedMinecraftProfile>>>,
     pub skin_manager: Arc<RwLock<SkinManager>>,
     pub server_list_pinger: Arc<ServerListPinger>,
+    pub quit_coordinator: QuitCoordinator,
+    pub should_quit: AtomicBool,
+    pub content_install_semaphore: Semaphore,
 }
 
 pub struct CachedMinecraftProfile {
@@ -393,7 +393,7 @@ impl BackendState {
 
     async fn handle(self: Arc<Self>, mut backend_recv: BackendReceiver, mut watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>) {
         let mut interval = tokio::time::interval(Duration::from_millis(1000));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         tokio::pin!(interval);
 
         loop {
@@ -406,9 +406,9 @@ impl BackendState {
                         break;
                     }
                 },
-                instance_change = watcher_rx.recv() => {
-                    if let Some(instance_change) = instance_change {
-                        self.handle_filesystem(instance_change).await;
+                event = watcher_rx.recv() => {
+                    if let Some(event) = event {
+                        self.handle_filesystem(event).await;
                     } else {
                         log::info!("Backend filesystem has shut down");
                         break;
@@ -418,25 +418,73 @@ impl BackendState {
                     self.handle_tick().await;
                 }
             }
+
+            if self.should_quit.load(Ordering::Relaxed) {
+                while let Some(message) = backend_recv.try_recv() {
+                    self.handle_message(message).await;
+                }
+                self.handle_tick().await;
+                break;
+            }
         }
+
+        self.send.send(MessageToFrontend::Quit);
     }
 
-    async fn handle_tick(&self) {
+    async fn handle_tick(&self) { // todo: make this non-async
         self.meta.expire().await;
         self.mod_metadata_manager.write_changes();
+
+        let mut any_process_alive = false;
 
         let mut instance_state = self.instance_state.write();
         for instance in instance_state.instances.iter_mut() {
             let mut killed = false;
-            instance.processes.retain_mut(|child| {
-                if matches!(child.try_wait(), Ok(None)) {
-                    true
-                } else {
-                    log::debug!("Child process {} is no longer alive", child.id());
-                    killed = true;
-                    false
+
+            instance.processes.retain_mut(|process| {
+                match process.try_wait() {
+                    Ok(None) => true,
+                    Ok(Some(status)) => {
+                        log::info!("Child process {} is no longer alive: {}", process.id(), status);
+                        killed = true;
+                        false
+                    }
+                    Err(err) => {
+                        log::error!("An error occured while waiting for process {}: {:?}", process.id(), err);
+                        killed = true;
+                        false
+                    },
                 }
             });
+            instance.closing_processes.retain_mut(|(process, _)| {
+                match process.try_wait() {
+                    Ok(None) => true,
+                    Ok(Some(status)) => {
+                        log::info!("Child process {} closed: {}", process.id(), status);
+                        killed = true;
+                        false
+                    }
+                    Err(err) => {
+                        log::error!("An error occured while waiting for closing process {}: {:?}", process.id(), err);
+                        killed = true;
+                        false
+                    },
+                }
+            });
+
+            let now = Instant::now();
+            let to_kill = instance.closing_processes.extract_if(.., |(_, deadline)| {
+                now > *deadline
+            });
+            for (process, _) in to_kill {
+                log::info!("Force killed process {}", process.id());
+                let result = process.kill();
+                killed = true;
+                if let Err(err) = result {
+                    self.send.send_error("Failed to kill instance");
+                    log::error!("Failed to kill instance: {err:?}");
+                }
+            }
 
             if killed {
                 instance.update_session();
@@ -449,7 +497,11 @@ impl BackendState {
                     playtime: instance.playtime(),
                 });
             }
+
+            any_process_alive |= !instance.processes.is_empty() || !instance.closing_processes.is_empty();
         }
+
+        self.quit_coordinator.set_can_quit(!any_process_alive);
     }
 
     pub async fn login(

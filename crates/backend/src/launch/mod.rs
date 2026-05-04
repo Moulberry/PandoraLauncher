@@ -1,10 +1,13 @@
 use std::{
-    borrow::Cow, cmp::Ordering, collections::{BTreeSet, HashMap, HashSet}, ffi::{OsStr, OsString}, fs::File, io::Write, path::{Path, PathBuf}, process::{Child, Command, Stdio}, sync::{Arc, OnceLock, atomic::AtomicBool}
+    borrow::Cow, cmp::Ordering, collections::{BTreeSet, HashMap, HashSet}, ffi::{OsStr, OsString}, fs::File, io::Write, path::{Path, PathBuf}, process::Stdio, sync::{Arc, OnceLock, atomic::AtomicBool}
 };
 
 use bridge::{
     handle::FrontendHandle, message::{MessageToFrontend, QuickPlayLaunch}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType, ProgressTrackers}, safe_path::SafePath
 };
+#[cfg(windows)]
+use command::PandoraArg;
+use command::{PandoraChild, PandoraCommand, PandoraSandbox};
 use futures::{FutureExt, TryFutureExt};
 use rand::seq::SliceRandom;
 use rc_zip_sync::{ArchiveHandle, ReadZip};
@@ -88,9 +91,10 @@ impl Launcher {
         quick_play: Option<QuickPlayLaunch>,
         login_info: MinecraftLoginInfo,
         add_mods: Vec<PathBuf>,
+        read_game_output: bool,
         launch_tracker: &ProgressTracker,
         modal_action: &ModalAction,
-    ) -> Result<Child, LaunchError> {
+    ) -> Result<PandoraChild, LaunchError> {
         log::info!("Launching {:?}", dot_minecraft_path);
 
         launch_tracker.set_total(6);
@@ -210,7 +214,7 @@ impl Launcher {
                     }
                 }
             } else {
-                classpath.push(library_path.into_os_string());
+                classpath.push(library_path);
             }
         }
 
@@ -219,6 +223,7 @@ impl Launcher {
             java_path,
             natives_dir,
             libraries_dir: self.directories.libraries_dir.clone(),
+            synced_dir: self.directories.synced_dir.clone(),
             game_dir: dot_minecraft_path,
             log_configs_dir: self.directories.log_configs_dir.clone(),
             sandbox_dir: self.directories.sandbox_dir.clone(),
@@ -238,7 +243,7 @@ impl Launcher {
         }
 
         log::info!("Launching game process");
-        let child = launch_context.launch(&version_info)?;
+        let child = launch_context.launch(&version_info, read_game_output).await?;
 
         launch_tracker.add_count(1);
 
@@ -435,7 +440,7 @@ impl Launcher {
                     true
                 ).await
             },
-            Loader::Unknown => todo!(),
+            Loader::Unknown => unimplemented!(),
         }
     }
 
@@ -2091,13 +2096,14 @@ pub struct LaunchContext {
     pub java_path: PathBuf,
     pub natives_dir: PathBuf,
     pub libraries_dir: Arc<Path>,
+    pub synced_dir: Arc<Path>,
     pub game_dir: Arc<Path>,
     pub log_configs_dir: Arc<Path>,
     pub sandbox_dir: Arc<Path>,
     pub configuration: InstanceConfiguration,
     pub assets_root: Arc<Path>,
     pub assets_index_name: String,
-    pub classpath: Vec<OsString>,
+    pub classpath: Vec<PathBuf>,
     pub log_configuration: Option<OsString>,
     pub rule_context: LaunchRuleContext,
     pub login_info: MinecraftLoginInfo,
@@ -2105,7 +2111,7 @@ pub struct LaunchContext {
 }
 
 impl LaunchContext {
-    pub fn launch(mut self, version_info: &MinecraftVersion) -> std::io::Result<std::process::Child> {
+    pub async fn launch(mut self, version_info: &MinecraftVersion, read_game_output: bool) -> std::io::Result<PandoraChild> {
         let mut wrapping_command: Vec<Cow<'static, OsStr>> = Vec::new();
 
         #[cfg(target_os = "linux")]
@@ -2128,18 +2134,57 @@ impl LaunchContext {
             }
         }
 
+        let java_path = self.java_path.canonicalize()?;
+
+        // Checks to make sure java is sane
+        let Some(java_path_parent) = java_path.parent() else {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java path is missing parent"));
+        };
+        if java_path_parent.file_name() != Some(OsStr::new("bin")) {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java parent folder must be 'bin'"));
+        }
+        let Some(java_path_parent_parent) = java_path_parent.parent() else {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java bin folder is missing parent"));
+        };
+        if !java_path_parent_parent.join("lib").is_dir() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java root folder must contain 'lib'"));
+        }
+
+
         wrapping_command.push(self.java_path.clone().into_os_string().into());
 
         let mut iter = wrapping_command.iter();
-        let mut command = Command::new(iter.next().unwrap());
-        command.args(iter);
+        let mut command = PandoraCommand::new(iter.next().unwrap().to_os_string());
+        for arg in iter {
+            command.arg(arg.to_os_string());
+        }
 
         #[cfg(target_os = "linux")]
         if std::env::var_os("DISPLAY").is_none() {
-            use std::os::linux::net::SocketAddrExt;
-            use std::os::unix::net::{UnixStream, SocketAddr};
-            if std::fs::exists("/tmp/.X11-unix/X0").unwrap_or(false) || UnixStream::connect_addr(&SocketAddr::from_abstract_name(b"/tmp/.X11-unix/X0").unwrap()).is_ok() {
-                command.env("DISPLAY", ":0");
+            if let Ok(unix_sockets) = File::open("/proc/net/unix") {
+                use std::io::BufRead;
+
+                let mut unix_sockets = std::io::BufReader::new(unix_sockets);
+
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    let Ok(read) = unix_sockets.read_line(&mut line) else {
+                        break;
+                    };
+                    if read == 0 {
+                        break;
+                    }
+
+                    if let Some((_, last)) = line.rsplit_once(['\t', '\x0C', '\r', ' ']) {
+                        let last = last.trim_ascii().strip_prefix('@').unwrap_or(last);
+                        if last == "/tmp/.X11-unix/X0" {
+                            command.env("DISPLAY", ":0");
+                            break;
+                        }
+                    }
+
+                }
             }
         }
 
@@ -2153,15 +2198,29 @@ impl LaunchContext {
         }
 
         command.current_dir(&self.game_dir);
-        command.stdin(Stdio::piped());
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
+        command.stdin(command::PandoraStdioWriteMode::Pipe);
+        if read_game_output {
+            command.stdout(command::PandoraStdioReadMode::Pipe);
+            command.stderr(command::PandoraStdioReadMode::Pipe);
+        } else {
+            command.stdout(command::PandoraStdioReadMode::Null);
+            command.stderr(command::PandoraStdioReadMode::Null);
+        }
 
-        self.classpath.push(self.launch_wrapper_path.as_os_str().to_os_string());
+        #[cfg(windows)]
+        command.force_feedback(true);
+
+        self.classpath.push(self.launch_wrapper_path.to_path_buf());
+
+        // Force stdout/stderr to use UTF-8
+        command.arg("-Dstdout.encoding=UTF-8");
+        command.arg("-Dsun.stdout.encoding=UTF-8");
+        command.arg("-Dstderr.encoding=UTF-8");
+        command.arg("-Dsun.stderr.encoding=UTF-8");
 
         if let Some(arguments) = &version_info.arguments {
             self.process_arguments(&arguments.jvm, &mut |arg| {
-                command.arg(arg);
+                command.arg(arg.to_os_string());
             });
         } else {
             let mut java_library_path = OsString::new();
@@ -2174,7 +2233,7 @@ impl LaunchContext {
         }
 
         if let Some(log_configuration) = &self.log_configuration {
-            command.arg(log_configuration);
+            command.arg(log_configuration.to_os_string());
         }
 
         if let Some(memory) = &self.configuration.memory && memory.enabled {
@@ -2184,15 +2243,66 @@ impl LaunchContext {
 
         if let Some(jvm_flags) = &self.configuration.jvm_flags && jvm_flags.enabled {
             if let Ok(split) = shell_words::split(&jvm_flags.flags) {
-                command.args(split);
+                for arg in split {
+                    command.arg(arg.to_string());
+                }
             } else {
-                command.args(jvm_flags.flags.split_whitespace());
+                for arg in jvm_flags.flags.split_whitespace() {
+                    command.arg(arg.to_string());
+                }
             }
         }
 
         command.arg("com.moulberry.pandora.LaunchWrapper");
 
-        let mut child = command.spawn()?;
+        if let Some(path) = std::env::var_os("PATH") {
+            let new_paths = std::env::split_paths(&path)
+                .chain([self.natives_dir.clone()]);
+            if let Ok(new_path_arg) = std::env::join_paths(new_paths) {
+                command.env("PATH", new_path_arg);
+            }
+        }
+
+        let mut child = if self.configuration.sandbox {
+            #[cfg(target_os = "linux")]
+            if !command::is_command_available("bwrap") {
+                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "missing 'bwrap' command for sandbox"));
+            } else if !command::is_command_available("xdg-dbus-proxy") {
+                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "missing 'xdg-dbus-proxy' command for sandbox"));
+            }
+
+            let mut allow_read = vec![
+                self.libraries_dir.clone(),
+                self.log_configs_dir.clone(),
+                self.launch_wrapper_path.clone(),
+                self.assets_root.clone(),
+            ];
+
+            allow_read.push(java_path_parent_parent.into());
+
+            command.spawn_sandboxed(PandoraSandbox {
+                allow_read,
+                allow_write: vec![
+                    self.game_dir.clone(),
+                    self.natives_dir.clone().into(),
+                    self.synced_dir.clone(),
+                ],
+                is_jvm: true,
+                grant_network_access: true,
+                #[cfg(target_os = "linux")]
+                sandbox_dir: self.sandbox_dir.clone(),
+                #[cfg(windows)]
+                name: Arc::from(OsStr::new("PandoraInstanceSandbox")),
+                #[cfg(windows)]
+                description: Arc::from(OsStr::new("Sandbox for Minecraft instances run by Pandora Launcher")),
+                #[cfg(windows)]
+                self_elevate_for_acl_arg: Some(PandoraArg::from(OsStr::new("--internal-set-traverse-acls"))),
+                #[cfg(windows)]
+                grant_winsta_writeattributes: true,
+            }).await?
+        } else {
+            command.spawn().await?
+        };
 
         let mut stdin = child.stdin.take().expect("stdin present");
 
@@ -2335,7 +2445,7 @@ impl LaunchContext {
             ArgumentExpansionKey::LauncherVersion => OsStr::new("1.0.0").into(),
             ArgumentExpansionKey::Classpath => std::env::join_paths(&self.classpath).unwrap().into(),
             ArgumentExpansionKey::AuthPlayerName => OsStr::new(&*self.login_info.username).into(),
-            ArgumentExpansionKey::VersionName => OsStr::new("1.21.10").into(),
+            ArgumentExpansionKey::VersionName => OsStr::new(&*self.configuration.minecraft_version).into(),
             ArgumentExpansionKey::GameDirectory => self.game_dir.as_os_str().into(),
             ArgumentExpansionKey::AssetsRoot => self.assets_root.as_os_str().into(),
             ArgumentExpansionKey::AssetsIndexName => OsStr::new(&self.assets_index_name).into(),

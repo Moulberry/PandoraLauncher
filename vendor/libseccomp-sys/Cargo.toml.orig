@@ -1,0 +1,11 @@
+[package]
+name = "libseccomp-sys"
+version = "0.3.0"
+authors = ["Manabu Sugimoto <Manabu.Sugimoto@sony.com>"]
+license = "MIT OR Apache-2.0"
+description = "Raw FFI Bindings for the libseccomp Library"
+repository = "https://github.com/libseccomp-rs/libseccomp-rs"
+categories = ["api-bindings"]
+edition = "2021"
+rust-version = "1.67"
+readme = "README.md"

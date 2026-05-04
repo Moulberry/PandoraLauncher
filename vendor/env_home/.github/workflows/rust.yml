@@ -1,0 +1,68 @@
+name: Rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-style:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@1d96c772d19495a3b5c517cd2bc0cb401ea0529f
+      - name: Report cargo version
+        run: cargo --version
+      - name: Report rustfmt version
+        run: cargo fmt -- --version
+      - name: Check style
+        run: cargo fmt -- --check
+
+  clippy-lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@1d96c772d19495a3b5c517cd2bc0cb401ea0529f
+      - name: Report cargo version
+        run: cargo --version
+      - name: Report Clippy version
+        run: cargo clippy -- --version
+      - name: Run Clippy Lints
+        # Clippy's style nits are useful, but not worth keeping in CI.  This
+        # override belongs in src/lib.rs, but that doesn't reliably work due to
+        # rust-lang/rust-clippy#6610.
+        run: cargo clippy --all-targets -- --deny warnings --allow clippy::style
+
+  build-and-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022, macos-12]
+    steps:
+      - uses: actions/checkout@1d96c772d19495a3b5c517cd2bc0cb401ea0529f
+      - name: Report cargo version
+        run: cargo --version
+      - name: Report rustc version
+        run: rustc --version
+      - name: Build
+        run: cargo build --locked --all-targets --verbose
+      - name: Run tests
+        run: cargo test --locked --all-targets --verbose
+
+  # TODO: Support running tests for wasm targets.
+  build-and-test-wasm:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@1d96c772d19495a3b5c517cd2bc0cb401ea0529f
+      - name: Report cargo version
+        run: cargo --version
+      - name: Report rustc version
+        run: rustc --version
+      - name: Install wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Build
+        run: cargo build --locked --target wasm32-unknown-unknown --verbose
+      # - name: Run tests
+      #   run: cargo test --locked --target wasm32-unknown-unknown --verbose

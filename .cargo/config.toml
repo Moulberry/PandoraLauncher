@@ -1,0 +1,39 @@
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/longbridge/gpui-component.git?rev=2f7c7445d8c55e4af95c2a22695184ea8df35a32"]
+git = "https://github.com/longbridge/gpui-component.git"
+rev = "2f7c7445d8c55e4af95c2a22695184ea8df35a32"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/zed-industries/font-kit?rev=110523127440aefb11ce0cf280ae7c5071337ec5"]
+git = "https://github.com/zed-industries/font-kit"
+rev = "110523127440aefb11ce0cf280ae7c5071337ec5"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/zed-industries/reqwest.git?rev=c15662463bda39148ba154100dd44d3fba5873a4"]
+git = "https://github.com/zed-industries/reqwest.git"
+rev = "c15662463bda39148ba154100dd44d3fba5873a4"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/zed-industries/scap?rev=4afea48c3b002197176fb19cd0f9b180dd36eaac"]
+git = "https://github.com/zed-industries/scap"
+rev = "4afea48c3b002197176fb19cd0f9b180dd36eaac"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/zed-industries/wgpu.git?branch=v29"]
+git = "https://github.com/zed-industries/wgpu.git"
+branch = "v29"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/zed-industries/xim-rs.git?rev=16f35a2c881b815a2b6cdfd6687988e84f8447d8"]
+git = "https://github.com/zed-industries/xim-rs.git"
+rev = "16f35a2c881b815a2b6cdfd6687988e84f8447d8"
+replace-with = "vendored-sources"
+
+[source."git+https://github.com/zed-industries/zed"]
+git = "https://github.com/zed-industries/zed"
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

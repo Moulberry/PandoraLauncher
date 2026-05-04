@@ -1,21 +1,21 @@
 #![deny(unused_must_use)]
 
 use std::{
-    path::{Path, PathBuf}, sync::{Arc, atomic::AtomicBool}
+    borrow::Cow, path::{Path, PathBuf}, sync::{Arc, atomic::AtomicBool}
 };
 
-use bridge::
-    handle::{BackendHandle, FrontendReceiver}
+use bridge::{
+    handle::{BackendHandle, FrontendReceiver}, quit::QuitCoordinator}
 ;
 use gpui::*;
 use gpui_component::{
-    Root, StyledExt, WindowExt, button::Button, notification::{Notification, NotificationType}
+    Root, StyledExt, WindowExt, notification::{Notification, NotificationType}
 };
 use indexmap::IndexMap;
 use parking_lot::RwLock;
 
 use crate::{
-    component::error_alert::ErrorAlert, entity::{
+    entity::{
         DataEntities, PanicMessages, account::AccountEntries, instance::InstanceEntries, metadata::FrontendMetadata
     }, interface_config::InterfaceConfig, processor::Processor, root::{LauncherRoot, LauncherRootGlobal}
 };
@@ -32,32 +32,8 @@ pub mod png_render_cache;
 pub mod processor;
 pub mod root;
 pub mod skin_renderer;
+pub mod skin_thumbnail_cache;
 pub mod ui;
-
-rust_i18n::i18n!("locales");
-
-macro_rules! ts {
-    ($key:expr) => {
-        SharedString::new_static(ustr::ustr(&*rust_i18n::t!($key)).as_str())
-    };
-    ($($rest:tt)*) => {
-        SharedString::from(rust_i18n::t!($($rest)*))
-    };
-}
-pub(crate) use ts;
-
-macro_rules! ts_short {
-    ($id:expr) => {{
-        let short_key = format!("{}.short", $id);
-        let translated = rust_i18n::t!(&short_key);
-        if translated.ends_with(".short") {
-            ts!($id)
-        } else {
-            SharedString::new_static(ustr::ustr(&*translated).as_str())
-        }
-    }};
-}
-pub(crate) use ts_short;
 
 #[derive(rust_embed::RustEmbed)]
 #[folder = "../../assets"]
@@ -95,6 +71,7 @@ pub fn start(
     deadlock_message: Arc<RwLock<Option<String>>>,
     backend_handle: BackendHandle,
     mut recv: FrontendReceiver,
+    quit_coordinator: QuitCoordinator,
 ) {
     let user_agent = if let Some(version) = option_env!("PANDORA_RELEASE_VERSION") {
         format!("PandoraLauncher/{version} (https://github.com/Moulberry/PandoraLauncher)")
@@ -135,6 +112,8 @@ pub fn start(
         theme.font_family = SharedString::new_static(MAIN_FONT);
         theme.scrollbar_show = gpui_component::scroll::ScrollbarShow::Always;
 
+        cx.set_quit_mode(QuitMode::Explicit);
+
         cx.on_app_quit(|cx| {
             InterfaceConfig::force_save(cx);
             async {}
@@ -144,7 +123,8 @@ pub fn start(
 
         cx.on_window_closed({
             let main_window_hidden = main_window_hidden.clone();
-            move |cx| {
+            let quit_coordinator = quit_coordinator.clone();
+            move |cx, _window| {
                 if main_window_hidden.load(std::sync::atomic::Ordering::SeqCst) {
                     return;
                 }
@@ -160,10 +140,14 @@ pub fn start(
                         }
                     }
 
-                    cx.quit();
-                } else if cx.windows().is_empty() {
-                    cx.quit();
+                    for window in cx.windows() {
+                        _ = window.update(cx, |_, window, _| {
+                            window.remove_window();
+                        });
+                    }
                 }
+
+                quit_coordinator.set_can_quit(cx.windows().is_empty());
             }
         }).detach();
 
@@ -176,7 +160,11 @@ pub fn start(
         ]);
 
         cx.on_action(|_: &Quit, cx| {
-            cx.quit();
+            for window in cx.windows() {
+                _ = window.update(cx, |_, window, _| {
+                    window.remove_window();
+                });
+            }
         });
 
         let instances = cx.new(|_| InstanceEntries {
@@ -196,45 +184,11 @@ pub fn start(
             })
         };
 
-        let mut processor = Processor::new(data.clone(), main_window_hidden);
+        let mut processor = Processor::new(data.clone(), main_window_hidden, quit_coordinator);
 
         while let Some(message) = recv.try_recv() {
             processor.process(message, cx);
         }
-
-        let main_window = open_main_window(&data, cx);
-        processor.set_main_window_handle(main_window, cx);
-
-        if cfg!(target_os = "linux") && std::env::var_os("DISPLAY").is_none() {
-            if std::env::var_os("FLATPAK_ID").is_some() {
-                _ = main_window.update(cx, |_, window, cx| {
-                    window.open_dialog(cx, move |modal, _, _| {
-                        let error = "Pandora was downloaded through Flathub, which has a policy disallowing software from accessing both X11 and Wayland.\n\nMinecraft will be forced to run under Wayland, which may cause issues.\n\nhttps://github.com/flathub-infra/flatpak-builder-lint/pull/935";
-                        let error_widget = ErrorAlert::new("Flatpak Permission Warning".into(), error.into());
-
-                        return modal
-                            .child(error_widget)
-                            .overlay_closable(false)
-                            .close_button(false)
-                            .footer(Button::new("ok").label(ts!("common.ok")).on_click(|_, window, cx| window.close_dialog(cx)));
-                    });
-                });
-            } else {
-                _ = main_window.update(cx, |_, window, cx| {
-                    window.open_dialog(cx, move |modal, _, _| {
-                        let error = "It seems that X11/Xwayland is not available.\n\nMinecraft will be forced to run under Wayland, which may cause issues.";
-                        let error_widget = ErrorAlert::new("X11 Unavailable".into(), error.into());
-
-                        return modal
-                            .child(error_widget)
-                            .overlay_closable(false)
-                            .close_button(false)
-                            .footer(Button::new("ok").label(ts!("common.ok")).on_click(|_, window, cx| window.close_dialog(cx)));
-                    });
-                });
-            }
-        }
-
 
         cx.spawn(async move |cx| {
             while let Some(message) = recv.recv().await {
@@ -366,11 +320,11 @@ pub(crate) fn open_folder(path: &Path, window: &mut Window, cx: &mut App) {
     }
     if is_dir {
         if let Err(err) = open::that_detached(path) {
-            let notification: Notification = (NotificationType::Error, ts!("file_system.open_folder.error", err = err)).into();
+            let notification: Notification = (NotificationType::Error, SharedString::new(t::file_system::open_folder::error(err))).into();
             window.push_notification(notification.autohide(false), cx);
         }
     } else {
-        let notification: Notification = (NotificationType::Error, ts!("file_system.open_folder.not_a_directory")).into();
+        let notification: Notification = (NotificationType::Error, t::file_system::open_folder::not_a_directory()).into();
         window.push_notification(notification.autohide(false), cx);
     }
 }

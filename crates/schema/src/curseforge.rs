@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 use ustr::Ustr;
 
 use crate::loader::Loader;
@@ -20,6 +21,7 @@ pub struct CurseforgeSearchRequest {
     pub search_filter: Option<Arc<str>>,
     #[serde(skip_serializing_if = "crate::skip_if_none")]
     pub mod_loader_types: Option<Arc<str>>,
+    pub sort_field: u32,
     pub index: u32,
     pub page_size: u32,
 }
@@ -240,8 +242,54 @@ impl CurseforgeModLoaderType {
             _ => Self::Any,
         }
     }
+
+    pub fn from_id(id: &str) -> Option<Self> {
+        if id.starts_with("forge-") {
+            Some(Self::Forge)
+        } else if id.starts_with("neoforge-") {
+            Some(Self::NeoForge)
+        } else if id.starts_with("fabric-") {
+            Some(Self::Fabric)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_pandora(self) -> Loader {
+        match self {
+            CurseforgeModLoaderType::Forge => Loader::Forge,
+            CurseforgeModLoaderType::Cauldron => Loader::Unknown,
+            CurseforgeModLoaderType::LiteLoader => Loader::Unknown,
+            CurseforgeModLoaderType::Fabric => Loader::Fabric,
+            CurseforgeModLoaderType::Quilt => Loader::Unknown,
+            CurseforgeModLoaderType::NeoForge => Loader::NeoForge,
+            CurseforgeModLoaderType::Any => Loader::Unknown,
+        }
+    }
 }
 
+#[derive(Default, Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, EnumIter)]
+#[repr(u32)]
+pub enum CurseforgeSortField {
+    #[default]
+    Popularity = 2,
+    Downloads = 6,
+    LastUpdated = 3,
+    Name = 4,
+    Author = 5,
+}
+
+impl CurseforgeSortField {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Popularity => "popularity",
+            Self::Downloads => "downloads",
+            Self::LastUpdated => "updated",
+            Self::Name => "name",
+            Self::Author => "author",
+        }
+    }
+}
 
 #[derive(Default, Serialize, Deserialize, PartialEq, Eq, Clone, Copy, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -284,6 +332,7 @@ pub struct CurseforgeModpackManifestJson {
     pub minecraft: CurseforgeModpackMinecraft,
     pub version: Arc<str>,
     pub name: Option<Arc<str>>,
+    #[serde(default)]
     pub files: Arc<[CurseforgeModpackFile]>,
     pub author: Option<Arc<str>>,
     pub overrides: Option<Arc<str>>,
@@ -303,15 +352,7 @@ impl CurseforgeModpackMinecraft {
             .find(|loader| loader.primary)
             .or_else(|| self.mod_loaders.first())
             .and_then(|loader| {
-                if loader.id.starts_with("forge-") {
-                    Some(Loader::Forge)
-                } else if loader.id.starts_with("neoforge-") {
-                    Some(Loader::NeoForge)
-                } else if loader.id.starts_with("fabric-") {
-                    Some(Loader::Fabric)
-                } else {
-                    None
-                }
+                CurseforgeModLoaderType::from_id(&loader.id).map(CurseforgeModLoaderType::as_pandora)
             })
     }
 }

@@ -1,0 +1,38 @@
+name: "Linting"
+on:
+  push:
+    paths:
+      - '**/*.rs'
+      - '.github/workflows/*.yml'
+  pull_request:
+    paths:
+      - '**/*.rs'
+      - '.github/workflows/*.yml'
+jobs:
+  lint:
+    name: "Linting"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: "Install stable Rust toolchain"
+        uses: actions-rs/toolchain@v1
+        with:
+          override: true
+          profile: minimal
+          toolchain: "stable"
+          components: rustfmt, clippy
+      - name: Run rustfmt
+        uses: actions-rs/cargo@v1
+        with:
+          args: "--all -- --check"
+          command: fmt
+      - name: Run 'cargo check'
+        uses: actions-rs/cargo@v1
+        with:
+          args: "--workspace"
+          command: check
+      - name: Run clippy
+        uses: actions-rs/cargo@v1
+        with:
+          args: "--workspace"
+          command: clippy

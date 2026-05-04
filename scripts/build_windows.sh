@@ -9,7 +9,7 @@ fi
 version=${1#v}
 export PANDORA_RELEASE_VERSION=$version
 
-cargo build --release --target x86_64-pc-windows-msvc
+cargo build --release --frozen --target x86_64-pc-windows-msvc
 strip target/x86_64-pc-windows-msvc/release/pandora_launcher.exe
 
 mkdir -p dist

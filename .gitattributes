@@ -1,0 +1,2 @@
+vendor/** -text
+crates/t/src/lib.rs text eol=lf

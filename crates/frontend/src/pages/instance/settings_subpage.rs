@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
 	component::{horizontal_sections::HorizontalSections, named_dropdown::{NamedDropdown, NamedDropdownItem}, path_label::PathLabel},
 	entity::{DataEntities, account::{AccountEntries, AccountExt}, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}},
-	interface_config::InterfaceConfig, pages::instances_page::VersionList, png_render_cache,
+	icon::PandoraIcon, interface_config::InterfaceConfig, pages::instances_page::VersionList, png_render_cache,
 };
 
 #[derive(PartialEq, Eq)]
@@ -1084,6 +1084,19 @@ impl Render for InstanceSettingsSubpage {
                     }).detach();
                 }
             }))
+            .child(Button::new("export")
+                .label(ts!("instance.export.action"))
+                .icon(PandoraIcon::Archive)
+                .overflow_x_hidden()
+                .on_click({
+                    let instance = self.instance.clone();
+                    let backend_handle = self.backend_handle.clone();
+                    move |_: &ClickEvent, window, cx| {
+                        let instance = instance.read(cx);
+                        crate::modals::export_instance::open_export_instance(instance.id, instance.name.clone(), backend_handle.clone(), window, cx);
+                    }
+                })
+            )
             .child(Button::new("delete").label(t::instance::delete()).overflow_x_hidden().danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();

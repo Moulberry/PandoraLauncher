@@ -25,6 +25,43 @@ pub struct BackendConfigWithPassword {
     pub proxy_password: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFormat {
+    Zip,
+    Modrinth,
+    Curseforge,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportModrinthOptions {
+    pub name: Arc<str>,
+    pub version: Arc<str>,
+    pub summary: Option<Arc<str>>,
+    pub optional_files: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportCurseforgeOptions {
+    pub name: Arc<str>,
+    pub version: Arc<str>,
+    pub author: Option<Arc<str>>,
+    pub recommended_ram: Option<u32>,
+    pub optional_files: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportOptions {
+    pub include_saves: bool,
+    pub include_mods: bool,
+    pub include_resourcepacks: bool,
+    pub include_configs: bool,
+    pub include_logs: bool,
+    pub include_cache: bool,
+    pub include_synced: bool,
+    pub modrinth: ExportModrinthOptions,
+    pub curseforge: ExportCurseforgeOptions,
+}
+
 pub enum MessageToBackend {
     RequestMetadata {
         request: MetadataRequest,
@@ -38,6 +75,13 @@ pub enum MessageToBackend {
     },
     DeleteInstance {
         id: InstanceID,
+    },
+    ExportInstance {
+        id: InstanceID,
+        format: ExportFormat,
+        options: ExportOptions,
+        output: PathBuf,
+        modal_action: ModalAction,
     },
     RenameInstance {
         id: InstanceID,

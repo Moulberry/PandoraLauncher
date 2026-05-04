@@ -483,7 +483,8 @@ fn install_app_update(current_app_folder: PathBuf, bytes: &[u8], temp_extract: &
         }
     };
 
-    if temp_backup.exists() {
+    if needs_authorization && temp_backup.exists() {
+        _ = std::fs::rename(&temp_backup, &current_app_folder);
         return Err("Rename from current .app to temp backup errored, but then succeeded".into());
     }
 

@@ -26,6 +26,7 @@ pub struct LauncherUI {
     page_history_backwards: VecDeque<(PageType, Arc<[PageType]>)>,
     page_history_forwards: Vec<(PageType, Arc<[PageType]>)>,
     previous_pages: FxHashMap<PageType, LauncherPage>,
+    pending_page: Option<(PageType, Arc<[PageType]>)>,
     _instance_added_subscription: Subscription,
     _instance_modified_subscription: Subscription,
     _instance_removed_subscription: Subscription,
@@ -209,6 +210,7 @@ impl LauncherUI {
             });
 
         let main_page = config.main_page.clone();
+        let original_page_path = config.page_path.clone();
 
         // If main_page failed to deserialize, also reset the path
         if main_page == PageType::Instances {
@@ -216,9 +218,13 @@ impl LauncherUI {
             config.page_path = [].into();
         }
 
+        let mut pending_page = None;
+
         let page = match Self::create_page(&data, main_page.clone(), window, cx) {
             Ok(page) => page,
             Err(page_type) => {
+                pending_page = Some((main_page, original_page_path));
+
                 let config = InterfaceConfig::get_mut(cx);
                 config.main_page = page_type.clone();
                 config.page_path = [].into();
@@ -235,6 +241,7 @@ impl LauncherUI {
             page_history_backwards: VecDeque::with_capacity(32),
             page_history_forwards: Vec::new(),
             previous_pages: FxHashMap::default(),
+            pending_page,
             _instance_added_subscription,
             _instance_modified_subscription,
             _instance_removed_subscription,
@@ -251,20 +258,29 @@ impl LauncherUI {
                 Ok(LauncherPage::Skins(cx.new(|cx| SkinsPage::new(data, window, cx))))
             },
             PageType::Modrinth { installing_for } => {
-                let installing_for = installing_for.as_ref().and_then(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
+                let installing_for = installing_for.as_ref().map(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
+
+                if let Some(None) = installing_for {
+                    return Err(PageType::Modrinth { installing_for: None })
+                }
 
                 let page = cx.new(|cx| {
-                    ModrinthSearchPage::new(installing_for, data, window, cx)
+                    ModrinthSearchPage::new(installing_for.flatten(), data, window, cx)
                 });
                 Ok(LauncherPage::Modrinth(page))
             },
             PageType::Curseforge { installing_for } => {
-                let installing_for = installing_for.as_ref().and_then(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
+                let installing_for = installing_for.as_ref().map(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
+
+                if let Some(None) = installing_for {
+                    return Err(PageType::Curseforge { installing_for: None })
+                }
 
                 let page = cx.new(|cx| {
-                    CurseforgeSearchPage::new(installing_for, data, window, cx)
+                    CurseforgeSearchPage::new(installing_for.flatten(), data, window, cx)
                 });
                 Ok(LauncherPage::Curseforge(page))
+
             },
             PageType::Import => {
                 Ok(LauncherPage::Import(cx.new(|cx| ImportPage::new(data, window, cx))))
@@ -272,12 +288,16 @@ impl LauncherUI {
             PageType::Syncing => {
                 Ok(LauncherPage::Syncing(cx.new(|cx| SyncingPage::new(data, window, cx))))
             },
-            PageType::ModrinthProject { project_id, install_for, .. } => {
-                let install_for_id = install_for.as_ref().and_then(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
+            PageType::ModrinthProject { project_id, install_for, project_title } => {
+                let install_for_id = install_for.as_ref().map(|name| InstanceEntries::find_id_by_name(&data.instances, name, cx));
+
+                if let Some(None) = install_for_id {
+                    return Err(PageType::ModrinthProject { project_id, install_for: None, project_title })
+                }
 
                 let project_id = project_id.clone();
                 let page = cx.new(|cx| {
-                    ModrinthProjectPage::new(project_id, install_for_id, data, window, cx,)
+                    ModrinthProjectPage::new(project_id, install_for_id.flatten(), data, window, cx,)
                 });
                 Ok(LauncherPage::ModrinthProject(page))
             },
@@ -311,6 +331,8 @@ impl LauncherUI {
     }
 
     fn switch_page_without_history(&mut self, page: PageType, page_path: Arc<[PageType]>, window: &mut Window, cx: &mut Context<Self>) {
+        self.pending_page = None;
+
         let config = InterfaceConfig::get_mut(cx);
         let previous_page_type = std::mem::replace(&mut config.main_page, page.clone());
         config.main_page = page.clone();
@@ -368,6 +390,21 @@ impl LauncherUI {
 
 impl Render for LauncherUI {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(pending_page) = self.pending_page.clone() {
+            if let Ok(page) = Self::create_page(&self.data, pending_page.0.clone(), window, cx) {
+                self.pending_page = None;
+                self.previous_pages.clear();
+                self.page_history_forwards.clear();
+                self.page_history_backwards.clear();
+
+                let config = InterfaceConfig::get_mut(cx);
+                config.main_page = pending_page.0.clone();
+                config.page_path = pending_page.1.clone();
+
+                self.page = page;
+            }
+        }
+
         let page_type = InterfaceConfig::get(cx).main_page.clone();
 
         let library_group = MenuGroup::new("Minecraft")

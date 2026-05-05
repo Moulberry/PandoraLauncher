@@ -125,7 +125,11 @@ impl Launcher {
         launch_rule_context.collect_libraries(&version_info.libraries, &mut artifacts, &mut natives_to_extract);
 
         // Compute natives path based on combined hash of all libraries
-        let natives_dir = self.directories.temp_natives_base_dir.join(calculate_natives_dirname(&artifacts));
+        let mut natives_dirname = calculate_natives_dirname(&artifacts);
+        if instance_info.sandbox {
+            natives_dirname.push_str("-sandbox");
+        }
+        let natives_dir = self.directories.temp_natives_base_dir.join(natives_dirname);
         let _ = std::fs::create_dir_all(&natives_dir);
 
         if add_vanilla_jar == AddVanillaJar::Yes {

@@ -521,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "auth"
-version = "0.1.0"
+version = "5.2.0"
 dependencies = [
  "chrono",
  "httparse",
@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "backend"
-version = "0.1.0"
+version = "5.2.0"
 dependencies = [
  "anyhow",
  "auth",
@@ -673,7 +673,6 @@ dependencies = [
  "uuid",
  "walkdir",
  "windows 0.62.2",
- "xmlparser",
  "zip",
 ]
 
@@ -814,7 +813,7 @@ dependencies = [
 
 [[package]]
 name = "bridge"
-version = "0.1.0"
+version = "5.2.0"
 dependencies = [
  "atomic-time",
  "atomic_enum",
@@ -1212,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "command"
-version = "0.1.0"
+version = "5.2.0"
 dependencies = [
  "directories",
  "junction",
@@ -2402,7 +2401,7 @@ dependencies = [
 
 [[package]]
 name = "frontend"
-version = "0.1.0"
+version = "5.2.0"
 dependencies = [
  "anyhow",
  "atomic-time",
@@ -2418,6 +2417,7 @@ dependencies = [
  "gpui-component-assets",
  "gpui_platform",
  "heapless",
+ "hex",
  "image",
  "indexmap 2.13.0",
  "intrusive-collections",
@@ -4658,7 +4658,7 @@ dependencies = [
 
 [[package]]
 name = "nbt"
-version = "0.1.0"
+version = "5.2.0"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -5418,7 +5418,7 @@ dependencies = [
 
 [[package]]
 name = "pandora_launcher"
-version = "0.1.0"
+version = "5.2.0"
 dependencies = [
  "backend",
  "backtrace",
@@ -6754,7 +6754,7 @@ dependencies = [
 
 [[package]]
 name = "schema"
-version = "0.1.0"
+version = "5.2.0"
 dependencies = [
  "chrono",
  "enum-map",
@@ -7661,7 +7661,7 @@ dependencies = [
 
 [[package]]
 name = "t"
-version = "0.1.0"
+version = "5.2.0"
 dependencies = [
  "indexmap 2.13.0",
  "toml 0.9.12+spec-1.1.0",

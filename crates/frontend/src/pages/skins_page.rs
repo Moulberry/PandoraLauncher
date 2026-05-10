@@ -191,6 +191,9 @@ impl Render for SkinsPage {
         }
 
         let mut library = v_flex()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
             .w_full()
             .text_xl()
             .content_start()
@@ -416,9 +419,11 @@ impl Render for SkinsPage {
 
         library = library
             .child(h_flex()
-                .gap_3()
+                .flex_wrap()
+                .gap_x_3()
+                .gap_y_1()
                 .mb_1()
-                .child(t::skins::title())
+                .child(h_flex().max_h_6().child(t::skins::title()))
                 .child(Button::new("add-file")
                     .label(t::skins::add_from_file())
                     .icon(PandoraIcon::File)

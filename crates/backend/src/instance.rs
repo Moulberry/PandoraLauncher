@@ -51,6 +51,7 @@ pub struct Instance {
 
     content_generation: usize,
 
+    frozen_mods_folder: bool,
     pub content_state: enum_map::EnumMap<ContentFolder, ContentFolderState>,
 }
 
@@ -566,6 +567,10 @@ impl Instance {
                     folder: content_folder
                 });
 
+                if this.frozen_mods_folder && content_folder == ContentFolder::Mods && let Some(last) = &state.summaries {
+                    return Some(last.clone());
+                }
+
                 let (all_dirty, dirty_paths) = state.dirty_paths.take();
                 let future = if let Some(last) = &state.summaries && !all_dirty {
                     if !dirty_paths.is_empty() {
@@ -787,6 +792,7 @@ impl Instance {
 
             content_generation: 0,
 
+            frozen_mods_folder: false,
             content_state,
         })
     }
@@ -951,6 +957,10 @@ impl Instance {
             self.root_path.clone()
         }
     }
+
+    pub fn set_frozen_mods_folder(&mut self, frozen_mods_folder: bool) {
+        self.frozen_mods_folder = frozen_mods_folder;
+    }
 }
 
 fn unix_time_ms_now() -> Option<i64> {
@@ -986,7 +996,7 @@ fn create_instance_content_summary(path: &Path, mod_metadata_manager: &Arc<ModMe
         return None;
     };
 
-    let summary = mod_metadata_manager.get_file(&mut file);
+    let summary = mod_metadata_manager.get_file(&mut file, path.extension());
 
     let filename_without_disabled = if !enabled {
         &filename[..filename.len()-".disabled".len()]

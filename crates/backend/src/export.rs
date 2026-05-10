@@ -9,8 +9,10 @@ use std::{
 use bridge::{
     instance::InstanceID,
     message::{ExportFormat, ExportOptions},
-    modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType},
+    modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath,
 };
+use once_cell::sync::Lazy;
+use rustc_hash::FxHashSet;
 use schema::{
     backend_config::SyncTargets,
     curseforge::{CurseforgeFingerprintRequest, CurseforgeFingerprintResponse},
@@ -65,7 +67,7 @@ fn check_cancel(modal_action: &ModalAction) -> Result<(), ExportError> {
 #[derive(Clone)]
 struct ExportFile {
     abs: PathBuf,
-    rel: PathBuf,
+    rel: SafePath,
     enabled: bool,
 }
 
@@ -77,8 +79,7 @@ struct ExportInstanceData {
 }
 
 struct ModrinthResolvedFile {
-    source_rel: PathBuf,
-    rel_path: String,
+    source: SafePath,
     sha1: String,
     sha512: String,
     url: String,
@@ -87,7 +88,7 @@ struct ModrinthResolvedFile {
 }
 
 struct CurseforgeResolvedFile {
-    rel_path: PathBuf,
+    rel_path: SafePath,
     project_id: u32,
     file_id: u32,
     enabled: bool,
@@ -206,7 +207,7 @@ async fn export_modrinth_pack(
 
     let mut exclude = HashSet::new();
     for resolved_file in &resolved {
-        exclude.insert(resolved_file.source_rel.clone());
+        exclude.insert(resolved_file.source.clone());
     }
 
     let index_json = build_modrinth_index(instance, options, &resolved)?;
@@ -217,7 +218,7 @@ async fn export_modrinth_pack(
     write_tracker.set_total(files.len());
     write_tracker.notify();
 
-    write_zip(output, &files, &extra_files, &exclude, Some("overrides/"), modal_action, &write_tracker)?;
+    write_zip(output, &files, &extra_files, &exclude, Some(SafePath::new("overrides").unwrap()), modal_action, &write_tracker)?;
     write_tracker.set_finished(ProgressTrackerFinishType::Normal);
     Ok(())
 }
@@ -268,7 +269,7 @@ async fn export_curseforge_pack(
     write_tracker.set_total(files.len());
     write_tracker.notify();
 
-    write_zip(output, &files, &extra_files, &exclude, Some("overrides/"), modal_action, &write_tracker)?;
+    write_zip(output, &files, &extra_files, &exclude, Some(SafePath::new("overrides").unwrap()), modal_action, &write_tracker)?;
     write_tracker.set_finished(ProgressTrackerFinishType::Normal);
     Ok(())
 }
@@ -291,13 +292,14 @@ fn collect_files(
         if entry.file_type().is_dir() {
             continue;
         }
-        let rel = entry
-            .path()
-            .strip_prefix(root)
-            .map_err(|e| e.to_string())?
-            .to_path_buf();
 
-        if rel.as_os_str().is_empty() {
+        let Ok(rel) = entry.path().strip_prefix(root) else {
+            continue;
+        };
+        let Some(rel) = SafePath::from_std_path(rel) else {
+            continue;
+        };
+        if rel.as_ref().components().next().is_none() {
             continue;
         }
 
@@ -305,7 +307,7 @@ fn collect_files(
             .path()
             .strip_prefix(dot_minecraft_path)
             .ok()
-            .map(Path::to_path_buf);
+            .and_then(SafePath::from_std_path);
 
         if !options.include_synced {
             if let Ok(real_path) = entry.path().canonicalize() {
@@ -324,11 +326,15 @@ fn collect_files(
             continue;
         }
 
-        if should_skip(&rel, rel_to_dot_minecraft.as_deref(), options) {
+        if should_skip(&rel, rel_to_dot_minecraft.as_ref(), options) {
             continue;
         }
 
-        let enabled = !rel.to_string_lossy().ends_with(".disabled");
+        let enabled = if let Some(filename) = rel.file_name() {
+            !filename.ends_with(".disabled")
+        } else {
+            true
+        };
         files.push(ExportFile {
             abs: entry.path().to_path_buf(),
             rel,
@@ -340,8 +346,8 @@ fn collect_files(
 }
 
 struct SyncTargetPaths {
-    files: Vec<PathBuf>,
-    folders: Vec<PathBuf>,
+    files: Vec<SafePath>,
+    folders: Vec<SafePath>,
 }
 
 impl SyncTargetPaths {
@@ -350,12 +356,12 @@ impl SyncTargetPaths {
         let mut folders = Vec::new();
 
         for target in sync_targets.files.iter() {
-            if let Some(path) = normalize_relative_target(target) {
+            if let Some(path) = SafePath::new(target) {
                 files.push(path);
             }
         }
         for target in sync_targets.folders.iter() {
-            if let Some(path) = normalize_relative_target(target) {
+            if let Some(path) = SafePath::new(target) {
                 folders.push(path);
             }
         }
@@ -364,24 +370,7 @@ impl SyncTargetPaths {
     }
 }
 
-fn normalize_relative_target(target: &str) -> Option<PathBuf> {
-    let mut out = PathBuf::new();
-    for component in Path::new(target).components() {
-        match component {
-            std::path::Component::Normal(name) => out.push(name),
-            std::path::Component::CurDir => {}
-            // Disallow absolute paths, prefixes, and parent traversal in config.
-            _ => return None,
-        }
-    }
-    if out.as_os_str().is_empty() {
-        None
-    } else {
-        Some(out)
-    }
-}
-
-fn matches_sync_target(rel_to_dot_minecraft: &Path, sync_targets: &SyncTargetPaths) -> bool {
+fn matches_sync_target(rel_to_dot_minecraft: &SafePath, sync_targets: &SyncTargetPaths) -> bool {
     for folder in &sync_targets.folders {
         if rel_to_dot_minecraft == folder || rel_to_dot_minecraft.starts_with(folder) {
             return true;
@@ -395,74 +384,93 @@ fn matches_sync_target(rel_to_dot_minecraft: &Path, sync_targets: &SyncTargetPat
     false
 }
 
-fn should_skip(rel: &Path, rel_to_dot_minecraft: Option<&Path>, options: &ExportOptions) -> bool {
+static KNOWN_CACHE_FILES: Lazy<FxHashSet<&'static str>> = Lazy::new(|| {
+    let mut set = FxHashSet::default();
+    set.insert("usercache.json");
+    set.insert("usernamecache.json");
+    set.insert("realms_persistence.json");
+    set
+});
+
+static IGNORED_FILES: Lazy<FxHashSet<&'static str>> = Lazy::new(|| {
+    let mut set = FxHashSet::default();
+    set.insert("config/sodium-fingerprint.json");
+    set.insert("config/flashback/.flashback.json.backup");
+    set.insert("config/axiom/.axiom.json.backup");
+    set.insert("config/axiom/.license");
+    set.insert("servers.dat_old");
+    set
+});
+
+fn should_skip(rel: &SafePath, rel_to_dot_minecraft: Option<&SafePath>, options: &ExportOptions) -> bool {
     // Exclude log artifacts regardless of where they are in the instance.
     if !options.include_logs {
         if let Some(file_name) = rel.file_name() {
-            let file_name = file_name.as_encoded_bytes();
-            if ends_with_ignore_ascii_case(file_name, b".log") || ends_with_ignore_ascii_case(file_name, b".log.gz") {
+            if ends_with_ignore_ascii_case(file_name, ".log") || ends_with_ignore_ascii_case(file_name, ".log.gz") {
                 return true;
             }
         }
     }
 
+    if rel.starts_with(".fabric")
+        || rel.starts_with("mods/.connector")
+        || rel.starts_with("config/axiom/history")
+        || IGNORED_FILES.contains(rel.as_str())
+    {
+        return true;
+    }
+
+    if !options.include_cache && KNOWN_CACHE_FILES.contains(rel.as_str()) {
+        return true;
+    }
+
     // The common include/exclude toggles are defined relative to the .minecraft folder.
     let rel = rel_to_dot_minecraft.unwrap_or(rel);
-
-    let Some(component) = rel.components().next() else {
-        return false;
+    let Some(first_component) = rel.as_ref().components().next() else {
+        return true;
     };
-    let name = match component {
-        std::path::Component::Normal(name) => name.as_encoded_bytes(),
-        _ => return false,
+    let relative_path::Component::Normal(name) = first_component else {
+        return true;
     };
 
     match name {
-        b"logs" | b"crash-reports" => !options.include_logs,
-        b".cache" => !options.include_cache,
-        b"saves" => !options.include_saves,
-        b"mods" => !options.include_mods,
-        b"resourcepacks" => !options.include_resourcepacks,
-        b"config" => !options.include_configs,
+        "logs" | "crash-reports" => !options.include_logs,
+        ".cache" | "downloads" => !options.include_cache,
+        "saves" => !options.include_saves,
+        "mods" => !options.include_mods,
+        "resourcepacks" => !options.include_resourcepacks,
+        "config" => !options.include_configs,
         _ => false,
     }
 }
 
-fn is_export_junk(rel: &Path) -> bool {
+fn is_export_junk(rel: &SafePath) -> bool {
     let Some(file_name) = rel.file_name() else {
         return false;
     };
-    let file_name = file_name.as_encoded_bytes();
 
     // OS junk
-    if file_name == b".DS_Store" || eq_ignore_ascii_case(file_name, b"thumbs.db") {
+    if file_name == ".DS_Store" || file_name.eq_ignore_ascii_case("thumbs.db") {
         return true;
     }
 
     // Pandora internal metadata/temp files.
-    if file_name.starts_with(b".pandora") {
+    if file_name.starts_with(".pandora.") {
         return true;
     }
-    if file_name.starts_with(b".") && file_name.ends_with(b".aux.json") {
+    if file_name.starts_with(".") && file_name.ends_with(".aux.json") {
         return true;
     }
 
     false
 }
 
-fn eq_ignore_ascii_case(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter().zip(b.iter()).all(|(a, b)| a.to_ascii_lowercase() == b.to_ascii_lowercase())
-}
-
-fn ends_with_ignore_ascii_case(haystack: &[u8], needle: &[u8]) -> bool {
+fn ends_with_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
     if haystack.len() < needle.len() {
         return false;
     }
     let start = haystack.len() - needle.len();
-    eq_ignore_ascii_case(&haystack[start..], needle)
+    haystack[start..].eq_ignore_ascii_case(needle)
 }
 
 async fn resolve_modrinth_files(
@@ -494,10 +502,8 @@ async fn resolve_modrinth_files(
     let mut buf = vec![0_u8; 128 * 1024];
 
     struct CandidateInfo {
-        source_rel: PathBuf,
-        rel_path: String,
+        source: SafePath,
         sha512: Arc<str>,
-        optional: bool,
     }
 
     let mut candidate_infos: Vec<CandidateInfo> = Vec::with_capacity(candidates.len());
@@ -509,20 +515,12 @@ async fn resolve_modrinth_files(
 
         let (_sha1_hex, sha512_hex, _size) = compute_hashes(&file.abs, modal_action, &mut buf)?;
 
-        let mut rel_path = file.rel.to_string_lossy().replace('\\', "/");
-        let optional = options.modrinth.optional_files && !file.enabled && rel_path.ends_with(".disabled");
-        if optional {
-            rel_path = rel_path.trim_end_matches(".disabled").to_string();
-        }
-
         let sha512: Arc<str> = sha512_hex.into();
         hashes.push(Arc::clone(&sha512));
 
         candidate_infos.push(CandidateInfo {
-            source_rel: file.rel.clone(),
-            rel_path,
+            source: file.rel.clone(),
             sha512,
-            optional,
         });
     }
 
@@ -590,24 +588,14 @@ async fn resolve_modrinth_files(
 
         let mut env: Option<ModrinthEnv> = None;
         if let Some(project) = projects_map.get(version.project_id.as_ref()) {
-            let mut client = project.client_side.unwrap_or(ModrinthSideRequirement::Required);
-            let mut server = project.server_side.unwrap_or(ModrinthSideRequirement::Required);
-
-            if info.optional {
-                if client != ModrinthSideRequirement::Unsupported {
-                    client = ModrinthSideRequirement::Optional;
-                }
-                if server != ModrinthSideRequirement::Unsupported {
-                    server = ModrinthSideRequirement::Optional;
-                }
-            }
+            let client = project.client_side.unwrap_or(ModrinthSideRequirement::Required);
+            let server = project.server_side.unwrap_or(ModrinthSideRequirement::Required);
 
             env = Some(ModrinthEnv { client, server });
         }
 
         resolved.push(ModrinthResolvedFile {
-            source_rel: info.source_rel,
-            rel_path: info.rel_path,
+            source: info.source,
             sha1: file_entry.hashes.sha1.as_ref().to_string(),
             sha512: info.sha512.as_ref().to_string(),
             url: file_entry.url.as_ref().to_string(),
@@ -643,7 +631,7 @@ async fn resolve_curseforge_files(
     tracker.set_total(candidates.len());
     tracker.notify();
 
-    let mut fingerprint_to_candidate: HashMap<u32, (PathBuf, bool, bool)> = HashMap::new();
+    let mut fingerprint_to_candidate: HashMap<u32, (SafePath, bool, bool)> = HashMap::new();
     let mut fingerprints = Vec::new();
 
     for (rel, abs, enabled, is_mod) in candidates {
@@ -713,13 +701,13 @@ fn build_modrinth_index(
     let files_out: Vec<ModrinthModpackFileDownload> = resolved
         .iter()
         .map(|file| ModrinthModpackFileDownload {
-            path: Arc::<str>::from(file.rel_path.as_str()),
+            path: file.source.as_str().into(),
             hashes: schema::modrinth::ModrinthHashes {
-                sha1: Arc::<str>::from(file.sha1.as_str()),
-                sha512: Some(Arc::<str>::from(file.sha512.as_str())),
+                sha1: file.sha1.as_str().into(),
+                sha512: Some(file.sha512.as_str().into()),
             },
             env: file.env,
-            downloads: Arc::from([Arc::<str>::from(file.url.as_str())]),
+            downloads: Arc::from([file.url.as_str().into()]),
             file_size: file.size as usize,
         })
         .collect();
@@ -788,11 +776,10 @@ fn build_curseforge_manifest(
 
     let mut files_out = Vec::new();
     for file in resolved {
-        let required = file.enabled || !options.curseforge.optional_files;
         files_out.push(serde_json::json!({
             "projectID": file.project_id,
             "fileID": file.file_id,
-            "required": required,
+            "required": file.enabled,
         }));
     }
     obj.insert("files".into(), serde_json::Value::Array(files_out));
@@ -816,8 +803,8 @@ fn write_zip(
     output: &Path,
     files: &[ExportFile],
     extra_files: &[(String, Vec<u8>)],
-    exclude: &HashSet<PathBuf>,
-    prefix: Option<&str>,
+    exclude: &HashSet<SafePath>,
+    prefix: Option<SafePath>,
     modal_action: &ModalAction,
     tracker: &ProgressTracker,
 ) -> Result<(), ExportError> {
@@ -843,13 +830,13 @@ fn write_zip(
             if exclude.contains(&file.rel) {
                 continue;
             }
-            let mut rel = file.rel.to_string_lossy().replace('\\', "/");
-            if let Some(prefix) = prefix {
-                rel = format!("{}{}", prefix, rel);
+            let mut rel = file.rel.clone();
+            if let Some(prefix) = &prefix {
+                rel = prefix.join(&rel);
             }
 
             let mut input = File::open(&file.abs).map_err(|e| e.to_string())?;
-            zip.start_file(rel, options).map_err(|e| e.to_string())?;
+            zip.start_file(rel.as_str(), options).map_err(|e| e.to_string())?;
             loop {
                 check_cancel(modal_action)?;
                 let read = input.read(&mut buffer).map_err(|e| e.to_string())?;
@@ -955,23 +942,31 @@ fn murmur2_32(data: &[u8]) -> u32 {
     h
 }
 
-fn is_mod_file(path: &Path) -> bool {
-    let rel = path.to_string_lossy().replace('\\', "/");
-    if !rel.starts_with("mods/") {
+fn is_mod_file(path: &SafePath) -> bool {
+    if !path.starts_with("mods") {
         return false;
     }
-    rel.ends_with(".jar")
-        || rel.ends_with(".jar.disabled")
-        || rel.ends_with(".zip")
-        || rel.ends_with(".zip.disabled")
-        || rel.ends_with(".litemod")
-        || rel.ends_with(".litemod.disabled")
+
+    let Some(filename) = path.file_name() else {
+        return false;
+    };
+
+    filename.ends_with(".jar")
+        || filename.ends_with(".jar.disabled")
+        || filename.ends_with(".zip")
+        || filename.ends_with(".zip.disabled")
+        || filename.ends_with(".litemod")
+        || filename.ends_with(".litemod.disabled")
 }
 
-fn is_resourcepack_file(path: &Path) -> bool {
-    let rel = path.to_string_lossy().replace('\\', "/");
-    if !rel.starts_with("resourcepacks/") {
+fn is_resourcepack_file(path: &SafePath) -> bool {
+    if !path.starts_with("resourcepacks") {
         return false;
     }
-    rel.ends_with(".zip") || rel.ends_with(".zip.disabled")
+
+    let Some(filename) = path.file_name() else {
+        return false;
+    };
+
+    filename.ends_with(".zip") || filename.ends_with(".zip.disabled")
 }

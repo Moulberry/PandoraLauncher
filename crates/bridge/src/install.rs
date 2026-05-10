@@ -2,7 +2,7 @@ use std::{path::{Path, PathBuf}, sync::Arc};
 
 use schema::{content::ContentSource, loader::Loader};
 
-use crate::{instance::InstanceID, safe_path::SafePath};
+use crate::{instance::{InstanceID, ModpackFilePath}, safe_path::SafePath};
 
 #[derive(Debug, Clone)]
 pub enum InstallTarget {
@@ -25,6 +25,7 @@ pub struct ContentInstall {
 pub enum ContentInstallPath {
     Raw(Arc<Path>),
     Safe(SafePath),
+    ModpackFilePath(ModpackFilePath),
     Automatic,
 }
 
@@ -49,7 +50,7 @@ pub enum ContentDownload {
     },
     Url {
         url: Arc<str>,
-        sha1: Arc<str>,
+        sha1: [u8; 20],
         size: usize,
     },
     File {

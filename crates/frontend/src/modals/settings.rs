@@ -114,6 +114,18 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
         settings
     });
 
+    let version = option_env!("PANDORA_RELEASE_VERSION").unwrap_or("Dev");
+    let version_string = if let Some(git_rev) = option_env!("GIT_REVISION") {
+        SharedString::new(format!("{} ({})", version, git_rev))
+    } else {
+        version.into()
+    };
+    let version_icon = if version == "Dev" {
+        PandoraIcon::GitBranch
+    } else {
+        PandoraIcon::Rocket
+    };
+
     move |sheet, _, cx| {
         sheet
             .title(t::settings::title())
@@ -121,10 +133,12 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             .p_0()
             .when(cfg!(target_os = "macos"), |this| this.pt_5())
             .child(v_flex()
+                .size_full()
                 .border_t_1()
                 .border_color(cx.theme().border)
                 .child(settings.clone())
             )
+            .child(h_flex().p_2().gap_2().child(version_icon.clone()).child(version_string.clone()))
     }
 }
 

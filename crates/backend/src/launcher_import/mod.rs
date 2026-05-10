@@ -18,7 +18,7 @@ pub fn get_import_from_other_launcher_job(other_launcher: OtherLauncher, path: A
     }
     match other_launcher {
         OtherLauncher::Prism | OtherLauncher::MultiMC => {
-            if !path.join("prismlauncher.cfg").is_file() && !path.join("multimc.cfg").is_file() {
+            if !path.join("prismlauncher.cfg").is_file() && !path.join("multimc.cfg").is_file() && !path.join("fjordlauncher.cfg").is_file() {
                 return None;
             }
             Some(ImportFromOtherLauncherJob {

@@ -90,7 +90,6 @@ impl Launcher {
         instance_info: InstanceConfiguration,
         quick_play: Option<QuickPlayLaunch>,
         login_info: MinecraftLoginInfo,
-        add_mods: Vec<PathBuf>,
         read_game_output: bool,
         launch_tracker: &ProgressTracker,
         modal_action: &ModalAction,
@@ -125,7 +124,11 @@ impl Launcher {
         launch_rule_context.collect_libraries(&version_info.libraries, &mut artifacts, &mut natives_to_extract);
 
         // Compute natives path based on combined hash of all libraries
-        let natives_dir = self.directories.temp_natives_base_dir.join(calculate_natives_dirname(&artifacts));
+        let mut natives_dirname = calculate_natives_dirname(&artifacts);
+        if instance_info.sandbox {
+            natives_dirname.push_str("-sandbox");
+        }
+        let natives_dir = self.directories.temp_natives_base_dir.join(natives_dirname);
         let _ = std::fs::create_dir_all(&natives_dir);
 
         if add_vanilla_jar == AddVanillaJar::Yes {
@@ -234,7 +237,6 @@ impl Launcher {
             log_configuration,
             rule_context: launch_rule_context,
             login_info,
-            add_mods,
         };
 
         if modal_action.has_requested_cancel() {
@@ -2107,7 +2109,6 @@ pub struct LaunchContext {
     pub log_configuration: Option<OsString>,
     pub rule_context: LaunchRuleContext,
     pub login_info: MinecraftLoginInfo,
-    pub add_mods: Vec<PathBuf>,
 }
 
 impl LaunchContext {
@@ -2320,25 +2321,6 @@ impl LaunchContext {
                 stdin_arguments.push_str("arg\n");
                 stdin_arguments.push_str(self.expand_argument(argument).to_string_lossy().as_ref());
                 stdin_arguments.push('\n');
-            }
-        }
-
-        if !self.add_mods.is_empty() {
-            match self.configuration.loader {
-                Loader::Vanilla => {},
-                Loader::Fabric => {
-                    let mods = std::env::join_paths(self.add_mods).unwrap();
-
-                    stdin_arguments.push_str("property\n");
-                    stdin_arguments.push_str("fabric.addMods\n");
-                    stdin_arguments.push_str(&mods.to_string_lossy());
-                    stdin_arguments.push('\n');
-                },
-                _ => {
-                    if cfg!(debug_assertions) {
-                        panic!("addMods was used for unsupported loader: {:?}", self.configuration.loader);
-                    }
-                }
             }
         }
 

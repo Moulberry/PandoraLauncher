@@ -1,6 +1,0 @@
-view:
-  buttons:
-    ok: Ok
-    cancel: Cancel
-  datetime:
-    about_x_hours: about %{count} hours

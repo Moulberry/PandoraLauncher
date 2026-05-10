@@ -1,0 +1,111 @@
+# 0.4.2
+
+* Refactor detection of the DIT feature on ARM. For builds without the
+  "std" feature, there's now an undocumented function to force the use
+  of the DIT bit.
+
+# 0.4.1
+
+* Simplify code to make it easier to review.
+
+# 0.4.0
+
+BREAKING CHANGE: this crate now has a "std" feature which is enabled by
+default. Disable it if you need to use this crate as a no_std crate.
+
+Previous versions of this crate protected against the optimizer doing an
+early exit when the accumulator becomes non-zero (found a difference),
+but not against a sufficiently smart optimizer doing an early exit when
+the accumulator has all bits set (the accumulator never clears a bit, so
+having all bits set means it will no longer change).
+
+Protecting against that also prevents autovectorization, so this release
+does manual vectorization to recover most of the speed lost. Where there
+is enough compiler support (stable vector intrinsics), it uses a mix of
+vector intrinsics and inline assembly for inputs which are a multiple of
+the vector size, while for other architectures and for the remainder of
+an input which is not a multiple of the vector size, it uses a generic
+word-at-a-time implementation with the native word size.
+
+Some newer implementations of the ARM architecture do not guarantee the
+timing of instructions unless the DIT bit is set. Fortunately, that bit
+can be set on all privilege levels; unfortunately, that bit only exists
+on these newer implementations of the ARM architecture, and the flag to
+detect whether it exists is not accessible on all privilege levels. How
+to obtain that flag varies depending on the operating system, but Rust
+has a good implementation of that on its standard library. This means
+that runtime detection introduces a dependency on std (enabled by the
+"std" feature, which is enabled by default); compile-time detection is
+always available.
+
+This release is a candidate for becoming the 1.0 release. In preparation
+for that, it uses the 2024 edition, which enables the new resolver which
+will allow future updates to the set of architectures which can use the
+inline assembly implementation of optimizer_hide(), without breaking
+downstream crates (for instance, s390x and arm64ec were stabilized in
+Rust 1.84.0).
+
+* Rewrite the generic implementation to process one word at a time,
+  instead of byte by byte. Depending on the architecture, this means
+  8 bytes or 4 bytes processed on each loop iteration.
+* Use optimizer_hide() after each step, instead of just at the end.
+* Since optimizer_hide() now works on words, it no longer neeeds the
+  special case for byte sub-registers on x86 and x86_64.
+* Manual implementation for SSE2/AVX (x86 and x86_64), using 128-bit
+  vectors, processing up to 32 bytes on each loop iteration.
+* Manual implementation for NEON (aarch64 only for now), also using
+  128-bit vectors and processing up to 32 bytes on each loop iteration.
+* On AArch64 with FEAT_DIT (like modern Apple devices), try to set the
+  DIT flag to ensure data independent timing.
+
+# 0.3.1
+
+* Use the portable optimizer_hide() when running under Miri.
+
+# 0.3.0
+
+* Use black_box instead of volatile read when inline assembly is not
+  available.
+* Increase minimum Rust version to 1.66, which is when black_box was
+  stabilized.
+
+# 0.2.6
+
+* New tests using the count_instructions crate; no functional changes.
+
+# 0.2.5
+
+* Add #[must_use] to all functions.
+
+# 0.2.4
+
+* Since CC0 is no longer accepted as a license for code by Fedora, also
+  allow MIT-0 or Apache-2.0 as options. No code changes.
+
+# 0.2.3
+
+* Add fixed-size variant for arrays of any size (using const generics).
+
+# 0.2.2
+
+* Set rust-version in Cargo.toml to 1.59.
+
+# 0.2.1
+
+* Reduce inlining of variable-size variant. In 0.1.5, the loop was not
+  inlined, and it can be a bit large due to the auto-vectorization. Go
+  back to how it was in 0.1.5, but allowing the compiler to inline if
+  it believes it would be a speed gain.
+
+# 0.2.0
+
+* Use inline assembly when available to hide from the optimizer.
+* When inline assembly is not available, use both a volatile read and
+  disabled inlining.
+* Increase minimum Rust version to 1.59, which is the first with inline
+  assembly.
+
+# 0.1.5
+
+* Add fixed-size variant for arrays with sizes 16 bytes, 32 bytes, and
+  64 bytes.

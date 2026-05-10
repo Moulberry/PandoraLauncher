@@ -338,6 +338,24 @@ pub fn symlink_dir_or_file(original: &Path, link: &Path) -> std::io::Result<()> 
     compile_error!("Unsupported platform: can't symlink");
 }
 
+pub fn hard_link_or_copy(from: &Path, to: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(to) {
+        Ok(()) => {},
+        Err(err) if err.kind() == ErrorKind::NotFound => {},
+        Err(err) => return Err(err),
+    }
+
+    if let Err(err) = std::fs::hard_link(from, to) {
+        if err.kind() == ErrorKind::CrossesDevices {
+            // Cannot hard link across devices, do a copy instead
+            return std::fs::copy(from, to).map(|_| ());
+        }
+        Err(err)
+    } else {
+        Ok(())
+    }
+}
+
 pub fn rename_with_fallback_across_devices(from: &Path, to: &Path) -> std::io::Result<()> {
     // Remove empty 'to' directory to ensure consistent behaviour across unix and windows
     if let Err(err) = std::fs::remove_dir(to) && !matches!(err.kind(), ErrorKind::NotADirectory | ErrorKind::NotFound) {

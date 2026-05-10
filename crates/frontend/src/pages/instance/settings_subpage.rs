@@ -1085,7 +1085,7 @@ impl Render for InstanceSettingsSubpage {
                 }
             }))
             .child(Button::new("export")
-                .label(ts!("instance.export.action"))
+                .label(t::instance::export::action())
                 .icon(PandoraIcon::Archive)
                 .overflow_x_hidden()
                 .on_click({

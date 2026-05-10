@@ -37,7 +37,6 @@ pub struct ExportModrinthOptions {
     pub name: Arc<str>,
     pub version: Arc<str>,
     pub summary: Option<Arc<str>>,
-    pub optional_files: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +45,6 @@ pub struct ExportCurseforgeOptions {
     pub version: Arc<str>,
     pub author: Option<Arc<str>>,
     pub recommended_ram: Option<u32>,
-    pub optional_files: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -179,6 +177,7 @@ pub enum MessageToBackend {
         child_id: Option<Arc<str>>,
         child_name: Option<Arc<str>>,
         child_filename: Arc<str>,
+        disabled_default: bool,
         enabled: bool,
     },
     DownloadContentChildren {

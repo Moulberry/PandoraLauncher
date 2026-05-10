@@ -695,12 +695,19 @@ impl InstallDialog {
                                 }
                             }
 
+                            let mut hash = [0u8; 20];
+                            let Ok(_) = hex::decode_to_slice(&*install_file.hashes.sha1, &mut hash) else {
+                                let warning = format!("File {} has invalid sha1: {}", install_file.filename, install_file.hashes.sha1);
+                                window.push_notification((NotificationType::Error, SharedString::new(warning)), cx);
+                                return;
+                            };
+
                             files.push(ContentInstallFile {
                                 replace_old: None,
                                 path: bridge::install::ContentInstallPath::Safe(path),
                                 download: ContentDownload::Url {
                                     url: install_file.url.clone(),
-                                    sha1: install_file.hashes.sha1.clone(),
+                                    sha1: hash,
                                     size: install_file.size,
                                 },
                                 content_source: ContentSource::ModrinthProject {

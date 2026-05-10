@@ -146,6 +146,7 @@ pub fn read_profiles_from_modrinth_db(modrinth: &Path) -> rusqlite::Result<Optio
     let app_db = modrinth.join("app.db");
 
     if !app_db.exists() {
+        log::warn!("app.db doesn't exist in modrinth folder");
         return Ok(None);
     }
 
@@ -162,6 +163,8 @@ pub fn read_profiles_from_modrinth_db(modrinth: &Path) -> rusqlite::Result<Optio
         let profile = profiles.join(path);
         if profile.is_dir() {
             paths.push(profile.into());
+        } else {
+            log::warn!("Modrinth profile folder {:?} doesn't exist", profile);
         }
     }
 

@@ -16,7 +16,7 @@ use gpui_component::{
     v_flex, h_flex,
 };
 
-use crate::{labelled, modals::generic, ts};
+use crate::{labelled, modals::generic};
 
 struct ExportInstanceModalState {
     instance_id: InstanceID,
@@ -34,15 +34,12 @@ struct ExportInstanceModalState {
     include_cache: bool,
     include_synced: bool,
 
-    modrinth_name_input: Entity<InputState>,
-    modrinth_version_input: Entity<InputState>,
-    modrinth_summary_input: Entity<InputState>,
-    modrinth_optional_files: bool,
+    name_input: Entity<InputState>,
+    version_input: Entity<InputState>,
 
-    curseforge_name_input: Entity<InputState>,
-    curseforge_version_input: Entity<InputState>,
+    modrinth_summary_input: Entity<InputState>,
+
     curseforge_author_input: Entity<InputState>,
-    curseforge_optional_files: bool,
     curseforge_recommended_ram_enabled: bool,
     curseforge_recommended_ram_input: Entity<InputState>,
 }
@@ -56,9 +53,9 @@ impl ExportInstanceModalState {
         cx: &mut Context<Self>,
     ) -> Self {
         let format_options = vec![
-            ts!("instance.export.format.zip"),
-            ts!("instance.export.format.modrinth"),
-            ts!("instance.export.format.curseforge"),
+            SharedString::new_static(t::instance::export::format::zip()),
+            SharedString::new_static(t::instance::export::format::modrinth()),
+            SharedString::new_static(t::instance::export::format::curseforge()),
         ];
         let format_select_state = cx.new(|cx| {
             let mut state = SelectState::new(format_options.clone(), None, window, cx);
@@ -66,12 +63,12 @@ impl ExportInstanceModalState {
             state
         });
         cx.subscribe(&format_select_state, Self::on_format_selected).detach();
-        let modrinth_name_input = cx.new(|cx| InputState::new(window, cx).default_value(instance_name.clone()));
-        let modrinth_version_input = cx.new(|cx| InputState::new(window, cx).placeholder("1.0.0"));
+
+        let version_input = cx.new(|cx| InputState::new(window, cx).placeholder("1.0.0"));
+        let name_input = cx.new(|cx| InputState::new(window, cx).default_value(instance_name.clone()));
+
         let modrinth_summary_input = cx.new(|cx| InputState::new(window, cx).auto_grow(1, 4));
 
-        let curseforge_name_input = cx.new(|cx| InputState::new(window, cx).default_value(instance_name.clone()));
-        let curseforge_version_input = cx.new(|cx| InputState::new(window, cx).placeholder("1.0.0"));
         let curseforge_author_input = cx.new(|cx| InputState::new(window, cx));
         let curseforge_recommended_ram_input = cx.new(|cx| InputState::new(window, cx).default_value("4096"));
 
@@ -91,15 +88,12 @@ impl ExportInstanceModalState {
             include_cache: false,
             include_synced: false,
 
-            modrinth_name_input,
-            modrinth_version_input,
-            modrinth_summary_input,
-            modrinth_optional_files: true,
+            name_input,
+            version_input,
 
-            curseforge_name_input,
-            curseforge_version_input,
+            modrinth_summary_input,
+
             curseforge_author_input,
-            curseforge_optional_files: true,
             curseforge_recommended_ram_enabled: false,
             curseforge_recommended_ram_input,
         }
@@ -147,6 +141,15 @@ impl ExportInstanceModalState {
             None
         };
 
+        let version = self.version_input.read(cx).value();
+        let mut version = version.as_str().trim_ascii();
+        if version.is_empty() {
+            version = "1.0.0";
+        }
+
+        let name = self.name_input.read(cx).value();
+        let name = name.as_str().trim_ascii();
+
         ExportOptions {
             include_saves: self.include_saves,
             include_mods: self.include_mods,
@@ -156,17 +159,15 @@ impl ExportInstanceModalState {
             include_cache: self.include_cache,
             include_synced: self.include_synced,
             modrinth: ExportModrinthOptions {
-                name: Arc::<str>::from(self.modrinth_name_input.read(cx).value().as_str()),
-                version: Arc::<str>::from(self.modrinth_version_input.read(cx).value().as_str()),
+                name: name.into(),
+                version: version.into(),
                 summary: modrinth_summary,
-                optional_files: self.modrinth_optional_files,
             },
             curseforge: ExportCurseforgeOptions {
-                name: Arc::<str>::from(self.curseforge_name_input.read(cx).value().as_str()),
-                version: Arc::<str>::from(self.curseforge_version_input.read(cx).value().as_str()),
+                name: name.into(),
+                version: version.into(),
                 author: curseforge_author,
                 recommended_ram,
-                optional_files: self.curseforge_optional_files,
             },
         }
     }
@@ -178,53 +179,49 @@ impl ExportInstanceModalState {
             .gap_2()
             .child(Checkbox::new("include_saves")
                 .checked(self.include_saves)
-                .label(ts!("instance.export.include_saves"))
+                .label(t::instance::export::include_saves())
                 .on_click(cx.listener(|this, value, _, cx| { this.include_saves = *value; cx.notify(); })))
             .child(Checkbox::new("include_mods")
                 .checked(self.include_mods)
-                .label(ts!("instance.export.include_mods"))
+                .label(t::instance::export::include_mods())
                 .on_click(cx.listener(|this, value, _, cx| { this.include_mods = *value; cx.notify(); })))
             .child(Checkbox::new("include_resourcepacks")
                 .checked(self.include_resourcepacks)
-                .label(ts!("instance.export.include_resourcepacks"))
+                .label(t::instance::export::include_resourcepacks())
                 .on_click(cx.listener(|this, value, _, cx| { this.include_resourcepacks = *value; cx.notify(); })))
             .child(Checkbox::new("include_configs")
                 .checked(self.include_configs)
-                .label(ts!("instance.export.include_configs"))
+                .label(t::instance::export::include_configs())
                 .on_click(cx.listener(|this, value, _, cx| { this.include_configs = *value; cx.notify(); })))
             .child(Checkbox::new("include_logs")
                 .checked(self.include_logs)
-                .label(ts!("instance.export.include_logs"))
+                .label(t::instance::export::include_logs())
                 .on_click(cx.listener(|this, value, _, cx| { this.include_logs = *value; cx.notify(); })))
             .child(Checkbox::new("include_cache")
                 .checked(self.include_cache)
-                .label(ts!("instance.export.include_cache"))
+                .label(t::instance::export::include_cache())
                 .on_click(cx.listener(|this, value, _, cx| { this.include_cache = *value; cx.notify(); })));
         let common_options = common_options.child(Checkbox::new("include_synced")
             .checked(self.include_synced)
-            .label(ts!("instance.export.include_synced"))
+            .label(t::instance::export::include_synced())
             .on_click(cx.listener(|this, value, _, cx| { this.include_synced = *value; cx.notify(); })));
 
         let modrinth_options = v_flex()
             .gap_2()
-            .child(labelled(ts!("instance.export.name"), Input::new(&self.modrinth_name_input)))
-            .child(labelled(ts!("instance.export.version"), Input::new(&self.modrinth_version_input)))
-            .child(labelled(ts!("instance.export.summary"), Input::new(&self.modrinth_summary_input)))
-            .child(Checkbox::new("modrinth_optional")
-                .checked(self.modrinth_optional_files)
-                .label(ts!("instance.export.optional_files"))
-                .on_click(cx.listener(|this, value, _, cx| { this.modrinth_optional_files = *value; cx.notify(); })));
+            .child(labelled(t::instance::export::name(), Input::new(&self.name_input)))
+            .child(labelled(t::instance::export::version(), Input::new(&self.version_input)))
+            .child(labelled(t::instance::export::summary(), Input::new(&self.modrinth_summary_input)));
 
         let curseforge_options = v_flex()
             .gap_2()
-            .child(labelled(ts!("instance.export.name"), Input::new(&self.curseforge_name_input)))
-            .child(labelled(ts!("instance.export.version"), Input::new(&self.curseforge_version_input)))
-            .child(labelled(ts!("instance.export.author"), Input::new(&self.curseforge_author_input)))
+            .child(labelled(t::instance::export::name(), Input::new(&self.name_input)))
+            .child(labelled(t::instance::export::version(), Input::new(&self.version_input)))
+            .child(labelled(t::instance::export::author(), Input::new(&self.curseforge_author_input)))
             .child(h_flex()
                 .gap_2()
                 .child(Checkbox::new("curseforge_ram")
                     .checked(self.curseforge_recommended_ram_enabled)
-                    .label(ts!("instance.export.recommended_ram"))
+                    .label(t::instance::export::recommended_ram())
                     .on_click(cx.listener(|this, value, _, cx| {
                         this.curseforge_recommended_ram_enabled = *value;
                         cx.notify();
@@ -233,40 +230,29 @@ impl ExportInstanceModalState {
                     .small()
                     .suffix("MiB")
                     .disabled(!self.curseforge_recommended_ram_enabled))
-            )
-            .child(Checkbox::new("curseforge_optional")
-                .checked(self.curseforge_optional_files)
-                .label(ts!("instance.export.optional_files"))
-                .on_click(cx.listener(|this, value, _, cx| { this.curseforge_optional_files = *value; cx.notify(); })));
-
-        let export_enabled = match self.format {
-            ExportFormat::Zip => true,
-            ExportFormat::Modrinth => !self.modrinth_version_input.read(cx).value().trim().is_empty(),
-            ExportFormat::Curseforge => !self.curseforge_version_input.read(cx).value().trim().is_empty(),
-        };
+            );
 
         let content = v_flex()
             .gap_3()
-            .child(labelled(ts!("instance.export.format.label"), format_group))
-            .child(labelled(ts!("instance.export.options"), common_options))
+            .child(labelled(t::instance::export::format::label(), format_group))
+            .child(labelled(t::instance::export::options(), common_options))
             .when(self.format == ExportFormat::Modrinth, |this| {
-                this.child(labelled(ts!("instance.export.modrinth_options"), modrinth_options))
+                this.child(labelled(t::instance::export::modrinth_options(), modrinth_options))
             })
             .when(self.format == ExportFormat::Curseforge, |this| {
-                this.child(labelled(ts!("instance.export.curseforge_options"), curseforge_options))
+                this.child(labelled(t::instance::export::curseforge_options(), curseforge_options))
             });
 
         dialog
-            .title(ts!("instance.export.title"))
+            .title(t::instance::export::title())
             .child(content)
             .footer(
                 h_flex()
                     .gap_2()
-                    .child(Button::new("cancel").label(ts!("common.cancel")).on_click(|_, window, cx| window.close_dialog(cx)))
+                    .child(Button::new("cancel").label(t::common::cancel()).on_click(|_, window, cx| window.close_dialog(cx)))
                     .child(Button::new("export")
-                        .label(ts!("instance.export.action"))
+                        .label(t::instance::export::action())
                         .success()
-                        .disabled(!export_enabled)
                         .on_click({
                             let instance_id = self.instance_id;
                             let instance_name = self.instance_name.clone();
@@ -295,7 +281,7 @@ impl ExportInstanceModalState {
 
                                 let receiver = cx.prompt_for_new_path(directory, Some(&suggested));
                                 let modal_action = ModalAction::default();
-                                generic::show_modal(window, cx, ts!("instance.export.progress"), ts!("instance.export.error"), modal_action.clone());
+                                generic::show_modal(window, cx, t::instance::export::progress().into(), t::instance::export::error().into(), modal_action.clone());
 
                                 cx.spawn(async move |_| {
                                     let Ok(Ok(Some(mut path))) = receiver.await else {

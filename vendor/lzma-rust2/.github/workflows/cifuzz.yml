@@ -1,0 +1,31 @@
+name: CIFuzz
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  Fuzzing:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - lzip
+          - lzma
+          - lzma2
+          - xz
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install rust version
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          target: x86_64-unknown-linux-gnu
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+      - name: Run fuzzing
+        run: cargo fuzz run ${{matrix.target}} -- -max_total_time=180

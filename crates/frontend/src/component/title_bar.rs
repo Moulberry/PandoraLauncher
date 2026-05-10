@@ -23,6 +23,49 @@ impl RenderOnce for TitleBar {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let state = window.use_keyed_state("title-bar-state", cx, |_, _| TitleBarState::default());
 
+        if !crate::root::should_render_custom_titlebar() {
+            return h_flex()
+                .id("bar")
+                .w_full()
+                .min_h(px(57.0))
+                .max_h(px(57.0))
+                .h(px(57.0))
+                .p_4()
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .text_xl()
+                .child(h_flex()
+                    .left_2()
+                    .w_full()
+                    .child(h_flex()
+                        .flex_1()
+                        .overflow_hidden()
+                        .child(div().overflow_hidden().pr_8().child(self.page_path))
+                        .child(div().flex_1().child(self.controls))
+                    )
+                    .when_some(self.update, |this, update| {
+                        this.child(h_flex()
+                            .flex_shrink_0()
+                            .h_full()
+                            .gap_1()
+                            .child(Button::new("update")
+                                .label("Update Available")
+                                .success()
+                                .compact()
+                                .small()
+                                .ml_2()
+                                .icon(PandoraIcon::Download)
+                                .on_click({
+                                    let send = self.send.clone();
+                                    move |_, window, cx| {
+                                        crate::modals::update_prompt::open_update_prompt(update.clone(), send.clone(), window, cx);
+                                    }
+                                })
+                            )
+                        )
+                    }));
+        }
+
         let window_controls = window.window_controls();
 
         h_flex()
@@ -77,7 +120,7 @@ impl RenderOnce for TitleBar {
                     .child(div().overflow_hidden().pr_8().child(self.page_path))
                     .child(div().flex_1().child(self.controls))
                 )
-                .when(!cfg!(target_os = "macos"), |this| {
+                .when(!cfg!(target_os = "macos") || self.update.is_some(), |this| {
                     this.child(h_flex()
                         .flex_shrink_0()
                         .h_full()

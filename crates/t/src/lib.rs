@@ -3351,6 +3351,7 @@ pub mod settings {
                 "hide_main_window" => Some(hide_main_window()),
                 "open_game_output" => Some(open_game_output()),
                 "title" => Some(title()),
+                "use_os_titlebar" => Some(use_os_titlebar()),
                 _ => None,
             }
         }
@@ -3380,6 +3381,11 @@ pub mod settings {
                 1 => "Fenster",
                 2 => "Ablakok",
                 _ => "Windows",
+            }
+        }
+        pub fn use_os_titlebar() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Use OS titlebar (requires restart)",
             }
         }
     }

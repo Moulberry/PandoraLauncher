@@ -336,6 +336,12 @@ impl Settings {
                             .on_click(|value, _, cx| {
                                 InterfaceConfig::get_mut(cx).quit_on_main_closed = *value;
                             }))
+                        .child(Checkbox::new("use-os-titlebar")
+                            .label(t::settings::windows::use_os_titlebar())
+                            .checked(interface_config.use_os_titlebar)
+                            .on_click(|value, _, cx| {
+                                InterfaceConfig::get_mut(cx).use_os_titlebar = *value;
+                            }))
                 ))
         } else {
             div = div.child(Spinner::new().large());

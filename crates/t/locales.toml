@@ -1532,6 +1532,8 @@ hu = "Játéknapló megnyitása a játék indításakor"
 en = "Close all other windows when main window closed"
 de = "Schließe alle anderen Fenster when das Hauptfenster geschlossen ist"
 hu = "Minden másik ablak bezárása a fő ablak bezárásakor"
+[settings.windows.use_os_titlebar]
+en = "Use OS titlebar (requires restart)"
 [settings.privacy.title]
 en = "Privacy"
 de = "Privatsphäre"

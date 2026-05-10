@@ -201,7 +201,9 @@ pub fn start(
 }
 
 pub fn open_main_window(data: &DataEntities, cx: &mut App) -> AnyWindowHandle {
-    let window_bounds = match InterfaceConfig::get(cx).main_window_bounds {
+    let config = InterfaceConfig::get(cx);
+
+    let window_bounds = match config.main_window_bounds {
         interface_config::WindowBounds::Inherit => None,
         interface_config::WindowBounds::Windowed { x, y, w, h } => {
             Some(WindowBounds::Windowed(Bounds::new(Point::new(px(x), px(y)), Size::new(px(w), px(h)))))
@@ -214,17 +216,19 @@ pub fn open_main_window(data: &DataEntities, cx: &mut App) -> AnyWindowHandle {
         },
     };
 
+    let use_custom_titlebar = !config.use_os_titlebar;
+    crate::root::set_should_render_custom_titlebar(use_custom_titlebar);
     let handle = cx.open_window(
         WindowOptions {
             app_id: Some("PandoraLauncher".into()),
             window_min_size: Some(size(px(500.0), px(250.0))),
             titlebar: Some(TitlebarOptions {
                 title: Some("Pandora Launcher".into()),
-                appears_transparent: true,
+                appears_transparent: use_custom_titlebar,
                 ..Default::default()
             }),
             window_bounds,
-            window_decorations: Some(WindowDecorations::Client),
+            window_decorations: Some(if use_custom_titlebar { WindowDecorations::Client } else { WindowDecorations::Server }),
             ..Default::default()
         },
         |window, cx| {

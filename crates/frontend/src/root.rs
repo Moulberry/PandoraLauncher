@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc};
+use std::{path::Path, sync::{Arc, atomic::AtomicBool}};
 
 use bridge::{
     handle::BackendHandle,
@@ -41,6 +41,16 @@ impl LauncherRoot {
             focus_handle,
         }
     }
+}
+
+static RENDER_CUSTOM_TITLEBAR: AtomicBool = AtomicBool::new(true);
+
+pub(crate) fn should_render_custom_titlebar() -> bool {
+    RENDER_CUSTOM_TITLEBAR.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub(crate)fn set_should_render_custom_titlebar(value: bool) {
+    RENDER_CUSTOM_TITLEBAR.store(value, std::sync::atomic::Ordering::Relaxed);
 }
 
 impl Render for LauncherRoot {

@@ -40,7 +40,6 @@ struct ExportInstanceModalState {
     modrinth_summary_input: Entity<InputState>,
 
     curseforge_author_input: Entity<InputState>,
-    curseforge_optional_files: bool,
     curseforge_recommended_ram_enabled: bool,
     curseforge_recommended_ram_input: Entity<InputState>,
 }
@@ -95,7 +94,6 @@ impl ExportInstanceModalState {
             modrinth_summary_input,
 
             curseforge_author_input,
-            curseforge_optional_files: true,
             curseforge_recommended_ram_enabled: false,
             curseforge_recommended_ram_input,
         }
@@ -170,7 +168,6 @@ impl ExportInstanceModalState {
                 version: version.into(),
                 author: curseforge_author,
                 recommended_ram,
-                optional_files: self.curseforge_optional_files,
             },
         }
     }
@@ -233,11 +230,7 @@ impl ExportInstanceModalState {
                     .small()
                     .suffix("MiB")
                     .disabled(!self.curseforge_recommended_ram_enabled))
-            )
-            .child(Checkbox::new("curseforge_optional")
-                .checked(self.curseforge_optional_files)
-                .label(t::instance::export::optional_files())
-                .on_click(cx.listener(|this, value, _, cx| { this.curseforge_optional_files = *value; cx.notify(); })));
+            );
 
         let content = v_flex()
             .gap_3()

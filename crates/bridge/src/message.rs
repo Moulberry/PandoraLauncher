@@ -45,7 +45,6 @@ pub struct ExportCurseforgeOptions {
     pub version: Arc<str>,
     pub author: Option<Arc<str>>,
     pub recommended_ram: Option<u32>,
-    pub optional_files: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -776,11 +776,10 @@ fn build_curseforge_manifest(
 
     let mut files_out = Vec::new();
     for file in resolved {
-        let required = file.enabled || !options.curseforge.optional_files;
         files_out.push(serde_json::json!({
             "projectID": file.project_id,
             "fileID": file.file_id,
-            "required": required,
+            "required": file.enabled,
         }));
     }
     obj.insert("files".into(), serde_json::Value::Array(files_out));

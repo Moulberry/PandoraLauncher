@@ -192,8 +192,8 @@ impl NBT {
         self.get_reference_mut(self.root_index)
     }
 
-    fn remove_node(&mut self, idx: usize) {
-        if idx == 0 {
+    pub(crate) fn remove_node(&mut self, idx: usize) {
+        if idx == self.root_index {
             panic!("Cannot remove root node");
         }
         match self.nodes.remove(idx) {

@@ -419,6 +419,15 @@ impl ListDelegate for ServersListDelegate {
                 delegate.reorder_servers(row_index, row_index + 1, cx);
             }));
 
+        let delete = Button::new(("server-delete", row_index))
+            .compact()
+            .small()
+            .danger()
+            .icon(PandoraIcon::Trash2)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.delegate_mut().delete_server(row_index, cx);
+            }));
+
         let item = ListItem::new(ix)
             .p_1()
             .child(
@@ -444,6 +453,7 @@ impl ListDelegate for ServersListDelegate {
                         .gap_1()
                         .child(move_up)
                         .child(move_down)
+                        .child(delete)
                         .px_2(),
                     ),
             );
@@ -489,6 +499,14 @@ impl ServersListDelegate {
             id: self.id,
             from_index,
             to_index,
+        });
+        cx.notify();
+    }
+
+    fn delete_server(&mut self, index: usize, cx: &mut Context<ListState<Self>>) {
+        self.backend_handle.send(MessageToBackend::DeleteServer {
+            id: self.id,
+            index,
         });
         cx.notify();
     }

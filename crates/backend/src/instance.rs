@@ -441,6 +441,61 @@ impl Instance {
         }
     }
 
+    pub async fn delete_server(
+        backend: Arc<BackendState>,
+        id: InstanceID,
+        index: usize,
+    ) {
+        let server_dat_path = {
+            let guard = backend.instance_state.read();
+            let Some(instance) = guard.instances.get(id) else {
+                return;
+            };
+            instance.server_dat_path.clone()
+        };
+
+        if !server_dat_path.is_file() {
+            backend.send.send_error("server.dat is not a file");
+            return;
+        }
+
+        let raw = match std::fs::read(&server_dat_path) {
+            Ok(raw) => raw,
+            Err(err) => {
+                log::error!("error while reading server.dat: {err:?}");
+                backend.send.send_error("error reading server.dat: {err}");
+                return;
+            },
+        };
+        let mut nbt_data = raw.as_slice();
+        let mut result = match nbt::decode::read_named(&mut nbt_data) {
+            Ok(result) => result,
+            Err(err) => {
+                log::error!("error while decoding server.dat: {err:?}");
+                backend.send.send_error("error while decoding server.dat: {err}");
+                return;
+            },
+        };
+
+        let Some(mut root) = result.as_compound_mut() else {
+            backend.send.send_error("unable to get root compound");
+            return;
+        };
+        let Some(mut servers) = root.find_list_mut("servers", nbt::TAG_COMPOUND_ID) else {
+            backend.send.send_error("unable to get servers list");
+            return;
+        };
+
+        if servers.remove_index(index) {
+            let bytes = nbt::encode::write_named(&result);
+            if let Err(err) = crate::write_safe(&server_dat_path, &bytes) {
+                log::error!("error while writing server.dat: {err:?}");
+                backend.send.send_error("error while writing server.dat: {err}");
+                return;
+            }
+        }
+    }
+
     fn load_servers_inner(
         backend: Arc<BackendState>,
         id: InstanceID,

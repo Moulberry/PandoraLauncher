@@ -161,6 +161,10 @@ pub enum MessageToBackend {
         from_index: usize,
         to_index: usize,
     },
+    DeleteServer {
+        id: InstanceID,
+        index: usize,
+    },
     RequestLoadMods {
         id: InstanceID,
     },

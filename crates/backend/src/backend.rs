@@ -264,7 +264,7 @@ impl BackendState {
             let mut time = SystemTime::UNIX_EPOCH;
             if let Ok(metadata) = entry.metadata() {
                 if metadata.is_file() {
-                    return;
+                    continue;
                 }
                 if let Ok(created) = metadata.created() {
                     time = time.max(created);

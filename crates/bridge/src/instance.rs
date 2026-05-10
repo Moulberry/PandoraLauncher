@@ -2,7 +2,7 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use schema::{auxiliary::AuxDisabledChildren, content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeModpackFile, CurseforgeModpackMinecraft}, loader::Loader, modification::ModrinthModpackFileDownload, server_status::ServerStatus, text_component::FlatTextComponent, unique_bytes::UniqueBytes};
+use schema::{auxiliary::AuxDisabledChildren, content::ContentSource, curseforge::{CurseforgeModpackFile, CurseforgeModpackMinecraft}, loader::Loader, server_status::ServerStatus, text_component::FlatTextComponent, unique_bytes::UniqueBytes};
 
 use crate::{safe_path::SafePath};
 
@@ -117,6 +117,75 @@ pub static UNKNOWN_CONTENT_SUMMARY: Lazy<Arc<ContentSummary>> = Lazy::new(|| {
 });
 
 #[derive(Debug, Clone)]
+pub enum ModpackFilePath {
+    Path(SafePath),
+    Filename(SafePath),
+}
+
+impl ModpackFilePath {
+    pub fn as_str(&self) -> &str {
+        match self {
+            ModpackFilePath::Path(safe_path) => safe_path.as_str(),
+            ModpackFilePath::Filename(safe_path) => safe_path.as_str(),
+        }
+    }
+
+    pub fn to_path(&self, summary: Option<&ContentSummary>) -> Option<SafePath> {
+        match self {
+            ModpackFilePath::Path(safe_path) => Some(safe_path.clone()),
+            ModpackFilePath::Filename(filename) => {
+                let folder = summary?.extra.content_folder()?;
+                Some(SafePath::new(folder)?.join(&filename))
+            },
+        }
+    }
+
+    pub fn file_name(&self) -> Option<&str> {
+        match self {
+            ModpackFilePath::Path(safe_path) => safe_path.file_name(),
+            ModpackFilePath::Filename(safe_path) => safe_path.file_name(),
+        }
+    }
+
+    pub fn extension(&self) -> Option<&str> {
+        match self {
+            ModpackFilePath::Path(safe_path) => safe_path.extension(),
+            ModpackFilePath::Filename(safe_path) => safe_path.extension(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ModpackFile {
+    pub source: ModpackFileSource,
+    pub path: ModpackFilePath,
+    pub hash: [u8; 20],
+    pub summary: Option<Arc<ContentSummary>>,
+    pub default_disabled: bool,
+    pub disabled_third_party_downloads: bool,
+}
+
+impl ModpackFile {
+    pub fn path(&self) -> Option<SafePath> {
+        self.path.to_path(self.summary.as_deref())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ModpackFileSource {
+    DownloadUrl {
+        url: Arc<str>,
+        size: usize,
+    },
+    DownloadCurseforge {
+        file_id: u32,
+    },
+    Builtin {
+        bytes: Arc<[u8]>,
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum ContentType {
     Unknown,
     Fabric,
@@ -125,15 +194,12 @@ pub enum ContentType {
     NeoForge,
     JavaModule,
     ModrinthModpack {
-        downloads: Arc<[ModrinthModpackFileDownload]>,
-        summaries: Arc<[Option<Arc<ContentSummary>>]>,
-        overrides: Arc<[(SafePath, Arc<[u8]>)]>,
+        files: Arc<[ModpackFile]>,
         dependencies: IndexMap<Arc<str>, Arc<str>>,
     },
     CurseforgeModpack {
-        files: Arc<[CurseforgeModpackFile]>,
-        summaries: Arc<[(Option<Arc<ContentSummary>>, Option<CachedCurseforgeFileInfo>)]>,
-        overrides: Arc<[(SafePath, Arc<[u8]>)]>,
+        unknown_files: Arc<[CurseforgeModpackFile]>,
+        files: Arc<[ModpackFile]>,
         minecraft: CurseforgeModpackMinecraft,
     },
     ResourcePack,

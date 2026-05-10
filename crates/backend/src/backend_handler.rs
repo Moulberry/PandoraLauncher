@@ -2,10 +2,10 @@ use std::{borrow::Cow, io::{BufRead, Read}, sync::{Arc, atomic::Ordering}, time:
 
 use auth::{credentials::AccountCredentials, models::MinecraftAccessToken, secret::PlatformSecretStorage};
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentSummary, ContentType, InstanceID}, keep_alive::KeepAlive, message::{AccountCapesResult, AccountSkinResult, BackendConfigWithPassword, EmbeddedOrRaw, LogFiles, MessageToBackend, MessageToFrontend, QuickPlayLaunch}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath, serial::AtomicOptionSerial
+    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{ContentSummary, ContentType, InstanceID}, keep_alive::KeepAlive, message::{AccountCapesResult, AccountSkinResult, BackendConfigWithPassword, EmbeddedOrRaw, LogFiles, MessageToBackend, MessageToFrontend, QuickPlayLaunch}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
 };
 use futures::TryFutureExt;
-use schema::{auxiliary::AuxiliaryContentMeta, content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, minecraft_profile::{MinecraftProfileResponse, SkinVariant}, modrinth::{ModrinthLoader, ModrinthSideRequirement}, version::{LaunchArgument, LaunchArgumentValue}};
+use schema::{auxiliary::AuxiliaryContentMeta, content::ContentSource, curseforge::{CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, minecraft_profile::{MinecraftProfileResponse, SkinVariant}, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use tokio::{io::AsyncBufReadExt, sync::{Semaphore, TryAcquireError}};
@@ -13,7 +13,7 @@ use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    BackendState, CachedMinecraftProfile, FolderChanges, LoginError, account::BackendAccount, arcfactory::ArcStrFactory, instance::{ContentFolder, Instance}, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, CurseforgeGetFilesMetadataItem, CurseforgeGetModFilesMetadataItem, CurseforgeSearchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::{ContentUpdateAction, ContentUpdateKey}, skin_manager::SkinManager
+    BackendState, CachedMinecraftProfile, FolderChanges, LoginError, account::BackendAccount, arcfactory::ArcStrFactory, instance::{ContentFolder, Instance}, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, CurseforgeGetModFilesMetadataItem, CurseforgeSearchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::{ContentUpdateAction, ContentUpdateKey}, skin_manager::SkinManager
 };
 
 impl BackendState {
@@ -285,6 +285,7 @@ impl BackendState {
 
                 instance.update_session();
                 self.send.send(instance.create_modify_message());
+                self.restore_mods_folder_if_stopped(instance);
             },
             MessageToBackend::StartInstanceByName { name, quick_play } => {
                 let mut id = None;
@@ -315,10 +316,17 @@ impl BackendState {
                     return;
                 };
 
+                let mut cannot_modify_while_running = false;
+
                 for mod_id in mod_ids {
-                    if let Some((instance_mod, _)) = instance.try_get_content(mod_id) {
+                    if let Some((instance_mod, folder)) = instance.try_get_content(mod_id) {
                         if instance_mod.enabled == enabled {
-                            return;
+                            continue;
+                        }
+
+                        if folder == ContentFolder::Mods && !instance.processes.is_empty() {
+                            cannot_modify_while_running = true;
+                            continue;
                         }
 
                         let mut new_path = instance_mod.path.to_path_buf();
@@ -331,35 +339,64 @@ impl BackendState {
                         let _ = std::fs::rename(&instance_mod.path, new_path);
                     }
                 }
+
+                if cannot_modify_while_running {
+                    self.send.send_warning("Cannot modify mods folder while instance is running");
+                }
             },
-            MessageToBackend::SetContentChildEnabled { id, content_id: mod_id, child_id, child_name, child_filename, enabled } => {
+            MessageToBackend::SetContentChildEnabled { id, content_id: mod_id, child_id, child_name, child_filename, disabled_default, enabled } => {
                 let mut instance_state = self.instance_state.write();
                 if let Some(instance) = instance_state.instances.get_mut(id)
-                    && let Some((instance_mod, _)) = instance.try_get_content(mod_id)
+                    && let Some((instance_mod, folder)) = instance.try_get_content(mod_id)
                 {
                     let Some(aux_path) = crate::pandora_aux_path_for_content(instance_mod) else {
                         return;
                     };
 
+                    if folder == ContentFolder::Mods && !instance.processes.is_empty() {
+                        self.send.send_warning("Cannot modify mods folder while instance is running");
+                        return;
+                    }
+
                     let mut aux: AuxiliaryContentMeta = crate::read_json(&aux_path).unwrap_or_default();
 
                     let mut changed = false;
 
-                    if enabled {
-                        if let Some(child_id) = child_id {
-                            changed |= aux.disabled_children.disabled_ids.remove(&child_id);
-                        }
-                        if let Some(child_name) = child_name {
-                            changed |= aux.disabled_children.disabled_names.remove(&child_name);
-                        }
-                        changed |= aux.disabled_children.disabled_filenames.remove(&child_filename);
-                    } else {
-                        if let Some(child_id) = child_id {
-                            changed |= aux.disabled_children.disabled_ids.insert(child_id);
-                        } else if let Some(child_name) = child_name {
-                            changed |= aux.disabled_children.disabled_names.insert(child_name);
+                    if disabled_default {
+                        if enabled {
+                            if let Some(child_id) = child_id {
+                                changed |= aux.disabled_children.enabled_ids.insert(child_id);
+                            } else if let Some(child_name) = child_name {
+                                changed |= aux.disabled_children.enabled_names.insert(child_name);
+                            } else {
+                                changed |= aux.disabled_children.enabled_filenames.insert(child_filename);
+                            }
                         } else {
-                            changed |= aux.disabled_children.disabled_filenames.insert(child_filename);
+                            if let Some(child_id) = child_id {
+                                changed |= aux.disabled_children.enabled_ids.remove(&child_id);
+                            }
+                            if let Some(child_name) = child_name {
+                                changed |= aux.disabled_children.enabled_names.remove(&child_name);
+                            }
+                            changed |= aux.disabled_children.enabled_filenames.remove(&child_filename);
+                        }
+                    } else {
+                        if enabled {
+                            if let Some(child_id) = child_id {
+                                changed |= aux.disabled_children.disabled_ids.remove(&child_id);
+                            }
+                            if let Some(child_name) = child_name {
+                                changed |= aux.disabled_children.disabled_names.remove(&child_name);
+                            }
+                            changed |= aux.disabled_children.disabled_filenames.remove(&child_filename);
+                        } else {
+                            if let Some(child_id) = child_id {
+                                changed |= aux.disabled_children.disabled_ids.insert(child_id);
+                            } else if let Some(child_name) = child_name {
+                                changed |= aux.disabled_children.disabled_names.insert(child_name);
+                            } else {
+                                changed |= aux.disabled_children.disabled_filenames.insert(child_filename);
+                            }
                         }
                     }
 
@@ -393,100 +430,7 @@ impl BackendState {
                     (summary, configuration.loader, configuration.minecraft_version)
                 };
 
-                if let ContentType::ModrinthModpack { downloads, .. } = &summary.content_summary.extra {
-                    let downloads = downloads.clone();
-
-                    let filtered_downloads = downloads.iter().filter(|dl| {
-                        if let Some(env) = dl.env {
-                            if env.client == ModrinthSideRequirement::Unsupported {
-                                return false;
-                            }
-                        }
-                        true
-                    });
-
-                    let content_install = ContentInstall {
-                        target: bridge::install::InstallTarget::Library,
-                        loader_hint: loader,
-                        version_hint: Some(minecraft_version.into()),
-                        files: filtered_downloads.clone().filter_map(|file| {
-                            let path = SafePath::new(&file.path)?;
-                            Some(ContentInstallFile {
-                                replace_old: None,
-                                path: ContentInstallPath::Safe(path),
-                                download: ContentDownload::Url {
-                                    url: file.downloads[0].clone(),
-                                    sha1: file.hashes.sha1.clone(),
-                                    size: file.file_size,
-                                },
-                                content_source: schema::content::ContentSource::ModrinthUnknown,
-                            })
-                        }).collect(),
-                    };
-
-                    self.install_content(content_install, modal_action.clone()).await;
-                } else if let ContentType::CurseforgeModpack { files, summaries, .. } = &summary.content_summary.extra {
-                    let mut file_ids = Vec::new();
-
-                    for (index, file) in files.iter().enumerate() {
-                        if !matches!(summaries.get(index), Some((_, Some(_)))) {
-                            file_ids.push(file.file_id);
-                        }
-                    }
-
-                    if !file_ids.is_empty() {
-                        let files_result = self.meta.fetch(&CurseforgeGetFilesMetadataItem(&CurseforgeGetFilesRequest {
-                            file_ids,
-                        })).await;
-
-                        if let Ok(files) = files_result {
-                            let mut files_to_install = Vec::new();
-
-                            for file in files.data.iter() {
-                                let sha1 = file.hashes.iter()
-                                    .find(|hash| hash.algo == 1).map(|hash| &hash.value);
-                                let Some(sha1) = sha1 else {
-                                    continue;
-                                };
-
-                                let mut hash = [0u8; 20];
-                                let Ok(_) = hex::decode_to_slice(&**sha1, &mut hash) else {
-                                    log::warn!("File {} has invalid sha1: {}", file.file_name, sha1);
-                                    continue;
-                                };
-
-                                self.mod_metadata_manager.set_cached_curseforge_info(file.id, CachedCurseforgeFileInfo {
-                                    hash,
-                                    filename: file.file_name.clone(),
-                                    disabled_third_party_downloads: file.download_url.is_none()
-                                });
-                                if let Some(download_url) = &file.download_url {
-                                    files_to_install.push(ContentInstallFile {
-                                        replace_old: None,
-                                        path: ContentInstallPath::Automatic,
-                                        download: ContentDownload::Url {
-                                            url: download_url.clone(),
-                                            sha1: sha1.clone(),
-                                            size: file.file_length as usize,
-                                        },
-                                        content_source: ContentSource::CurseforgeProject { project_id: file.mod_id }
-                                    });
-                                }
-                            }
-
-                            if !files_to_install.is_empty() {
-                                let content_install = ContentInstall {
-                                    target: bridge::install::InstallTarget::Library,
-                                    loader_hint: loader,
-                                    version_hint: Some(minecraft_version.into()),
-                                    files: files_to_install.into(),
-                                };
-
-                                self.install_content(content_install, modal_action.clone()).await;
-                            }
-                        }
-                    }
-                }
+                self.download_modpack_children(&summary, loader, minecraft_version, &modal_action).await;
 
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     let mut changes = FolderChanges::no_changes();
@@ -499,6 +443,7 @@ impl BackendState {
             },
             MessageToBackend::InstallContent { content, modal_action } => {
                 let this = self.clone();
+
                 tokio::spawn(async move {
                     this.install_content(content, modal_action.clone()).await;
                     modal_action.set_finished();
@@ -512,17 +457,28 @@ impl BackendState {
                     return;
                 };
 
+                let mut cannot_modify_while_running = false;
+
                 for mod_id in mod_ids {
-                    let Some((instance_mod, _)) = instance.try_get_content(mod_id) else {
+                    let Some((instance_mod, folder)) = instance.try_get_content(mod_id) else {
                         self.send.send_error("Unable to delete mod, invalid id");
-                        return;
+                        continue;
                     };
+
+                    if folder == ContentFolder::Mods && !instance.processes.is_empty() {
+                        cannot_modify_while_running = true;
+                        continue;
+                    }
 
                     _ = std::fs::remove_file(&instance_mod.path);
 
                     if let Some(aux_path) = crate::pandora_aux_path_for_content(&instance_mod) {
                         _ = std::fs::remove_file(aux_path);
                     }
+                }
+
+                if cannot_modify_while_running {
+                    self.send.send_warning("Cannot modify mods folder while instance is running");
                 }
             },
             MessageToBackend::UpdateCheck { instance: id, modal_action } => {
@@ -845,6 +801,13 @@ impl BackendState {
                             if !mod_summary.enabled {
                                 path.add_extension("disabled");
                             }
+
+                            let mut hash = [0u8; 20];
+                            let Ok(_) = hex::decode_to_slice(&*file.hashes.sha1, &mut hash) else {
+                                log::warn!("File {} has invalid sha1: {}", file.filename, file.hashes.sha1);
+                                return;
+                            };
+
                             debug_assert!(path.is_absolute());
                             ContentInstall {
                                 target: InstallTarget::Instance(id),
@@ -855,7 +818,7 @@ impl BackendState {
                                     path: bridge::install::ContentInstallPath::Raw(path.into()),
                                     download: ContentDownload::Url {
                                         url: file.url.clone(),
-                                        sha1: file.hashes.sha1.clone(),
+                                        sha1: hash,
                                         size: file.size,
                                     },
                                     content_source: ContentSource::ModrinthProject { project_id },
@@ -877,6 +840,12 @@ impl BackendState {
                                 return;
                             };
 
+                            let mut hash = [0u8; 20];
+                            let Ok(_) = hex::decode_to_slice(&**sha1, &mut hash) else {
+                                log::warn!("File {} has invalid sha1: {}", file.file_name, sha1);
+                                return;
+                            };
+
                             let Some(url) = file.download_url.clone() else {
                                 self.send.send_error("Can't update mod in instance, author has blocked third party downloads");
                                 modal_action.set_finished();
@@ -892,7 +861,7 @@ impl BackendState {
                                     path: bridge::install::ContentInstallPath::Raw(path.into()),
                                     download: ContentDownload::Url {
                                         url,
-                                        sha1: sha1.clone(),
+                                        sha1: hash,
                                         size: file.file_length as usize,
                                     },
                                     content_source: ContentSource::CurseforgeProject { project_id },
@@ -1939,6 +1908,7 @@ impl BackendState {
                 if let Some(launch_keepalive) = &instance.launch_keepalive && !launch_keepalive.is_alive() {
                     instance.launch_keepalive = None;
                 }
+                self.restore_mods_folder_if_stopped(instance);
                 self.send.send(instance.create_modify_message());
             }
         }
@@ -1948,8 +1918,8 @@ impl BackendState {
             return;
         };
 
-        let add_mods = tokio::select! {
-            add_mods = self.prelaunch(id, &modal_action) => add_mods,
+        let prelaunch_result = tokio::select! {
+            result = self.prelaunch(id, &modal_action) => result,
             _ = modal_action.request_cancel.cancelled() => {
                 self.send.send(MessageToFrontend::CloseModal);
                 return;
@@ -1960,12 +1930,18 @@ impl BackendState {
             self.send.send(MessageToFrontend::Refresh);
             return;
         }
+        if let Err(err) = prelaunch_result {
+            modal_action.set_error_message(format!("Unable to run prelaunch: {}", err).into());
+            log::error!("Unable to run prelaunch: {err:?}");
+            self.send.send(MessageToFrontend::Refresh);
+            return;
+        }
 
         let game_output = !self.config.write().get().dont_open_game_output_when_launching;
 
         let launch_tracker = ProgressTracker::new(Arc::from("Launching"), self.send.clone());
         modal_action.trackers.push(launch_tracker.clone());
-        let result = self.launcher.launch(&self.redirecting_http_client, dot_minecraft, configuration, quick_play, login_info, add_mods, game_output, &launch_tracker, &modal_action).await;
+        let result = self.launcher.launch(&self.redirecting_http_client, dot_minecraft, configuration, quick_play, login_info, game_output, &launch_tracker, &modal_action).await;
 
         if matches!(result, Err(LaunchError::CancelledByUser)) {
             self.send.send(MessageToFrontend::CloseModal);

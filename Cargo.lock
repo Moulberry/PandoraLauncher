@@ -2417,6 +2417,7 @@ dependencies = [
  "gpui-component-assets",
  "gpui_platform",
  "heapless",
+ "hex",
  "image",
  "indexmap 2.13.0",
  "intrusive-collections",

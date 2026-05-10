@@ -51,6 +51,14 @@ impl SafePath {
         self.0.as_str()
     }
 
+    pub fn strip_extension(&self, extension: &str) -> Option<Self> {
+        debug_assert!(!extension.contains('.'));
+        if self.0.extension() != Some(extension) {
+            return None;
+        }
+        Some(Self(Arc::from(self.0.with_extension(""))))
+    }
+
     pub fn strip_prefix(&self, prefix: &str) -> Option<Self> {
         Some(Self(Arc::from(self.0.strip_prefix(prefix).ok()?)))
     }

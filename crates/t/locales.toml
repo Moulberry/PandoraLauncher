@@ -324,11 +324,11 @@ de = "Minispiel"
 hu = "Minijáték"
 [modrinth.category.locale]
 en = "Locale"
-de = "Localisierung"
+de = "Lokalisierung"
 hu = "Nyelv"
 [modrinth.category.potato]
 en = "Potato"
-de = "Katoffel"
+de = "Kartoffel"
 hu = "Krumpli"
 [modrinth.category.low]
 en = "Low"
@@ -970,7 +970,7 @@ de = "Lösche Instanz: ${name: &str}"
 hu = "Példány törlése: ${name: &str}"
 [instance.delete_dialog.label]
 en = "I want to delete this instance"
-de = "Ich möchte diese Instaz löschen"
+de = "Ich möchte diese Instanz löschen"
 hu = "Törölni akarom ezt a példányt
 [instance.delete_dialog.check]
 en = "I have read and understand these effects"
@@ -1384,7 +1384,7 @@ de = "${count: usize}/${total: usize} Instanzen konnten nicht synchronisiert wer
 hu = "${count: usize}/${total: usize} példány nem szinkronizálható!"
 [instance.sync.files]
 en = "Files"
-de = "Datein"
+de = "Dateien"
 hu = "Fájlok"
 [instance.sync.folders]
 en = "Folders"
@@ -1416,7 +1416,7 @@ de = "Synchronisiere Ordner"
 hu = "Mappa szinkronizálása"
 [instance.sync.disable_syncing]
 en = "Disable Instance File Syncing"
-de = "Deaktiviere Dateinsynchronisierung"
+de = "Deaktiviere Datensynchronisierung"
 hu = "Példány fájlok szinkronizálásának kikapcsolása"
 [instance.sync.targets.options]
 en = "Sync options.txt"
@@ -1549,7 +1549,7 @@ de = "Verstecke Skins"
 hu = "Kinézetek elrejtése"
 [settings.privacy.hide_server_addresses]
 en = "Hide server addresses"
-de = "Verstecke Server Addresse"
+de = "Verstecke Server Adresse"
 hu = "Szerverek címének elrejtése"
 [settings.proxy.title]
 en = "Proxy Settings"

@@ -1,18 +1,19 @@
 use std::{
-    hash::Hash, io::{BufRead, Cursor, Read, Write}, path::{Path, PathBuf}, sync::{Arc, atomic::{AtomicBool, Ordering}}
+    ffi::OsStr, hash::Hash, io::{BufRead, Cursor, Read, Write}, path::{Path, PathBuf}, sync::{Arc, atomic::{AtomicBool, Ordering}}
 };
 
-use bridge::{instance::{ContentSummary, ContentType, ContentUpdateStatus, UNKNOWN_CONTENT_SUMMARY}, safe_path::SafePath};
+use bridge::{instance::{ContentSummary, ContentType, ContentUpdateStatus, ModpackFile, ModpackFilePath, ModpackFileSource, UNKNOWN_CONTENT_SUMMARY}, safe_path::SafePath};
 use image::{DynamicImage, GenericImageView, imageops::FilterType};
 use indexmap::IndexMap;
 use parking_lot::{RwLock, RwLockReadGuard};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelExtend, ParallelIterator};
 use rc_zip_sync::EntryHandle;
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeFile, CurseforgeModpackManifestJson}, fabric_mod::{FabricModJson, Icon, Person}, forge_mod::{JarJarMetadata, McModInfo, ModsToml}, loader::Loader, modrinth::{ModrinthFile, ModrinthSideRequirement}, mrpack::ModrinthIndexJson, resourcepack::PackMcmeta, unique_bytes::UniqueBytes};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DeserializeAs};
 use sha1::{Digest, Sha1};
+use strum::IntoEnumIterator;
 use ustr::Ustr;
 
 #[derive(Clone)]
@@ -40,6 +41,71 @@ impl ContentUpdateAction {
             ContentUpdateAction::ManualInstall => ContentUpdateStatus::ManualInstall,
             ContentUpdateAction::Modrinth { .. } => ContentUpdateStatus::Modrinth,
             ContentUpdateAction::Curseforge { .. } => ContentUpdateStatus::Curseforge,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, strum::EnumIter)]
+enum ZipMetadataFile {
+    McModInfo, // Legacy forge mod
+    FabricModJson,
+    ModsToml,
+    NeoforgeModsToml,
+    JarJar,
+    JavaManifest,
+    PackMcmeta,
+    ModrinthIndexJson,
+    ManifestJson, // CurseForge modpack
+}
+
+impl ZipMetadataFile {
+    pub fn priority(self, extension: Option<&OsStr>) -> i32 {
+        let mut priority = match self {
+            ZipMetadataFile::McModInfo => 1, // If a legacy forge mod manifest is present, that's probably the one we want
+            ZipMetadataFile::JarJar => -1,
+            ZipMetadataFile::JavaManifest => -2,
+            _ => 0,
+        };
+
+        if extension.is_some() && extension == self.expected_zipfile_extension() {
+            priority += 100;
+        }
+
+        priority
+    }
+
+    pub fn expected_zipfile_extension(self) -> Option<&'static OsStr> {
+        match self {
+            ZipMetadataFile::McModInfo => Some(OsStr::new("jar")),
+            ZipMetadataFile::FabricModJson => Some(OsStr::new("jar")),
+            ZipMetadataFile::ModsToml => Some(OsStr::new("jar")),
+            ZipMetadataFile::NeoforgeModsToml => Some(OsStr::new("jar")),
+            ZipMetadataFile::JarJar => Some(OsStr::new("jar")),
+            ZipMetadataFile::JavaManifest => Some(OsStr::new("jar")),
+            ZipMetadataFile::PackMcmeta => Some(OsStr::new("zip")),
+            ZipMetadataFile::ModrinthIndexJson => Some(OsStr::new("mrpack")),
+            ZipMetadataFile::ManifestJson => Some(OsStr::new("zip")),
+        }
+    }
+
+    pub fn path(self) -> &'static str {
+        match self {
+            ZipMetadataFile::McModInfo => "mcmod.info",
+            ZipMetadataFile::FabricModJson => "fabric.mod.json",
+            ZipMetadataFile::ModsToml => "META-INF/mods.toml",
+            ZipMetadataFile::NeoforgeModsToml => "META-INF/neoforge.mods.toml",
+            ZipMetadataFile::JarJar => "META-INF/jarjar/metadata.json",
+            ZipMetadataFile::JavaManifest => "META-INF/MANIFEST.MF",
+            ZipMetadataFile::PackMcmeta => "pack.mcmeta",
+            ZipMetadataFile::ModrinthIndexJson => "modrinth.index.json",
+            ZipMetadataFile::ManifestJson => "manifest.json",
+        }
+    }
+
+    pub fn contains_children(self) -> bool {
+        match self {
+            ZipMetadataFile::ModrinthIndexJson | ZipMetadataFile::ManifestJson => true,
+            _ => false,
         }
     }
 }
@@ -202,10 +268,10 @@ impl ModMetadataManager {
         let Ok(mut file) = std::fs::File::open(path) else {
             return UNKNOWN_CONTENT_SUMMARY.clone();
         };
-        self.get_file(&mut file)
+        self.get_file(&mut file, path.extension())
     }
 
-    pub fn get_file(self: &Arc<Self>, file: &mut std::fs::File) -> Arc<ContentSummary> {
+    pub fn get_file(self: &Arc<Self>, file: &mut std::fs::File, extension: Option<&OsStr>) -> Arc<ContentSummary> {
         let mut hasher = Sha1::new();
         let _ = std::io::copy(file, &mut hasher).ok().unwrap();
         let actual_hash: [u8; 20] = hasher.finalize().into();
@@ -214,7 +280,7 @@ impl ModMetadataManager {
             return summary.clone();
         }
 
-        let summary = self.load_mod_summary(actual_hash, file, true);
+        let summary = self.load_mod_summary(actual_hash, file, extension, true);
 
         self.put(actual_hash, summary.clone());
 
@@ -227,7 +293,7 @@ impl ModMetadataManager {
         self.by_hash.read().get(&hash).cloned()
     }
 
-    pub fn get_bytes(self: &Arc<Self>, bytes: &[u8]) -> Arc<ContentSummary> {
+    pub fn get_bytes(self: &Arc<Self>, bytes: &[u8], extension: Option<&OsStr>) -> Arc<ContentSummary> {
         let mut hasher = Sha1::new();
         hasher.write_all(bytes).ok().unwrap();
         let actual_hash: [u8; 20] = hasher.finalize().into();
@@ -236,7 +302,7 @@ impl ModMetadataManager {
             return summary.clone();
         }
 
-        let summary = self.load_mod_summary(actual_hash, &bytes, true);
+        let summary = self.load_mod_summary(actual_hash, &bytes, extension, true);
 
         self.put(actual_hash, summary.clone());
 
@@ -255,37 +321,52 @@ impl ModMetadataManager {
         }
     }
 
-    fn load_mod_summary<R: rc_zip_sync::ReadZip>(self: &Arc<Self>, hash: [u8; 20], file: &R, allow_children: bool) -> Arc<ContentSummary> {
+    fn load_mod_summary<R: rc_zip_sync::ReadZip>(self: &Arc<Self>, hash: [u8; 20], file: &R, extension: Option<&OsStr>, allow_children: bool) -> Arc<ContentSummary> {
         let Ok(archive) = file.read_zip() else {
             return UNKNOWN_CONTENT_SUMMARY.clone();
         };
 
-        let summary = if let Some(file) = archive.by_name("mcmod.info") {
-            self.load_legacy_forge_mod(hash, &archive, file)
-        } else if let Some(file) = archive.by_name("fabric.mod.json") {
-            self.load_fabric_mod(hash, &archive, file)
-        } else if let Some(file) = archive.by_name("META-INF/mods.toml") {
-            self.load_forge_mod(hash, &archive, file, ContentType::Forge)
-        } else if let Some(file) = archive.by_name("META-INF/neoforge.mods.toml") {
-            self.load_forge_mod(hash, &archive, file, ContentType::NeoForge)
-        } else if let Some(file) = archive.by_name("META-INF/jarjar/metadata.json") {
-            self.load_jarjar(hash, &archive, file)
-        } else if let Some(file) = archive.by_name("META-INF/MANIFEST.MF") {
-            self.load_from_java_manifest(hash, &archive, file)
-        } else if let Some(file) = archive.by_name("pack.mcmeta") {
-            self.load_from_pack_mcmeta(hash, &archive, file)
-        } else if allow_children && let Some(file) = archive.by_name("modrinth.index.json") {
-            self.load_modrinth_modpack(hash, &archive, file)
-        } else if allow_children && let Some(file) = archive.by_name("manifest.json") {
-            self.load_curseforge_modpack(hash, &archive, file)
-        } else {
-            None
-        };
-        if let Some(summary) = summary {
-            summary
-        } else {
-            UNKNOWN_CONTENT_SUMMARY.clone()
+        let mut candidates = Vec::new();
+
+        for zip_metadata_file in ZipMetadataFile::iter() {
+            if !allow_children && zip_metadata_file.contains_children() {
+                continue;
+            }
+
+            if let Some(file) = archive.by_name(zip_metadata_file.path()) {
+                candidates.push((zip_metadata_file, file));
+            }
         }
+
+        candidates.sort_by(|a, b| {
+            let prio_a = a.0.priority(extension);
+            let prio_b = b.0.priority(extension);
+            if prio_a != prio_b {
+                return prio_a.cmp(&prio_b).reverse();
+            }
+
+            a.1.compressed_size.cmp(&b.1.compressed_size).reverse()
+        });
+
+        for (zip_metadata_file, file) in candidates {
+            let summary = match zip_metadata_file {
+                ZipMetadataFile::McModInfo => self.load_legacy_forge_mod(hash, &archive, file),
+                ZipMetadataFile::FabricModJson => self.load_fabric_mod(hash, &archive, file),
+                ZipMetadataFile::ModsToml => self.load_forge_mod(hash, &archive, file, ContentType::Forge),
+                ZipMetadataFile::NeoforgeModsToml => self.load_forge_mod(hash, &archive, file, ContentType::NeoForge),
+                ZipMetadataFile::JarJar => self.load_jarjar(hash, &archive, file),
+                ZipMetadataFile::JavaManifest => self.load_from_java_manifest(hash, &archive, file),
+                ZipMetadataFile::PackMcmeta => self.load_from_pack_mcmeta(hash, &archive, file),
+                ZipMetadataFile::ModrinthIndexJson => self.load_modrinth_modpack(hash, &archive, file),
+                ZipMetadataFile::ManifestJson => self.load_curseforge_modpack(hash, &archive, file),
+            };
+
+            if let Some(summary) = summary {
+                return summary;
+            }
+        }
+
+        UNKNOWN_CONTENT_SUMMARY.clone()
     }
 
     fn load_fabric_mod<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
@@ -473,47 +554,88 @@ impl ModMetadataManager {
                 continue;
             };
             overrides.insert(path, data.into());
+        };
+
+        let mut modpack_files = Vec::new();
+        for (mut path, bytes) in overrides {
+            let default_disabled = if let Some(stripped) = path.strip_extension("disabled") {
+                path = stripped;
+                true
+            } else {
+                false
+            };
+
+            let (hash, summary) = self.load_child_content_summary_from_bytes(&bytes, path.extension().map(OsStr::new));
+
+            modpack_files.push(ModpackFile {
+                source: ModpackFileSource::Builtin { bytes },
+                path: ModpackFilePath::Path(path),
+                hash,
+                default_disabled,
+                summary: Some(summary),
+                disabled_third_party_downloads: false,
+            });
         }
 
-        let summaries = modrinth_index_json.files.par_iter().map(|download| {
+        let summaries = modrinth_index_json.files.par_iter().flat_map(|download| {
             if let Some(env) = download.env {
                 if env.client == ModrinthSideRequirement::Unsupported {
                     return None;
                 }
             }
 
+            let Some(mut path) = SafePath::new(&download.path) else {
+                log::warn!("Skipping file because of invalid path: {}", download.path);
+                return None;
+            };
+
+            let Some(first_download) = download.downloads.first() else {
+                log::warn!("Skipping file {} because it has no downloads", download.path);
+                return None;
+            };
+
             let mut file_hash = [0u8; 20];
             let Ok(_) = hex::decode_to_slice(&*download.hashes.sha1, &mut file_hash) else {
+                log::warn!("Skipping file {} because of invalid sha1 hash: {}", download.path, download.hashes.sha1);
                 return None;
             };
 
-            if let Some(cached) = self.by_hash.read().get(&file_hash).cloned() {
-                return Some(cached);
-            }
-
-            let Some(path) = SafePath::new(&download.path) else {
-                return None;
+            let default_disabled = if let Some(stripped) = path.strip_extension("disabled") {
+                path = stripped;
+                true
+            } else {
+                false
             };
 
-            let file_hash_as_str = hex::encode(file_hash);
+            let summary = if let Some(cached) = self.by_hash.read().get(&file_hash).cloned() {
+                Some(cached)
+            } else {
+                let content_path = crate::create_content_library_path(&self.content_library_dir, file_hash, path.extension());
 
-            let mut file = self.content_library_dir.join(&file_hash_as_str[..2]);
-            file.push(&file_hash_as_str);
-            if let Some(extension) = path.extension() {
-                file.set_extension(extension);
-            }
+                if let Ok(mut file) = std::fs::File::open(&content_path) {
+                    let summary = self.load_mod_summary(file_hash, &mut file, content_path.extension(), false);
+                    self.put(file_hash, summary.clone());
+                    Some(summary)
+                } else {
+                    self.parents_by_missing_child.write().entry(file_hash).or_default().insert(hash);
+                    None
+                }
+            };
 
-            if let Ok(mut file) = std::fs::File::open(file) {
-                let summary = self.load_mod_summary(file_hash, &mut file, false);
-                self.put(file_hash, summary.clone());
-                return Some(summary);
-            }
-
-            self.parents_by_missing_child.write().entry(file_hash).or_default().insert(hash);
-
-            None
+            Some(ModpackFile {
+                source: ModpackFileSource::DownloadUrl {
+                    url: first_download.clone(),
+                    size: download.file_size
+                },
+                path: ModpackFilePath::Path(path),
+                hash: file_hash,
+                summary,
+                default_disabled,
+                disabled_third_party_downloads: false,
+            })
         });
-        let summaries: Vec<_> = summaries.collect();
+
+        modpack_files.par_extend(summaries);
 
         let mut png_icon = None;
         if let Some(icon) = archive.by_name("icon.png") {
@@ -537,12 +659,25 @@ impl ModMetadataManager {
             rich_description: None,
             png_icon,
             extra: ContentType::ModrinthModpack {
-                downloads: modrinth_index_json.files,
-                summaries: summaries.into(),
-                overrides: overrides.into_iter().collect(),
+                files: modpack_files.into(),
                 dependencies: modrinth_index_json.dependencies,
             }
         }))
+    }
+
+    fn load_child_content_summary_from_bytes(self: &Arc<Self>, bytes: &[u8], extension: Option<&OsStr>) -> ([u8; 20], Arc<ContentSummary>) {
+        let mut hasher = Sha1::new();
+        hasher.update(&*bytes);
+        let hash = hasher.finalize();
+        let hash: [u8; 20] = hash.into();
+
+        if let Some(cached) = self.by_hash.read().get(&hash).cloned() {
+            return (hash, cached);
+        }
+
+        let summary = self.load_mod_summary(hash, &bytes, extension, false);
+        self.put(hash, summary.clone());
+        return (hash, summary);
     }
 
     fn load_curseforge_modpack<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
@@ -572,39 +707,78 @@ impl ModMetadataManager {
             overrides.insert(path, data.into());
         }
 
-        let summaries = manifest_json.files.par_iter().map(|file| {
-            let Some(cached_info) = self.cached_curseforge_info.read().get(&file.file_id).cloned() else {
+        let mut modpack_files = Vec::new();
+        for (mut path, bytes) in overrides {
+            let default_disabled = if let Some(stripped) = path.strip_extension("disabled") {
+                path = stripped;
+                true
+            } else {
+                false
+            };
+
+            let (hash, summary) = self.load_child_content_summary_from_bytes(&bytes, path.extension().map(OsStr::new));
+
+            modpack_files.push(ModpackFile {
+                source: ModpackFileSource::Builtin { bytes },
+                path: ModpackFilePath::Path(path),
+                hash,
+                default_disabled,
+                summary: Some(summary),
+                disabled_third_party_downloads: false,
+            });
+        }
+
+        let mut unknown_files = Vec::new();
+        let mut known_files = Vec::new();
+
+        for file in manifest_json.files.iter() {
+            if let Some(cached_info) = self.cached_curseforge_info.read().get(&file.file_id).cloned() {
+                known_files.push((file, cached_info));
+            } else {
+                unknown_files.push(file.clone());
                 self.parents_by_missing_curseforge_id.write().entry(file.file_id).or_default().insert(hash);
-                return (None, None);
+            }
+        }
+
+        let summaries = known_files.par_iter().flat_map(|(curseforge_file, cached_info)| {
+            let Some(mut filename) = SafePath::new(&cached_info.filename) else {
+                log::warn!("Skipping file because of invalid filename: {}", cached_info.filename);
+                return None;
             };
 
-            if let Some(cached) = self.by_hash.read().get(&cached_info.hash).cloned() {
-                return (Some(cached), Some(cached_info));
-            }
-
-            let Some(path) = SafePath::new(&cached_info.filename) else {
-                return (None, Some(cached_info));
+            let default_disabled = if let Some(stripped) = filename.strip_extension("disabled") {
+                filename = stripped;
+                true
+            } else {
+                false
             };
 
-            let file_hash_as_str = hex::encode(cached_info.hash);
+            let summary = if let Some(cached) = self.by_hash.read().get(&cached_info.hash).cloned() {
+                Some(cached)
+            } else {
+                let content_path = crate::create_content_library_path(&self.content_library_dir, cached_info.hash, filename.extension());
 
-            let mut file = self.content_library_dir.join(&file_hash_as_str[..2]);
-            file.push(&file_hash_as_str);
-            if let Some(extension) = path.extension() {
-                file.set_extension(extension);
-            }
+                if let Ok(mut file) = std::fs::File::open(&content_path) {
+                    let summary = self.load_mod_summary(cached_info.hash, &mut file, content_path.extension(), false);
+                    self.put(cached_info.hash, summary.clone());
+                    Some(summary)
+                } else {
+                    self.parents_by_missing_child.write().entry(cached_info.hash).or_default().insert(hash);
+                    None
+                }
+            };
 
-            if let Ok(mut file) = std::fs::File::open(file) {
-                let summary = self.load_mod_summary(cached_info.hash, &mut file, false);
-                self.put(cached_info.hash, summary.clone());
-                return (Some(summary), Some(cached_info));
-            }
-
-            self.parents_by_missing_child.write().entry(cached_info.hash).or_default().insert(hash);
-
-            (None, Some(cached_info))
+            Some(ModpackFile {
+                source: ModpackFileSource::DownloadCurseforge { file_id: curseforge_file.file_id },
+                path: ModpackFilePath::Filename(filename),
+                hash: cached_info.hash,
+                summary,
+                default_disabled,
+                disabled_third_party_downloads: cached_info.disabled_third_party_downloads
+            })
         });
-        let summaries: Vec<_> = summaries.collect();
+
+        modpack_files.par_extend(summaries);
 
         let mut png_icon = None;
         if let Some(icon) = archive.by_name("icon.png") {
@@ -626,9 +800,8 @@ impl ModMetadataManager {
             rich_description: None,
             png_icon,
             extra: ContentType::CurseforgeModpack {
-                files: manifest_json.files,
-                summaries: summaries.into(),
-                overrides: overrides.into_iter().collect(),
+                unknown_files: unknown_files.into(),
+                files: modpack_files.into(),
                 minecraft: manifest_json.minecraft,
             }
         }))
@@ -644,15 +817,17 @@ impl ModMetadataManager {
         drop(file);
 
         for child in &metadata_json.jars {
-            let Some(child) = archive.by_name(&child.path) else {
+            let Some(entry) = archive.by_name(&child.path) else {
                 continue;
             };
-            let Ok(child_bytes) = child.bytes() else {
+            let Ok(child_bytes) = entry.bytes() else {
                 continue;
             };
-            let child = self.get_bytes(&child_bytes);
-            if !ContentSummary::is_unknown(&child) {
-                return Some(child);
+
+            let extension = child.path.rsplit_once('.').map(|(_, last)| OsStr::new(last));
+            let summary = self.get_bytes(&child_bytes, extension);
+            if !ContentSummary::is_unknown(&summary) {
+                return Some(summary);
             }
         }
 
@@ -901,6 +1076,11 @@ impl ContentSources {
         let values = &mut self.by_first_byte[first_byte as usize];
         match values.binary_search_by_key(&&hash[1..], |v| &v.0) {
             Ok(existing) => {
+                if value == ContentSource::Manual {
+                    // Don't replace actual source with manual source
+                    return;
+                }
+
                 let old_source = &mut values[existing].1;
                 let skip = match old_source {
                     ContentSource::ModrinthProject { project_id: _ } => {

@@ -42,8 +42,8 @@ impl InstanceModsSubpage {
 
         let mods_state = instance.mods_state.clone();
 
-        let sort_key = InterfaceConfig::get(cx).instance_mods_sort_key;
-        let enabled_first = InterfaceConfig::get(cx).instance_mods_enabled_first;
+        let sort_key = InterfaceConfig::get(cx).instance_content_sort_key;
+        let enabled_first = InterfaceConfig::get(cx).instance_content_sort_enabled_first;
 
         let mut mods_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone(), instance_loader, instance_version, sort_key, enabled_first);
         mods_list_delegate.set_content(instance.mods.read(cx));
@@ -55,7 +55,7 @@ impl InstanceModsSubpage {
                 NamedDropdownItem { name: key.name(), item: key }
             }).collect::<Vec<_>>();
 
-            let current = InterfaceConfig::get(cx).instance_mods_sort_key;
+            let current = InterfaceConfig::get(cx).instance_content_sort_key;
             let row = items.iter().position(|v| v.item == current).unwrap_or(0);
             SelectState::new(NamedDropdown::new(items), Some(IndexPath::new(row)), window, cx)
         });
@@ -77,8 +77,8 @@ impl InstanceModsSubpage {
             };
 
             let sort_key = value.item;
-            let enabled_first = InterfaceConfig::get(cx).instance_mods_enabled_first;
-            InterfaceConfig::get_mut(cx).instance_mods_sort_key = sort_key;
+            let enabled_first = InterfaceConfig::get(cx).instance_content_sort_enabled_first;
+            InterfaceConfig::get_mut(cx).instance_content_sort_key = sort_key;
 
             let mods_snapshot = this.mods.read(cx).clone();
             let mod_list = this.mod_list.clone();
@@ -206,11 +206,11 @@ impl Render for InstanceModsSubpage {
             .child(h_flex().gap_1()
                 .child(div().text_sm().child("Enabled first"))
                 .child(Switch::new("mods_enabled_first")
-                    .checked(InterfaceConfig::get(cx).instance_mods_enabled_first)
+                    .checked(InterfaceConfig::get(cx).instance_content_sort_enabled_first)
                     .on_click(cx.listener(|this, checked, _, cx| {
-                        let sort_key = InterfaceConfig::get(cx).instance_mods_sort_key;
+                        let sort_key = InterfaceConfig::get(cx).instance_content_sort_key;
                         let enabled_first = *checked;
-                        InterfaceConfig::get_mut(cx).instance_mods_enabled_first = enabled_first;
+                        InterfaceConfig::get_mut(cx).instance_content_sort_enabled_first = enabled_first;
 
                         let mods_snapshot = this.mods.read(cx).clone();
                         let mod_list = this.mod_list.clone();

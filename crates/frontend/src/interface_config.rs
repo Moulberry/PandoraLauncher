@@ -33,9 +33,9 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub quick_delete_instance: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub instance_mods_sort_key: InstanceContentSortKey,
+    pub instance_content_sort_key: InstanceContentSortKey,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub instance_mods_enabled_first: bool,
+    pub instance_content_sort_enabled_first: bool,
     #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
     pub content_install_latest: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -133,8 +133,8 @@ impl Default for InterfaceConfig {
             page_path: Default::default(),
             quick_delete_mods: Default::default(),
             quick_delete_instance: Default::default(),
-            instance_mods_sort_key: Default::default(),
-            instance_mods_enabled_first: Default::default(),
+            instance_content_sort_key: Default::default(),
+            instance_content_sort_enabled_first: Default::default(),
             content_install_latest: true,
             content_filter_version: Default::default(),
             modrinth_page_project_type: default_modrinth_project_type(),

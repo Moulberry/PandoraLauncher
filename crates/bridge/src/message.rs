@@ -178,6 +178,7 @@ pub enum MessageToBackend {
         child_id: Option<Arc<str>>,
         child_name: Option<Arc<str>>,
         child_filename: Arc<str>,
+        disabled_default: bool,
         enabled: bool,
     },
     DownloadContentChildren {

@@ -38,7 +38,6 @@ struct ExportInstanceModalState {
     version_input: Entity<InputState>,
 
     modrinth_summary_input: Entity<InputState>,
-    modrinth_optional_files: bool,
 
     curseforge_author_input: Entity<InputState>,
     curseforge_optional_files: bool,
@@ -94,7 +93,6 @@ impl ExportInstanceModalState {
             version_input,
 
             modrinth_summary_input,
-            modrinth_optional_files: true,
 
             curseforge_author_input,
             curseforge_optional_files: true,

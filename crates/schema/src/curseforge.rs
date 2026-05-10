@@ -363,7 +363,7 @@ pub struct CurseforgeModpackModLoader {
     pub primary: bool,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct CurseforgeModpackFile {
     #[serde(rename = "projectID")]
     pub project_id: u32,

@@ -10,15 +10,14 @@ use auth::{
     serve_redirect::{self, ProcessAuthorizationError},
 };
 use bridge::{
-    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, InstanceContentSummary, InstanceID}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, quit::QuitCoordinator, safe_path::SafePath
+    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, InstanceContentSummary, InstanceID, ModpackFile, ModpackFilePath, ModpackFileSource}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, quit::QuitCoordinator, safe_path::SafePath
 };
 use image::ImageFormat;
 use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::FxHashMap;
-use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, ProxyConfig, SyncTargets}, content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeGetFilesRequest}, instance::InstanceConfiguration, loader::Loader, minecraft_profile::MinecraftProfileResponse, modrinth::ModrinthSideRequirement};
-use sha1::{Digest, Sha1};
+use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, ProxyConfig, SyncTargets}, content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeGetFilesRequest}, instance::InstanceConfiguration, loader::Loader, minecraft_profile::MinecraftProfileResponse};
 use strum::IntoEnumIterator;
 use tokio::sync::{OnceCell, Semaphore, mpsc::Receiver};
 use ustr::Ustr;
@@ -825,16 +824,9 @@ impl BackendState {
     }
 
     async fn prelaunch_collect_mods_and_apply_modpack(self: &Arc<Self>, loader: Loader, minecraft_version: Ustr, mods: &[InstanceContentSummary], dot_minecraft_dir: &Path, mod_dir: &Path, mod_copies: &mut Vec<PrelaunchModCopy>, modal_action: &ModalAction) {
-        struct HashedDownload {
-            sha1: Arc<str>,
-            path: Arc<str>,
-            add_content_folder_to_path: bool,
-        }
-
         struct ModpackInstall {
-            hashed_downloads: Vec<HashedDownload>,
             aux_path: Option<PathBuf>,
-            overrides: Arc<[(SafePath, Arc<[u8]>)]>,
+            files: Vec<ModpackFile>
         }
 
         let mut modpack_installs = Vec::new();
@@ -845,148 +837,21 @@ impl BackendState {
                 continue;
             }
 
-            match &summary.content_summary.extra {
-                ContentType::ModrinthModpack { downloads, overrides, .. } => {
+            let content_summary = if self.download_modpack_children(summary, loader, minecraft_version, modal_action).await {
+                self.mod_metadata_manager.get_path(&summary.path)
+            } else {
+                summary.content_summary.clone()
+            };
 
-                    let downloads = downloads.clone();
-
-                    let filtered_downloads = downloads.iter().filter(|dl| {
-                        if let Some(env) = dl.env {
-                            if env.client == ModrinthSideRequirement::Unsupported {
-                                return false;
-                            }
-                        }
-
-                        if let Some(metadata) = self.mod_metadata_manager.get_cached_by_sha1(&*dl.hashes.sha1) {
-                            if let Some(id) = &metadata.id && summary.disabled_children.disabled_ids.contains(id) {
-                                return false;
-                            }
-                            if let Some(name) = &metadata.name && summary.disabled_children.disabled_names.contains(name) {
-                                return false;
-                            }
-                        }
-
-                        !summary.disabled_children.disabled_filenames.contains(&dl.path)
-                    });
-
-                    let content_install = ContentInstall {
-                        target: bridge::install::InstallTarget::Library,
-                        loader_hint: loader,
-                        version_hint: Some(minecraft_version.into()),
-                        files: filtered_downloads.clone().filter_map(|file| {
-                            let path = SafePath::new(&file.path)?;
-                            Some(ContentInstallFile {
-                                replace_old: None,
-                                path: ContentInstallPath::Safe(path),
-                                download: ContentDownload::Url {
-                                    url: file.downloads[0].clone(),
-                                    sha1: file.hashes.sha1.clone(),
-                                    size: file.file_size,
-                                },
-                                content_source: schema::content::ContentSource::ModrinthUnknown,
-                            })
-                        }).collect(),
-                    };
-
-                    self.install_content(content_install, modal_action.clone()).await;
-
-                    modpack_installs.push(ModpackInstall {
-                        hashed_downloads: filtered_downloads.map(|download| {
-                            HashedDownload {
-                                sha1: download.hashes.sha1.clone(),
-                                path: download.path.clone(),
-                                add_content_folder_to_path: false,
-                            }
-                        }).collect(),
-                        aux_path: crate::pandora_aux_path_for_content(&summary),
-                        overrides: overrides.clone(),
-                    });
+            let modpack = match &content_summary.extra {
+                ContentType::ModrinthModpack { files, .. } => {
+                    Some(files)
                 },
-                ContentType::CurseforgeModpack { files, summaries, overrides, .. } => {
-
-                    // todo: apply recommended ram from modpack
-
-                    let mut file_ids = Vec::new();
-                    let mut hashed_downloads = Vec::new();
-
-                    for (index, file) in files.iter().enumerate() {
-                        let Some((_, Some(file_info))) = summaries.get(index) else {
-                            file_ids.push(file.file_id);
-                            continue;
-                        };
-
-                        let file_hash_as_str = hex::encode(file_info.hash);
-
-                        hashed_downloads.push(HashedDownload {
-                            sha1: file_hash_as_str.into(),
-                            path: file_info.filename.clone(),
-                            add_content_folder_to_path: true,
-                        });
+                ContentType::CurseforgeModpack { unknown_files, files, .. } => {
+                    if !unknown_files.is_empty() {
+                        log::warn!("Unable to resolve some curseforge files, mods might be missing from modpack");
                     }
-
-                    if !file_ids.is_empty() {
-                        let files_result = self.meta.fetch(&CurseforgeGetFilesMetadataItem(&CurseforgeGetFilesRequest {
-                            file_ids,
-                        })).await;
-
-                        if let Ok(files) = files_result {
-                            let mut files_to_install = Vec::new();
-
-                            for file in files.data.iter() {
-                                let sha1 = file.hashes.iter()
-                                    .find(|hash| hash.algo == 1).map(|hash| &hash.value);
-                                let Some(sha1) = sha1 else {
-                                    continue;
-                                };
-
-                                let mut hash = [0u8; 20];
-                                let Ok(_) = hex::decode_to_slice(&**sha1, &mut hash) else {
-                                    log::warn!("File {} has invalid sha1: {}", file.file_name, sha1);
-                                    continue;
-                                };
-
-                                self.mod_metadata_manager.set_cached_curseforge_info(file.id, CachedCurseforgeFileInfo {
-                                    hash,
-                                    filename: file.file_name.clone(),
-                                    disabled_third_party_downloads: file.download_url.is_none()
-                                });
-                                if let Some(download_url) = &file.download_url {
-                                    hashed_downloads.push(HashedDownload {
-                                        sha1: sha1.clone(),
-                                        path: file.file_name.clone(),
-                                        add_content_folder_to_path: true,
-                                    });
-                                    files_to_install.push(ContentInstallFile {
-                                        replace_old: None,
-                                        path: ContentInstallPath::Automatic,
-                                        download: ContentDownload::Url {
-                                            url: download_url.clone(),
-                                            sha1: sha1.clone(),
-                                            size: file.file_length as usize,
-                                        },
-                                        content_source: ContentSource::CurseforgeProject { project_id: file.mod_id }
-                                    });
-                                }
-                            }
-
-                            if !files_to_install.is_empty() {
-                                let content_install = ContentInstall {
-                                    target: bridge::install::InstallTarget::Library,
-                                    loader_hint: loader,
-                                    version_hint: Some(minecraft_version.into()),
-                                    files: files_to_install.into(),
-                                };
-
-                                self.install_content(content_install, modal_action.clone()).await;
-                            }
-                        }
-                    }
-
-                    modpack_installs.push(ModpackInstall {
-                        hashed_downloads,
-                        aux_path: crate::pandora_aux_path_for_content(&summary),
-                        overrides: overrides.clone(),
-                    });
+                    Some(files)
                 },
                 _ => {
                     let path = &summary.path;
@@ -1008,19 +873,38 @@ impl BackendState {
                             source: PrelaunchModCopySource::FromBytes { bytes: file.into() },
                         });
                     }
+
+                    None
                 }
+            };
+
+            if let Some(files) = modpack {
+                let filtered_files = files.iter().filter(|dl| {
+                    let mut id = None;
+                    let mut name = None;
+
+                    if let Some(content_summary) = &dl.summary {
+                        id = content_summary.id.as_ref().map(|s| &**s);
+                        name = content_summary.name.as_ref().map(|s| &**s);
+                    }
+
+                    summary.disabled_children.is_enabled(dl.default_disabled, id, name, dl.path.as_str())
+                }).cloned().collect::<Vec<_>>();
+
+                modpack_installs.push(ModpackInstall {
+                    aux_path: crate::pandora_aux_path_for_content(&summary),
+                    files: filtered_files
+                });
             }
         }
 
         for modpack_install in modpack_installs {
-            let overrides = modpack_install.overrides;
             let content_library_dir = &self.directories.content_library_dir.clone();
             let mut aux: Option<AuxiliaryContentMeta> = if let Some(aux_path) = &modpack_install.aux_path {
                 Some(crate::read_json(&aux_path).unwrap_or_default())
             } else {
                 None
             };
-            let mut aux_changed = false;
 
             fn should_override_file(path: &str, dest: &Path, new_sha1: [u8; 20], aux: &Option<AuxiliaryContentMeta>) -> bool {
                 let Some(aux) = aux else {
@@ -1051,94 +935,66 @@ impl BackendState {
                 }
             }
 
-            for file in modpack_install.hashed_downloads {
-                if let Some(aux) = &aux {
-                    if let Some(metadata) = self.mod_metadata_manager.get_cached_by_sha1(&*file.sha1) {
-                        if let Some(id) = &metadata.id && aux.disabled_children.disabled_ids.contains(id) {
-                            continue;
-                        }
-                        if let Some(name) = &metadata.name && aux.disabled_children.disabled_names.contains(name) {
-                            continue;
-                        }
-                    }
-                    if aux.disabled_children.disabled_filenames.contains(&file.path) {
-                        continue;
-                    }
-                }
-
-                let mut expected_hash = [0u8; 20];
-                let Ok(_) = hex::decode_to_slice(&*file.sha1, &mut expected_hash) else {
-                    continue;
-                };
-                let Some(mut dest_path) = SafePath::new(&file.path) else {
-                    continue;
-                };
-
-                let path = crate::create_content_library_path(content_library_dir, expected_hash, dest_path.extension());
-
-                if file.add_content_folder_to_path {
-                    let summary = self.mod_metadata_manager.get_path(&path);
-                    if let Some(base) = summary.extra.content_folder() {
-                        dest_path = SafePath::new(base).unwrap().join(&dest_path);
-                    } else {
-                        continue;
-                    }
-                }
-
-                if let Some(filename) = dest_path.strip_prefix("mods") {
-                    mod_copies.push(PrelaunchModCopy {
-                        path: filename.to_path(Path::new("")),
-                        source: PrelaunchModCopySource::FromContentLibrary {
-                            hash: expected_hash
-                        }
-                    });
-                } else {
-                    let dest_path = dest_path.to_path(&dot_minecraft_dir);
-
-                    if should_override_file(&file.path, &dest_path, expected_hash, &aux) {
-                        if let Some(aux) = &mut aux {
-                            aux.applied_overrides.filename_to_hash.insert(file.path.clone(), file.sha1.clone());
-                            aux_changed = true;
-                        }
-
-                        let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
-                        let _ = std::fs::copy(path, dest_path);
-                    }
-                }
-            }
-
-            if !overrides.is_empty() {
-                let tracker = ProgressTracker::new("Copying overrides".into(), self.send.clone());
+            if !modpack_install.files.is_empty() {
+                let tracker = ProgressTracker::new("Copying modpack files".into(), self.send.clone());
                 modal_action.trackers.push(tracker.clone());
-
-                tracker.set_total(overrides.len());
+                tracker.set_total(modpack_install.files.len());
                 tracker.notify();
 
-                for (rel_path, file) in overrides.iter() {
-                    let mut hasher = Sha1::new();
-                    hasher.update(&file);
-                    let expected_hash = hasher.finalize().into();
+                let mut aux_changed = false;
 
-                    if let Some(filename) = rel_path.strip_prefix("mods") {
-                        mod_copies.push(PrelaunchModCopy {
-                            path: filename.to_path(Path::new("")),
-                            source: PrelaunchModCopySource::FromBytes {
-                                bytes: file.clone()
+                for file in modpack_install.files {
+                    let Some(rel_path) = file.path() else {
+                        continue;
+                    };
+
+                    if let ModpackFileSource::Builtin { bytes } = file.source {
+                        if let Some(filename) = rel_path.strip_prefix("mods") {
+                            mod_copies.push(PrelaunchModCopy {
+                                path: filename.to_path(Path::new("")),
+                                source: PrelaunchModCopySource::FromBytes {
+                                    bytes: bytes.clone()
+                                }
+                            });
+                        } else {
+                            let dest_path = rel_path.to_path(&dot_minecraft_dir);
+
+                            if should_override_file(file.path.as_str(), &dest_path, file.hash, &aux) {
+                                if let Some(aux) = &mut aux {
+                                    let sha1 = hex::encode(file.hash);
+                                    aux.applied_overrides.filename_to_hash.insert(file.path.as_str().into(), sha1.into());
+                                    aux_changed = true;
+                                }
+
+                                _ = crate::write_safe(&dest_path, &bytes);
                             }
-                        });
+                        }
                     } else {
-                        let dest_path = rel_path.to_path(&dot_minecraft_dir);
+                        if let Some(filename) = rel_path.strip_prefix("mods") {
+                            mod_copies.push(PrelaunchModCopy {
+                                path: filename.to_path(Path::new("")),
+                                source: PrelaunchModCopySource::FromContentLibrary {
+                                    hash: file.hash
+                                }
+                            });
+                        } else {
+                            let dest_path = rel_path.to_path(&dot_minecraft_dir);
 
-                        if should_override_file(&rel_path.as_str(), &dest_path, expected_hash, &aux) {
-                            if let Some(aux) = &mut aux {
-                                let sha1 = hex::encode(expected_hash);
-                                aux.applied_overrides.filename_to_hash.insert(rel_path.as_str().into(), sha1.into());
-                                aux_changed = true;
+                            let content_path = crate::create_content_library_path(content_library_dir, file.hash, rel_path.extension());
+
+                            if should_override_file(file.path.as_str(), &dest_path, file.hash, &aux) {
+                                if let Some(aux) = &mut aux {
+                                    let sha1 = hex::encode(file.hash);
+                                    aux.applied_overrides.filename_to_hash.insert(file.path.as_str().into(), sha1.into());
+                                    aux_changed = true;
+                                }
+
+                                let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
+                                let _ = std::fs::copy(content_path, dest_path);
                             }
-
-                            _ = crate::write_safe(&dest_path, &file);
                         }
                     }
+
                     tracker.add_count(1);
                     tracker.notify();
                 }
@@ -1149,7 +1005,8 @@ impl BackendState {
                     }
                 }
 
-                tracker.set_finished(ProgressTrackerFinishType::Fast);
+                tracker.set_finished(ProgressTrackerFinishType::Normal);
+                tracker.notify();
             }
         }
     }
@@ -1184,6 +1041,122 @@ impl BackendState {
 
         tracker.set_finished(ProgressTrackerFinishType::Normal);
         Ok(())
+    }
+
+    pub async fn download_modpack_children(self: &Arc<Self>, summary: &InstanceContentSummary, loader: Loader, minecraft_version: Ustr, modal_action: &ModalAction) -> bool {
+        let mut curseforge_file_ids = Vec::new();
+
+        let (files, fallback_source) = if let ContentType::ModrinthModpack { files, .. } = &summary.content_summary.extra {
+            (files.to_vec(), ContentSource::ModrinthUnknown)
+        } else if let ContentType::CurseforgeModpack { unknown_files, files, .. } = &summary.content_summary.extra {
+            for unknown_file in unknown_files.iter() {
+                curseforge_file_ids.push(unknown_file.file_id);
+            }
+
+            (files.to_vec(), ContentSource::Manual)
+        } else {
+            return false;
+        };
+
+        let mut content_install_files = Vec::new();
+
+        for file in files.iter() {
+            if let Some(summary) = &file.summary && summary.hash == file.hash {
+                continue;
+            }
+
+            match &file.source {
+                ModpackFileSource::DownloadUrl { url, size } => {
+                    content_install_files.push(ContentInstallFile {
+                        replace_old: None,
+                        path: ContentInstallPath::ModpackFilePath(file.path.clone()),
+                        download: ContentDownload::Url {
+                            url: url.clone(),
+                            sha1: file.hash,
+                            size: *size,
+                        },
+                        content_source: fallback_source.clone(),
+                    });
+                },
+                ModpackFileSource::DownloadCurseforge { file_id } => {
+                    if file.disabled_third_party_downloads {
+                        continue;
+                    }
+
+                    curseforge_file_ids.push(*file_id);
+                },
+                ModpackFileSource::Builtin { .. } => {},
+            }
+        }
+
+        if !curseforge_file_ids.is_empty() {
+            let tracker = ProgressTracker::new("Requesting download URLs from CurseForge".into(), self.send.clone());
+            modal_action.trackers.push(tracker.clone());
+            tracker.set_total(1);
+            tracker.notify();
+
+            let files_result = self.meta.fetch(&CurseforgeGetFilesMetadataItem(&CurseforgeGetFilesRequest {
+                file_ids: curseforge_file_ids,
+            })).await;
+
+            tracker.set_count(1);
+            tracker.set_finished(ProgressTrackerFinishType::from_err(files_result.is_err()));
+            tracker.notify();
+
+            if let Ok(files) = files_result {
+                for file in files.data.iter() {
+                    let sha1 = file.hashes.iter()
+                        .find(|hash| hash.algo == 1).map(|hash| &hash.value);
+                    let Some(sha1) = sha1 else {
+                        continue;
+                    };
+
+                    let mut hash = [0u8; 20];
+                    let Ok(_) = hex::decode_to_slice(&**sha1, &mut hash) else {
+                        log::warn!("File {} has invalid sha1: {}", file.file_name, sha1);
+                        continue;
+                    };
+
+                    self.mod_metadata_manager.set_cached_curseforge_info(file.id, CachedCurseforgeFileInfo {
+                        hash,
+                        filename: file.file_name.clone(),
+                        disabled_third_party_downloads: file.download_url.is_none()
+                    });
+
+                    let Some(filename) = SafePath::new(&file.file_name) else {
+                        log::warn!("Skipping file because of invalid filename: {}", file.file_name);
+                        continue;
+                    };
+
+                    if let Some(download_url) = &file.download_url {
+                        content_install_files.push(ContentInstallFile {
+                            replace_old: None,
+                            path: ContentInstallPath::ModpackFilePath(ModpackFilePath::Filename(filename)),
+                            download: ContentDownload::Url {
+                                url: download_url.clone(),
+                                sha1: hash,
+                                size: file.file_length as usize,
+                            },
+                            content_source: ContentSource::CurseforgeProject { project_id: file.mod_id }
+                        });
+                    }
+                }
+            }
+        }
+
+        if !content_install_files.is_empty() {
+            let content_install = ContentInstall {
+                target: bridge::install::InstallTarget::Library,
+                loader_hint: loader,
+                version_hint: Some(minecraft_version.into()),
+                files: content_install_files.into(),
+            };
+
+            self.install_content(content_install, modal_action.clone()).await;
+            true
+        } else {
+            false
+        }
     }
 
     pub async fn create_instance_sanitized(&self, name: &str, version: &str, loader: Loader, icon: Option<EmbeddedOrRaw>) -> Option<PathBuf> {

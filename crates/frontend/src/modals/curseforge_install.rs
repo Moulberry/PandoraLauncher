@@ -623,6 +623,13 @@ impl InstallDialog {
                                 return;
                             };
 
+                            let mut hash = [0u8; 20];
+                            let Ok(_) = hex::decode_to_slice(&*sha1, &mut hash) else {
+                                let warning = format!("File {} has invalid sha1: {}", selected_file.file_name, sha1);
+                                window.push_notification((NotificationType::Error, SharedString::new(warning)), cx);
+                                return;
+                            };
+
                             let Some(download_url) = selected_file.download_url.clone() else {
                                 window.push_notification((NotificationType::Error, t::instance::content::install::no_third_party_downloads()), cx);
                                 return;
@@ -633,7 +640,7 @@ impl InstallDialog {
                                 path: bridge::install::ContentInstallPath::Safe(path),
                                 download: ContentDownload::Url {
                                     url: download_url,
-                                    sha1: sha1,
+                                    sha1: hash,
                                     size: selected_file.file_length as usize,
                                 },
                                 content_source: ContentSource::CurseforgeProject {

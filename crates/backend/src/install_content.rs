@@ -10,7 +10,7 @@ use schema::{content::ContentSource, curseforge::{CURSEFORGE_RELATION_TYPE_REQUI
 use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
 
-use crate::{BackendState, instance::Instance, lockfile::Lockfile, metadata::{items::{CurseforgeGetFilesMetadataItem, CurseforgeGetModFilesMetadataItem, MinecraftVersionManifestMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthVersionMetadataItem}, manager::MetaLoadError}};
+use crate::{BackendState, instance::Instance, lockfile::Lockfile, metadata::{items::{CurseforgeGetFilesMetadataItem, CurseforgeGetModFilesMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthVersionMetadataItem}, manager::MetaLoadError}};
 
 #[derive(thiserror::Error, Debug)]
 pub enum ContentInstallError {
@@ -188,34 +188,19 @@ impl BackendState {
         let mut dot_minecraft_dir = None;
         let mut instance_running = false;
 
-        let mut loader_hint = content.loader_hint;
-        let mut version_hint = content.version_hint;
+        let loader = content.loader;
+        let minecraft_version = content.minecraft_version;
 
         if let bridge::install::InstallTarget::NewInstance { name } = &content.target {
-            if version_hint.is_none() {
-                version_hint = determine_minecraft_version_from_content(&files);
+            let mut name = name.clone();
+            if name.is_none() { // todo: remove this
+                name = determine_name_from_content(&files);
             }
-            if version_hint.is_none() {
-                if let Ok(meta) = self.meta.fetch(&MinecraftVersionManifestMetadataItem).await {
-                    version_hint = Some(meta.latest.release.into());
-                }
-            }
+            let name = name.as_deref().unwrap_or("New Instance");
 
-            if let Some(version_hint) = version_hint {
-                if loader_hint == Loader::Unknown {
-                    loader_hint = determine_loader_from_content(&files).unwrap_or(Loader::Unknown);
-                }
-
-                let mut name = name.clone();
-                if name.is_none() {
-                    name = determine_name_from_content(&files);
-                }
-                let name = name.as_deref().unwrap_or("New Instance");
-
-                // todo: use icon of mod/modpack/etc. for icon of instance
-                dot_minecraft_dir = self.create_instance_sanitized(&name, &version_hint, loader_hint, None).await
-                    .map(|v| v.join(".minecraft").into());
-            }
+            // todo: use icon of mod/modpack/etc. for icon of instance
+            dot_minecraft_dir = self.create_instance_sanitized(&name, &minecraft_version, loader, None).await
+                .map(|v| v.join(".minecraft").into());
         }
 
         let mut instance_lock_guard = None;
@@ -226,14 +211,9 @@ impl BackendState {
                 instance_running = !instance.processes.is_empty();
 
                 if instance.configuration.get().loader == Loader::Vanilla {
-                    if loader_hint == Loader::Unknown {
-                        loader_hint = determine_loader_from_content(&files).unwrap_or(Loader::Unknown);
-                    }
-                    if loader_hint != Loader::Unknown {
-                        instance.configuration.modify(|config| {
-                            config.loader = loader_hint;
-                        });
-                    }
+                    instance.configuration.modify(|config| {
+                        config.loader = loader;
+                    });
                 }
 
                 dot_minecraft_dir = Some(instance.dot_minecraft_path.clone());
@@ -324,7 +304,7 @@ impl BackendState {
 
                     Some(version)
                 } else {
-                    let modrinth_loader = content.loader_hint.as_modrinth_loader();
+                    let modrinth_loader = content.loader.as_modrinth_loader();
                     let loaders = if modrinth_loader != ModrinthLoader::Unknown {
                         Some(Arc::from([modrinth_loader]))
                     } else {
@@ -333,7 +313,7 @@ impl BackendState {
 
                     let mut result = self.meta.fetch(&ModrinthProjectVersionsMetadataItem(&ModrinthProjectVersionsRequest {
                         project_id: project_id.clone(),
-                        game_versions: content.version_hint.clone().map(|v| [v].into()),
+                        game_versions: Some(Arc::new([content.minecraft_version.into()])),
                         loaders,
                     })).await;
 
@@ -346,7 +326,7 @@ impl BackendState {
 
                         result = self.meta.fetch(&ModrinthProjectVersionsMetadataItem(&ModrinthProjectVersionsRequest {
                             project_id: project_id.clone(),
-                            game_versions: content.version_hint.clone().map(|v| [v].into()),
+                            game_versions: Some(Arc::new([content.minecraft_version.into()])),
                             loaders: None,
                         })).await;
                         not_found = matches!(result, Err(MetaLoadError::NonOK(404))) ||
@@ -355,7 +335,7 @@ impl BackendState {
 
                         tracker.add_count(1);
                     }
-                    if not_found && content.version_hint.is_some() {
+                    if not_found {
                         tracker.add_total(1);
 
                         result = self.meta.fetch(&ModrinthProjectVersionsMetadataItem(&ModrinthProjectVersionsRequest {
@@ -515,12 +495,11 @@ impl BackendState {
                 tracker.add_total(1);
                 modal_action.trackers.push(tracker.clone());
 
-                let mod_loader_type = match content.loader_hint {
+                let mod_loader_type = match content.loader {
                     Loader::Vanilla => None,
                     Loader::Fabric => Some(CurseforgeModLoaderType::Fabric as u32),
                     Loader::Forge => Some(CurseforgeModLoaderType::Forge as u32),
                     Loader::NeoForge => Some(CurseforgeModLoaderType::NeoForge as u32),
-                    Loader::Unknown => None,
                 };
 
                 let mut is_wrong_version = false;
@@ -528,7 +507,7 @@ impl BackendState {
 
                 let mut result = self.meta.fetch(&CurseforgeGetModFilesMetadataItem(&CurseforgeGetModFilesRequest {
                     mod_id: project_id,
-                    game_version: content.version_hint.clone().map(|v| v.into()),
+                    game_version: content.minecraft_version.into(),
                     mod_loader_type,
                     page_size: Some(1)
                 })).await;
@@ -542,7 +521,7 @@ impl BackendState {
 
                     result = self.meta.fetch(&CurseforgeGetModFilesMetadataItem(&CurseforgeGetModFilesRequest {
                         mod_id: project_id,
-                        game_version: content.version_hint.clone().map(|v| v.into()),
+                        game_version: content.minecraft_version.into(),
                         mod_loader_type: None,
                         page_size: Some(1)
                     })).await;
@@ -552,7 +531,7 @@ impl BackendState {
 
                     tracker.add_count(1);
                 }
-                if not_found && content.version_hint.is_some() {
+                if not_found {
                     tracker.add_total(1);
 
                     result = self.meta.fetch(&CurseforgeGetModFilesMetadataItem(&CurseforgeGetModFilesRequest {
@@ -1059,60 +1038,6 @@ impl BackendState {
         let summary = self.mod_metadata_manager.get_path(&path);
         Ok((path, sha1, summary))
     }
-}
-
-fn determine_loader_from_content(content: &[InstallFromContentLibrary]) -> Option<Loader> {
-    for content in content {
-        match &content.mod_summary.extra {
-            ContentType::Fabric => return Some(Loader::Fabric),
-            ContentType::LegacyForge => return Some(Loader::Forge),
-            ContentType::Forge => return Some(Loader::Forge),
-            ContentType::NeoForge => return Some(Loader::NeoForge),
-            ContentType::JavaModule | ContentType::Unknown => {},
-            ContentType::ModrinthModpack { dependencies, .. } => {
-                for (key, _) in dependencies {
-                    match &**key {
-                        "forge" => return Some(Loader::Forge),
-                        "neoforge" => return Some(Loader::NeoForge),
-                        "fabric-loader" => return Some(Loader::Fabric),
-                        _ => {}
-                    }
-                }
-            },
-            ContentType::CurseforgeModpack { minecraft, .. } => {
-                return minecraft.get_loader();
-            },
-            ContentType::ResourcePack => {},
-            ContentType::ShaderPack => {},
-        }
-    }
-    None
-}
-
-fn determine_minecraft_version_from_content(content: &[InstallFromContentLibrary]) -> Option<Arc<str>> {
-    for content in content {
-        match &content.mod_summary.extra {
-            ContentType::Fabric => {},
-            ContentType::LegacyForge => {},
-            ContentType::Forge => {},
-            ContentType::NeoForge => {},
-            ContentType::JavaModule => {},
-            ContentType::Unknown => {},
-            ContentType::ModrinthModpack { dependencies, .. } => {
-                for (key, value) in dependencies {
-                    if &**key == "minecraft" {
-                        return Some(value.clone());
-                    }
-                }
-            },
-            ContentType::CurseforgeModpack { minecraft, .. } => {
-                return minecraft.version.clone();
-            },
-            ContentType::ResourcePack => {},
-            ContentType::ShaderPack => {},
-        }
-    }
-    None
 }
 
 fn determine_name_from_content(content: &[InstallFromContentLibrary]) -> Option<Arc<str>> {

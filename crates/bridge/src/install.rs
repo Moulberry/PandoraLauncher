@@ -1,6 +1,7 @@
 use std::{path::{Path, PathBuf}, sync::Arc};
 
 use schema::{content::ContentSource, loader::Loader};
+use ustr::Ustr;
 
 use crate::{instance::{InstanceID, ModpackFilePath}, safe_path::SafePath};
 
@@ -16,8 +17,8 @@ pub enum InstallTarget {
 #[derive(Debug, Clone)]
 pub struct ContentInstall {
     pub target: InstallTarget,
-    pub loader_hint: Loader,
-    pub version_hint: Option<Arc<str>>,
+    pub loader: Loader,
+    pub minecraft_version: Ustr,
     pub files: Arc<[ContentInstallFile]>,
 }
 

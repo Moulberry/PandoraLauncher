@@ -442,7 +442,6 @@ impl Launcher {
                     true
                 ).await
             },
-            Loader::Unknown => unimplemented!(),
         }
     }
 

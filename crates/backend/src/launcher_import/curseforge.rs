@@ -55,9 +55,9 @@ fn try_load_from_curseforge(config_path: &Path) -> Option<InstanceConfiguration>
             } else {
                 loader_version.into()
             };
-            (loader.as_pandora(), Some(preferred_loader_version))
+            (loader.as_pandora().unwrap_or(Loader::Vanilla), Some(preferred_loader_version))
         } else {
-            (loader.as_pandora(), None)
+            (loader.as_pandora().unwrap_or(Loader::Vanilla), None)
         }
     } else {
         (Loader::Vanilla, None)

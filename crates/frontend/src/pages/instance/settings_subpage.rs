@@ -158,11 +158,10 @@ impl InstanceSettingsSubpage {
 
         let loader_select_state = cx.new(|cx| {
             let loaders = Loader::iter()
-                .filter(|l| *l != Loader::Unknown)
-                .map(|l| l.name())
+                .map(|l| l.pretty_name())
                 .collect();
             let mut state = SelectState::new(loaders, None, window, cx);
-            state.set_selected_value(&loader.name(), window, cx);
+            state.set_selected_value(&loader.pretty_name(), window, cx);
             state
         });
         cx.subscribe_in(&loader_select_state, window, Self::on_loader_selected).detach();
@@ -319,7 +318,7 @@ impl InstanceSettingsSubpage {
 
     fn update_loader_versions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let loader_versions = match self.loader {
-            Loader::Vanilla | Loader::Unknown => {
+            Loader::Vanilla => {
                 self._observe_loader_version_subscription = None;
                 self.loader_versions_state = TypelessFrontendMetadataResult::Loaded;
                 vec![""]
@@ -475,10 +474,9 @@ impl InstanceSettingsSubpage {
             return;
         };
 
-        let loader = Loader::from_name(value);
-        if loader == Loader::Unknown {
+        let Some(loader) = Loader::from_name(value) else {
             return;
-        }
+        };
 
         if self.loader != loader {
             self.loader = loader;
@@ -792,7 +790,7 @@ impl Render for InstanceSettingsSubpage {
                         Loader::Fabric => format!("{}: ", t::instance::loader_version(t::modrinth::category::fabric())),
                         Loader::Forge => format!("{}: ", t::instance::loader_version(t::modrinth::category::forge())),
                         Loader::NeoForge => format!("{}: ", t::instance::loader_version(t::modrinth::category::neoforge())),
-                        Loader::Vanilla | Loader::Unknown => format!("{}: ", t::instance::loader_version(t::instance::loader())),
+                        Loader::Vanilla => format!("{}: ", t::instance::loader_version(t::instance::loader())),
                     }).w_full())
                 },
                 TypelessFrontendMetadataResult::Error(ref error) => {

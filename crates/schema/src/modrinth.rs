@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 use ustr::Ustr;
 
+use crate::loader::Loader;
+
 pub const MODRINTH_SEARCH_URL: &str = "https://api.modrinth.com/v2/search";
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -103,13 +105,20 @@ pub enum ModrinthProjectType {
 }
 
 impl ModrinthProjectType {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             ModrinthProjectType::Mod => "mod",
             ModrinthProjectType::Modpack => "modpack",
             ModrinthProjectType::Resourcepack => "resourcepack",
             ModrinthProjectType::Shader => "shader",
             ModrinthProjectType::Other => "other",
+        }
+    }
+
+    pub fn mod_or_modpack(self) -> bool {
+        match self {
+            Self::Mod | Self::Modpack => true,
+            _ => false,
         }
     }
 }
@@ -213,6 +222,19 @@ impl ModrinthLoader {
             "Optifine" | "optifine" => Self::Optifine,
             "Canvas" | "canvas" => Self::Canvas,
             _ => Self::Unknown,
+        }
+    }
+
+    pub fn as_pandora(self) -> Option<Loader> {
+        match self {
+            ModrinthLoader::Fabric => Some(Loader::Fabric),
+            ModrinthLoader::Forge => Some(Loader::Forge),
+            ModrinthLoader::NeoForge => Some(Loader::NeoForge),
+            ModrinthLoader::Minecraft => None,
+            ModrinthLoader::Iris => None,
+            ModrinthLoader::Optifine => None,
+            ModrinthLoader::Canvas => None,
+            ModrinthLoader::Unknown => None,
         }
     }
 }

@@ -1,15 +1,14 @@
 use std::{path::Path, sync::Arc};
 
-use bridge::{handle::BackendHandle, import::{ImportFromOtherLauncherJob, OtherLauncher}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, message::MessageToBackend, modal_action::ModalAction};
+use bridge::{handle::BackendHandle, import::{ImportFromOtherLauncherJob, OtherLauncher}, message::MessageToBackend, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
     ActiveTheme as _, Disableable, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, scroll::ScrollableElement, spinner::Spinner, v_flex
 };
 use rustc_hash::FxHashSet;
-use schema::{content::ContentSource, loader::Loader};
 use strum::IntoEnumIterator;
 
-use crate::{component::{path_label::PathLabel, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries}, icon::PandoraIcon, pages::page::Page, root};
+use crate::{component::{path_label::PathLabel, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries}, icon::PandoraIcon, pages::page::Page};
 
 pub struct ImportPage {
     backend_handle: BackendHandle,
@@ -139,20 +138,15 @@ impl Render for ImportPage {
                                 return;
                             };
                             _ = page_entity.update_in(cx, |page, window, cx| {
-                                let content_install = ContentInstall {
-                                    target: InstallTarget::NewInstance { name: None },
-                                    loader_hint: Loader::Unknown,
-                                    version_hint: None,
-                                    files: Arc::from([
-                                        ContentInstallFile {
-                                            replace_old: None,
-                                            path: ContentInstallPath::Automatic,
-                                            download: ContentDownload::File { path: path.into() },
-                                            content_source: ContentSource::Manual,
-                                        }
-                                    ]),
-                                };
-                                root::start_install(content_install, &page.backend_handle, window, cx);
+
+                                let modal_action = ModalAction::default();
+
+                                page.backend_handle.send(MessageToBackend::CreateInstanceFromFile {
+                                    file: path.clone(),
+                                    modal_action: modal_action.clone(),
+                                });
+
+                                crate::modals::generic::show_notification(window, cx, t::instance::content::install::error().into(), modal_action);
                             });
                         })
                     })))

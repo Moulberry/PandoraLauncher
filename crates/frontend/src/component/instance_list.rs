@@ -76,7 +76,7 @@ impl InstanceList {
         let item = &self.items[index];
         let loader_and_version = format!(
             "{} {}",
-            item.configuration.loader.name(),
+            item.configuration.loader.pretty_name(),
             item.configuration.minecraft_version.as_str(),
         );
 
@@ -185,7 +185,7 @@ impl TableDelegate for InstanceList {
                         }))
                         .into_any_element()
                 },
-                "loader" => item.configuration.loader.name().into_any_element(),
+                "loader" => item.configuration.loader.pretty_name().into_any_element(),
                 _ => t::common::unknown().into_any_element(),
             }
         } else {

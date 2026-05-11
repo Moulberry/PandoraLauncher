@@ -337,7 +337,7 @@ impl CurseforgeSearchPage {
                 if i > 0 {
                     string.push_str("\",\"");
                 }
-                string.push_str(loader.name());
+                string.push_str(loader.pretty_name());
             }
             string.push_str("\"]");
             let string: Arc<str> = string.into();
@@ -538,8 +538,8 @@ impl CurseforgeSearchPage {
 
                                         let content_install = ContentInstall {
                                             target: InstallTarget::Instance(instance.id),
-                                            loader_hint: loader,
-                                            version_hint: Some(minecraft_version.into()),
+                                            loader,
+                                            minecraft_version,
                                             files: [
                                                 ContentInstallFile {
                                                     replace_old: None,

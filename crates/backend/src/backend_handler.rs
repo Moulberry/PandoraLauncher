@@ -2,10 +2,10 @@ use std::{borrow::Cow, io::{BufRead, Read}, sync::{Arc, atomic::Ordering}, time:
 
 use auth::{credentials::AccountCredentials, models::MinecraftAccessToken, secret::PlatformSecretStorage};
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, InstallTarget}, instance::{ContentFolder, ContentSummary, ContentType, InstanceID}, keep_alive::KeepAlive, message::{AccountCapesResult, AccountSkinResult, BackendConfigWithPassword, EmbeddedOrRaw, LogFiles, MessageToBackend, MessageToFrontend, QuickPlayLaunch}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
+    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentFolder, ContentSummary, ContentType, InstanceID}, keep_alive::KeepAlive, message::{AccountCapesResult, AccountSkinResult, BackendConfigWithPassword, EmbeddedOrRaw, LogFiles, MessageToBackend, MessageToFrontend, QuickPlayLaunch}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
 };
 use futures::TryFutureExt;
-use schema::{auxiliary::AuxiliaryContentMeta, content::ContentSource, curseforge::{CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, minecraft_profile::{MinecraftProfileResponse, SkinVariant}, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
+use schema::{auxiliary::AuxiliaryContentMeta, content::ContentSource, curseforge::{CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, minecraft_profile::{MinecraftProfileResponse, SkinVariant}, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use tokio::{io::AsyncBufReadExt, sync::{Semaphore, TryAcquireError}};
@@ -447,6 +447,62 @@ impl BackendState {
                     this.send.send(MessageToFrontend::Refresh);
                 });
             },
+            MessageToBackend::CreateInstanceFromFile { file, modal_action } => {
+                let summary = self.mod_metadata_manager.get_path(&file);
+
+                // right now only .mrpack importing is used
+                let ContentType::ModrinthModpack { dependencies, .. } = &summary.extra else {
+                    modal_action.set_error_message("Not a .mrpack file".into());
+                    modal_action.set_finished();
+                    return;
+                };
+
+                let Some(name) = summary.name.clone() else {
+                    modal_action.set_error_message("Unable to determine name from modpack".into());
+                    modal_action.set_finished();
+                    return;
+                };
+
+                let mut minecraft_version = None;
+                let mut loader = Loader::Vanilla;
+                for (key, value) in dependencies {
+                    match &**key {
+                        "forge" => loader = Loader::Forge,
+                        "neoforge" => loader = Loader::NeoForge,
+                        "fabric-loader" => loader = Loader::Fabric,
+                        "minecraft" => minecraft_version = Some(value.clone()),
+                        _ => {}
+                    }
+                }
+
+                let Some(minecraft_version) = minecraft_version else {
+                    modal_action.set_error_message("Unable to determine minecraft version from modpack".into());
+                    modal_action.set_finished();
+                    return;
+                };
+
+                let content_install = ContentInstall {
+                    target: InstallTarget::NewInstance { name: Some(name) },
+                    loader,
+                    minecraft_version: minecraft_version.into(),
+                    files: Arc::from([
+                        ContentInstallFile {
+                            replace_old: None,
+                            path: ContentInstallPath::Automatic,
+                            download: ContentDownload::File { path: file },
+                            content_source: ContentSource::Manual,
+                        }
+                    ]),
+                };
+
+                let this = self.clone();
+
+                tokio::spawn(async move {
+                    this.install_content(content_install, modal_action.clone()).await;
+                    modal_action.set_finished();
+                    this.send.send(MessageToFrontend::Refresh);
+                });
+            },
             MessageToBackend::DeleteContent { id, content_ids: mod_ids } => {
                 let mut instance_state = self.instance_state.write();
                 let Some(instance) = instance_state.instances.get_mut(id) else {
@@ -819,8 +875,8 @@ impl BackendState {
                             debug_assert!(path.is_absolute());
                             ContentInstall {
                                 target: InstallTarget::Instance(id),
-                                loader_hint: loader,
-                                version_hint: Some(minecraft_version.into()),
+                                loader,
+                                minecraft_version,
                                 files: [ContentInstallFile {
                                     replace_old: Some(mod_summary.path.clone()),
                                     path: bridge::install::ContentInstallPath::Raw(path.into()),
@@ -862,8 +918,8 @@ impl BackendState {
 
                             ContentInstall {
                                 target: InstallTarget::Instance(id),
-                                loader_hint: loader,
-                                version_hint: Some(minecraft_version.into()),
+                                loader,
+                                minecraft_version,
                                 files: [ContentInstallFile {
                                     replace_old: Some(mod_summary.path.clone()),
                                     path: bridge::install::ContentInstallPath::Raw(path.into()),

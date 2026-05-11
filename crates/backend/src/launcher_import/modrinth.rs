@@ -65,10 +65,7 @@ pub fn import_instances_from_modrinth(backend: &BackendState, import_job: Import
         let game_version: String = row.get(2)?;
         let mod_loader: String = row.get(3)?;
 
-        let mut loader = Loader::from_name(&mod_loader);
-        if loader == Loader::Unknown {
-            loader = Loader::Vanilla;
-        }
+        let loader = Loader::from_name(&mod_loader).unwrap_or(Loader::Vanilla);
 
         let instance_configuration = InstanceConfiguration::new(game_version.into(), loader);
 

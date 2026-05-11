@@ -6,8 +6,6 @@ use crate::{curseforge::CurseforgeModLoaderType, modrinth::ModrinthLoader};
 #[derive(EnumSetType, Serialize, Deserialize, Debug, Hash, strum::EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum Loader {
-    #[serde(alias = "Vanilla")]
-    Vanilla,
     #[serde(alias = "Fabric")]
     Fabric,
     #[serde(alias = "Forge")]
@@ -15,27 +13,27 @@ pub enum Loader {
     #[serde(alias = "NeoForge")]
     NeoForge,
     #[serde(other)]
-    Unknown,
+    #[serde(alias = "Vanilla")]
+    Vanilla,
 }
 
 impl Loader {
-    pub fn name(self) -> &'static str {
+    pub fn pretty_name(self) -> &'static str {
         match self {
             Loader::Vanilla => "Vanilla",
             Loader::Fabric => "Fabric",
             Loader::Forge => "Forge",
             Loader::NeoForge => "NeoForge",
-            Loader::Unknown => "Unknown",
         }
     }
 
-    pub fn from_name(str: &str) -> Self {
+    pub fn from_name(str: &str) -> Option<Self> {
         match str {
-            "Vanilla" | "vanilla" => Self::Vanilla,
-            "Fabric" | "fabric" => Self::Fabric,
-            "Forge" | "forge" => Self::Forge,
-            "NeoForge" | "neoforge" => Self::NeoForge,
-            _ => Self::Unknown,
+            "Vanilla" | "vanilla" => Some(Self::Vanilla),
+            "Fabric" | "fabric" => Some(Self::Fabric),
+            "Forge" | "forge" => Some(Self::Forge),
+            "NeoForge" | "neoforge" => Some(Self::NeoForge),
+            _ => None,
         }
     }
 
@@ -45,7 +43,6 @@ impl Loader {
             Loader::Fabric => ModrinthLoader::Fabric,
             Loader::Forge => ModrinthLoader::Forge,
             Loader::NeoForge => ModrinthLoader::NeoForge,
-            Loader::Unknown => ModrinthLoader::Unknown,
         }
     }
 
@@ -55,7 +52,6 @@ impl Loader {
             Loader::Fabric => CurseforgeModLoaderType::Fabric,
             Loader::Forge => CurseforgeModLoaderType::Forge,
             Loader::NeoForge => CurseforgeModLoaderType::NeoForge,
-            Loader::Unknown => CurseforgeModLoaderType::Any,
         }
     }
 }

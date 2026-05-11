@@ -727,8 +727,8 @@ impl PrimaryAction {
 
                 let content_install = ContentInstall {
                     target: InstallTarget::Instance(instance.id),
-                    loader_hint: loader,
-                    version_hint: Some(minecraft_version.into()),
+                    loader,
+                    minecraft_version,
                     files: [
                         ContentInstallFile {
                             replace_old: None,

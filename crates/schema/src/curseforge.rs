@@ -216,9 +216,7 @@ impl CurseforgeModLoaderType {
             _ => Self::Any,
         }
     }
-}
 
-impl CurseforgeModLoaderType {
     pub fn pretty_name(self) -> &'static str {
         match self {
             Self::Forge => "Forge",
@@ -255,15 +253,15 @@ impl CurseforgeModLoaderType {
         }
     }
 
-    pub fn as_pandora(self) -> Loader {
+    pub fn as_pandora(self) -> Option<Loader> {
         match self {
-            CurseforgeModLoaderType::Forge => Loader::Forge,
-            CurseforgeModLoaderType::Cauldron => Loader::Unknown,
-            CurseforgeModLoaderType::LiteLoader => Loader::Unknown,
-            CurseforgeModLoaderType::Fabric => Loader::Fabric,
-            CurseforgeModLoaderType::Quilt => Loader::Unknown,
-            CurseforgeModLoaderType::NeoForge => Loader::NeoForge,
-            CurseforgeModLoaderType::Any => Loader::Unknown,
+            CurseforgeModLoaderType::Forge => Some(Loader::Forge),
+            CurseforgeModLoaderType::Cauldron => None,
+            CurseforgeModLoaderType::LiteLoader => None,
+            CurseforgeModLoaderType::Fabric => Some(Loader::Fabric),
+            CurseforgeModLoaderType::Quilt => None,
+            CurseforgeModLoaderType::NeoForge => Some(Loader::NeoForge),
+            CurseforgeModLoaderType::Any => None,
         }
     }
 }
@@ -324,6 +322,13 @@ impl CurseforgeClassId {
             _ => Self::Other,
         }
     }
+
+    pub fn mod_or_modpack(self) -> bool {
+        match self {
+            CurseforgeClassId::Mod | CurseforgeClassId::Modpack => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -352,7 +357,7 @@ impl CurseforgeModpackMinecraft {
             .find(|loader| loader.primary)
             .or_else(|| self.mod_loaders.first())
             .and_then(|loader| {
-                CurseforgeModLoaderType::from_id(&loader.id).map(CurseforgeModLoaderType::as_pandora)
+                CurseforgeModLoaderType::from_id(&loader.id).and_then(CurseforgeModLoaderType::as_pandora)
             })
     }
 }

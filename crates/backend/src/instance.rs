@@ -1104,7 +1104,7 @@ fn try_load_resourcepack_folder(pack_mcmeta_bytes: &[u8], pack_png_bytes: Option
         can_toggle: false,
         enabled: true,
         content_source: schema::content::ContentSource::Manual,
-        update: ContentUpdateContext::new(ContentUpdateStatus::ManualInstall, Loader::Unknown, ""),
+        update: ContentUpdateContext::new(ContentUpdateStatus::ManualInstall, Loader::Vanilla, ""),
         disabled_children: Default::default(),
     });
 }

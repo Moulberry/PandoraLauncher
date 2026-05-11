@@ -190,6 +190,10 @@ pub enum MessageToBackend {
         content: ContentInstall,
         modal_action: ModalAction,
     },
+    CreateInstanceFromFile {
+        file: PathBuf,
+        modal_action: ModalAction,
+    },
     DownloadAllMetadata,
     UpdateCheck {
         instance: InstanceID,

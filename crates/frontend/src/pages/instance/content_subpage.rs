@@ -218,8 +218,8 @@ impl InstanceContentSubpage {
 
         let content_install = ContentInstall {
             target: InstallTarget::Instance(self.instance),
-            loader_hint: self.instance_loader,
-            version_hint: Some(self.instance_version.into()),
+            loader: self.instance_loader,
+            minecraft_version: self.instance_version,
             files: paths.into_iter().filter_map(|path| {
                 Some(ContentInstallFile {
                     replace_old: None,

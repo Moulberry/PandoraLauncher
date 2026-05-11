@@ -11,6 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{
     content::ContentSource, curseforge::{CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CurseforgeClassId, CurseforgeFile, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeHit, CurseforgeModLoaderType, CurseforgeReleaseType}, loader::Loader
 };
+use strum::IntoEnumIterator;
 use ustr::Ustr;
 
 use crate::{
@@ -48,12 +49,12 @@ struct InstallDialog {
     fixed_minecraft_version: Option<&'static str>,
     minecraft_version_select_state: Option<Entity<SelectState<SearchableVec<SharedString>>>>,
 
-    fixed_loader: Option<CurseforgeModLoaderType>,
+    force_target_loader: bool,
+    target_loader: Option<Loader>,
     loader_select_state: Option<Entity<SelectState<Vec<SharedString>>>>,
-    skip_loader_check_for_mod_version: bool,
+    single_loader_set: Option<EnumSet<CurseforgeModLoaderType>>,
     install_dependencies: bool,
 
-    mod_version_not_loaded_message: Option<SharedString>,
     mod_version_select_state: Option<Entity<SelectState<SearchableVec<ModVersionItem>>>>,
 }
 
@@ -120,7 +121,7 @@ pub fn open(
                 || loaders.loaders.contains(instance_loader.as_curseforge_loader());
         }
         if !valid_loader {
-            let error_message = t::instance::content::load::versions::not_found_for_loader(instance_loader.name(), minecraft_version);
+            let error_message = t::instance::content::load::versions::not_found_for_loader(instance_loader.pretty_name(), minecraft_version);
             open_error_dialog(title.clone(), error_message.into(), window, cx);
             return;
         }
@@ -128,14 +129,7 @@ pub fn open(
         let title = title.clone();
         let instance_id = instance.id;
         let fixed_minecraft_version = Some(minecraft_version);
-        let fixed_loader = if (project_type == CurseforgeClassId::Mod
-            || project_type == CurseforgeClassId::Modpack)
-            && instance_loader != Loader::Vanilla
-        {
-            Some(instance_loader.as_curseforge_loader())
-        } else {
-            None
-        };
+        let force_target_loader = project_type.mod_or_modpack() && instance_loader != Loader::Vanilla;
         let install_dialog = InstallDialog {
             title,
             name: name.into(),
@@ -149,12 +143,12 @@ pub fn open(
             target: Some(InstallTarget::Instance(instance_id)),
             fixed_minecraft_version,
             minecraft_version_select_state: None,
-            fixed_loader,
+            force_target_loader,
+            target_loader: Some(instance_loader),
             loader_select_state: None,
             last_selected_minecraft_version: None,
-            skip_loader_check_for_mod_version: false,
+            single_loader_set: None,
             install_dependencies: true,
-            mod_version_not_loaded_message: None,
             mod_version_select_state: None,
             last_selected_loader: None,
         };
@@ -211,12 +205,12 @@ pub fn open(
             target: None,
             fixed_minecraft_version: None,
             minecraft_version_select_state: None,
-            fixed_loader: None,
+            force_target_loader: false,
+            target_loader: None,
             loader_select_state: None,
             last_selected_minecraft_version: None,
-            skip_loader_check_for_mod_version: false,
+            single_loader_set: None,
             install_dependencies: true,
-            mod_version_not_loaded_message: None,
             mod_version_select_state: None,
             last_selected_loader: None,
         };
@@ -241,72 +235,260 @@ impl InstallDialog {
     fn render(&mut self, modal: Dialog, window: &mut Window, cx: &mut Context<Self>) -> Dialog {
         let modal = modal.title(self.title.clone());
 
-        if self.target.is_none() {
-            let create_instance_label = match self.project_type {
-                CurseforgeClassId::Mod => t::instance::content::install::new_instance_with::mod_(),
-                CurseforgeClassId::Modpack => t::instance::content::install::new_instance_with::modpack(),
-                CurseforgeClassId::Resourcepack => t::instance::content::install::new_instance_with::resourcepack(),
-                CurseforgeClassId::Shader => t::instance::content::install::new_instance_with::shader(),
-                _ => t::instance::content::install::new_instance_with::file(),
-            };
+        let Some(install_target) = self.target.clone() else {
+            return modal.child(self.render_select_target(window, cx));
+        };
 
-            let content = v_flex()
-                .gap_2()
-                .text_center()
-                .when_some(self.instances.as_ref(), |content, instances| {
-                    let read_instances = instances.read(cx);
-                    let selected_instance: Option<InstanceEntry> = read_instances.selected_value().cloned();
+        let mut content = v_flex().gap_2();
 
-                    let button_and_dropdown = h_flex()
-                        .gap_2()
-                        .child(
-                            v_flex()
-                                .w_full()
-                                .gap_0p5()
-                                .child(
-                                    Select::new(instances).placeholder(t::instance::none_selected()).title_prefix(format!("{}: ", t::instance::label())),
-                                )
-                                .when(self.unsupported_instances > 0, |content| {
-                                    content.child(t::instance::incompatible(self.unsupported_instances))
-                                }),
-                        )
-                        .when_some(selected_instance, |dialog, instance| {
-                            dialog.child(Button::new("instance").success().h_full().label(t::instance::content::install::add_to_instance()).on_click(
-                                cx.listener(move |this, _, _, _| {
-                                    this.target = Some(InstallTarget::Instance(instance.id));
-                                    this.fixed_minecraft_version = Some(instance.configuration.minecraft_version.as_str());
-                                    if (this.project_type == CurseforgeClassId::Mod
-                                        || this.project_type == CurseforgeClassId::Modpack)
-                                        && instance.configuration.loader != Loader::Vanilla
-                                    {
-                                        this.fixed_loader = Some(instance.configuration.loader.as_curseforge_loader());
-                                    }
-                                }),
-                            ))
-                        });
+        content = content.child(self.render_select_minecraft_version(window, cx));
 
-                    content.child(button_and_dropdown).child(format!("— {} —", t::common::or_upper()))
-                })
-                .child(Button::new("create").success().label(create_instance_label).on_click(cx.listener(
-                    |this, _, _, _| {
-                        this.target = Some(InstallTarget::NewInstance {
-                            name: None,
-                        });
-                    },
-                )));
+        let selected_minecraft_version = self
+            .minecraft_version_select_state
+            .as_ref()
+            .and_then(|v| v.read(cx).selected_value())
+            .cloned();
 
-            return modal.child(content);
+        if self.last_selected_minecraft_version != selected_minecraft_version {
+            self.last_selected_minecraft_version = selected_minecraft_version.clone();
+            self.loader_select_state = None;
+            self.mod_version_select_state = None;
         }
 
-        if self.minecraft_version_select_state.is_none() {
+        let Some(selected_minecraft_version) = selected_minecraft_version else {
+            return modal.child(content);
+        };
+
+        content = content.child(self.render_select_loader(&selected_minecraft_version, window, cx));
+
+        let selected_loader_string = self
+            .loader_select_state
+            .as_ref()
+            .and_then(|v| v.read(cx).selected_value())
+            .cloned();
+
+        if self.last_selected_loader != selected_loader_string {
+            self.last_selected_loader = selected_loader_string.clone();
+            self.mod_version_select_state = None;
+        }
+
+        let Some(selected_loader_string) = selected_loader_string else {
+            return modal.child(content);
+        };
+
+        content = content.child(self.render_select_mod_version(&selected_minecraft_version, &selected_loader_string, window, cx));
+
+        let selected_file = self
+            .mod_version_select_state
+            .as_ref()
+            .and_then(|state| state.read(cx).selected_value())
+            .cloned();
+
+        let Some(selected_file) = selected_file else {
+            return modal.child(content);
+        };
+
+        let mut required_dependencies = selected_file.dependencies
+            .iter()
+            .filter(|dep| {
+                dep.relation_type == CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+
+        // Ignore projects that are already installed
+        if !required_dependencies.is_empty()
+            && let InstallTarget::Instance(instance_id) = install_target
+            && let Some(instance) = self.data.instances.read(cx).entries.get(&instance_id)
+        {
+            let mut existing_projects = FxHashSet::default();
+
+            for existing_content in instance.read(cx).content.values() {
+                let existing_content = existing_content.read(cx);
+                for summary in existing_content.iter() {
+                    let ContentSource::CurseforgeProject { project_id: project } = &summary.content_source else {
+                        continue;
+                    };
+                    existing_projects.insert(project.clone());
+                }
+            };
+
+            required_dependencies.retain(|dep| !existing_projects.contains(&dep.mod_id));
+        }
+
+        content = content
+            .when(!required_dependencies.is_empty(), |modal| {
+                modal.child(Checkbox::new("install_deps").checked(self.install_dependencies).label(if required_dependencies.len() == 1 {
+                    SharedString::new_static(t::instance::content::install::install_dependency())
+                } else {
+                    t::instance::content::install::install_dependencies(required_dependencies.len()).into()
+                }).on_click(cx.listener(|dialog, value, _, _| {
+                    dialog.install_dependencies = *value;
+                })))
+            })
+            .child(Button::new("install").success().label(t::instance::content::install::label()).on_click(cx.listener(
+                move |this, _, window, cx| {
+                    let path = match this.project_type {
+                        CurseforgeClassId::Mod => RelativePath::new("mods").join(&*selected_file.file_name),
+                        CurseforgeClassId::Modpack => RelativePath::new("mods").join(&*selected_file.file_name),
+                        CurseforgeClassId::Resourcepack => RelativePath::new("resourcepacks").join(&*selected_file.file_name),
+                        CurseforgeClassId::Shader => RelativePath::new("shaderpacks").join(&*selected_file.file_name),
+                        _ => {
+                            window.push_notification((NotificationType::Error, t::instance::content::install::unable_install_other()), cx);
+                            return;
+                        },
+                    };
+
+                    let Some(path) = SafePath::from_relative_path(&path) else {
+                        window.push_notification((NotificationType::Error, t::instance::content::install::invalid_filename()), cx);
+                        return;
+                    };
+
+                    let loader = if let Some(loader) = this.target_loader {
+                        loader
+                    } else if let Some(single_loader_set) = this.single_loader_set {
+                        Loader::iter()
+                            .filter(|loader| *loader != Loader::Vanilla)
+                            .find(|loader| single_loader_set.contains(loader.as_curseforge_loader()))
+                            .unwrap_or(Loader::Vanilla)
+                    } else {
+                        CurseforgeModLoaderType::from_name(&selected_loader_string).as_pandora().unwrap_or(Loader::Vanilla)
+                    };
+
+                    let mut target = install_target.clone();
+                    if let InstallTarget::NewInstance { name } = &mut target {
+                        *name = Some(this.name.as_str().into());
+                    }
+
+                    let mut files = Vec::new();
+
+                    if this.install_dependencies {
+                        for dep in required_dependencies.iter() {
+                            files.push(ContentInstallFile {
+                                replace_old: None,
+                                path: bridge::install::ContentInstallPath::Automatic,
+                                download: ContentDownload::Curseforge {
+                                    project_id: dep.mod_id,
+                                    install_dependencies: true,
+                                },
+                                content_source: ContentSource::CurseforgeProject { project_id: dep.mod_id },
+                            })
+                        }
+                    }
+
+                    let sha1 = selected_file.hashes.iter()
+                        .find(|hash| hash.algo == 1).map(|hash| hash.value.clone());
+
+                    let Some(sha1) = sha1 else {
+                        window.push_notification((NotificationType::Error, t::instance::content::install::missing_sha1_hash()), cx);
+                        return;
+                    };
+
+                    let mut hash = [0u8; 20];
+                    let Ok(_) = hex::decode_to_slice(&*sha1, &mut hash) else {
+                        let warning = format!("File {} has invalid sha1: {}", selected_file.file_name, sha1);
+                        window.push_notification((NotificationType::Error, SharedString::new(warning)), cx);
+                        return;
+                    };
+
+                    let Some(download_url) = selected_file.download_url.clone() else {
+                        window.push_notification((NotificationType::Error, t::instance::content::install::no_third_party_downloads()), cx);
+                        return;
+                    };
+
+                    files.push(ContentInstallFile {
+                        replace_old: None,
+                        path: bridge::install::ContentInstallPath::Safe(path),
+                        download: ContentDownload::Url {
+                            url: download_url,
+                            sha1: hash,
+                            size: selected_file.file_length as usize,
+                        },
+                        content_source: ContentSource::CurseforgeProject {
+                            project_id: this.project_id
+                        },
+                    });
+
+                    let content_install = ContentInstall {
+                        target,
+                        loader,
+                        minecraft_version: selected_minecraft_version.as_str().into(),
+                        files: files.into(),
+                    };
+
+                    window.close_dialog(cx);
+                    root::start_install(content_install, &this.data.backend_handle, window, cx);
+                },
+            )));
+
+        modal.child(content)
+    }
+
+    fn render_select_target(&self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let create_instance_label = match self.project_type {
+            CurseforgeClassId::Mod => t::instance::content::install::new_instance_with::mod_(),
+            CurseforgeClassId::Modpack => t::instance::content::install::new_instance_with::modpack(),
+            CurseforgeClassId::Resourcepack => t::instance::content::install::new_instance_with::resourcepack(),
+            CurseforgeClassId::Shader => t::instance::content::install::new_instance_with::shader(),
+            _ => t::instance::content::install::new_instance_with::file(),
+        };
+
+        v_flex()
+            .gap_2()
+            .text_center()
+            .when_some(self.instances.as_ref(), |content, instances| {
+                let read_instances = instances.read(cx);
+                let selected_instance: Option<InstanceEntry> = read_instances.selected_value().cloned();
+
+                let button_and_dropdown = h_flex()
+                    .gap_2()
+                    .child(
+                        v_flex()
+                            .w_full()
+                            .gap_0p5()
+                            .child(
+                                Select::new(instances).placeholder(t::instance::none_selected()).title_prefix(format!("{}: ", t::instance::label())),
+                            )
+                            .when(self.unsupported_instances > 0, |content| {
+                                content.child(t::instance::incompatible(self.unsupported_instances))
+                            }),
+                    )
+                    .when_some(selected_instance, |dialog, instance| {
+                        dialog.child(Button::new("instance").success().h_full().label(t::instance::content::install::add_to_instance()).on_click(
+                            cx.listener(move |this, _, _, _| {
+                                this.target = Some(InstallTarget::Instance(instance.id));
+                                this.fixed_minecraft_version = Some(instance.configuration.minecraft_version.as_str());
+                                this.force_target_loader = this.project_type.mod_or_modpack() && instance.configuration.loader != Loader::Vanilla;
+                                this.target_loader = Some(instance.configuration.loader);
+                            }),
+                        ))
+                    });
+
+                content.child(button_and_dropdown).child(format!("— {} —", t::common::or_upper()))
+            })
+            .child(Button::new("create").success().label(create_instance_label).on_click(cx.listener(
+                |this, _, _, _| {
+                    this.target = Some(InstallTarget::NewInstance {
+                        name: None,
+                    });
+                    this.fixed_minecraft_version = None;
+                    this.force_target_loader = false;
+                    this.target_loader = None;
+                },
+            )))
+            .into_any_element()
+    }
+
+    fn render_select_minecraft_version(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let select_state = self.minecraft_version_select_state.get_or_insert_with(|| {
             if let Some(minecraft_version) = self.fixed_minecraft_version.clone() {
-                self.minecraft_version_select_state = Some(cx.new(|cx| {
+                cx.new(|cx| {
                     let mut select_state =
                         SelectState::new(SearchableVec::new(vec![SharedString::new_static(minecraft_version)]), None, window, cx)
                             .searchable(true);
                     select_state.set_selected_index(Some(IndexPath::default()), window, cx);
                     select_state
-                }));
+                })
             } else {
                 let mut keys: Vec<SharedString> =
                     self.version_matrix.keys().cloned().map(SharedString::new_static).collect();
@@ -323,37 +505,33 @@ impl InstallDialog {
                         lexical_sort::natural_lexical_cmp(a, b).reverse()
                     }
                 });
-                self.minecraft_version_select_state = Some(cx.new(|cx| {
+                cx.new(|cx| {
                     let mut select_state =
                         SelectState::new(SearchableVec::new(keys), None, window, cx).searchable(true);
                     select_state.set_selected_index(Some(IndexPath::default()), window, cx);
                     select_state
-                }));
+                })
             }
-        }
+        });
 
-        let selected_minecraft_version = self
-            .minecraft_version_select_state
-            .as_ref()
-            .and_then(|v| v.read(cx).selected_value())
-            .cloned();
-        let game_version_changed = self.last_selected_minecraft_version != selected_minecraft_version;
-        self.last_selected_minecraft_version = selected_minecraft_version.clone();
+        Select::new(select_state)
+            .disabled(self.fixed_minecraft_version.is_some())
+            .title_prefix(format!("{}: ", t::instance::game_version()))
+            .into_any_element()
+    }
 
-        if self.loader_select_state.is_none() || game_version_changed {
-            self.last_selected_minecraft_version = selected_minecraft_version.clone();
-            self.skip_loader_check_for_mod_version = false;
+    fn render_select_loader(&mut self, selected_minecraft_version: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let loader_select_state = self.loader_select_state.get_or_insert_with(|| {
+            self.single_loader_set = None;
 
-            if let Some(loader) = self.fixed_loader {
-                let loader = SharedString::new_static(loader.pretty_name());
-                self.loader_select_state = Some(cx.new(|cx| {
+            if let Some(loader) = self.target_loader && self.force_target_loader {
+                let loader = SharedString::new_static(loader.as_curseforge_loader().pretty_name());
+                cx.new(|cx| {
                     let mut select_state = SelectState::new(vec![loader], None, window, cx);
                     select_state.set_selected_index(Some(IndexPath::default()), window, cx);
                     select_state
-                }));
-            } else if let Some(selected_minecraft_version) = selected_minecraft_version.clone()
-                && let Some(loaders) = self.version_matrix.get(selected_minecraft_version.as_str())
-            {
+                })
+            } else if let Some(loaders) = self.version_matrix.get(selected_minecraft_version.as_str()) {
                 if loaders.same_loaders_for_all_versions {
                     let single_loader = if loaders.loaders.len() == 1 {
                         SharedString::new_static(loaders.loaders.iter().next().unwrap().pretty_name())
@@ -371,55 +549,51 @@ impl InstallDialog {
                         SharedString::new(string)
                     };
 
-                    self.skip_loader_check_for_mod_version = true;
-                    self.loader_select_state = Some(cx.new(|cx| {
+                    self.single_loader_set = Some(loaders.loaders);
+
+                    cx.new(|cx| {
                         let mut select_state = SelectState::new(vec![single_loader], None, window, cx);
                         select_state.set_selected_index(Some(IndexPath::default()), window, cx);
                         select_state
-                    }));
+                    })
                 } else {
                     let keys: Vec<SharedString> =
                         loaders.loaders.iter().map(CurseforgeModLoaderType::pretty_name).map(SharedString::new_static).collect();
 
-                    let previous = self
-                        .loader_select_state
-                        .as_ref()
-                        .and_then(|state| state.read(cx).selected_value().cloned());
-                    self.loader_select_state = Some(cx.new(|cx| {
+                    cx.new(|cx| {
                         let mut select_state = SelectState::new(keys, None, window, cx);
-                        if let Some(previous) = previous {
-                            select_state.set_selected_value(&previous, window, cx);
+                        if let Some(previous) = &self.last_selected_loader {
+                            select_state.set_selected_value(previous, window, cx);
                         }
                         if select_state.selected_index(cx).is_none() {
                             select_state.set_selected_index(Some(IndexPath::default()), window, cx);
                         }
                         select_state
-                    }));
+                    })
                 }
-            }
-            if self.loader_select_state.is_none() {
-                self.loader_select_state = Some(cx.new(|cx| {
+            } else {
+                cx.new(|cx| {
                     let mut select_state = SelectState::new(Vec::new(), None, window, cx);
                     select_state.set_selected_index(Some(IndexPath::default()), window, cx);
                     select_state
-                }));
+                })
             }
-        }
+        });
 
-        let selected_loader = self.loader_select_state.as_ref().and_then(|v| v.read(cx).selected_value()).cloned();
-        let loader_changed = self.last_selected_loader != selected_loader;
-        self.last_selected_loader = selected_loader.clone();
+        Select::new(loader_select_state)
+            .disabled(self.force_target_loader || self.single_loader_set.is_some())
+            .title_prefix(format!("{}: ", t::instance::loader()))
+            .into_any_element()
+    }
 
-        if (self.mod_version_select_state.is_none() || game_version_changed || loader_changed)
-            && let Some(selected_game_version) = selected_minecraft_version.clone()
-            && let Some(selected_loader) = self.last_selected_loader.clone()
-        {
-            let selected_game_version: Ustr = selected_game_version.as_str().into();
+    fn render_select_mod_version(&mut self, selected_minecraft_version: &SharedString, selected_loader_string: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.mod_version_select_state.is_none() {
+            let selected_game_version: Ustr = selected_minecraft_version.as_str().into();
 
-            let mod_loader_type = if self.skip_loader_check_for_mod_version {
+            let mod_loader_type = if self.single_loader_set.is_some() {
                 None
             } else {
-                Some(CurseforgeModLoaderType::from_name(selected_loader.as_str()) as u32)
+                Some(CurseforgeModLoaderType::from_name(selected_loader_string.as_str()) as u32)
             };
 
             let request = self.mod_files
@@ -441,11 +615,9 @@ impl InstallDialog {
 
             match result {
                 FrontendMetadataResult::Loading => {
-                    self.mod_version_not_loaded_message = Some("Loading files...".into());
+                    return SharedString::new_static("Loading files...").into_any_element();
                 },
                 FrontendMetadataResult::Loaded(result) => {
-                    self.mod_version_not_loaded_message = None;
-
                     let mod_versions: Vec<ModVersionItem> = result.data.iter().map(|file| {
                         ModVersionItem {
                             name: file.file_name.clone().into(),
@@ -488,185 +660,12 @@ impl InstallDialog {
                     }));
                 },
                 FrontendMetadataResult::Error(shared_string) => {
-                    self.mod_version_not_loaded_message = Some(format!("Error loading files: {}", shared_string).into());
+                    return SharedString::new(format!("Error loading files: {}", shared_string)).into_any_element();
                 },
             }
         }
 
-        let selected_file = self
-            .mod_version_select_state
-            .as_ref()
-            .and_then(|state| state.read(cx).selected_value())
-            .cloned();
-
-        let filename_prefix = t::instance::content::filename_prefix();
-
-        let required_dependencies = selected_file.as_ref().map(|version| {
-            let mut required = version.dependencies
-                .iter()
-                .filter(|dep| {
-                    dep.relation_type == CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-
-            // Ignore projects that are already installed
-            if !required.is_empty()
-                && let Some(InstallTarget::Instance(instance_id)) = self.target
-                && let Some(instance) = self.data.instances.read(cx).entries.get(&instance_id)
-            {
-                let mut existing_projects = FxHashSet::default();
-
-                for existing_content in instance.read(cx).content.values() {
-                    let existing_content = existing_content.read(cx);
-                    for summary in existing_content.iter() {
-                        let ContentSource::CurseforgeProject { project_id: project } = &summary.content_source else {
-                            continue;
-                        };
-                        existing_projects.insert(project.clone());
-                    }
-                };
-
-                required.retain(|dep| !existing_projects.contains(&dep.mod_id));
-            }
-
-            required
-        }).unwrap_or_default();
-
-        let content = v_flex()
-            .gap_2()
-            .child(
-                Select::new(self.minecraft_version_select_state.as_ref().unwrap())
-                    .disabled(self.fixed_minecraft_version.is_some())
-                    .title_prefix(format!("{}: ", t::instance::game_version())),
-            )
-            .child(
-                Select::new(self.loader_select_state.as_ref().unwrap())
-                    .disabled(self.fixed_loader.is_some() || self.skip_loader_check_for_mod_version)
-                    .title_prefix(format!("{}: ", t::instance::loader())),
-            )
-            .when_some(self.mod_version_not_loaded_message.clone(), |modal, message| modal.child(message))
-            .when_some(self.mod_version_select_state.as_ref(), |modal, mod_versions| {
-                modal
-                    .child(Select::new(mod_versions).title_prefix(filename_prefix))
-                    .when(!required_dependencies.is_empty(), |modal| {
-                        modal.child(Checkbox::new("install_deps").checked(self.install_dependencies).label(if required_dependencies.len() == 1 {
-                            SharedString::new_static(t::instance::content::install::install_dependency())
-                        } else {
-                            t::instance::content::install::install_dependencies(required_dependencies.len()).into()
-                        }).on_click(cx.listener(|dialog, value, _, _| {
-                            dialog.install_dependencies = *value;
-                        })))
-                    })
-                    .child(Button::new("install").success().label(t::instance::content::install::label()).on_click(cx.listener(
-                        move |this, _, window, cx| {
-                            let Some(selected_file) = selected_file.as_ref() else {
-                                window.push_notification((NotificationType::Error, t::instance::content::install::no_mod_version_selected()), cx);
-                                return;
-                            };
-
-                            let path = match this.project_type {
-                                CurseforgeClassId::Mod => RelativePath::new("mods").join(&*selected_file.file_name),
-                                CurseforgeClassId::Modpack => RelativePath::new("mods").join(&*selected_file.file_name),
-                                CurseforgeClassId::Resourcepack => RelativePath::new("resourcepacks").join(&*selected_file.file_name),
-                                CurseforgeClassId::Shader => RelativePath::new("shaderpacks").join(&*selected_file.file_name),
-                                _ => {
-                                    window.push_notification((NotificationType::Error, t::instance::content::install::unable_install_other()), cx);
-                                    return;
-                                },
-                            };
-
-                            let Some(path) = SafePath::from_relative_path(&path) else {
-                                window.push_notification((NotificationType::Error, t::instance::content::install::invalid_filename()), cx);
-                                return;
-                            };
-
-                            let mut target = this.target.clone().unwrap();
-
-                            let mut loader_hint = Loader::Unknown;
-                            if let Some(selected_loader) = &selected_loader {
-                                let curseforge_loader = CurseforgeModLoaderType::from_name(selected_loader);
-                                match curseforge_loader {
-                                    CurseforgeModLoaderType::Fabric => loader_hint = Loader::Fabric,
-                                    CurseforgeModLoaderType::Forge => loader_hint = Loader::Forge,
-                                    CurseforgeModLoaderType::NeoForge => loader_hint = Loader::NeoForge,
-                                    _ => {}
-                                }
-                            }
-
-                            let mut version_hint = None;
-                            if let Some(selected_minecraft_version) = &selected_minecraft_version {
-                                version_hint = Some(selected_minecraft_version.as_str().into());
-                            }
-
-                            if let InstallTarget::NewInstance { name } = &mut target {
-                                *name = Some(this.name.as_str().into());
-                            }
-
-                            let mut files = Vec::new();
-
-                            if this.install_dependencies {
-                                for dep in required_dependencies.iter() {
-                                    files.push(ContentInstallFile {
-                                        replace_old: None,
-                                        path: bridge::install::ContentInstallPath::Automatic,
-                                        download: ContentDownload::Curseforge {
-                                            project_id: dep.mod_id,
-                                            install_dependencies: true,
-                                        },
-                                        content_source: ContentSource::CurseforgeProject { project_id: dep.mod_id },
-                                    })
-                                }
-                            }
-
-                            let sha1 = selected_file.hashes.iter()
-                                .find(|hash| hash.algo == 1).map(|hash| hash.value.clone());
-
-                            let Some(sha1) = sha1 else {
-                                window.push_notification((NotificationType::Error, t::instance::content::install::missing_sha1_hash()), cx);
-                                return;
-                            };
-
-                            let mut hash = [0u8; 20];
-                            let Ok(_) = hex::decode_to_slice(&*sha1, &mut hash) else {
-                                let warning = format!("File {} has invalid sha1: {}", selected_file.file_name, sha1);
-                                window.push_notification((NotificationType::Error, SharedString::new(warning)), cx);
-                                return;
-                            };
-
-                            let Some(download_url) = selected_file.download_url.clone() else {
-                                window.push_notification((NotificationType::Error, t::instance::content::install::no_third_party_downloads()), cx);
-                                return;
-                            };
-
-                            files.push(ContentInstallFile {
-                                replace_old: None,
-                                path: bridge::install::ContentInstallPath::Safe(path),
-                                download: ContentDownload::Url {
-                                    url: download_url,
-                                    sha1: hash,
-                                    size: selected_file.file_length as usize,
-                                },
-                                content_source: ContentSource::CurseforgeProject {
-                                    project_id: this.project_id
-                                },
-                            });
-
-                            let content_install = ContentInstall {
-                                target,
-                                loader_hint,
-                                version_hint,
-                                files: files.into(),
-                            };
-
-                            window.close_dialog(cx);
-                            root::start_install(content_install, &this.data.backend_handle, window, cx);
-                        },
-                    )),
-                )
-            });
-
-        modal.child(content)
+        Select::new(self.mod_version_select_state.as_ref().unwrap()).title_prefix(t::instance::content::filename_prefix()).into_any_element()
     }
 }
 

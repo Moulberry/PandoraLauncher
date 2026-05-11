@@ -1148,8 +1148,8 @@ impl BackendState {
         if !content_install_files.is_empty() {
             let content_install = ContentInstall {
                 target: bridge::install::InstallTarget::Library,
-                loader_hint: loader,
-                version_hint: Some(minecraft_version.into()),
+                loader,
+                minecraft_version,
                 files: content_install_files.into(),
             };
 
@@ -1179,10 +1179,6 @@ impl BackendState {
 
     pub async fn create_instance(&self, name: &str, version: &str, loader: Loader, icon: Option<EmbeddedOrRaw>) -> Option<PathBuf> {
         log::info!("Creating instance {name}");
-        if loader == Loader::Unknown {
-            self.send.send_warning(format!("Unable to create instance, unknown loader"));
-            return None;
-        }
         if !crate::is_single_component_path_str(&name) {
             self.send.send_warning(format!("Unable to create instance, name must not be a path: {}", name));
             return None;

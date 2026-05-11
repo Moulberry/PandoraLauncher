@@ -17,7 +17,7 @@ use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
 use rustc_hash::FxHashMap;
-use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, ProxyConfig, SyncTargets}, content::ContentSource, curseforge::{CachedCurseforgeFileInfo, CurseforgeGetFilesRequest}, instance::InstanceConfiguration, loader::Loader, minecraft_profile::MinecraftProfileResponse};
+use schema::{auxiliary::AuxiliaryContentMeta, backend_config::{BackendConfig, ProxyConfig, SyncTargets}, content::{ContentInstallReason, ContentSource}, curseforge::{CachedCurseforgeFileInfo, CurseforgeGetFilesRequest}, instance::InstanceConfiguration, loader::Loader, minecraft_profile::MinecraftProfileResponse};
 use strum::IntoEnumIterator;
 use tokio::sync::{OnceCell, Semaphore, mpsc::Receiver};
 use ustr::Ustr;
@@ -1077,6 +1077,7 @@ impl BackendState {
                             size: *size,
                         },
                         content_source: fallback_source.clone(),
+                        reason: ContentInstallReason::Modpack,
                     });
                 },
                 ModpackFileSource::DownloadCurseforge { file_id } => {
@@ -1138,7 +1139,8 @@ impl BackendState {
                                 sha1: hash,
                                 size: file.file_length as usize,
                             },
-                            content_source: ContentSource::CurseforgeProject { project_id: file.mod_id }
+                            content_source: ContentSource::CurseforgeProject { project_id: file.mod_id },
+                            reason: ContentInstallReason::Modpack,
                         });
                     }
                 }

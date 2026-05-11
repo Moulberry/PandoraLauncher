@@ -9,7 +9,7 @@ use gpui_component::{
 use relative_path::RelativePath;
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{
-    content::ContentSource, loader::Loader, modrinth::{
+    content::{ContentInstallReason, ContentSource}, loader::Loader, modrinth::{
         ModrinthDependencyType, ModrinthLoader, ModrinthProjectType, ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthVersionStatus, ModrinthVersionType
     }
 };
@@ -444,6 +444,7 @@ impl InstallDialog {
                                     install_dependencies: true,
                                 },
                                 content_source: ContentSource::ModrinthProject { project_id: dep.project_id.clone().unwrap() },
+                                reason: ContentInstallReason::Dependency,
                             })
                         }
                     }
@@ -466,6 +467,7 @@ impl InstallDialog {
                         content_source: ContentSource::ModrinthProject {
                             project_id: this.project_id.clone()
                         },
+                        reason: ContentInstallReason::Standalone,
                     });
 
                     let content_install = ContentInstall {

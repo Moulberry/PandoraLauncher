@@ -9,7 +9,7 @@ use gpui_component::{
 use relative_path::RelativePath;
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{
-    content::ContentSource, curseforge::{CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CurseforgeClassId, CurseforgeFile, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeHit, CurseforgeModLoaderType, CurseforgeReleaseType}, loader::Loader
+    content::{ContentInstallReason, ContentSource}, curseforge::{CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CurseforgeClassId, CurseforgeFile, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeHit, CurseforgeModLoaderType, CurseforgeReleaseType}, loader::Loader
 };
 use strum::IntoEnumIterator;
 use ustr::Ustr;
@@ -372,6 +372,7 @@ impl InstallDialog {
                                     install_dependencies: true,
                                 },
                                 content_source: ContentSource::CurseforgeProject { project_id: dep.mod_id },
+                                reason: ContentInstallReason::Dependency,
                             })
                         }
                     }
@@ -407,6 +408,7 @@ impl InstallDialog {
                         content_source: ContentSource::CurseforgeProject {
                             project_id: this.project_id
                         },
+                        reason: ContentInstallReason::Standalone,
                     });
 
                     let content_install = ContentInstall {

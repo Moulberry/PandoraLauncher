@@ -1,6 +1,6 @@
 use std::{path::{Path, PathBuf}, sync::Arc};
 
-use schema::{content::ContentSource, loader::Loader};
+use schema::{content::{ContentInstallReason, ContentSource}, loader::Loader};
 use ustr::Ustr;
 
 use crate::{instance::{InstanceID, ModpackFilePath}, safe_path::SafePath};
@@ -36,6 +36,7 @@ pub struct ContentInstallFile {
     pub path: ContentInstallPath,
     pub download: ContentDownload,
     pub content_source: ContentSource,
+    pub reason: ContentInstallReason,
 }
 
 #[derive(Debug, Clone)]

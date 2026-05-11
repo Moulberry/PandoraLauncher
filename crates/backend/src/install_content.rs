@@ -6,9 +6,11 @@ use bridge::{
 use parking_lot::Mutex;
 use reqwest::StatusCode;
 use rustc_hash::FxHashSet;
-use schema::{content::ContentSource, curseforge::{CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, modrinth::{ModrinthDependencyType, ModrinthLoader, ModrinthProjectVersionsRequest}};
+use schema::{content::{ContentInstallReason, ContentSource}, curseforge::{CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, modrinth::{ModrinthDependencyType, ModrinthLoader, ModrinthProjectVersionsRequest}};
+use serde::Serialize;
 use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
+use ustr::Ustr;
 
 use crate::{BackendState, instance::Instance, lockfile::Lockfile, metadata::{items::{CurseforgeGetFilesMetadataItem, CurseforgeGetModFilesMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthVersionMetadataItem}, manager::MetaLoadError}};
 
@@ -61,6 +63,13 @@ struct InstallFromContentLibrary {
 struct FilenameAndExtension {
     filename: Option<OsString>,
     extension: Option<OsString>,
+}
+
+#[derive(Serialize, Clone)]
+struct ModrinthDownloadMeta {
+    reason: ContentInstallReason,
+    game_version: Ustr,
+    loader: Loader,
 }
 
 impl From<&SafePath> for FilenameAndExtension {
@@ -276,6 +285,12 @@ impl BackendState {
         installed_content_ids: Option<&Mutex<InstalledContentIds>>,
         skip_if_already_installed: bool,
     ) -> Result<InstallFromContentLibrary, ContentInstallError> {
+        let download_meta = ModrinthDownloadMeta {
+            reason: content_file.reason,
+            game_version: content.minecraft_version,
+            loader: content.loader,
+        };
+
         let content_install_file = match content_file.download {
             ContentDownload::Modrinth { ref project_id, ref version_id, install_dependencies } => {
                 if let Some(installed_content_ids) = installed_content_ids {
@@ -392,7 +407,7 @@ impl BackendState {
                 };
 
                 let (path, hash, mod_summary) = self.download_file_into_library(&modal_action,
-                    (&safe_filename).into(), url, hash, size).await?;
+                    (&safe_filename).into(), url, hash, size, download_meta).await?;
 
                 if is_wrong_version && mod_summary.extra.is_strict_minecraft_version() {
                     return Err(ContentInstallError::UnableToFindVersion);
@@ -456,7 +471,8 @@ impl BackendState {
                                         version_id: dep.version_id.clone(),
                                         install_dependencies: true
                                     },
-                                    content_source: ContentSource::ModrinthProject { project_id: project_id.clone() }
+                                    content_source: ContentSource::ModrinthProject { project_id: project_id.clone() },
+                                    reason: ContentInstallReason::Dependency,
                                 })
                             } else {
                                 None
@@ -589,7 +605,7 @@ impl BackendState {
                 };
 
                 let (path, hash, mod_summary) = self.download_file_into_library(&modal_action,
-                    (&safe_filename).into(), url, hash, size).await?;
+                    (&safe_filename).into(), url, hash, size, download_meta).await?;
 
                 if is_wrong_version && mod_summary.extra.is_strict_minecraft_version() {
                     return Err(ContentInstallError::UnableToFindVersion);
@@ -634,7 +650,8 @@ impl BackendState {
                                     project_id: dep.mod_id,
                                     install_dependencies: true
                                 },
-                                content_source: ContentSource::CurseforgeProject { project_id }
+                                content_source: ContentSource::CurseforgeProject { project_id },
+                                reason: ContentInstallReason::Dependency,
                             })
                         } else {
                             None
@@ -675,7 +692,7 @@ impl BackendState {
                 let filename = name.filename.as_ref().map(|s| s.to_string_lossy()).unwrap_or_default().into();
 
                 let (path, hash, mod_summary) = self.download_file_into_library(&modal_action,
-                    name, url, *sha1, size).await?;
+                    name, url, *sha1, size, download_meta).await?;
 
                 let install_path = match &content_file.path {
                     ContentInstallPath::Raw(path) => Some(path.clone()),
@@ -850,8 +867,8 @@ impl BackendState {
         }
     }
 
-    async fn download_file_into_library(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: [u8; 20], size: usize) -> Result<(PathBuf, [u8; 20], Arc<ContentSummary>), ContentInstallError> {
-        let mut result = self.download_file_into_library_inner(modal_action, name, url, sha1, size).await?;
+    async fn download_file_into_library(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: [u8; 20], size: usize, download_meta: ModrinthDownloadMeta) -> Result<(PathBuf, [u8; 20], Arc<ContentSummary>), ContentInstallError> {
+        let mut result = self.download_file_into_library_inner(modal_action, name, url, sha1, size, download_meta.clone()).await?;
 
         let mut curseforge_file_ids = Vec::new();
 
@@ -882,7 +899,12 @@ impl BackendState {
                             extension: file.path.extension().map(OsString::from),
                         };
 
-                        tasks.push(self.download_file_into_library_inner(modal_action, name, url, file.hash, *size));
+                        let meta = ModrinthDownloadMeta {
+                            reason: ContentInstallReason::Modpack,
+                            game_version: download_meta.game_version,
+                            loader: download_meta.loader,
+                        };
+                        tasks.push(self.download_file_into_library_inner(modal_action, name, url, file.hash, *size, meta));
                     },
                     ModpackFileSource::DownloadCurseforge { file_id } => {
                         curseforge_file_ids.push(*file_id);
@@ -935,8 +957,13 @@ impl BackendState {
                         continue;
                     };
 
+                    let meta = ModrinthDownloadMeta {
+                        reason: ContentInstallReason::Modpack,
+                        game_version: download_meta.game_version,
+                        loader: download_meta.loader,
+                    };
                     tasks.push(self.download_file_into_library_inner(modal_action, name,
-                        &download_url, hash, file.file_length as usize));
+                        &download_url, hash, file.file_length as usize, meta));
                 }
             }
         }
@@ -947,7 +974,7 @@ impl BackendState {
         Ok(result)
     }
 
-    async fn download_file_into_library_inner(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: [u8; 20], size: usize) -> Result<(PathBuf, [u8; 20], Arc<ContentSummary>), ContentInstallError> {
+    async fn download_file_into_library_inner(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: [u8; 20], size: usize, download_meta: ModrinthDownloadMeta) -> Result<(PathBuf, [u8; 20], Arc<ContentSummary>), ContentInstallError> {
         let hash_as_str = hex::encode(sha1);
 
         let hash_folder = self.directories.content_library_dir.join(&hash_as_str[..2]);
@@ -986,7 +1013,10 @@ impl BackendState {
             return Ok((path, sha1, summary));
         }
 
-        let response = self.redirecting_http_client.get(&**url).send().await?;
+        let response = self.redirecting_http_client.get(&**url)
+            .header("modrinth-download-meta", serde_json::to_string(&download_meta).unwrap_or_default())
+            .send()
+            .await?;
 
         if response.status() != StatusCode::OK {
             return Err(ContentInstallError::NotOK(response.status()));

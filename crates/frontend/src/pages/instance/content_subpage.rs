@@ -7,7 +7,7 @@ use gpui::{prelude::*, *};
 use gpui_component::{
     ActiveTheme as _, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, h_flex, input::SelectAll, list::ListState, notification::{Notification, NotificationType}, select::{Select, SelectEvent, SelectState}, switch::Switch, v_flex
 };
-use schema::{content::ContentSource, curseforge::CurseforgeClassId, loader::Loader, modrinth::ModrinthProjectType};
+use schema::{content::{ContentInstallReason, ContentSource}, curseforge::CurseforgeClassId, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
 use crate::{component::{content_list::ContentListDelegate, named_dropdown::{NamedDropdown, NamedDropdownItem}}, entity::instance::{ContentStates, InstanceEntry}, interface_config::{InstanceContentSortKey, InterfaceConfig}, root, ui::PageType};
@@ -226,6 +226,7 @@ impl InstanceContentSubpage {
                     path: bridge::install::ContentInstallPath::Raw(Path::new(content_folder).join(path.file_name()?).into()),
                     download: ContentDownload::File { path: path.clone() },
                     content_source: ContentSource::Manual,
+                    reason: ContentInstallReason::Standalone,
                 })
             }).collect(),
         };

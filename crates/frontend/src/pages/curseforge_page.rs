@@ -7,7 +7,7 @@ use gpui_component::{
     ActiveTheme, Selectable, WindowExt, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, v_flex
 };
 use rustc_hash::FxHashMap;
-use schema::{content::ContentSource, curseforge::{CurseforgeClassId, CurseforgeHit, CurseforgeSearchRequest, CurseforgeSearchResult, CurseforgeSortField}, loader::Loader};
+use schema::{content::{ContentInstallReason, ContentSource}, curseforge::{CurseforgeClassId, CurseforgeHit, CurseforgeSearchRequest, CurseforgeSearchResult, CurseforgeSortField}, loader::Loader};
 use strum::IntoEnumIterator;
 use ustr::Ustr;
 
@@ -551,6 +551,7 @@ impl CurseforgeSearchPage {
                                                     content_source: ContentSource::CurseforgeProject {
                                                         project_id: hit.id
                                                     },
+                                                    reason: ContentInstallReason::Standalone,
                                                 }
                                             ].into(),
                                         };

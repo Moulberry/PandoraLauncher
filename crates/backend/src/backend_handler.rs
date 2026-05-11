@@ -5,7 +5,7 @@ use bridge::{
     install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentFolder, ContentSummary, ContentType, InstanceID}, keep_alive::KeepAlive, message::{AccountCapesResult, AccountSkinResult, BackendConfigWithPassword, EmbeddedOrRaw, LogFiles, MessageToBackend, MessageToFrontend, QuickPlayLaunch}, meta::MetadataResult, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, serial::AtomicOptionSerial
 };
 use futures::TryFutureExt;
-use schema::{auxiliary::AuxiliaryContentMeta, content::ContentSource, curseforge::{CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, minecraft_profile::{MinecraftProfileResponse, SkinVariant}, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
+use schema::{auxiliary::AuxiliaryContentMeta, content::{ContentInstallReason, ContentSource}, curseforge::{CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, minecraft_profile::{MinecraftProfileResponse, SkinVariant}, modrinth::ModrinthLoader, version::{LaunchArgument, LaunchArgumentValue}};
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use tokio::{io::AsyncBufReadExt, sync::{Semaphore, TryAcquireError}};
@@ -491,6 +491,7 @@ impl BackendState {
                             path: ContentInstallPath::Automatic,
                             download: ContentDownload::File { path: file },
                             content_source: ContentSource::Manual,
+                            reason: ContentInstallReason::Standalone,
                         }
                     ]),
                 };
@@ -886,6 +887,7 @@ impl BackendState {
                                         size: file.size,
                                     },
                                     content_source: ContentSource::ModrinthProject { project_id },
+                                    reason: ContentInstallReason::Update,
                                 }].into(),
                             }
                         },
@@ -929,6 +931,7 @@ impl BackendState {
                                         size: file.file_length as usize,
                                     },
                                     content_source: ContentSource::CurseforgeProject { project_id },
+                                    reason: ContentInstallReason::Update,
                                 }].into(),
                             }
                         },

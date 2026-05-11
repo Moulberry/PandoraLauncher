@@ -7,7 +7,7 @@ use gpui_component::{
     ActiveTheme, Icon, Selectable, WindowExt, button::{Button, ButtonGroup, ButtonVariant, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState}, notification::NotificationType, scroll::{ScrollableElement, Scrollbar}, skeleton::Skeleton, v_flex
 };
 use rustc_hash::FxHashMap;
-use schema::{content::ContentSource, loader::Loader, modrinth::{
+use schema::{content::{ContentInstallReason, ContentSource}, loader::Loader, modrinth::{
     ModrinthHit, ModrinthProjectType, ModrinthSearchIndex, ModrinthSearchRequest, ModrinthSearchResult, ModrinthSideRequirement
 }};
 use ustr::Ustr;
@@ -741,6 +741,7 @@ impl PrimaryAction {
                             content_source: ContentSource::ModrinthProject {
                                 project_id: project_id.clone()
                             },
+                            reason: ContentInstallReason::Standalone,
                         }
                     ].into(),
                 };

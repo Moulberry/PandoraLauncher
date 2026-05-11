@@ -15,3 +15,12 @@ pub enum ContentSource {
         project_id: u32,
     }
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentInstallReason {
+    Standalone,
+    Dependency,
+    Modpack,
+    Update,
+}

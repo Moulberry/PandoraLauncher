@@ -543,6 +543,7 @@ pub mod instance {
                     "reinstall" => Some(reinstall()),
                     "select_mods" => Some(select_mods()),
                     "select_resourcepacks" => Some(select_resourcepacks()),
+                    "select_shaders" => Some(select_shaders()),
                     "unable_install_other" => Some(unable_install_other()),
                     "unable_other_type" => Some(unable_other_type()),
                     "unknown_type" => Some(unknown_type()),
@@ -720,6 +721,11 @@ pub mod instance {
                     1 => "Wähle Ressourcenpakete aus um sie zu installieren",
                     2 => "Válaszd ki a telepíteni kívánt forráscsomagokat",
                     _ => "Select resource packs to install",
+                }
+            }
+            pub fn select_shaders() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    _ => "Select shaders to install",
                 }
             }
             pub fn title(name: &str) -> String {

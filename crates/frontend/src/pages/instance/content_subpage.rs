@@ -30,6 +30,7 @@ pub struct InstanceContentSubpage {
 pub enum ContentType {
     Mods,
     ResourcePacks,
+    Shaders,
 }
 
 impl ContentType {
@@ -37,6 +38,7 @@ impl ContentType {
         match self {
             ContentType::Mods => ContentFolder::Mods,
             ContentType::ResourcePacks => ContentFolder::ResourcePacks,
+            ContentType::Shaders => ContentFolder::Shaders,
         }
     }
 
@@ -44,6 +46,7 @@ impl ContentType {
         match self {
             ContentType::Mods => t::instance::content::mods(),
             ContentType::ResourcePacks => t::instance::content::resourcepacks(),
+            ContentType::Shaders => t::instance::content::shaders(),
         }
     }
 
@@ -51,6 +54,7 @@ impl ContentType {
         match self {
             ContentType::Mods => t::instance::content::install::select_mods(),
             ContentType::ResourcePacks => t::instance::content::install::select_resourcepacks(),
+            ContentType::Shaders => t::instance::content::install::select_shaders(),
         }
     }
 
@@ -58,6 +62,7 @@ impl ContentType {
         match self {
             ContentType::Mods => ModrinthProjectType::Mod,
             ContentType::ResourcePacks => ModrinthProjectType::Resourcepack,
+            ContentType::Shaders => ModrinthProjectType::Shader,
         }
     }
 
@@ -65,6 +70,7 @@ impl ContentType {
         match self {
             ContentType::Mods => CurseforgeClassId::Mod,
             ContentType::ResourcePacks => CurseforgeClassId::Resourcepack,
+            ContentType::Shaders => CurseforgeClassId::Shader,
         }
     }
 
@@ -77,7 +83,7 @@ impl ContentType {
                 InstanceContentSortKey::ModifiedTime,
                 InstanceContentSortKey::FileSize,
             ],
-            ContentType::ResourcePacks => &[
+            ContentType::ResourcePacks | ContentType::Shaders => &[
                 InstanceContentSortKey::Filename,
                 InstanceContentSortKey::ModifiedTime,
                 InstanceContentSortKey::FileSize,
@@ -89,6 +95,7 @@ impl ContentType {
         match self {
             ContentType::Mods => config.instance_mods_sort_key,
             ContentType::ResourcePacks => config.instance_resourcepacks_sort_key,
+            ContentType::Shaders => config.instance_shaders_sort_key,
         }
     }
 
@@ -96,6 +103,7 @@ impl ContentType {
         match self {
             ContentType::Mods => config.instance_mods_sort_enabled_first,
             ContentType::ResourcePacks => config.instance_resourcepacks_sort_enabled_first,
+            ContentType::Shaders => config.instance_shaders_sort_enabled_first,
         }
     }
 
@@ -103,6 +111,7 @@ impl ContentType {
         match self {
             ContentType::Mods => config.instance_mods_sort_key = value,
             ContentType::ResourcePacks => config.instance_resourcepacks_sort_key = value,
+            ContentType::Shaders => config.instance_shaders_sort_key = value,
         }
     }
 
@@ -110,6 +119,7 @@ impl ContentType {
         match self {
             ContentType::Mods => config.instance_mods_sort_enabled_first = value,
             ContentType::ResourcePacks => config.instance_resourcepacks_sort_enabled_first = value,
+            ContentType::Shaders => config.instance_shaders_sort_enabled_first = value,
         }
     }
 }

@@ -536,6 +536,11 @@ impl BackendState {
                     game_versions: [version].into(),
                 };
 
+                let shaderpack_params = &VersionUpdateParameters {
+                    loaders: [ModrinthLoader::Iris, ModrinthLoader::Optifine, ModrinthLoader::Canvas].into(),
+                    game_versions: [version].into(),
+                };
+
                 let modrinth_modpack_params = &VersionV3UpdateParameters {
                     loaders: ["mrpack".into()].into(),
                     loader_fields: VersionV3LoaderFields {
@@ -604,6 +609,12 @@ impl BackendState {
                                             meta.fetch(&ModrinthVersionUpdateMetadataItem {
                                                 sha1: hex::encode(summary.content_summary.hash).into(),
                                                 params: resourcepack_params.clone()
+                                            }).await
+                                        },
+                                        ContentType::ShaderPack => {
+                                            meta.fetch(&ModrinthVersionUpdateMetadataItem {
+                                                sha1: hex::encode(summary.content_summary.hash).into(),
+                                                params: shaderpack_params.clone()
                                             }).await
                                         },
                                     };

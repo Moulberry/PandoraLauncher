@@ -103,6 +103,7 @@ pub struct ContentSummary {
 pub enum ContentFolder {
     Mods,
     ResourcePacks,
+    Shaders,
 }
 
 impl ContentFolder {
@@ -110,6 +111,7 @@ impl ContentFolder {
         match self {
             ContentFolder::Mods => "mods",
             ContentFolder::ResourcePacks => "resourcepacks",
+            ContentFolder::Shaders => "shaderpacks",
         }
     }
 }
@@ -221,9 +223,18 @@ pub enum ContentType {
         minecraft: CurseforgeModpackMinecraft,
     },
     ResourcePack,
+    ShaderPack,
 }
 
 impl ContentType {
+    pub fn modpack_files(&self) -> Option<&Arc<[ModpackFile]>> {
+        match self {
+            ContentType::ModrinthModpack { files, .. } => Some(files),
+            ContentType::CurseforgeModpack { files, .. } => Some(files),
+            _ => None,
+        }
+    }
+
     pub fn content_folder(&self) -> Option<&'static str> {
         match self {
             Self::Fabric | Self::Forge | Self::LegacyForge | Self::NeoForge | Self::JavaModule | Self::ModrinthModpack { .. } | Self::CurseforgeModpack { .. } => {
@@ -231,6 +242,9 @@ impl ContentType {
             },
             ContentType::ResourcePack => {
                 Some("resourcepacks")
+            },
+            ContentType::ShaderPack => {
+                Some("shaderpacks")
             },
             ContentType::Unknown => {
                 None

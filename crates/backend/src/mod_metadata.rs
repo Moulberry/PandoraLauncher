@@ -13,7 +13,6 @@ use schema::{content::ContentSource, curseforge::{CachedCurseforgeFileInfo, Curs
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DeserializeAs};
 use sha1::{Digest, Sha1};
-use strum::IntoEnumIterator;
 use ustr::Ustr;
 
 #[derive(Clone)]
@@ -62,8 +61,8 @@ impl ZipMetadataFile {
     pub fn priority(self, extension: Option<&OsStr>) -> i32 {
         let mut priority = match self {
             ZipMetadataFile::McModInfo => 1, // If a legacy forge mod manifest is present, that's probably the one we want
-            ZipMetadataFile::JarJar => -1,
-            ZipMetadataFile::JavaManifest => -2,
+            ZipMetadataFile::JarJar => -1, // Fallback
+            ZipMetadataFile::JavaManifest => -2,  // Fallback
             _ => 0,
         };
 
@@ -88,17 +87,18 @@ impl ZipMetadataFile {
         }
     }
 
-    pub fn path(self) -> &'static str {
-        match self {
-            ZipMetadataFile::McModInfo => "mcmod.info",
-            ZipMetadataFile::FabricModJson => "fabric.mod.json",
-            ZipMetadataFile::ModsToml => "META-INF/mods.toml",
-            ZipMetadataFile::NeoforgeModsToml => "META-INF/neoforge.mods.toml",
-            ZipMetadataFile::JarJar => "META-INF/jarjar/metadata.json",
-            ZipMetadataFile::JavaManifest => "META-INF/MANIFEST.MF",
-            ZipMetadataFile::PackMcmeta => "pack.mcmeta",
-            ZipMetadataFile::ModrinthIndexJson => "modrinth.index.json",
-            ZipMetadataFile::ManifestJson => "manifest.json",
+    pub fn by_path(path: &str) -> Option<Self> {
+        match path {
+            "mcmod.info" => Some(ZipMetadataFile::McModInfo),
+            "fabric.mod.json" => Some(ZipMetadataFile::FabricModJson),
+            "META-INF/mods.toml" => Some(ZipMetadataFile::ModsToml),
+            "META-INF/neoforge.mods.toml" => Some(ZipMetadataFile::NeoforgeModsToml),
+            "META-INF/jarjar/metadata.json" => Some(ZipMetadataFile::JarJar),
+            "META-INF/MANIFEST.MF" => Some(ZipMetadataFile::JavaManifest),
+            "pack.mcmeta" => Some(ZipMetadataFile::PackMcmeta),
+            "modrinth.index.json" => Some(ZipMetadataFile::ModrinthIndexJson),
+            "manifest.json" => Some(ZipMetadataFile::ManifestJson),
+            _ => None,
         }
     }
 
@@ -328,16 +328,27 @@ impl ModMetadataManager {
             return UNKNOWN_CONTENT_SUMMARY.clone();
         };
 
+        let can_be_zip = extension.is_none() || extension == Some(OsStr::new("zip"));
         let mut candidates = Vec::new();
+        let mut has_shaders_folder = false;
 
-        for zip_metadata_file in ZipMetadataFile::iter() {
+        for entry in archive.entries() {
+            if entry.kind() != rc_zip_sync::rc_zip::EntryKind::File {
+                continue;
+            }
+
+            let Some(zip_metadata_file) = ZipMetadataFile::by_path(&entry.name) else {
+                if can_be_zip && entry.name.starts_with("shaders/") {
+                    has_shaders_folder = true;
+                }
+                continue;
+            };
+
             if !allow_children && zip_metadata_file.contains_children() {
                 continue;
             }
 
-            if let Some(file) = archive.by_name(zip_metadata_file.path()) {
-                candidates.push((zip_metadata_file, file));
-            }
+            candidates.push((zip_metadata_file, entry));
         }
 
         candidates.sort_by(|a, b| {
@@ -347,7 +358,7 @@ impl ModMetadataManager {
                 return prio_a.cmp(&prio_b).reverse();
             }
 
-            a.1.compressed_size.cmp(&b.1.compressed_size).reverse()
+            a.1.uncompressed_size.cmp(&b.1.uncompressed_size).reverse()
         });
 
         for (zip_metadata_file, file) in candidates {
@@ -366,6 +377,20 @@ impl ModMetadataManager {
             if let Some(summary) = summary {
                 return summary;
             }
+        }
+
+        if has_shaders_folder {
+            return Arc::new(ContentSummary {
+                id: None,
+                hash,
+                filesize,
+                name: None,
+                authors: "".into(),
+                version_str: "".into(),
+                rich_description: None,
+                png_icon: None,
+                extra: ContentType::ShaderPack
+            });
         }
 
         UNKNOWN_CONTENT_SUMMARY.clone()

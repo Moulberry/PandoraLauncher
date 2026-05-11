@@ -391,6 +391,8 @@ pub fn rename_with_fallback_across_devices(from: &Path, to: &Path) -> std::io::R
     }
 }
 
+pub const KNOWN_SHADER_MODS: &[&'static str] = &["iris", "oculus", "optifine"];
+
 pub fn join_windows_shell(args: &[&str]) -> String {
     let mut string = String::new();
 

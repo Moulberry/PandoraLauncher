@@ -602,6 +602,39 @@ impl Instance {
                 };
             }
 
+            if content_folder == ContentFolder::Shaders && !result.is_empty() && !this.configuration.get().show_shader_tab {
+                this.configuration.modify(|config| {
+                    config.show_shader_tab = true;
+                });
+            } else if content_folder == ContentFolder::Mods && !this.configuration.get().show_shader_tab {
+                let mut has_shader_mod = false;
+                'out: for summary in &result {
+                    if let Some(id) = summary.content_summary.id.as_deref() {
+                        if crate::KNOWN_SHADER_MODS.contains(&id) {
+                            has_shader_mod = true;
+                            break 'out;
+                        }
+                    }
+                    if let Some(modpack_files) = summary.content_summary.extra.modpack_files() {
+                        for modpack_file in modpack_files.iter() {
+                            if let Some(summary) = &modpack_file.summary {
+                                if let Some(id) = summary.id.as_deref() {
+                                    if crate::KNOWN_SHADER_MODS.contains(&id) {
+                                        has_shader_mod = true;
+                                        break 'out;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if has_shader_mod {
+                    this.configuration.modify(|config| {
+                        config.show_shader_tab = true;
+                    });
+                }
+            }
+
             let result: Arc<[InstanceContentSummary]> = result.into();
             state.summaries = Some(result.clone());
             state.pending_load = None;

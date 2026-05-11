@@ -149,12 +149,15 @@ impl Render for InstancePage {
             self.subpage = instance_subpage.create(&self.instance, &self.data, self.backend_handle.clone(), window, cx);
         }
 
+        let show_shader_tab = self.instance.read(cx).configuration.show_shader_tab || matches!(self.subpage, InstanceSubpage::Shaders(_));
+
         let selected_index = match &self.subpage {
             InstanceSubpage::Quickplay(_) => 0,
             InstanceSubpage::Logs(_) => 1,
             InstanceSubpage::Mods(_) => 2,
             InstanceSubpage::ResourcePacks(_) => 3,
-            InstanceSubpage::Settings(_) => 4,
+            InstanceSubpage::Shaders(_) => 4,
+            InstanceSubpage::Settings(_) => if show_shader_tab { 5 } else { 4 },
         };
 
         v_flex()
@@ -168,14 +171,28 @@ impl Render for InstancePage {
                     .child(Tab::new().label(t::instance::logs::title()))
                     .child(Tab::new().label(t::instance::content::mods()))
                     .child(Tab::new().label(t::instance::content::resourcepacks()))
+                    .when(show_shader_tab, |this| {
+                        this.child(Tab::new().label(t::instance::content::shaders()))
+                    })
                     .child(Tab::new().label(t::settings::title()))
-                    .on_click(cx.listener(|_, index, _, cx| {
+                    .on_click(cx.listener(move |_, index, _, cx| {
                         let page_type = match *index {
                             0 => InstanceSubpageType::Quickplay,
                             1 => InstanceSubpageType::Logs,
                             2 => InstanceSubpageType::Mods,
                             3 => InstanceSubpageType::ResourcePacks,
-                            4 => InstanceSubpageType::Settings,
+                            4 => if show_shader_tab {
+                                InstanceSubpageType::Shaders
+                            } else {
+                                InstanceSubpageType::Settings
+                            },
+                            5 => {
+                                if show_shader_tab {
+                                    InstanceSubpageType::Settings
+                                } else {
+                                    return;
+                                }
+                            },
                             _ => {
                                 return;
                             },
@@ -195,6 +212,7 @@ pub enum InstanceSubpageType {
     Logs,
     Mods,
     ResourcePacks,
+    Shaders,
     Settings,
 }
 
@@ -220,6 +238,9 @@ impl InstanceSubpageType {
             InstanceSubpageType::ResourcePacks => InstanceSubpage::ResourcePacks(cx.new(|cx| {
                 InstanceContentSubpage::new(instance, ContentType::ResourcePacks, backend_handle, window, cx)
             })),
+            InstanceSubpageType::Shaders => InstanceSubpage::Shaders(cx.new(|cx| {
+                InstanceContentSubpage::new(instance, ContentType::Shaders, backend_handle, window, cx)
+            })),
             InstanceSubpageType::Settings => InstanceSubpage::Settings(cx.new(|cx| {
                 InstanceSettingsSubpage::new(instance, data, backend_handle, window, cx)
             })),
@@ -233,6 +254,7 @@ pub enum InstanceSubpage {
     Logs(Entity<InstanceLogsSubpage>),
     Mods(Entity<InstanceContentSubpage>),
     ResourcePacks(Entity<InstanceContentSubpage>),
+    Shaders(Entity<InstanceContentSubpage>),
     Settings(Entity<InstanceSettingsSubpage>),
 }
 
@@ -243,6 +265,7 @@ impl InstanceSubpage {
             InstanceSubpage::Logs(_) => InstanceSubpageType::Logs,
             InstanceSubpage::Mods(_) => InstanceSubpageType::Mods,
             InstanceSubpage::ResourcePacks(_) => InstanceSubpageType::ResourcePacks,
+            InstanceSubpage::Shaders(_) => InstanceSubpageType::Shaders,
             InstanceSubpage::Settings(_) => InstanceSubpageType::Settings,
         }
     }
@@ -253,6 +276,7 @@ impl InstanceSubpage {
             Self::Logs(entity) => entity.into_any_element(),
             Self::Mods(entity) => entity.into_any_element(),
             Self::ResourcePacks(entity) => entity.into_any_element(),
+            Self::Shaders(entity) => entity.into_any_element(),
             Self::Settings(entity) => entity.into_any_element(),
         }
     }

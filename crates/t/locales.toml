@@ -1299,6 +1299,8 @@ hu = "Nem lehet kezelni ezt a típúsú tartalmat"
 en = "Select resource packs to install"
 de = "Wähle Ressourcenpakete aus um sie zu installieren"
 hu = "Válaszd ki a telepíteni kívánt forráscsomagokat"
+[instance.content.install.select_shaders]
+en = "Select shaders to install"
 [instance.content.update.label]
 en = "Update"
 de = "Aktualisieren"

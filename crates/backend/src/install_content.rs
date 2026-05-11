@@ -1083,6 +1083,7 @@ fn determine_loader_from_content(content: &[InstallFromContentLibrary]) -> Optio
                 return minecraft.get_loader();
             },
             ContentType::ResourcePack => {},
+            ContentType::ShaderPack => {},
         }
     }
     None
@@ -1108,6 +1109,7 @@ fn determine_minecraft_version_from_content(content: &[InstallFromContentLibrary
                 return minecraft.version.clone();
             },
             ContentType::ResourcePack => {},
+            ContentType::ShaderPack => {},
         }
     }
     None

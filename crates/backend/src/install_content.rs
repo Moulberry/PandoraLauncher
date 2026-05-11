@@ -231,7 +231,7 @@ impl BackendState {
                     }
                     if loader_hint != Loader::Unknown {
                         instance.configuration.modify(|config| {
-                            config.loader = content.loader_hint;
+                            config.loader = loader_hint;
                         });
                     }
                 }

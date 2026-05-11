@@ -3,7 +3,7 @@ use std::{error::Error, path::Path};
 use indexmap::IndexMap;
 
 fn main() {
-    println!("cargo:rerun-if-changed=./locales.yml");
+    println!("cargo:rerun-if-changed=./locales.toml");
     println!("cargo:rerun-if-changed=build.rs");
 
     let dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -52,6 +52,8 @@ fn inner(dir: &Path) -> Result<(), Box<dyn Error>> {
         locales.nodes[*root].write(&locales, 0, &mut content);
     }
 
+    // maybe we could instead write it to OUT_DIR and use include! in lib.rs
+    // this would have the benefit of not polluting git history
     let lib = dir.join("src").join("lib.rs");
     std::fs::write(&lib, content.as_bytes())?;
     Ok(())
@@ -69,6 +71,8 @@ impl LocaleNode {
     pub fn write(&self, locales: &Locales, indentation: usize, content: &mut String) {
         match &self.val {
             LocaleNodeVal::Parent { children, static_translation_children } => {
+                content.push_str(&INDENTATION[..indentation*4]);
+                content.push_str("#[rustfmt::skip]\n");
                 content.push_str(&INDENTATION[..indentation*4]);
                 content.push_str("pub mod ");
                 content.push_str(&self.name);
@@ -311,7 +315,7 @@ impl Locales {
                                     for existing in &arguments {
                                         if existing.0 == name {
                                             if existing.1 != ty {
-                                                return Err(format!("Multiple arguments with different types: {}", existing.0).into());
+                                                return Err(format!("Multiple arguments with different types: {} in {}", existing.0, value).into());
                                             }
                                             has_existing = true;
                                         }

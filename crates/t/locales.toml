@@ -2,143 +2,178 @@
 en = "Modrinth"
 de = "Modrinth"
 hu = "Modrinth"
+sv = "Modrinth"
 
 [modrinth.category.fabric]
 en = "Fabric"
 de = "Fabric"
 hu = "Fabric"
+sv = "Fabric"
 [modrinth.category.forge]
 en = "Forge"
 de = "Forge"
 hu = "Forge"
+sv = "Forge"
 [modrinth.category.neoforge]
 en = "NeoForge"
 de = "NeoForge"
 hu = "NeoForge"
+sv = "NeoForge"
 [modrinth.category.quilt]
 en = "Quilt"
 de = "Quilt"
 hu = "Quilt"
+sv = "Quilt"
 [modrinth.category.babric]
 en = "Babric"
 de = "Babric"
 hu = "Babric"
+sv = "Babric"
 [modrinth.category.bta-babric]
 en = "BTA (Babric)"
 de = "BTA (Babric)"
 hu = "BTA (Babric)"
+sv = "BTA (Babric)"
 [modrinth.category.java-agent]
 en = "Java Agent"
 de = "Java Agent"
 hu = "Java Agent"
+sv = "Java Agent"
 [modrinth.category.legacy-fabric]
 en = "Legacy Fabric"
 de = "Legacy Fabric"
 hu = "Legacy Fabric"
+sv = "Legacy Fabric"
 [modrinth.category.liteloader]
 en = "LiteLoader"
 de = "LiteLoader"
 hu = "LiteLoader"
+sv = "LiteLoader"
 [modrinth.category.modloader]
 en = "Risugami's ModLoader"
 de = "Risugami's ModLoader"
 hu = "Risumagi's ModLoader"
+sv = "Risumagi's ModLoader"
 [modrinth.category.nilloader]
 en = "NilLoader"
 de = "NilLoader"
 hu = "NilLoader"
+sv = "NilLoader"
 [modrinth.category.ornithe]
 en = "Ornithe"
 de = "Ornithe"
 hu = "Ornithe"
+sv = "Ornithe"
 [modrinth.category.rift]
 en = "Rift"
 de = "Rift"
 hu = "Rift"
+sv = "Rift"
 [modrinth.category.datapack]
 en = "Data Pack"
 de = "Data Pack"
 hu = "Adatcsomag"
+sv = "Data Pack"
 [modrinth.category.iris]
 en = "Iris"
 de = "Iris"
 hu = "Iris"
+sv = "Iris"
 [modrinth.category.optifine]
 en = "OptiFine"
 de = "OptiFine"
 hu = "OptiFine"
+sv = "OptiFine"
 [modrinth.category.canvas]
 en = "Canvas"
 de = "Canvas"
 hu = "Canvas"
+sv = "Canvas"
 [modrinth.category.vanilla]
 en = "Vanilla Shader"
 de = "Vanilla Shader"
 hu = "Vanilla Shader"
+sv = "Vanilla Shader"
 [modrinth.category.bukkit]
 en = "Bukkit"
 de = "Bukkit"
 hu = "Bukkit"
+sv = "Bukkit"
 [modrinth.category.folia]
 en = "Folia"
 de = "Folia"
 hu = "Folia"
+sv = "Folia"
 [modrinth.category.paper]
 en = "Paper"
 de = "Paper"
 hu = "Paper"
+sv = "Paper"
 [modrinth.category.purpur]
 en = "Purpur"
 de = "Purpur"
 hu = "Purpur"
+sv = "Purpur"
 [modrinth.category.spigot]
 en = "Spigot"
 de = "Spigot"
 hu = "Spigot"
+sv = "Spigot"
 [modrinth.category.sponge]
 en = "Sponge"
 de = "Sponge"
 hu = "Sponge"
+sv = "Sponge"
 [modrinth.category.bungeecord]
 en = "BungeeCord"
 de = "BungeeCord"
 hu = "BungeeCord"
+sv = "BungeeCord"
 [modrinth.category.geyser]
 en = "Geyser"
 de = "Geyser"
 hu = "Geyser"
+sv = "Geyser"
 [modrinth.category.velocity]
 en = "Velocity"
 de = "Velocity"
 hu = "Velocity"
+sv = "Velocity"
 [modrinth.category.waterfall]
 en = "Waterfall"
 de = "Waterfall"
 hu = "Waterfall"
+sv = "Waterfall"
 [modrinth.category.cursed]
 en = "Cursed"
 de = "Seltsam"
 hu = "Átkozott"
+sv = "Förbannad"
 [modrinth.category.technology]
 en = "Technology"
 de = "Technologie"
 hu = "Technológia"
+sv = "Teknologi"
 [modrinth.category.challenging]
 en = "Challenging"
 de = "Herausforderend"
 hu = "Kihívó"
+sv = "Utmaning"
 [modrinth.category.decoration]
 en = "Decoration"
 de = "Dekoration"
 hu = "Dekoráció"
+sv = "Dekoration"
 [modrinth.category.library]
 en = "Library"
 de = "Bibiliothek"
 hu = "Könyvtár"
+sv = "Bibliotek"
 [modrinth.category.adventure]
 en = "Adventure"
 de = "Abenteuer"
 hu = "Kaland"
+sv = "Äventyr"
 [modrinth.category.path-tracing]
 en = "Path Tracing"
 de = "Path Tracing"
@@ -147,154 +182,192 @@ hu = "Path Tracing"
 en = "Realistic"
 de = "Realistisch"
 hu = "Realisztikus"
+sv = "realistiskt"
 [modrinth.category.atmosphere]
 en = "Atmosphere"
 de = "Atmosphere"
 hu = "Atmoszféra"
+sv = "atmosfär"
 [modrinth.category.fantasy]
 en = "Fantasy"
 de = "Fantasie"
 hu = "Fantázia"
+sv = "Fantasi"
 [modrinth.category.foliage]
 en = "Foliage"
 de = "Vegetation"
 hu = "Növényzet"
+sv = "Vegetation"
 [modrinth.category.bloom]
 en = "Bloom"
 de = "Bloom"
 hu = "Bloom"
+sv = "Bloom"
 [modrinth.category.vanilla-like]
 en = "Vanilla-like"
 de = "Vanilla-Ähnlich"
 hu = "Vanilla-szerű"
+sv = "Vanilla liknande"
 [modrinth.category.cartoon]
 en = "Cartoon"
 de = "Cartoon"
 hu = "Rajzfilmes"
+sv = "Teknad"
 [modrinth.category.shadows]
 en = "Shadows"
 de = "Schatten"
 hu = "Árnyékok"
+sv = "Skuggor"
 [modrinth.category.pbr]
 en = "PBR"
 de = "PBR"
 hu = "PBR"
+sv = "PBR"
 [modrinth.category.semi-realistic]
 en = "Semi-realistic"
 de = "Semi-Realistisch"
 hu = "Félig valósághű"
+sv = "Semi realistiskt"
 [modrinth.category.reflections]
 en = "Reflections"
 de = "Reflektionen"
 hu = "Tükröződések"
+sv = "Reflektioner"
 [modrinth.category.colored-lighting]
 en = "Colored Lighting"
 de = "Farbige Lichter"
 hu = "Színes világítás"
+sv = "Färgat Ljus"
 [modrinth.category.economy]
 en = "Economy"
 de = "Wirtschaft"
 hu = "Gazdaság"
+sv = "Ekonomi"
 [modrinth.category.management]
 en = "Management"
 de = "Verwaltung"
 hu = "Kezelés"
+sv = "Förvaltning"
 [modrinth.category.optimization]
 en = "Optimization"
 de = "Optimierung"
 hu = "Optimalizálás"
+sv = "Optimisation"
 [modrinth.category.mobs]
 en = "Mobs"
 de = "Mobs"
 hu = "Mobok"
+sv = "Mobs"
 [modrinth.category.transportation]
 en = "Transportation"
 de = "Transportation"
 hu = "Szállítás"
+sv = "Transportation"
 [modrinth.category.kitchen-sink]
 en = "Kitchen sink"
 de = "Etwas von allem"
 hu = "Mindenből egy kicsi"
+sv = "Allt möjligt"
 [modrinth.category.blocks]
 en = "Blocks"
 de = "Blöcke"
 hu = "Blokkok"
+sv = "Blocks"
 [modrinth.category.audio]
 en = "Audio"
 de = "Audio"
 hu = "Hang"
+sv = "Ljud"
 [modrinth.category.combat]
 en = "Combat"
 de = "Kampf"
 hu = "Harc"
+sv = "Strid"
 [modrinth.category.modded]
 en = "Modded"
 de = "Modifiziert"
 hu = "Modolt"
+sv = "Moddat"
 [modrinth.category.environment]
 en = "Environment"
 de = "Umgebung"
 hu = "Környezet"
+sv = "Miljö"
 [modrinth.category.entities]
 en = "Entities"
 de = "Entitäten"
 hu = "Entitások"
+sv = "Entiteter"
 [modrinth.category.game-mechanics]
 en = "Game Mechanics"
 de = "Spielmechaniken"
 hu = "Játék mechanikák"
+sv = "Spelmekaniker"
 [modrinth.category.utility]
 en = "Utility"
 de = "Nützlich"
 hu = "Hasznos"
+sv = "Vertyg"
 [modrinth.category.core-shaders]
 en = "Core Shaders"
 de = "Core-Shaders"
 hu = "Alap shaderek"
+sv = "Core-shaders"
 [modrinth.category.tweaks]
 en = "Tweaks"
 de = "Optimierungen"
 hu = "Finomítások"
+sv = "Justeringar"
 [modrinth.category.items]
 en = "Items"
 de = "Gegenstände"
 hu = "Tárgyak"
+sv = "Items"
 [modrinth.category.models]
 en = "Models"
 de = "Modelle"
 hu = "Modellek"
+sv = "Modeller"
 [modrinth.category.equipment]
 en = "Equipment"
 de = "Ausrüstung"
 hu = "Felszerelés"
+sv = "Utrustning"
 [modrinth.category.fonts]
 en = "Fonts"
 de = "Schriftarten"
 hu = "Betűtípusok"
+sv = "Fonter"
 [modrinth.category.simplistic]
 en = "Simplistic"
 de = "Einfach"
 hu = "Egyszerű"
+sv = "Simplistiskt"
 [modrinth.category.themed]
 en = "Themed"
 de = "Thematisch"
 hu = "Tematikus"
+sv = "Temat"
 [modrinth.category.magic]
 en = "Magic"
 de = "Magie"
 hu = "Mágia"
+sv = "Magi"
 [modrinth.category.storage]
 en = "Storage"
 de = "Lagerung"
 hu = "Tárhely"
+sv = "Utrustning"
 [modrinth.category.food]
 en = "Food"
 de = "Essen"
 hu = "Étel"
+sv = "Mat"
 [modrinth.category.gui]
 en = "GUI"
 de = "GUI"
 hu = "GUI"
+sv = "GUI"
 [modrinth.category.worldgen]
 en = "World Generation"
 en_short = "Worldgen"
@@ -302,1009 +375,1267 @@ de = "Weltgenerierung"
 de_short = "Weltgenerierung"
 hu = "Világgenerálás"
 hu_short = "Generálás"
+sv = "Världsgeneration"
+sv_short = "Generering"
 [modrinth.category.multiplayer]
 en = "Multiplayer"
 de = "Mehrspieler"
 hu = "Többjátékos"
+sv = "Flerspelare"
 [modrinth.category.quests]
 en = "Quests"
 de = "Aufgaben"
 hu = "Küldetések"
+sv = "Uppdrag"
 [modrinth.category.lightweight]
 en = "Lightweight"
 de = "Leichtgewichtig"
 hu = "Könnyű"
+sv = "Lätt"
 [modrinth.category.social]
 en = "Social"
 de = "Sozial"
 hu = "Szociális"
+sv = "Social"
 [modrinth.category.minigame]
 en = "Minigame"
 de = "Minispiel"
 hu = "Minijáték"
+sv = "Minispel"
 [modrinth.category.locale]
 en = "Locale"
 de = "Lokalisierung"
 hu = "Nyelv"
+sv = "Lokalisering"
 [modrinth.category.potato]
 en = "Potato"
 de = "Kartoffel"
 hu = "Krumpli"
+sv = "Potatis"
 [modrinth.category.low]
 en = "Low"
 de = "Niedrig"
 hu = "Alacsony"
+sv = "Låg"
 [modrinth.category.medium]
 en = "Medium"
 de = "Mittel"
 hu = "Közepes"
+sv = "Medium"
 [modrinth.category.high]
 en = "High"
 de = "Hoch"
 hu = "Magas"
+sv = "Högt"
 [modrinth.category.screenshot]
 en = "Screenshot"
 de = "Screenshot"
 hu = "Képernyőkép"
+sv = "Skärmklipp"
 [modrinth.category.8x-]
 en = "8x or lower"
 de = "8x oder weniger"
 hu = "8x vagy kisebb"
+sv = "8x eller lägre"
 [modrinth.category.16x]
 en = "16x"
 de = "16x"
 hu = "16x"
+sv = "16x"
 [modrinth.category.32x]
 en = "32x"
 de = "32x"
 hu = "32x"
+sv = "32x"
 [modrinth.category.48x]
 en = "48x"
 de = "48x"
 hu = "48x"
+sv = "48x"
 [modrinth.category.64x]
 en = "64x"
 de = "64x"
 hu = "64x"
+sv = "64x"
 [modrinth.category.128x]
 en = "128x"
 de = "128x"
 hu = "128x"
+sv = "128x"
 [modrinth.category.256x]
 en = "256x"
 de = "256x"
 hu = "256x"
+sv = "256x"
 [modrinth.category."512x+"]
 en = "512x or higher"
 de = "512x oder höher"
 hu = "512x vagy nagyobb"
+sv = "512x eller högre"
 
 [modrinth.sort.relevance]
 en = "Relevance"
 de = "Relevanz"
 hu = "Relevancia"
+sv = 'Relevans'
 [modrinth.sort.downloads]
 en = "Downloads"
 de = "Downloads"
 hu = "Letöltések"
+sv = "Nedladdningar"
 [modrinth.sort.follows]
 en = "Follows"
 de = "Follower"
 hu = "Követők"
+sv = "Följare"
 [modrinth.sort.newest]
 en = "Newest"
 de = "Neuste"
 hu = "Legújabb"
+sv = "Nyast"
 [modrinth.sort.updated]
 en = "Updated"
 de = "Aktualisiert"
 hu = "Frissítve"
+sv = "Uppdaterat"
 
 [modrinth.environment.client_and_server]
-en = "Client and server"
+en = "Client and Server"
 de = "Client und Server"
-hu = "Kliens és szerver"
+hu = "Kliens és Szerver"
+sv = "Klient och Server"
 [modrinth.environment.client_only]
 en = "Client only"
 de = "Nur Client"
 hu = "Csak kliens"
+sv = "Endast Klient"
 [modrinth.environment.client_only_server_optional]
 en = "Client (server optional)"
 de = "Client (Server Optional)"
 hu = "Kliens (Szerver opcionális)"
+sv = "Klient (falfri Server)"
 [modrinth.environment.server_only]
 en = "Server only"
 de = "Nur Server"
 hu = "Csak szerver"
+sv = "Endast Server"
 [modrinth.environment.server_only_client_optional]
 en = "Server (client optional)"
 de = "Server (Client Optional)"
 hu = "Szerver (kliens opcionális)"
+sv = "Server (falfri Klient)"
 [modrinth.environment.client_or_server]
 en = "Client or server"
 de = "Client oder Server"
 hu = "Kliens vagy szerver"
+sv = "Klient och Server"
 [modrinth.environment.unknown_environment]
 en = "Unknown environment"
 de = "Unbekannte Umgebung"
 hu = "Ismeretlen környezet"
+sv = "Okänd miljö"
 
 [modrinth.versions.alpha]
 en = "${name: &str} (Alpha)"
 de = "${name: &str} (Alpha)"
 hu = "${name: &str} (Alpha)"
+sv = "${name: &str} (Alpha)"
 [modrinth.versions.beta]
 en = "${name: &str} (Beta)"
 de = "${name: &str} (Beta)"
 hu = "${name: &str} (Beta)"
+sv = "${name: &str} (Beta)"
 
 [curseforge.name]
 en = "Curseforge"
 de = "Curseforge"
 hu = "Curseforge"
+sv = "Curseforge"
 
 [curseforge.sort.popularity]
 en = "Popularity"
 de = "Popularität"
 hu = "Népszerűség"
+sv = "Populäritet"
 [curseforge.sort.downloads]
 en = "Downloads"
 de = "Downloads"
 hu = "Letöltések"
+sv = "Nedladdningar"
 [curseforge.sort.updated]
 en = "Updated"
 de = "Aktualisiert"
 hu = "Frissítve"
+sv = "Uppdaterat"
 [curseforge.sort.name]
 en = "Name"
 de = "Name"
 hu = "Név"
+sv = "Namn"
 [curseforge.sort.author]
 en = "Author"
 de = "Autor"
 hu = "Készítő"
+sv = "Skapare"
 
 [common.app_name]
 en = "Pandora"
 de = "Pandora"
 hu = "Pandora"
+sv = "Pandora"
 [common.unknown]
 en = "Unknown"
 de = "Unbekannt"
 hu = "Ismeretlen"
+sv = "Okänd"
 [common.search]
 en = "Search"
 de = "Suche"
 hu = "Keresés"
+sv = "Sök"
 [common.error]
 en = "Error"
 de = "Fehler"
 hu = "Hiba"
+sv = "Error"
 [common.latest]
 en = "Latest"
 de = "Neuste"
 hu = "Legújabb"
+sv = "Nyast"
 [common.update]
 en = "Update"
 de = "Aktualisiert"
 hu = "Frissítés"
+sv = "Uppdatera"
 [common.min]
 en = "Min"
 de = "Minimum"
 hu = "Minimum"
+sv = "Minst"
 [common.max]
 en = "Max"
 de = "Maximum"
 hu = "Maximum"
+sv = "Max"
 [common.or_upper]
 en = "OR"
 de = "ODER"
 hu = "VAGY"
+sv = "ELLER"
 [common.unset]
 en = "<unset>"
 de = "<ungesetzt>"
 hu = "<nincs megadva>"
+sv = "<avaktivera>"
 [common.custom]
 en = "Custom"
 de = "Benutzerdefiniert"
 hu = "Egyedi"
+sv = "Specialgjord"
 [common.cancel]
 en = "Cancel"
 de = "Abbrechen"
 hu = "Mégsem"
+sv = "Ångra"
 [common.reset]
 en = "Reset"
 de = "Zurücksetzen"
 hu = "Visszaállít"
+sv = "Återställ"
 [common.icon]
 en = "Icon"
 de = "Bild"
 hu = "Ikon"
+sv = "Ikon"
 [common.apply_changes]
 en = "Apply Changes"
 de = "Veränderungen anwenden"
 hu = "Változtatások alkalmazása"
+sv = "Applicera förändringarna"
 [common.ok]
 en = "OK"
 de = "OK"
 hu = "OK"
+sv = "OK"
 [common.nav.top]
 en = "Go to Top"
 de = "Nach Oben"
 hu = "Ugrás felülre"
+sv = "Gå till Toppen"
 [common.nav.bottom]
 en = "Go to Bottom"
 de = "Nach Unten"
 hu = "Ugrás allulra"
+sv = "Gå till Botten"
 [common.layout.cards]
 en = "Cards"
 de = "Karten"
 hu = "Kártyák"
+sv = "Kort"
 [common.layout.list]
 en = "List"
 de = "Liste"
 hu = "Lista"
+sv = "Lista"
 
 [file_system.open_folder.error]
 en = "Unable to open folder: ${err: std::io::Error}"
 de = "Konnte Ordner nicht öffnen: ${err: std::io::Error}"
 hu = "Nem sikerült megnyitni a mappát: ${err: std::io::Error}"
+sv = "Kunde ej öppan folderna: ${err: std::io::Error}"
 [file_system.open_folder.not_a_directory]
 en = "Unable to open folder: not a directory"
 de = "Konnte Ordner nicht öffnen: ist kein Ordner"
 hu = "Nem sikerült megnyitni a mappát: nem egy mappa"
+sv = "Kunde ej öppna foldern: inte en katalog"
 
 [system.backend_shutdown]
 en = "Backend has abruptly shutdown"
 de = "Das Backend ist unerwartet abgestürzt"
 hu = "A háttérfolyamat váratlanul leállt"
+sv = "Backgrundsprocessen stoppades oväntat"
 [system.metadata_error]
 en = "Wrong metadata type! Pandora bug!"
 de = "Falscher Metadaten Type! Pandora Fehler!"
 hu = "Hibás metaadat típus! Pandora hiba!"
+sv = "Fel medatata typ! En bug hos oss (Pandora)"
 [system.game_output]
 en = "Minecraft Game Output"
 de = "Minecraft Log Ausgabe"
 hu = "Minecraft játéknapló"
+sv = "Minecraft Log utmatning"
 
 [system.update.title]
 en = "Update Pandora?"
 de = "Pandora aktualisieren?"
 hu = "Frissíted a Pandorát?"
+sv = "Uppdatera Pandora?"
 [system.update.current]
 en = "Current version: ${ver: &str}"
 de = "Aktuelle Version: ${ver: &str}"
 hu = "Jelenlegi verzió: ${ver: &str}"
+sv = "Nuvarande version: ${ver: &str}"
 [system.update.new]
 en = "New version: ${ver: &str}"
 de = "Neue Version: ${ver: &str}"
 hu = "Új verzió: ${ver: &str}"
+sv = "Ny version: ${ver: &str}"
 [system.update.size.bytes]
 en = "Update size: ${num: usize} bytes"
 de = "Größe der Aktualisierung: ${num: usize} bytes"
 hu = "Frissítés mérete: ${num: usize} byte"
+sv = "Updateringsstorlek: ${num: usize} byte"
 [system.update.size.kb]
 en = "Update size: ${num: usize}kB"
 de = "Größe der Aktualisierung: ${num: usize}kB"
 hu = "Frissítés mérete: ${num: usize}kB"
+sv = "Updateringsstorlek: ${num: usize}kB"
 [system.update.size.mb]
 en = "Update size: ${num: usize}MB"
 de = "Größe der Aktualisierung: ${num: usize}MB"
 hu = "Frissítés mérete: ${num: usize}MB"
+sv = "Updateringsstorlek: ${num: usize}MB"
 [system.update.size.gb]
 en = "Update size: ${num: usize}GB"
 de = "Größe der Aktualisierung: ${num: usize}GB"
 hu = "Frissítés mérete: ${num: usize}GB"
+sv = "Updateringsstorlek: ${num: usize}GB"
 [system.update.later]
 en = "Later"
 de = "Später"
 hu = "Később"
+sv = "Senare"
 [system.update.install_error]
 en = "Unable to install update"
 de = "Aktualisierung konnte nicht installiert werden"
 hu = "Nem sikerült a frissítés telepítése"
+sv = "Kunde ej installera uppdateringen"
 
 [account.title]
 en = "Accounts"
 de = "Konten"
 hu = "Fiókok"
+sv = "Konton"
 [account.override_account]
 en = "Override Account"
 de = "Konto Überschreiben"
 hu = "Fiók felülírása"
+sv = "Åsidosätt Konto"
 [account.none]
 en = "No Account"
 de = "Kein Konto"
 hu = "Nincs fiók"
+sv = "Inget Konto"
 [account.name]
 en = "Name"
 de = "Name"
 hu = "Név"
+sv = "Namn"
 [account.uuid]
 en = "UUID"
 de = "UUID"
 hu = "UUID"
+# do people know this?
+sv = "UUID"
 [account.uuid_random]
 en = "Random"
 de = "Zufällig"
 hu = "Random"
+sv = "Random"
 [account.add.title]
 en = "Adding new account"
 de = "Füge neues Konto hinzu"
 hu = "Másik fiók hozzáadása"
+sv = "Lägger till nytt konto"
 [account.add.label]
 en = "Add account"
 de = "Konto hinzufügen"
 hu = "Fiók hozzáadása"
+sv = "Lägg till konto"
 [account.add.submit]
 en = "Add"
 de = "Hinzufügen"
 hu = "Hozzáadás"
+sv = "Lägg till"
 [account.add.offline]
 en = "Add Offline Account"
 de = "Offline Konto hinzufügen"
 hu = "Offline fiók hozzáadása"
+sv = "Lägg till offline-konto"
 [account.add.error]
 en = "Error adding account"
 de = "Fehler beim Konto hinzufügen"
 hu = "Hiba történt a fiók hozzáadásakor"
+sv = "Kunde ej lägga till konto"
 
 [instance.title]
 en = "Instances"
 de = "Instanzen"
 hu = "Példányok"
+sv = "Instanser"
 [instance.label]
 en = "Instance"
 de = "Instanz"
 hu = "Példány"
+sv = "Instans"
 [instance.recent]
 en = "Recent Instances"
 de = "Letze Instanzen"
 hu = "Legutóbbi példányok"
+sv = "Senaste instanserna"
 [instance.none_selected]
 en = "Select an instance"
 de = "Wähle eine Instanz aus"
 hu = "Válassz egy példányt"
+sv = "Välj en instans"
 [instance.unnamed]
 en = "Unnamed Instance"
 de = "Unbekannte Instanz"
 hu = "Névtelen példány"
+sv = "namlös instans"
 [instance.incompatible]
 en = "(${num: usize} instances were incompatible)"
 de = "(${num: usize} instanzen waren inkompatiebel)"
 hu = "(${num: usize} példány nem kompatibilis"
+sv = "(${num: usize} instanserna var okompatibla"
 [instance.new]
 en = "New Instance"
 de = "Neue Instanz"
 hu = "Új példány"
+sv = "Ny instans"
 [instance.quickplay]
 en = "Quickplay"
 de = "Schnellspiel"
 hu = "Gyorsjáték"
+sv = "snabbspel"
 [instance.worlds]
 en = "Worlds"
 de = "Welten"
 hu = "Világok"
+sv = "Världar"
 [instance.servers]
 en = "Servers"
 de = "Server"
 hu = "Szerverek"
+sv = "Servrar"
 [instance.total_playtime]
 en = "Total Playtime"
 de = "Insgesammte Spielzeit"
 hu = "Össz játékidő"
+sv = "Total speltid"
 [instance.current_session]
 en = "Current Session"
 de = "Aktuelle Sitzung"
 hu = "Jelenlegi játékmenet"
+sv = "Nuvarande Session"
 [instance.vanilla]
 en = "Vanilla"
 de = "Vanilla"
 hu = "Vanilla"
+sv = "Vanilla"
 [instance.unable_to_find]
 en = "Unable to find instance"
 de = "Instanz konnte nicht gefunden werden"
 hu = "Példány nem található"
+sv = "Kunde ej hitta instans"
 [instance.start.title]
 en = "Launching ${name: &str}"
 de = "Starte ${name: &str}"
 hu = "${name: &str} indítása"
+sv = "Startar ${name: &str}"
 [instance.start.label]
 en = "Start"
 de = "Start"
 hu = "Játék"
+sv = "Starta"
 [instance.start.starting]
 en = "Launching..."
 de = "Startet..."
 hu = "Indítás..."
+sv = "Startar..."
 [instance.start.stopping]
 en = "Stopping..."
 de = "Stoppen..."
 hu = "Leállítás..."
+sv = "Stoppar..."
 [instance.start.error]
 en = "Error starting instance"
 de = "Fehler beim Starten der Instanz"
 hu = "Hiba a példány indításakor"
+sv = "Ett fel uppstod då instansen startade"
 [instance.play]
 en = "Play"
 de = "Spiel"
 hu = "Játék"
+sv = "Spela"
 [instance.view]
 en = "View"
 de = "Ansehen"
 hu = "Nézet"
+sv = "Visa"
 [instance.kill]
 en = "Kill"
 de = "Stoppen"
 hu = "Leállítás"
+sv = "Stoppa"
 [instance.kill_instance]
 en = "Kill Instance"
 de = "Stope Instanz"
 hu = "Példány leállítása"
+sv = "Stoppa instansen"
 [instance.delete]
 en = "Delete this instance"
 de = "Lösche diese Instanz"
 hu = "Ez a példány törlése"
+sv = "Radera den här instansen"
 [instance.create_shortcut]
 en = "Create shortcut"
 de = "Verknüpfung erstellen"
 hu = "Gyorsgomb létrehozása"
+sv = "Skapa en genväg"
 [instance.open_folder]
 en = "Open .minecraft folder"
 de = "Öffne .minecraft Ordner"
 hu = ".minecraft mappa megnyitása"
+sv = "Öppna .minecraft mappen"
 [instance.create]
 en = "Create Instance"
 de = "Erstelle Instanz"
 hu = "Példány létrehozása"
+sv = "Skapa Instans"
 [instance.name]
 en = "Name"
 de = "Name"
 hu = "Név"
+sv = "Namn"
 [instance.name_placeholder]
 en = "<instance name>"
 de = "<Instanz Name>"
 hu = "<példány neve"
+sv = "<instansens namn>"
 [instance.version]
 en = "Version"
 de = "Version"
 hu = "Verzió"
+sv = "Version"
 [instance.loader]
 en = "Loader"
 de = "Loader"
 hu = "Betöltő"
+sv = "Loader"
 [instance.loader_version]
 en = "${loader: &str} Version"
 de = "${loader: &str} Version"
 hu = "${loader: &str} Verzió"
+sv = "${loader: &str} Version"
 [instance.game_version]
 en = "Game Version"
 de = "Spielversion"
 hu = "Játék verzió"
+sv = "Spelversion"
 [instance.mc_version]
 en = "Minecraft Version"
 de = "Minecraft Version"
 hu = "Minecraft verzió"
+sv = "Minecraft Version"
 [instance.show_snapshots]
 en = "Show Snapshots"
 de = "Vorabversionen anzeigen"
 hu = "Snapshot-ok mutatása"
+sv = "Visa Snapshots"
 [instance.modloader]
 en = "Modloader"
 de = "Modloader"
 hu = "Modloader"
+sv = "Modloader"
 [instance.select_icon]
 en = "Select Icon"
 de = "Bild auswählen"
 hu = "Válassz ikont"
+sv = "Välj Ikon"
 [instance.select_png_icon]
 en = "Select PNG Icon"
 de = "PNG Bild auswählen"
 hu = "Válassz egy PNG ikont"
+sv = "Välj PNG ikon"
 [instance.instance_name]
 en = "Instance name"
 de = "Instanzname"
 hu = "Példány neve"
+sv = "Instans namn"
 [instance.invalid_name]
 en = "Invalid name"
 de = "Invalieder Name"
 hu = "Érvénytelen név"
+sv = "Ogiltigt namn"
 [instance.export.action]
 en = "Export"
 hu = "Export"
+sv = "Exportera"
 [instance.export.title]
 en = "Export Instance"
 hu = "Példány exportálása"
+sv = "Exportera instansen"
 [instance.export.progress]
 en = "Exporting instance"
 hu = "Példány exportálása"
+sv = "Exporterar instansen"
 [instance.export.error]
 en = "Error exporting instance"
 hu = "Hiba a példány exportálása közben"
+sv = "Fel vid export av instans"
 [instance.export.format.label]
 en = "Format"
 hu = "Formátum"
+sv = "Format"
 [instance.export.format.zip]
 en = "Instance Zip"
 hu = "Példány Zip"
+sv = "Instans Zip-fil"
 [instance.export.format.modrinth]
 en = "Modrinth Pack (.mrpack)"
 hu = "Modrinth Pack (.mrpack)"
+sv = "Modrinth Pack (.mrpack)"
 [instance.export.format.curseforge]
 en = "CurseForge Pack (.zip)"
 hu = "CurseForge Pack (.zip)"
+sv = "CurseForge Pack (.zip)"
 [instance.export.options]
 en = "Export Options"
 hu = "Export beállítások"
+sv = "Exportera alternativ"
 [instance.export.modrinth_options]
 en = "Modrinth Options"
 hu = "Modrinth beállítások"
+sv = "Modrinth inställningar"
 [instance.export.curseforge_options]
 en = "CurseForge Options"
 hu = "CurseForge beállítások"
+sv = "CurseForge inställningar"
 [instance.export.include_saves]
 en = "Include saves"
 hu = "Mentések belefoglalása"
+sv = "Inkludera världar"
 [instance.export.include_mods]
 en = "Include mods"
 hu = "Modok belefoglalása"
+sv = "Inkludera mods"
 [instance.export.include_resourcepacks]
 en = "Include resourcepacks"
 hu = "forráscsomagok belefoglalása"
+sv = "Inkludera resurspacket"
 [instance.export.include_configs]
 en = "Include configs"
 hu = "Konfigurációk belefoglalása"
+sv = "Inkludera konfigurationsfiler"
 [instance.export.include_logs]
 en = "Include logs/crash reports"
 hu = "Naplófájlok/összeomlási jelentések belefoglalása"
+sv = "Inkludera loggar/krashrapporteringar"
 [instance.export.include_cache]
 en = "Include cache files"
 hu = "Gyorsítótár fájlok belefoglalása"
+sv = "Inkludera Cache filer"
 [instance.export.include_synced]
 en = "Include synced folders"
 hu = "Szinkronizált mappák belefoglalása"
+sv = "Inkludera synkade foldrar"
 [instance.export.name]
 en = "Name"
 hu = "Név"
+sv = "Namn"
 [instance.export.version]
 en = "Version"
 hu = "Verzió"
+sv = "version"
 [instance.export.summary]
 en = "Summary"
 hu = "Összegzés"
+sv = "Sammanfattning"
 [instance.export.author]
 en = "Author"
 hu = "Szerző"
+sv = "Författare"
 [instance.export.recommended_ram]
 en = "Recommended RAM"
 hu = "Ajánlott RAM"
+sv = "Rekommenderat RAM-minne"
 [instance.versions_loading.game_versions]
 en = "Loading Minecraft Versions..."
 de = "Lade Minecraft Versionen..."
 hu = "Minecraft verziók betöltése..."
+sv = "Laddar Minecraft Versioner..."
 [instance.versions_loading.reload]
 en = "Reload Versions"
 de = "Versionen neuladen"
 hu = "Verziók újratöltése"
+sv = "Ladda om Versioner"
 [instance.versions_loading.possible_loader_error]
 en = "Error loading possible loader versions"
 de = "Fehler beim Laden möglicher Modloader-Versionen"
 hu = "Hiba történt a lehetséges verziók betöltésekor"
+sv = "Ett fel uppstod då möjliga versioner skulle laddas in"
 [instance.versions_loading.error]
 en = "Error loading Minecraft versions"
 de = "Fehler beim laden von Minecraft Versionen"
 hu = "Hiba a Minecraft verziók betöltésekor"
+sv = "Ett vid laddning av Minecraft versioner"
 [instance.memory]
 en = "Set Memory"
 de = "Arbeitsspeicher"
 hu = "Memória beállítása"
+sv = "RAM-minne"
 [instance.wrapper_command]
 en = "Add Wrapper Command"
 de = "Füge Wrapper Befehl hinzu"
 hu = "Wrapper parancs hozzáadása"
+sv = "Lägg till ett wrapper-kommand"
 [instance.jvm_flags]
 en = "Add JVM Flags"
 de = "Fügen JVM Argumente hinzu"
 hu = "JVM argumentumok hozzáadása"
+sv = "Lägg till JVM-argument"
 [instance.jvm_binary]
 en = "Override JVM Binary"
 de = "Überschreibe JVM Binary"
 hu = "JVM Binary felülírása"
+sv =  "Överskrid JVM programfil"
 [instance.select_jvm_binary]
 en = "Select JVM Binary"
 de = "Wähle JVM Binary aus"
 hu = "JVM Binary választása"
+sv = "Välj JVM programfil"
 [instance.glfw_lib]
 en = "Use System GLFW"
 de = "Verwende System GLFW"
 hu = "Rendszer GLFW használata"
+sv = "Välj systemets GLFW"
 [instance.select_glfw_lib]
 en = "Select GLFW Library"
 de = "Wähle GLFW Bibiliothek aus"
 hu = "GLFW könyvtár kiválasztása"
+sv = "Välj GLFW bibliotek"
 [instance.openal_lib]
 en = "Use System OpenAL"
 de = "Verwende System OpenAL"
 hu = "Rendszer OpenAL használata"
+sv = "Använd Systemets OpenAL (Ljud programvaru-bibliotek)"
 [instance.select_openal_lib]
 en = "Select OpenAL Library"
 de = "Wähle OpenAL Bibiliothek aus"
 hu = "OpenAL könyvtár választása"
+sv = "Välj OpenAL Bibliotek"
 
 [instance.security.label]
 en = "Security"
 de = "Sicherheit"
 hu = "Biztonság"
+sv = "Säkerhet"
 [instance.security.sandbox]
 en = "Sandbox"
 de = "Isolierung"
 hu = "Izolálás"
+sv = "Sandlådeisolering"
 
 [instance.linux.label]
 en = "Linux Performance"
 de = "Linux Performance"
 hu = "Linux teljesítmény"
+sv = "Linux Prestanda"
 [instance.linux.use_mangohud]
 en = "Use MangoHud"
 de = "Nutze MangoHud"
 hu = "MangoHud használata"
+sv = "Använd MangoHud"
 [instance.linux.use_gamemode]
 en = "Use GameMode"
 de = "Nutze GameMode"
 hu = "GameMode használata"
+sv = "Använd GameMode"
 [instance.linux.use_discrete_gpu]
 en = "Use Discrete GPU"
 de = "Diskrete GPU verwenden"
 hu = "Diszkrét GPU használata"
+sv = "Använd diskret grafikkort"
 [instance.linux.disable_gl_threaded_optimizations]
 en = "Disable GL Threaded Optimizations"
 de = "GL-Thread-Optimierungen deaktivieren"
 hu = "GL-Thread-Optimizációk kikapcsolása"
+sv = "Inaktivera GL-trådade optimeringar"
 
 [instance.delete_dialog.title]
 en = "Delete Instance: ${name: &str}"
 de = "Lösche Instanz: ${name: &str}"
 hu = "Példány törlése: ${name: &str}"
+sv = "Radera Instansen: ${name: &str}"
 [instance.delete_dialog.label]
 en = "I want to delete this instance"
 de = "Ich möchte diese Instanz löschen"
 hu = "Törölni akarom ezt a példányt"
+sv = "Jag vill ta bort instansen"
 [instance.delete_dialog.check]
 en = "I have read and understand these effects"
 de = "Ich habe die Konsequenzen gelesen und verstanden"
 hu = "Elolvastam és megértettem a következményeket"
+sv = "Jag har läst och förstått dessa effekter"
 [instance.delete_dialog.confirm_text]
 en = "To confirm, type '${name: &str}' in the box below"
 de = "Um zu bestätigen gebe „${name: &str}“ ein"
 hu = "A megerősítéshez írd be, hogy '${name: &str}' az alábbi mezőbe"
+sv = "Föra att konfirmera, skriv '${name: &str}' i lådan under"
 [instance.delete_dialog.warning]
 en = "This will permanently delete the '${name: &str}' instance and associated saves, resourcepacks, mods, configuration files, and more. These files will not be recoverable"
 de = "Dadurch will die Instanz „${name: &str}“ sowie die zugehörigen Spielstände, Ressourcenpakete, Mods, Konfigurationsdateien und weitere Elemente endgültig gelöscht. Diese Dateien können nicht wiederhergestellt werden."
 hu = "Ez örökre törölni fogja a(z) '${name: &str}' példányt és a hozzá tartozó mentéseket, forráscsomagokat, konfigurációs fájlokat és másokat. Ezek a fájlok nem lesznek visszaszerezhetőek"
+sv = "Detta kommer att permanent radera instansen med namn: '${name: &str}' och tillhörande sparade världar, resurspaket, mods, konfigurationsfiler och mer. Dessa filer kommer inte att kunna återställas"
 
 [instance.logs.title]
 en = "Logs"
 de = "Protokolle"
 hu = "Naplók"
+sv = "Loggar"
 [instance.logs.none]
 en = "No available logs"
 de = "Keine verfügbare Protokolle"
 hu = "Nincs elérhető naplófájl"
+sv = "Inga tillgängliga loggar"
 [instance.logs.loading]
 en = "Loading available logs..."
 de = "Lade verfügbare Protokolle..."
 hu = "Elérhető naplófájlok betöltése..."
+sv = "Laddar tillgängliga loggar..."
 [instance.logs.cleanup.bytes]
 en = "Cleanup old log files (${num: usize} bytes)"
 de = "Räume alte Protokolle auf (${num: usize} bytes)"
 hu = "Régi naplófájlok tisztítása (${num: usize} byte)"
+sv = "Städa upp gamla logg-filer (${num: usize} bytes)"
 [instance.logs.cleanup.kb]
 en = "Cleanup old log files (${num: usize}kB)"
 de = "Räume alte Protokolle auf (${num: usize}kB)"
 hu = "Régi naplófájlok tisztítása (${num: usize}kB)"
+sv = "Städa upp gamla logg-filer (${num: usize}kB)"
 [instance.logs.cleanup.mb]
 en = "Cleanup old log files (${num: usize}MB)"
 de = "Räume alte Protokolle auf (${num: usize}MB)"
 hu = "Régi naplófájlok tisztítása (${num: usize}MB)"
+sv = "Städa upp gamla logg-filer (${num: usize}MB)"
 [instance.logs.cleanup.gb]
 en = "Cleanup old log files (${num: usize}GB)"
 de = "Räume alte Protokolle auf (${num: usize}GB)"
 hu = "Régi naplófájlok tisztítása (${num: usize}GB)"
+sv = "Städa upp gamla logg-filer (${num: usize}GB)"
 [instance.logs.select_file]
 en = "Select log file"
 de = "Wähle Protokolle aus"
 hu = "Válassz naplófájlt"
+sv = "Välj log-fil"
 [instance.logs.upload.label]
 en = "Upload"
 de = "Hochladen"
 hu = "Feltöltés"
+sv = "Ladda upp"
 [instance.logs.upload.title]
 en = "Uploading log file"
 de = "Lade Protokolle"
 hu = "Naplófájl feltöltése"
+sv = "Ladda upp log-fil"
 [instance.logs.upload.error]
 en = "Error uploading log file"
 de = "Fehler beim Hochladen von Protokollen"
 hu = "Hiba a naplófájl feltöltésekor"
+sv = "Fel vid uppladdninga var loggar"
 
 [instance.content.title]
 en = "Content"
 de = "Inhalt"
 hu = "Tartalom"
+sv = "Innehåll"
 [instance.content.mods]
 en = "Mods"
 de = "Mods"
 hu = "Modok"
+sv = "Mods"
 [instance.content.modpacks]
 en = "Modpacks"
 de = "Modpakete"
 hu = "Modcsomagok"
+sv = "Modpack"
 [instance.content.resourcepacks]
 en = "Resourcepacks"
 de = "Ressourcenpakete"
 hu = "Forráscsomagok"
+sv = "Resurspacket"
 [instance.content.shaders]
 en = "Shaders"
 de = "Shaders"
 hu = "Shaderek"
+sv = "Shaders"
 [instance.content.filename_prefix]
 en = "Filename: "
 de = "Dateiname: "
 hu = "Fájlnév: "
+sv = "Filnamn: "
 [instance.content.version.mod]
 en = "Mod Version"
 de = "Mod Version"
 hu = "Mod verzió"
+sv = "Mod-version"
 [instance.content.version.modpack]
 en = "Modpack Version"
 de = "Modpaket Version"
 hu = "Modcsomag verzió"
+sv = "Modpacks-Version"
 [instance.content.version.resourcepack]
 en = "Pack Version"
 de = "Paket Version"
 hu = "Csomag verzió"
+sv = "Paket-version"
 [instance.content.version.shader]
 en = "Shader Version"
 de = "Shader Version"
 hu = "Shader verzió"
+sv = "Shader-Version"
 [instance.content.version.file]
 en = "File Version"
 de = "Dateiversion"
 hu = "File verzió"
+sv = "Fil-Version"
 [instance.content.search.mod]
 en = "Search mods..."
 de = "Suche Mods..."
 hu = "Modok keresése..."
+sv = "Sök Mods..."
 [instance.content.search.modpack]
 en = "Search modpacks..."
 de = "Suche Modpakete..."
 hu = "Modcsomagok keresése..."
+sv = "Sök modpacks..."
 [instance.content.search.resourcepack]
 en = "Search resourcepacks..."
 de = "Suche Ressourcenpakete..."
 hu = "Forráscsomagok keresése..."
+sv = "Sök resurspaket..."
 [instance.content.search.shader]
 en = "Search shaders..."
 de = "Suche Shader..."
 hu = "Shaderek keresése..."
+sv = "Sök shaders..."
 [instance.content.search.file]
 en = "Search..."
 de = "Suche..."
 hu = "Keresés..."
+sv = "Sök..."
 [instance.content.requesting_from_modrinth_error]
 en = "Error requesting from Modrinth"
 de = "Fehler beim Abrufen von Modrinth"
 hu = "Hiba a Modrinth lekérése közben"
+sv = "Fel vid hämtning från Modrinth"
 [instance.content.unnamed]
 en = "Unnamed"
 de = "Unbenannt"
 hu = "Névtelen"
+sv = "Namnlös"
 [instance.content.open_page]
 en = "Open Page"
 de = "Öffne Seite"
 hu = "Oldal megnyitása"
+sv = "Öppna sida"
 [instance.content.by]
 en = "by ${name: &str}"
 de = "von ${name: &str}"
 hu = "tőle: ${name: &str}"
+sv = "av ${name: &str}"
 [instance.content.no_description]
 en = "No Description"
 de = "Keine Beschreibung"
 hu = "Nincs leírás"
+sv = "Igen beskrivning"
 [instance.content.error_loading]
 en = "Error loading project"
 de = "Fehler beim laden vom Projekt"
 hu = "Hiba a projekt betöltésekor"
+sv = "Fel vid laddning av projekt"
 [instance.content.no_gallery]
 en = "No gallery images"
 de = "Keine Bilder"
 hu = "Nincsnek galéria képek"
+sv = "Inget bildgalleri"
 [instance.content.tabs.description]
 en = "Description"
 de = "Beschreibung"
 hu = "Leírás"
+sv = "Beskrivning"
 [instance.content.tabs.gallery]
 en = "Gallery"
 de = "Gallerie"
 hu = "Galéria"
+sv = "Galleri"
 [instance.content.links.source]
 en = "Source"
 de = "Quellcode"
 hu = "Forrás"
+sv = "Källa"
 [instance.content.links.issues]
 en = "Issues"
 de = "Fehler melden"
 hu = "Hiba jelentések"
+sv = "Problem"
 [instance.content.links.wiki]
 en = "Wiki"
 de = "Wiki"
 hu = "Wiki"
+sv = "Wiki"
 [instance.content.links.discord]
 en = "Discord"
 de = "Discord"
 hu = "Discord"
+sv = "Discord"
 [instance.content.categories]
 en = "Categories"
 de = "Kategorien"
 hu = "Kategóriák"
+sv = "Kategorier"
 [instance.content.sort]
 en = "Sort by"
 de = "Sortieren nach"
 hu = "Rendszerezés"
+sv = "Sortera efter"
 [instance.content.downloads.b]
+# Billion
 en = "${num: f64}B Downloads"
 de = "${num: f64}Mrd. Downloads"
 hu = "${num: f64}Mrd letöltés"
+sv = "${num: f64}md Nedladdningar"
 [instance.content.downloads.m]
 en = "${num: f64}M Downloads"
 de = "${num: f64}Mil. Downloads"
 hu = "${num: f64}M letöltés"
+sv = "${num: f64}mn Nedladdningar"
 [instance.content.downloads.k]
 en = "${num: f64}K Downloads"
 de = "${num: f64}Tsd. Downloads"
 hu = "${num: f64}E letöltés"
+sv = "${num: f64}k Nedladdningar"
 [instance.content.downloads.n]
 en = "${num: u64} Downloads"
 de = "${num: u64} Downloads"
 hu = "${num: u64} letöltés"
+sv = "${num: u64} Nedladdningar"
 [instance.content.load.versions.title]
 en = "Loading mod versions..."
 de = "Lade Mod Versionen..."
 hu = "Mod verziók betöltése"
+sv = "Laddar mod versioner..."
 [instance.content.load.versions.not_found]
 en = "No mod versions found"
 de = "Keine Mod Versionen gefunden"
 hu = "Nem találhatók mod verziók"
+sv = "Inga mod versioner hittade"
 [instance.content.load.versions.not_found_for]
 en = "No mod versions found for ${ver: &str}"
 de = "Keine Mod Version für ${ver: &str} gefunden"
 hu = "Nem található mod verzió a(z) ${ver: &str} verzióhoz"
+sv = "Inga mod versioner hittade för ${ver: &str}"
 [instance.content.load.versions.not_found_for_loader]
 en = "No mod versions found for ${loader: &str} ${ver: &str}"
 de = "Keine Mod Version für ${loader: &str} ${ver: &str} gefunden"
 hu = "Nem található verzió a(z) ${loader: &str} ${ver: &str} loaderhez"
+sv = "Inga mod versioner hittade för ${loader: &str} ${ver: &str}"
 [instance.content.load.versions_from_modrinth.title]
 en = "Loading project versions from Modrinth..."
 de = "Lade Projektversionen von Modrinth..."
 hu = "Projekt verziók betöltése a Modrinthről..."
+sv = "Laddar projektets versioner från Modrinth"
 [instance.content.load.versions_from_modrinth.error]
 en = "Error loading project versions from Modrinth: ${err: &str}"
 de = "Fehler beim laden von Projektversionen von Modrinth: ${err: &str}"
 hu = "Hiba a projekt verziók betöltésekor a Modrinthről: ${err: &str}"
+sv = "Fel vid laddning av projektversioner från Modrinth: ${err: &str}"
 [instance.content.install.label]
 en = "Install"
 de = "Installieren"
 hu = "Telepítés"
+sv = "Installera"
 [instance.content.install.title]
 en = "Install ${name: &str}"
 de = "Installiere ${name: &str}"
 hu = "${name: &str} telepítése"
+sv = "Installera ${name: &str}"
 [instance.content.install.reinstall]
 en = "Reinstall"
 de = "Neuinstallieren"
 hu = "Újratelepítés"
+sv = "Ominstallera"
 [instance.content.install.latest]
 en = "Install Latest"
 de = "Installiere neuste Version"
 hu = "Legújabb telepítése"
+sv = "Installerar nyaste"
 [instance.content.install.error]
 en = "Error installing content"
 de = "Fehler beim installieren von Inhalt"
 hu = "Hiba a tartalom telepítésekor"
+sv = "Fel vid installation av innehåll"
 [instance.content.install.always_latest]
 en = "Always install the latest version. Untick to be able to choose older versions of content to install"
 de = "Installiert immer die neuste Version. Deaktivieren um ältere Versionen installieren zu können"
 hu = "Mindíg a legújabb telepítése. Szedd ki a pipát, hogy régebbi verziót tudj telepíteni"
+sv = "Installera alltid den senaste versionen. Avmarkera om du vill kunna välja äldre versioner av innehåll att installera."
 [instance.content.install.from_modrinth]
 en = "Add from Modrinth"
 de = "Von Modrinth hinzufügen"
 hu = "Hozzáadás Modrinthről"
+sv = "Lägg till från Modrinth"
 [instance.content.install.from_curseforge]
 en = "Add from Curseforge"
 de = "Von Curseforge hinzufügen"
 hu = "Hozzáadás Curseforgeról"
+sv = "Lägg till från Curseforge"
 [instance.content.install.from_file]
 en = "Add from file"
 de = "Von Datei hinzufügen"
 hu = "Hozzáadás fájlból"
+sv = "Lägg till från fil"
 [instance.content.install.unable_other_type]
 en = "Unable to install 'other' project type"
 de = "Konnte Projektart „anderes“ nicht Installieren"
 hu = "Nem lehet telepíteni a 'más' projekt típust"
+sv = "Det gick inte att installera projekttypen 'annan'"
 [instance.content.install.invalid_filename]
 en = "Invalid/dangerous filename"
 de = "Invalieder/Gefährlicher Dateinname"
 hu = "Érvénytelen/veszélyes fájlnév"
+sv = "Ogilgit/farligt filnamn"
 [instance.content.install.missing_sha1_hash]
+#WARN: I do not think users know what sha1 is 
 en = "Missing sha1 hash"
 de = "Fehlender sha1 Hash"
 hu = "Hiányzik az sha1 hash"
+sv = "saknad sha1-hash"
 [instance.content.install.no_third_party_downloads]
 en = "The mod author has blocked downloads from third-party launchers"
 de = "Der Mod Autor hat das herunterladen von Drittanbietern blockiert"
 hu = "A mod készítője letiltotta a harmadik féltől származó indítókon keresztüli letöltéseket"
+sv = "Modförfattaren har blockerat nedladdningar från tredjeparts launchers"
 [instance.content.install.select_mods]
 en = "Select mods to install"
 de = "Wähle zu installierende Mods aus"
 hu = "Válaszd ki a telepíteni kívánt modokat"
+sv = "Välj mods att installera"
 [instance.content.install.new_instance_with.mod]
 en = "Create new instance with this mod"
 de = "Erstelle neue Instanz mit dieser Mod"
 hu = "Új példány létrehozása ezzel a moddal"
+sv = "Skapa en ny instans med detta mod"
 [instance.content.install.new_instance_with.modpack]
 en = "Create new instance with this modpack"
 de = "Erstelle eine neue Instanz mit diesem Modpaket"
 hu = "Új példány létrehozása ezzel a modcsomaggal"
+sv = "Skapa en ny instans med detta modpacket"
 [instance.content.install.new_instance_with.resourcepack]
 en = "Create new instance with this resourcepack"
 de = "Erstelle eine neue Instanz mit diesem Ressourcenpaket"
 hu = "Új példány létrehozása ezzel a forráscsomaggal"
+sv = "Skapa en ny instans med detta resurspacket"
 [instance.content.install.new_instance_with.shader]
 en = "Create new instance with this shader"
 de = "Erstelle eine neue Instanz mit diesem Shader"
 hu = "Új példány létrehozása ezzel a shaderrel"
+sv = "Skapa en ny instans med denna shader"
 [instance.content.install.new_instance_with.file]
 en = "Create new instance with this file"
 de = "Erstelle eine neue Instanz mit dieser Datei"
 hu = "Új példány létrehozása ezzel a fájllal"
+sv = "Skapa en ny instans med denna fil"
 [instance.content.install.add_to_instance]
 en = "Add to instance"
 de = "Zu Instanz hinzufügen"
 hu = "Hpzzáadás a példányhoz"
+sv = "Lägg till i instans"
 [instance.content.install.install_dependency]
 en = "Install 1 dependency"
 de = "Installiere 1 Abhängigkeit"
 hu = "1 függőség telepítése"
+sv = "Installera 1 beroende"
 [instance.content.install.install_dependencies]
 en = "Install ${num: usize} dependencies"
 de = "Installiere ${num: usize} Abhängigkeiten"
 hu = "${num: usize} függőség telepítés"
+sv = "Installera ${num: usize} beroenden"
 [instance.content.install.no_mod_version_selected]
 en = "No mod version selected"
 de = "Keine Modversion ausgewählt"
 hu = "Nincs kiválasztva mod verzió"
+sv = "Igen mod-version vald"
 [instance.content.install.unable_install_other]
 en = "Unable to install 'other' project type"
 de = "Konnte Projekttype „Anderes“ nicht installieren"
 hu = "Nem lehet telepíteni a 'más' projekt típust"
+sv = "Kunde ej installera 'andra' projekt-typ"
 [instance.content.install.no_matching_versions]
 en = "Unable to find matching version of project"
 de = "Es konnte keine passende Version des Projekts gefunden werden"
 hu = "Nem található egyező projekt verzió"
+sv = "Kunde ej hitta matchande version av projekt"
 [instance.content.install.unknown_type]
 en = "Don't know how to handle this type of content"
 de = "Keine Ahnung wie man diesem Typ von Inhalt installiert"
 hu = "Nem lehet kezelni ezt a típúsú tartalmat"
+sv = "Vet ej hur man hanterar denna typ av innehåll"
 [instance.content.install.select_resourcepacks]
 en = "Select resource packs to install"
 de = "Wähle Ressourcenpakete aus um sie zu installieren"
 hu = "Válaszd ki a telepíteni kívánt forráscsomagokat"
+sv = "Välj resurspaket att installera"
 [instance.content.install.select_shaders]
 en = "Select shaders to install"
+sv = "Välj shaders att installera"
 [instance.content.update.label]
 en = "Update"
 de = "Aktualisieren"
 hu = "Frissítés"
+sv = "Uppdatera"
 [instance.content.update.check.label]
 en = "Check for updates"
 en_short = "Update Check"
@@ -1312,327 +1643,411 @@ de = "Nach Aktualisieren suchen"
 de_short = "Aktualisierungs Prüfung"
 hu = "Frissítések keresése"
 hu_short = "Frissítés keresése"
+sv = "Kolla efter uppdateringar"
+sv_short = "Uppdateringskontroll"
 [instance.content.update.check.title]
 en = "Checking for updates"
 de = "Suche nach Aktualisierungen"
 hu = "Frissítések keresése"
+sv = "Kollar efter uppdateringar"
 [instance.content.update.check.error]
 en = "Error checking for updates"
 de = "Fehler beim suchen nach Aktualisierungen"
 hu = "Hiba a frissítések keresése közben"
+sv = "Fel vid sökandet efter uppdateringar"
 [instance.content.update.check.error_404]
 en = "Error while checking updates - 404 not found"
 de = "Fehler beim suchen nach Aktualisierungen - 404 nicht gefunden"
 hu = "Hiba a frissítések keresése közben - 404 nem található"
+sv = "Fel vid sökandet efter uppdateringar - 404 hittades ej"
 [instance.content.update.check.invalid_hash_error]
 en = "Error while checking updates - returned invalid hash"
 de = "Fehler beim suchen nach Aktualisierungen - falscher hash"
 hu = "Hiba a frissítések keresése közben - helytelen a hash"
+sv = "Fel vid sökandet efter uppdateringar - ogiltig hash"
 [instance.content.update.check.last_up_to_date]
 en = "Up-to-date as of last check"
 de = "Aktuell, Stand letzter Überprüfung"
 hu = "Legutóbbi ellenőrzés óta naprakész"
+sv = "Uppdaterad från senaste kontrollen"
 [instance.content.update.check.up_to_date]
 en = "Up-to-date"
 de = "Aktuell"
 hu = "Naprakész"
+sv = "Senaste"
 [instance.content.update.download.error]
 en = "Error downloading update"
 de = "Fehler beim herunterladen von der Aktuallisierung"
 hu = "Hiba a frissítés letöltése közben"
+sv = "Fel vid nedladdning av uppdatering"
 [instance.content.update.download.from_modrinth]
 en = "Download update from Modrinth"
 de = "Lade Aktuallisierung von Modrinth herunter"
 hu = "Frissítés letöltése a Modrinthről"
+sv = "Ladda ned uppdatering från Modrinth"
 [instance.content.update.download.from_curseforge]
 en = "Download update from Curseforge"
 de = "Lade Aktuallisierung von Curseforge herunter"
 hu = "Frissítés letöltése a Curseforgeról"
+sv = "Ladda ned uppdatering från Curseforge"
 [instance.content.update.error]
 en = "Error updating mod"
 de = "Fehler beim Aktualisieren"
 hu = "Hiba a mod frissítése közben"
+sv = "Fel vid uppdatering av mod"
 [instance.content.update.installed_manually]
 en = "Installed manually - cannot automatically update"
 de = "Manuell installiert – kann nicht automatisch aktualisiert werden"
 hu = "Telepítés egyedileg - nem lehet autómatikusan frissíteni"
+sv = "Installera manuellt - kan inte automatiskt uppdatera"
 
 [instance.sync.label]
 en = "Syncing"
 de = "Synchronisierung"
 hu = "Stinkronizál"
+sv = "Synkar"
 [instance.sync.description]
 en = "These options allow for syncing various files/folders across instances"
 de = "Diese Optionen ermöglichen die Synchronisierung verschiedener Dateien/Ordner über verschiedene Instanzen hinweg"
 hu = "Ezek az opciók megengedik a különböző fájlok/mappák szinkronizálását a példányok között"
+sv = "Dessa alternativ möjliggör synkronisering av olika filer/mappar mellan instanser"
 [instance.sync.open_folder]
 en = "Open synced folders directory"
 de = "Öffne synchronisierte Ordner"
 hu = "Szinkronizált mappák megnyitása"
+sv = "Öppna katalogen för synkroniserade mappar"
 [instance.sync.already_exists]
 en = "${num: usize} instance(s) already contain a '${name: &str}' folder. Please safely backup and remove the folders to enable syncing"
 de = "${num: usize} Instanzen enthalten einen „${name: &str}“ Ordner. Bitte erstelle eine sicherheits Kopie und lösche den Ordner um zu synchronisieren"
 hu = "${num: usize} példány már tartalmazza a(z) '${name: &str}' mappát. Kérlek csinálj biztonsági mentést a mappákról, majd töröld őket, hogy bekapcsolhasd a szinkronizálást"
+sv = "${num: usize} instans(er) innehåller redan en '${name: &str}' mapp. Säkerhetskopiera och ta bort mapparna på ett säkert sätt för att aktivera synkronisering"
 [instance.sync.folders_count]
 en = "(${count: usize}/${total: usize} folders synced)"
 de = "(${count: usize}/${total: usize} Ordner synchronisiert)"
 hu = "(${count: usize}/${total: usize} mappa szinkronizálva)"
+sv = "(${count: usize}/${total: usize} foldrar synkade)"
 [instance.sync.unable_count]
 en = "${count: usize}/${total: usize} instances are unable to be synced!"
 de = "${count: usize}/${total: usize} Instanzen konnten nicht synchronisiert werden!"
 hu = "${count: usize}/${total: usize} példány nem szinkronizálható!"
+sv = "${count: usize}/${total: usize} instanser kan ej synkas!"
 [instance.sync.files]
 en = "Files"
 de = "Dateien"
 hu = "Fájlok"
+sv = "Filer"
 [instance.sync.folders]
 en = "Folders"
 de = "Ordner"
 hu = "Mappák"
+sv = "Foldrar"
 [instance.sync.mods]
 en = "Mods"
 de = "Mods"
 hu = "Modok"
+sv = "Mods"
 [instance.sync.custom]
 en = "Custom"
 de = "Benutzerdefiniert"
 hu = "Egyedi"
+sv = "Användardefinierat"
 [instance.sync.sync_name_file]
 en = "Sync ${name: &str} file"
 de = "Synchronisiere ${name: &str}"
 hu = "${name: &str} fájl szinkronizálása"
+sv = "Synka ${name: &str} filen"
 [instance.sync.sync_name_folder]
 en = "Sync ${name: &str} folder"
 de = "Synchronisiere ${name: &str}"
 hu = "${name: &str} mappa szinkronizálása"
+sv = "Synka ${name: &str} foldern"
 [instance.sync.sync_file]
 en = "Sync file"
 de = "Synchronisiere Datei"
 hu = "Fájl szinkronizálása"
+sv = "Synka fil"
 [instance.sync.sync_folder]
 en = "Sync folder"
 de = "Synchronisiere Ordner"
 hu = "Mappa szinkronizálása"
+sv = "Synka folder"
 [instance.sync.disable_syncing]
 en = "Disable Instance File Syncing"
 de = "Deaktiviere Datensynchronisierung"
 hu = "Példány fájlok szinkronizálásának kikapcsolása"
+sv = "Stäng av instans fil synkning"
 [instance.sync.targets.options]
 en = "Sync options.txt"
 de = "Synchronisiere options.txt"
 hu = "options.txt szinkronizálása"
+sv = "Synka options.txt"
 [instance.sync.targets.servers]
 en = "Sync servers.dat"
 de = "Synchronisiere servers.dat"
 hu = "server.dat szinkronizálása"
+sv = "Synka server.dat"
 [instance.sync.targets.commands]
 en = "Sync command_history.txt"
 de = "Synchronisiere command_history.txt"
 hu = "command_history.txt szinkronizálása"
+sv = "Synka command_history.txt"
 [instance.sync.targets.hotbars]
 en = "Sync hotbar.nbt"
 de = "Synchronisiere hotbar.nbt"
 hu = "hotbar.nbt szinkronizálása"
+sv = "Synka hotbar.nbt"
 [instance.sync.targets.saves]
 en = "Sync saves folder"
 de = "Synchronisiere Welten Ordner"
 hu = "Világok mappájának szinkronizálása"
+sv = "Synka värld-folder"
 [instance.sync.targets.config]
 en = "Sync config folder"
 de = "Synchronisiere Konfigurationsordner"
 hu = "Konfigurációs mappa szinkronizálása"
+sv = "Synka konfig folder"
 [instance.sync.targets.screenshots]
 en = "Sync screenshots folder"
 de = "Synchronisiere Bildschirmaufnahmen"
 hu = "Képernyőképek mappájának szinkronizálása"
+sv = "Synka skärmsklipps folder"
 [instance.sync.targets.resourcepacks]
 en = "Sync resourcepacks folder"
 de = "Synchronisiere Ressourcenpakete"
 hu = "Forráscsomagok mappájának szinkronizálása"
+sv = "Synka resurspakets folder"
 [instance.sync.targets.shaderpacks]
 en = "Sync shaderpacks folder"
 de = "Synchronisiere Shaderpakete"
 hu = "Shadercsomagok mappájának szinkronizálása"
+sv = "Synka shaderpakets folder"
 [instance.sync.targets.flashback]
 en = "Sync Flashback (flashback) folder"
 de = "Synchronisiere Flashback Ordner (flashback)"
 hu = "Flashback (flashback) mappájának szinkronizálása"
+sv = "Synka Flashback (flashback) folder"
 [instance.sync.targets.dh]
 en = "Sync Distant Horizons (Distant_Horizons_server_data) folder"
 de = "Synchronisiere Distant Horizons (Distant_Horizons_server_data) Ordner"
 hu = "Distant Horizons (Distant_Horizons_server_data) mappájának szinkronizálása"
+sv = "Synka Distant Horizons (Distant_Horizons_server_data) folder"
 [instance.sync.targets.voxy]
 en = "Sync Voxy (.voxy) folder"
 de = "Synchronisiere Voxy Ordner (.voxy)"
 hu = "Voxy (.voxy) mappájának szinkronizálása"
+sv = "Synka Voxy (.voxy) folder"
 [instance.sync.targets.xaero]
 en = "Sync Xaero's Minimap (xaero) folder"
 de = "Synchronisiere Xaero's Minimap Ordner (xaero)"
 hu = "Xaero's Minimap (xaero) mappájának szinkronizálása"
+sv = "Synka Xaero's Minimap (xaero) folder"
 [instance.sync.targets.journeymap]
 en = "Sync Journeymap (journeymap) folder"
 de = "Synchronisiere Journeymap Ordner (journeymap)"
 hu = "Journeymap (journeymap) mappájának szinkronizálása"
+sv = "Synka Journeymap (journeymap) folder"
 [instance.sync.targets.bobby]
 en = "Sync Bobby (.bobby) folder"
 de = "Synchronisiere Bobby Ordner (.bobby)"
 hu = "Bobby (.bobby) mappájának szinkronizálása"
+sv = "Synka Bobby (.bobby) folder"
 [instance.sync.targets.litematic]
 en = "Sync Litematic (schematic) folder"
 de = "Synchronisiere Litematic Ordner (schematic)"
 hu = "Litematic (schematic) mappájának szinkronizálása"
+sv = "Synka Litematic (schematic) folder"
 
 [settings.title]
 en = "Settings"
 de = "Einstellungen"
 hu = "Beállítások"
+sv = "Inställningar"
 [settings.interface]
 en = "Interface"
 de = "Benutzeroberfläche"
 hu = "Felület"
+sv = "Gränsnitt"
 [settings.network]
 en = "Network"
 de = "Netzwerk"
 hu = "Hálózat"
+sv = "Nätvärk"
 [settings.theme.title]
 en = "Theme"
 de = "Farbschema"
 hu = "Téma"
+sv = "Tema"
 [settings.theme.open_folder]
 en = "Open theme folder"
 de = "Öffne Farbschema Ordner"
 hu = "Téma mappa megnyitása"
+sv = "Öppna tema folder"
 [settings.theme.open_repo]
 en = "Open theme repository"
 de = "Öffne Farbschema Repository"
 hu = "Téma repository megnyitása"
+sv = "Öppna tema git-repo"
+
 [settings.delete.title]
 en = "Deletion"
 de = "Löschung"
 hu = "Törlés"
+sv = "Radering"
 [settings.delete.skip_mod_delete_confirmation]
 en = "Shift+Click to skip mod delete confirmation"
 de = "Shift+Klick um Mod-Löschungsbestätigung zu überspringen"
 hu = "Shift+Katt a mod törlésének megerősítésének az átlépéséhez"
+sv = "Shift-klicka för att skippa mod raderingskonfirmation"
 [settings.delete.skip_instance_delete_confirmation]
 en = "Shift+Click to skip instance delete confirmation"
 de = "Shift+Klick um Instanz-Löschungsbestätigung zu überspringen"
 hu = "Shift+Katt a példány törlésének megerősítésének az átlépéséhez"
+sv = "Shift-klicka för att skippa instans raderingskonfirmation"
 [settings.windows.title]
 en = "Windows"
 de = "Fenster"
 hu = "Ablakok"
+sv = "Fönster"
 [settings.windows.hide_main_window]
 en = "Hide main window on launch"
 de = "Verstecke Hauptfenster beim Start"
 hu = "Fő ablak elrejtése a játék indításakor"
+sv = "Göm huvudfönstret vid spelstart"
 [settings.windows.open_game_output]
 en = "Open game output on launch"
 de = "Öffne Spiel Ausgabe beim Start"
 hu = "Játéknapló megnyitása a játék indításakor"
+sv = "Öppna spelutdata vid spelstart"
 [settings.windows.close_all_when_main_closed]
 en = "Close all other windows when main window closed"
 de = "Schließe alle anderen Fenster when das Hauptfenster geschlossen ist"
 hu = "Minden másik ablak bezárása a fő ablak bezárásakor"
+sv = "Stäng alla andra fönster när huvudfönstret stängs"
 [settings.windows.use_os_titlebar]
+# Does this work on windows/macos?
 en = "Use OS titlebar (requires restart)"
+sv = "Använd operativsystemets titlebar (kräver omstart)"
 [settings.privacy.title]
 en = "Privacy"
 de = "Privatsphäre"
 hu = "Adatvédelem"
+sv = "Integritet"
 [settings.privacy.hide_usernames]
 en = "Hide usernames"
 de = "Verstecke Nutzernamen"
 hu = "Felhasználónevek elrejtése"
+sv = "Göm användarnamn"
 [settings.privacy.hide_skins]
 en = "Hide skins"
 de = "Verstecke Skins"
 hu = "Kinézetek elrejtése"
+sv = "Göm skinn"
 [settings.privacy.hide_server_addresses]
 en = "Hide server addresses"
 de = "Verstecke Server Adresse"
 hu = "Szerverek címének elrejtése"
+sv = "Göm server addresser"
 [settings.proxy.title]
 en = "Proxy Settings"
 de = "Proxy Einstellung"
 hu = "Proxy beállítások"
+sv = "Proxy inställningar"
 [settings.proxy.enabled]
 en = "Enable Proxy"
 de = "Aktiviere Proxy"
 hu = "Proxy engedélyezése"
+sv = "Aktivira Proxy"
 [settings.proxy.protocol]
 en = "Protocol"
 de = "Protokoll"
 hu = "Protokoll"
+sv = "Protokoll"
 [settings.proxy.host]
 en = "Host"
 de = "Host"
 hu = "Kiszolgáló"
+sv = "Host"
 [settings.proxy.port]
 en = "Port"
 de = "Port"
 hu = "Port"
+sv = "Port"
 [settings.proxy.auth]
 en = "Authentication"
 de = "Authentifizierung"
 hu = "Hitelesítés"
+sv = "Autentisering"
 [settings.proxy.use_auth]
 en = "Use Authentication"
 de = "Nutze Authentifizierung"
 hu = "Hitelesítés használata"
+sv = "Använd autentisering"
 [settings.proxy.username]
 en = "Username"
 de = "Nutzername"
 hu = "Felhasználónév"
+sv = "Användarnamn"
 [settings.proxy.password]
 en = "Password"
 de = "Passwort"
 hu = "Jelszó"
+sv = "Lösenord"
 [settings.proxy.launcher_only_note]
 en = "Note - Proxy settings only apply to the launcher, not the game itself"
 de = "Achtung - Proxyeinstellungen sind nur für Pandora, nicht für Minecraft"
 hu = "Megjegyzés - A proxy beállítások csak az indítóra hatnak, nem a játékra"
+sv = "Observera - Proxy inställningar gäller endast för launchern inte för själva spelet"
 
 [skins.title]
 en = "Skins"
 de = "Skins"
 hu = "Kinézetek"
+sv = "Skinn"
 [skins.capes]
 en = "Capes"
 de = "Umhänge"
 hu = "Köpenyek"
+sv = "Mantlar"
 [skins.login_to_view_edit]
 en = "Login to view/edit ${username: &str}'s skin"
 de = "Einloggen um ${username: &str}s Skin anzusehen/bearbeiten"
 hu = "Jelentkezz be, hogy megnézd/szerkeszd ${username: &str} kinézeteit"
+sv = "Logga-in för att visa/redigera ${username: &str}s skin"
 [skins.unable_to_load]
 en = "Unable to load ${username: &str}'s skin"
 de = "Konnte ${username: &str}s Skin nicht laden"
 hu = "Nem sikerült betölteni ${username: &str} kinézeteit"
+sv = "Kunde ej ladda ${username: &str}s skinn"
 [skins.loading]
 en = "Loading ${username: &str}'s skin..."
 de = "Lade ${username: &str}s Skin..."
 hu = "${username: &str} kinézeteinek betöltése..."
+sv = "Laddar ${username: &str}s skinn..."
 [skins.no_offline]
 en = "Skins cannot be applied to offline accounts"
 de = "Skins können nicht auf Offline Konte angewant werden"
 hu = "Nem alkalmazhatóak kinézetek offline fiókokra"
+sv = "Skins kan inte tillämpas på offline-konton"
 [skins.add_from_file]
 en = "Add from file"
 de = "Füge von Datei hinzu"
 hu = "Hozzáadás fájlból"
+sv = "Lägg till från fil"
 [skins.select_skin]
 en = "Select Skin"
 de = "Wähle ein Skin aus"
 hu = "Válassz egy kinézetet"
+sv = "Välj ett skinn"
 [skins.copy_from_player]
 en = "Copy from player"
 de = "Von Spieler kopieren"
 hu = "Másolás egy játékosról"
+sv = "Kopiera från spelare"
 [skins.copy]
 en = "Copy"
 de = "Kopiern"
 hu = "Másolás"
+sv = "Kopiera"
 [skins.add_from_url]
 en = "Add from url"
 de = "Von URL hinzufügen"
@@ -1641,31 +2056,39 @@ hu = "Hozzáadás linkről"
 en = "Download"
 de = "Herunterladen"
 hu = "Letöltés"
+sv = "Ladda-ned"
 [skins.open_folder]
 en = "Open folder"
 de = "Öffne Ordner"
 hu = "Mappa megnyitása"
+sv = "Öppna folder"
 [skins.switch_view.texture]
 en = "Switch to texture"
 de = "Wechle zu Textur"
 hu = "Váltás a textúrára"
+sv = "Byt till textur"
 [skins.switch_view.model]
 en = "Switch to model"
 de = "Wechsle zu Model"
 hu = "Váltás a modellre"
+sv = "Byt till model"
 [login.title]
 en = "Login"
 de = "Einloggen"
 hu = "Bejelentkezés"
+sv = "Logga in"
 [login.error]
 en = "Error while logging in"
 de = "Fehler beim einloggen"
 hu = "Hiba történt bejelentkezés közben"
+sv = "Fel vid inloggningen"
 [import.disabled]
 en = "Please select one of the above to import from ${launcher: &str}"
 de = "Bitte wähle etwas oben aus um es von ${launcher: &str} zu importieren"
 hu = "Kérlek válassz egyet a fentiek közül, hogy importálj innen: ${launcher: &str}"
+sv = "Var vänlig och välj något av de ovanstående för att importera från ${launcher: &str}"
 [import.enabled]
 en = "Import the above selected from ${launcher: &str}"
 de = "Importiere das oben ausgewählte von ${launcher: &str}"
 hu = "A fentiek közül kiválasztottak importálása innen: ${launcher: &str}"
+sv = "Importera det valda ovanstående från ${launcher: &str}"

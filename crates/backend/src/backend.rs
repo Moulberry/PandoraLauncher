@@ -718,7 +718,7 @@ impl BackendState {
     }
 
     pub fn restore_mods_folder_if_stopped(&self, instance: &mut Instance) {
-        if !instance.processes.is_empty() {
+        if !instance.processes.is_empty() || !instance.closing_processes.is_empty() {
             return;
         }
         if let Some(keepalive) = &instance.launch_keepalive && keepalive.is_alive() {

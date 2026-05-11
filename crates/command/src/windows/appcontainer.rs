@@ -369,15 +369,19 @@ fn add_to_acl(app_container: &PSID, path: &Path, perms: PermissionType) -> std::
         return Err(windows::core::Error::from_hresult(HRESULT::from_win32(err.0)).into());
     }
 
-    // todo: only end early if inheritance is NO_INHERITANCE to work around ACLs not being applied to children!
-    match acl_eq(old_acl, new_acl) {
-        Ok(true) => {
-            return Ok(())
-        },
-        Ok(false) => {},
-        Err(err) => {
-            log::error!("Error comparing ACL for {path:?}, updating acl anyways: {err}");
-        },
+    if ea.grfInheritance == NO_INHERITANCE {
+        // Only compare ACLs if inheritance is disabled.
+        // Sometimes children don't properly inherit the ACLs,
+        // so we need to be sure to apply them even if the parent is correct
+        match acl_eq(old_acl, new_acl) {
+            Ok(true) => {
+                return Ok(())
+            },
+            Ok(false) => {},
+            Err(err) => {
+                log::error!("Error comparing ACL for {path:?}, updating acl anyways: {err}");
+            },
+        }
     }
 
     let err = if ea.grfInheritance == NO_INHERITANCE {

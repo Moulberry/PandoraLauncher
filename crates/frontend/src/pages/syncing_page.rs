@@ -79,6 +79,7 @@ impl SyncingPage {
 
         let disable_tooltip = t::instance::sync::already_exists(cannot_sync_count, &name);
         let backend_handle = self.backend_handle.clone();
+        let target_name = name.clone();
         let checkbox = Checkbox::new(name.clone())
             .label(label)
             .disabled(disabled)
@@ -87,14 +88,14 @@ impl SyncingPage {
             .on_click(cx.listener(move |page, value, _, cx| {
 
             backend_handle.send(MessageToBackend::SetSyncing {
-                target: name.clone(),
+                target: target_name.clone(),
                 is_file,
                 value: *value,
             });
 
-            page.loading.insert(name.clone());
+            page.loading.insert(target_name.clone());
             if page.pending.is_empty() {
-                page.pending.insert(name.clone());
+                page.pending.insert(target_name.clone());
                 page.update_sync_state(cx);
             }
         }));
@@ -110,10 +111,24 @@ impl SyncingPage {
                 );
             }
             if enabled && cannot_sync_count > 0 {
-                base = base.child(h_flex().gap_1().flex_shrink().text_color(warning)
-                    .child(PandoraIcon::TriangleAlert)
-                    .child(t::instance::sync::unable_count(cannot_sync_count, sync_state.total_count))
-                );
+                let cannot_sync_tooltip = if let Some(sync_target_state) = sync_state.targets.get(&name) {
+                    format!(
+                        "{}\n{}",
+                        t::instance::sync::unable_instances_tooltip(),
+                        sync_target_state.cannot_sync_instances.join("\n")
+                    )
+                } else {
+                    t::instance::sync::unable_instances_tooltip().to_string()
+                };
+                let warning_id = format!("cannot_sync_warning_{}", name);
+
+                base = base.child(Button::new(warning_id)
+                    .text()
+                    .text_color(warning)
+                    .compact()
+                    .icon(PandoraIcon::TriangleAlert)
+                    .label(t::instance::sync::unable_count(cannot_sync_count, sync_state.total_count))
+                    .tooltip(cannot_sync_tooltip));
             }
         }
 

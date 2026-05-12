@@ -1870,6 +1870,7 @@ pub mod instance {
                 "open_folder" => Some(open_folder()),
                 "sync_file" => Some(sync_file()),
                 "sync_folder" => Some(sync_folder()),
+                "unable_instances_tooltip" => Some(unable_instances_tooltip()),
                 _ => None,
             }
         }
@@ -2111,6 +2112,13 @@ pub mod instance {
                 1 => format!("{count}/{total} Instanzen konnten nicht synchronisiert werden!"),
                 2 => format!("{count}/{total} példány nem szinkronizálható!"),
                 _ => format!("{count}/{total} instances are unable to be synced!"),
+            }
+        }
+        pub fn unable_instances_tooltip() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Kann für diese Instanzen nicht synchronisiert werden:",
+                2 => "Ezeknél a példányoknál nem szinkronizálható:",
+                _ => "Unable to sync for these instances:",
             }
         }
     }

@@ -249,6 +249,10 @@ pub enum MessageToBackend {
     DeleteAccount {
         uuid: Uuid,
     },
+    ReorderAccounts {
+        from_index: usize,
+        to_index: usize,
+    },
     SetOpenGameOutputAfterLaunching {
         value: bool,
     },

@@ -522,7 +522,8 @@ impl Render for LauncherUI {
                             (accounts.accounts.clone(), accounts.selected_account_uuid)
                         };
 
-                        let items = accounts.iter().map(|account| {
+                        let accounts_len = accounts.len();
+                        let items = accounts.iter().enumerate().map(|(account_index, account)| {
                             let head = if hide_skins {
                                 gpui::img(ImageSource::Resource(Resource::Embedded("images/hidden_head.png".into())))
                             } else if let Some(head) = &account.head {
@@ -556,7 +557,45 @@ impl Render for LauncherUI {
                                             }
                                         })
                                     }))
-                                .child(Button::new((account_name.clone(), 1))
+                                .child(v_flex()
+                                    .gap_1()
+                                    .child(Button::new(("account-up", account_index))
+                                        .compact()
+                                        .h_5()
+                                        .w_8()
+                                        .icon(PandoraIcon::ArrowUp)
+                                        .disabled(account_index == 0)
+                                        .on_click({
+                                            let backend_handle = backend_handle.clone();
+                                            move |_, _, _| {
+                                                if account_index == 0 {
+                                                    return;
+                                                }
+                                                backend_handle.send(MessageToBackend::ReorderAccounts {
+                                                    from_index: account_index,
+                                                    to_index: account_index - 1,
+                                                });
+                                            }
+                                        }))
+                                    .child(Button::new(("account-down", account_index))
+                                        .compact()
+                                        .h_5()
+                                        .w_8()
+                                        .icon(PandoraIcon::ArrowDown)
+                                        .disabled(account_index + 1 >= accounts_len)
+                                        .on_click({
+                                            let backend_handle = backend_handle.clone();
+                                            move |_, _, _| {
+                                                if account_index + 1 >= accounts_len {
+                                                    return;
+                                                }
+                                                backend_handle.send(MessageToBackend::ReorderAccounts {
+                                                    from_index: account_index,
+                                                    to_index: account_index + 1,
+                                                });
+                                            }
+                                        })))
+                                .child(Button::new(("account-delete", account_index))
                                     .icon(PandoraIcon::Trash2)
                                     .h_10()
                                     .w_10()

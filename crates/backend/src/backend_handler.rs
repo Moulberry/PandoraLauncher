@@ -1369,6 +1369,10 @@ impl BackendState {
                         offline: true,
                         head: None
                     });
+                    account_info.account_order.retain(|account_uuid| account_info.accounts.contains_key(account_uuid));
+                    if !account_info.account_order.contains(&uuid) {
+                        account_info.account_order.push(uuid);
+                    }
                     account_info.selected_account = Some(uuid);
                 });
             },
@@ -1389,9 +1393,28 @@ impl BackendState {
 
                 account_info.modify(|account_info| {
                     account_info.accounts.remove(&uuid);
+                    account_info.account_order.retain(|account_uuid| *account_uuid != uuid);
                     if account_info.selected_account == Some(uuid) {
                         account_info.selected_account = None;
                     }
+                });
+            },
+            MessageToBackend::ReorderAccounts { from_index, to_index } => {
+                let mut account_info = self.account_info.write();
+                account_info.modify(|account_info| {
+                    account_info.account_order.retain(|account_uuid| account_info.accounts.contains_key(account_uuid));
+                    for uuid in account_info.accounts.keys() {
+                        if !account_info.account_order.contains(uuid) {
+                            account_info.account_order.push(*uuid);
+                        }
+                    }
+
+                    if from_index >= account_info.account_order.len() || to_index >= account_info.account_order.len() || from_index == to_index {
+                        return;
+                    }
+
+                    let uuid = account_info.account_order.remove(from_index);
+                    account_info.account_order.insert(to_index, uuid);
                 });
             },
             MessageToBackend::SetOpenGameOutputAfterLaunching { value } => {
@@ -2246,6 +2269,7 @@ impl BackendState {
             if !info.accounts.contains_key(&profile.id) {
                 let account = BackendAccount::new_from_profile(profile);
                 info.accounts.insert(profile.id, account);
+                info.account_order.push(profile.id);
             }
 
             if select {

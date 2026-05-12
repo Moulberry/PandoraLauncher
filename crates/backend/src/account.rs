@@ -16,21 +16,50 @@ pub struct MinecraftLoginInfo {
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BackendAccountInfo {
     pub accounts: FxHashMap<Uuid, BackendAccount>,
+    #[serde(default)]
+    pub account_order: Vec<Uuid>,
     pub selected_account: Option<Uuid>,
 }
 
 impl BackendAccountInfo {
+    pub fn ensure_account_order(&self) -> Vec<Uuid> {
+        let mut order = self.account_order.clone();
+        order.retain(|uuid| self.accounts.contains_key(uuid));
+
+        for uuid in self.accounts.keys() {
+            if !order.contains(uuid) {
+                order.push(*uuid);
+            }
+        }
+
+        if self.account_order.is_empty() {
+            order.sort_by(|a, b| {
+                let a_name = self.accounts.get(a).map(|a| a.username.as_ref()).unwrap_or("");
+                let b_name = self.accounts.get(b).map(|a| a.username.as_ref()).unwrap_or("");
+                lexical_sort::natural_lexical_cmp(a_name, b_name)
+            });
+        }
+
+        order
+    }
+
+    pub fn normalize_account_order(&mut self) {
+        self.account_order = self.ensure_account_order();
+    }
+
     pub fn create_update_message(&self) -> MessageToFrontend {
         let mut accounts = Vec::with_capacity(self.accounts.len());
-        for (uuid, account) in &self.accounts {
+        for uuid in self.ensure_account_order() {
+            let Some(account) = self.accounts.get(&uuid) else {
+                continue;
+            };
             accounts.push(Account {
-                uuid: *uuid,
+                uuid,
                 username: account.username.clone(),
                 offline: account.offline,
                 head: account.head.clone(),
             });
         }
-        accounts.sort_by(|a, b| lexical_sort::natural_lexical_cmp(&a.username, &b.username));
         MessageToFrontend::AccountsUpdated {
             accounts: accounts.into(),
             selected_account: self.selected_account,

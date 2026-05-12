@@ -764,6 +764,10 @@ impl BackendState {
             return Ok(());
         };
 
+        if !mods_dir.is_dir() {
+            return Ok(());
+        }
+
         let Some(mods) = Instance::load_content(self.clone(), id, ContentFolder::Mods).await else {
             return Ok(());
         };

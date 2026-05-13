@@ -855,19 +855,19 @@ de = "CurseForge-Optionen"
 hu = "CurseForge beállítások"
 [instance.export.include_saves]
 en = "Include saves"
-de = "saves einbeziehen"
+de = "Welten (saves) einbeziehen"
 hu = "Mentések belefoglalása"
 [instance.export.include_mods]
 en = "Include mods"
-de = "mods einbeziehen"
+de = "Mods (mods) einbeziehen"
 hu = "Modok belefoglalása"
 [instance.export.include_resourcepacks]
 en = "Include resourcepacks"
-de = "resourcepacks einbeziehen"
+de = "Ressourcenpakete (resourcepacks) einbeziehen"
 hu = "forráscsomagok belefoglalása"
 [instance.export.include_configs]
 en = "Include configs"
-de = "configs einbeziehen"
+de = "Konfigurationsdateien (configs) einbeziehen"
 hu = "Konfigurációk belefoglalása"
 [instance.export.include_logs]
 en = "Include logs/crash reports"
@@ -875,7 +875,7 @@ de = "logs/Absturzberichte einbeziehen"
 hu = "Naplófájlok/összeomlási jelentések belefoglalása"
 [instance.export.include_cache]
 en = "Include cache files"
-de = "cache-Dateien einbeziehen"
+de = "Cache-Dateien einbeziehen"
 hu = "Gyorsítótár fájlok belefoglalása"
 [instance.export.include_synced]
 en = "Include synced folders"

@@ -491,11 +491,11 @@ hu = "Frissítés"
 [common.min]
 en = "Min"
 de = "Minimum"
-hu = "Minimum"
+hu = "Min."
 [common.max]
 en = "Max"
 de = "Maximum"
-hu = "Maximum"
+hu = "Max."
 [common.or_upper]
 en = "OR"
 de = "ODER"
@@ -1301,6 +1301,7 @@ de = "Wähle Ressourcenpakete aus um sie zu installieren"
 hu = "Válaszd ki a telepíteni kívánt forráscsomagokat"
 [instance.content.install.select_shaders]
 en = "Select shaders to install"
+hu = "Válassz egy telepíteni kívánt shadert"
 [instance.content.update.label]
 en = "Update"
 de = "Aktualisieren"
@@ -1536,6 +1537,7 @@ de = "Schließe alle anderen Fenster when das Hauptfenster geschlossen ist"
 hu = "Minden másik ablak bezárása a fő ablak bezárásakor"
 [settings.windows.use_os_titlebar]
 en = "Use OS titlebar (requires restart)"
+hu = "Oprendszer címsáv használata (újraindítás szükséges)"
 [settings.privacy.title]
 en = "Privacy"
 de = "Privatsphäre"

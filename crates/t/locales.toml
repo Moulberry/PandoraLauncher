@@ -581,19 +581,19 @@ de = "Neue Version: ${ver: &str}"
 hu = "Új verzió: ${ver: &str}"
 [system.update.size.bytes]
 en = "Update size: ${num: usize} bytes"
-de = "Aktualisierungsgröße: ${num: usize} bytes"
+de = "Updategröße: ${num: usize} bytes"
 hu = "Frissítés mérete: ${num: usize} byte"
 [system.update.size.kb]
 en = "Update size: ${num: usize}kB"
-de = "Aktualisierungsgröße: ${num: usize}kB"
+de = "Updategröße: ${num: usize}kB"
 hu = "Frissítés mérete: ${num: usize}kB"
 [system.update.size.mb]
 en = "Update size: ${num: usize}MB"
-de = "Aktualisierungsgröße: ${num: usize}MB"
+de = "Updategröße: ${num: usize}MB"
 hu = "Frissítés mérete: ${num: usize}MB"
 [system.update.size.gb]
 en = "Update size: ${num: usize}GB"
-de = "Aktualisierungsgröße: ${num: usize}GB"
+de = "Updategröße: ${num: usize}GB"
 hu = "Frissítés mérete: ${num: usize}GB"
 [system.update.later]
 en = "Later"
@@ -601,7 +601,7 @@ de = "Später"
 hu = "Később"
 [system.update.install_error]
 en = "Unable to install update"
-de = "Aktualisierung konnte nicht installiert werden"
+de = "Update konnte nicht installiert werden"
 hu = "Nem sikerült a frissítés telepítése"
 
 [account.title]
@@ -1332,25 +1332,25 @@ hu = "Frissítés"
 [instance.content.update.check.label]
 en = "Check for updates"
 en_short = "Update Check"
-de = "Nach Aktualisieren suchen"
-de_short = "Aktualisierungsprüfung"
+de = "Nach Updates suchen"
+de_short = "Updateprüfung"
 hu = "Frissítések keresése"
 hu_short = "Frissítés keresése"
 [instance.content.update.check.title]
 en = "Checking for updates"
-de = "Suche nach Aktualisierungen"
+de = "Suche nach Updates"
 hu = "Frissítések keresése"
 [instance.content.update.check.error]
 en = "Error checking for updates"
-de = "Fehler beim Suchen nach Aktualisierungen"
+de = "Fehler beim Suchen nach Updates"
 hu = "Hiba a frissítések keresése közben"
 [instance.content.update.check.error_404]
 en = "Error while checking updates - 404 not found"
-de = "Fehler beim Suchen nach Aktualisierungen - 404 nicht gefunden"
+de = "Fehler beim Suchen nach Updates - 404 nicht gefunden"
 hu = "Hiba a frissítések keresése közben - 404 nem található"
 [instance.content.update.check.invalid_hash_error]
 en = "Error while checking updates - returned invalid hash"
-de = "Fehler beim Suchen nach Aktualisierungen - falscher Hash"
+de = "Fehler beim Suchen nach Updates - falscher Hash"
 hu = "Hiba a frissítések keresése közben - helytelen a hash"
 [instance.content.update.check.last_up_to_date]
 en = "Up-to-date as of last check"
@@ -1362,15 +1362,15 @@ de = "Aktuell"
 hu = "Naprakész"
 [instance.content.update.download.error]
 en = "Error downloading update"
-de = "Fehler beim Herunterladen von der Aktualisierung"
+de = "Fehler beim Herunterladen des Updates"
 hu = "Hiba a frissítés letöltése közben"
 [instance.content.update.download.from_modrinth]
 en = "Download update from Modrinth"
-de = "Lade Aktualisierung von Modrinth herunter"
+de = "Lade Update von Modrinth herunter"
 hu = "Frissítés letöltése a Modrinthről"
 [instance.content.update.download.from_curseforge]
 en = "Download update from Curseforge"
-de = "Lade Aktualisierung von CurseForge herunter"
+de = "Lade Update von CurseForge herunter"
 hu = "Frissítés letöltése a Curseforgeról"
 [instance.content.update.error]
 en = "Error updating mod"

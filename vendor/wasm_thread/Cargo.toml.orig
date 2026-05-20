@@ -1,0 +1,47 @@
+[package]
+name = "wasm_thread"
+version = "0.3.3"
+authors = ["Jurgis Balciunas <chemicstry@gmail.com>"]
+edition = "2018"
+description = "An std thread replacement for wasm32 target"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/chemicstry/wasm_thread"
+homepage = "https://github.com/chemicstry/wasm_thread"
+documentation = "https://docs.rs/wasm_thread"
+keywords = ["thread", "wasm", "parallel", "concurrency"]
+categories = ["concurrency", "wasm"]
+readme = "README.md"
+
+[features]
+default = ["es_modules"]
+es_modules = []
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.95"
+web-sys = { version = "0.3.72", features = [
+    "Blob",
+    "DedicatedWorkerGlobalScope",
+    "MessageEvent",
+    "Url",
+    "Worker",
+    "WorkerType",
+    "WorkerOptions",
+    "Window",
+    "Navigator",
+    "WorkerNavigator",
+] }
+js-sys = "0.3.72"
+futures = "0.3.31"
+
+[dev-dependencies]
+log = "0.4.22"
+env_logger = "0.11.5"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+console_log = { version = "1.0.0", features = ["color"] }
+console_error_panic_hook = "0.1.7"
+wasm-bindgen-test = "0.3.45"
+async-channel = "2.3.1"
+
+[package.metadata.docs.rs]
+targets = ["wasm32-unknown-unknown"]

@@ -1,0 +1,35 @@
+[package]
+name = "unicode-id"
+version = "0.3.6"
+authors = [
+           "Boshen <boshenc@gmail.com>",
+           "erick.tryzelaar <erick.tryzelaar@gmail.com>",
+           "kwantam <kwantam@gmail.com>",
+           "Manish Goregaokar <manishsmail@gmail.com>"
+           ]
+
+homepage = "https://github.com/Boshen/unicode-id"
+repository = "https://github.com/Boshen/unicode-id"
+documentation = "https://docs.rs/unicode-id"
+license = "MIT OR Apache-2.0"
+keywords = ["text", "unicode", "unicode-id", "tr31"]
+readme = "README.md"
+description = """
+Determine whether characters have the ID_Start
+or ID_Continue properties according to
+Unicode Standard Annex #31.
+"""
+exclude = ["/.github/**", "/scripts/*"]
+rust-version = "1.17"
+
+[features]
+default = []
+no_std = []
+bench = []
+
+# [dev-dependencies]
+# criterion = "0.3.5"
+
+# [[bench]]
+# name = "id"
+# harness = false

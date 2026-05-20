@@ -1,4 +1,10 @@
-use std::{cmp::Ordering, sync::{atomic::{AtomicBool, AtomicUsize}, Arc}};
+use std::{
+    cmp::Ordering,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize},
+    },
+};
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Serial(usize);

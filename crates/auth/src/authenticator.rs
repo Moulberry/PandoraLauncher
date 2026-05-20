@@ -184,8 +184,14 @@ impl Authenticator {
         })
     }
 
-    pub async fn refresh_msa(&mut self, refresh: &str, force_client_id: &Option<Arc<str>>) -> Result<Option<MsaTokens>, MsaAuthorizationError> {
-        let client = if let Some(force_client_id) = force_client_id && &**force_client_id != constants::CLIENT_ID {
+    pub async fn refresh_msa(
+        &mut self,
+        refresh: &str,
+        force_client_id: &Option<Arc<str>>,
+    ) -> Result<Option<MsaTokens>, MsaAuthorizationError> {
+        let client = if let Some(force_client_id) = force_client_id
+            && &**force_client_id != constants::CLIENT_ID
+        {
             &Client::new(ClientId::new(force_client_id.to_string()))
                 .set_auth_type(oauth2::AuthType::RequestBody)
                 .set_auth_uri(AuthUrl::new(constants::AUTH_URL.to_string()).unwrap())

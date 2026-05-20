@@ -1,46 +1,38 @@
 use std::{path::Path, sync::Arc};
 
-use bridge::{import::{ImportFromOtherLauncher, ImportFromOtherLauncherJob, ImportFromOtherLaunchers, OtherLauncher}, modal_action::ModalAction};
-use schema::instance::InstanceConfiguration;
-use strum::IntoEnumIterator;
-use crate::{BackendState, launcher_import::{
-        atlauncher::import_from_atlauncher, curseforge::import_from_curseforge, modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db}, multimc::{import_from_multimc, try_load_from_multimc}
-    }
+use crate::{
+    BackendState,
+    launcher_import::{
+        atlauncher::import_from_atlauncher,
+        curseforge::import_from_curseforge,
+        modrinth::{import_instances_from_modrinth, read_profiles_from_modrinth_db},
+        multimc::{import_from_multimc, try_load_from_multimc},
+    },
 };
+use bridge::{
+    import::{ImportFromOtherLauncherJob, OtherLauncher},
+    modal_action::ModalAction,
+};
+use schema::instance::InstanceConfiguration;
 
-mod multimc;
-mod modrinth;
 mod atlauncher;
 mod curseforge;
+mod modrinth;
+mod multimc;
 
-pub fn discover_instances_from_other_launchers() -> ImportFromOtherLaunchers {
-    let mut imports = ImportFromOtherLaunchers::default();
-
-    let Some(base_dirs) = directories::BaseDirs::new() else {
-        return imports;
-    };
-
-    for launcher in OtherLauncher::iter() {
-        let path = launcher.default_path(&base_dirs);
-        let Some(import_job) = get_import_from_other_launcher_job(launcher, path) else {
-            continue;
-        };
-        imports.imports[launcher] = Some(ImportFromOtherLauncher {
-            can_import_accounts: import_job.import_accounts,
-            paths: import_job.paths,
-        });
-    }
-
-    imports
-}
-
-pub fn get_import_from_other_launcher_job(other_launcher: OtherLauncher, path: Arc<Path>) -> Option<ImportFromOtherLauncherJob> {
+pub fn get_import_from_other_launcher_job(
+    other_launcher: OtherLauncher,
+    path: Arc<Path>,
+) -> Option<ImportFromOtherLauncherJob> {
     if !path.is_dir() {
         return None;
     }
     match other_launcher {
         OtherLauncher::Prism | OtherLauncher::MultiMC => {
-            if !path.join("prismlauncher.cfg").is_file() && !path.join("multimc.cfg").is_file() {
+            if !path.join("prismlauncher.cfg").is_file()
+                && !path.join("multimc.cfg").is_file()
+                && !path.join("fjordlauncher.cfg").is_file()
+            {
                 return None;
             }
             Some(ImportFromOtherLauncherJob {
@@ -51,15 +43,13 @@ pub fn get_import_from_other_launcher_job(other_launcher: OtherLauncher, path: A
                 root: path,
             })
         },
-        OtherLauncher::CurseForge => {
-            Some(ImportFromOtherLauncherJob {
-                import_accounts: false,
-                paths: collect_subfolders_matching(&path.join("Instances"), &|path| {
-                    path.join("minecraftinstance.json").exists()
-                }),
-                root: path
-            })
-        }
+        OtherLauncher::CurseForge => Some(ImportFromOtherLauncherJob {
+            import_accounts: false,
+            paths: collect_subfolders_matching(&path.join("Instances"), &|path| {
+                path.join("minecraftinstance.json").exists()
+            }),
+            root: path,
+        }),
         OtherLauncher::Modrinth => {
             let paths = match read_profiles_from_modrinth_db(&path) {
                 Ok(paths) => paths?,
@@ -121,22 +111,28 @@ pub fn try_load_from_other_launcher_formats(folder: &Path) -> Option<InstanceCon
     None
 }
 
-pub async fn import_from_other_launcher(backend: &BackendState, launcher: OtherLauncher, import_job: ImportFromOtherLauncherJob, modal_action: ModalAction) {
+pub async fn import_from_other_launcher(
+    backend: &BackendState,
+    launcher: OtherLauncher,
+    import_job: ImportFromOtherLauncherJob,
+    modal_action: ModalAction,
+) {
     match launcher {
         OtherLauncher::Prism | OtherLauncher::MultiMC => {
             import_from_multimc(backend, import_job, modal_action).await;
         },
         OtherLauncher::CurseForge => {
             import_from_curseforge(backend, import_job, modal_action);
-        }
+        },
         OtherLauncher::Modrinth => {
             if let Err(err) = import_instances_from_modrinth(backend, import_job, &modal_action) {
                 log::error!("Sqlite error while importing from modrinth: {err}");
-                modal_action.set_error_message("Sqlite error while importing from modrinth, see logs for more info".into());
+                modal_action
+                    .set_error_message("Sqlite error while importing from modrinth, see logs for more info".into());
             }
         },
         OtherLauncher::ATLauncher => {
             import_from_atlauncher(backend, import_job, modal_action).await;
-        }
+        },
     }
 }

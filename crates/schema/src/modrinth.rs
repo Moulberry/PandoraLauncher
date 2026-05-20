@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 use ustr::Ustr;
+
+use crate::loader::Loader;
 
 pub const MODRINTH_SEARCH_URL: &str = "https://api.modrinth.com/v2/search";
 
@@ -21,14 +24,27 @@ pub struct ModrinthProjectVersionsRequest {
     pub loaders: Option<Arc<[ModrinthLoader]>>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Default, Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthSearchIndex {
+    #[default]
     Relevance,
     Downloads,
     Follows,
     Newest,
     Updated,
+}
+
+impl ModrinthSearchIndex {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ModrinthSearchIndex::Relevance => "relevance",
+            ModrinthSearchIndex::Downloads => "downloads",
+            ModrinthSearchIndex::Follows => "follows",
+            ModrinthSearchIndex::Newest => "newest",
+            ModrinthSearchIndex::Updated => "updated",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -48,7 +64,7 @@ pub struct ModrinthHit {
     pub client_side: Option<ModrinthSideRequirement>,
     pub server_side: Option<ModrinthSideRequirement>,
     pub project_type: ModrinthProjectType,
-    pub downloads: usize,
+    pub downloads: u64,
     pub icon_url: Option<Arc<str>>,
     // pub color: Option<u32>,
     // pub thread_id: Option<Arc<str>>,
@@ -66,7 +82,7 @@ pub struct ModrinthHit {
     // pub featured_gallery: Option<Arc<str>>,
 }
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone, Deserialize)]
+#[derive(PartialEq, Eq, Debug, Copy, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthSideRequirement {
     Required,
@@ -90,7 +106,7 @@ pub enum ModrinthProjectType {
 }
 
 impl ModrinthProjectType {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             ModrinthProjectType::Mod => "mod",
             ModrinthProjectType::Modpack => "modpack",
@@ -98,6 +114,13 @@ impl ModrinthProjectType {
             ModrinthProjectType::Shader => "shader",
             ModrinthProjectType::Datapack => "datapack",
             ModrinthProjectType::Other => "other",
+        }
+    }
+
+    pub fn mod_or_modpack(self) -> bool {
+        match self {
+            Self::Mod | Self::Modpack => true,
+            _ => false,
         }
     }
 }
@@ -209,6 +232,20 @@ impl ModrinthLoader {
             _ => Self::Unknown,
         }
     }
+
+    pub fn as_pandora(self) -> Option<Loader> {
+        match self {
+            ModrinthLoader::Fabric => Some(Loader::Fabric),
+            ModrinthLoader::Forge => Some(Loader::Forge),
+            ModrinthLoader::NeoForge => Some(Loader::NeoForge),
+            ModrinthLoader::Minecraft => None,
+            ModrinthLoader::Iris => None,
+            ModrinthLoader::Optifine => None,
+            ModrinthLoader::Canvas => None,
+            ModrinthLoader::Datapack => None,
+            ModrinthLoader::Unknown => None,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Deserialize, PartialEq, Eq)]
@@ -242,13 +279,32 @@ pub struct ModrinthFile {
     pub size: usize,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ModrinthHashes {
     pub sha1: Arc<str>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha512: Option<Arc<str>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModrinthVersionFileUpdateResult(pub ModrinthProjectVersion);
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize)]
+pub struct ModrinthVersionsFromHashesRequest {
+    pub hashes: Arc<[Arc<str>]>,
+    pub algorithm: Arc<str>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModrinthVersionsFromHashesResponse(pub std::collections::HashMap<Arc<str>, Option<ModrinthProjectVersion>>);
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize)]
+pub struct ModrinthProjectsRequest {
+    pub ids: Arc<[Arc<str>]>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModrinthProjectsResponse(pub Arc<[ModrinthProjectResult]>);
 
 pub const MODRINTH_PROJECT_URL: &str = "https://api.modrinth.com/v2/project";
 
@@ -265,7 +321,7 @@ pub struct ModrinthProjectResult {
     pub description: Option<Arc<str>>,
     pub body: Option<Arc<str>>,
     pub project_type: ModrinthProjectType,
-    pub downloads: usize,
+    pub downloads: u64,
     pub followers: usize,
     pub icon_url: Option<Arc<str>>,
     pub client_side: Option<ModrinthSideRequirement>,

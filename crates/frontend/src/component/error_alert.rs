@@ -7,7 +7,7 @@ use crate::icon::PandoraIcon;
 pub struct ErrorAlert {
     title: SharedString,
     message: SharedString,
-    w: Length
+    w: Length,
 }
 
 impl ErrorAlert {

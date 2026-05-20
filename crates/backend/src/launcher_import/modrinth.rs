@@ -1,6 +1,13 @@
-use std::{io::Cursor, path::{Path, PathBuf}, sync::Arc};
+use std::{
+    io::Cursor,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-use bridge::{import::ImportFromOtherLauncherJob, modal_action::{ModalAction, ProgressTracker}};
+use bridge::{
+    import::ImportFromOtherLauncherJob,
+    modal_action::{ModalAction, ProgressTracker},
+};
 use image::ImageFormat;
 use rustc_hash::FxHashMap;
 use schema::{instance::InstanceConfiguration, loader::Loader};
@@ -14,7 +21,11 @@ struct ModrinthInstanceToImport {
     minecraft_folder: Arc<Path>,
 }
 
-pub fn import_instances_from_modrinth(backend: &BackendState, import_job: ImportFromOtherLauncherJob, modal_action: &ModalAction) -> rusqlite::Result<()> {
+pub fn import_instances_from_modrinth(
+    backend: &BackendState,
+    import_job: ImportFromOtherLauncherJob,
+    modal_action: &ModalAction,
+) -> rusqlite::Result<()> {
     if import_job.paths.is_empty() {
         return Ok(());
     }
@@ -51,7 +62,7 @@ pub fn import_instances_from_modrinth(backend: &BackendState, import_job: Import
 
         let pandora_path = backend.directories.instances_dir.join(&filename);
         if pandora_path.exists() {
-           continue;
+            continue;
         }
 
         let Some(profile) = name_to_path.get(&filename) else {
@@ -65,10 +76,7 @@ pub fn import_instances_from_modrinth(backend: &BackendState, import_job: Import
         let game_version: String = row.get(2)?;
         let mod_loader: String = row.get(3)?;
 
-        let mut loader = Loader::from_name(&mod_loader);
-        if loader == Loader::Unknown {
-            loader = Loader::Vanilla;
-        }
+        let loader = Loader::from_name(&mod_loader).unwrap_or(Loader::Vanilla);
 
         let instance_configuration = InstanceConfiguration::new(game_version.into(), loader);
 
@@ -100,11 +108,16 @@ pub fn import_instances_from_modrinth(backend: &BackendState, import_job: Import
         let target_dot_minecraft = to_import.pandora_path.join(".minecraft");
 
         _ = std::fs::create_dir_all(&target_dot_minecraft);
-        _ = crate::copy_content_recursive(&to_import.minecraft_folder, &target_dot_minecraft, false, &|copied, total| {
-            tracker.set_total(total as usize);
-            tracker.set_count(copied as usize);
-            tracker.notify();
-        });
+        _ = crate::copy_content_recursive(
+            &to_import.minecraft_folder,
+            &target_dot_minecraft,
+            false,
+            &|copied, total| {
+                tracker.set_total(total as usize);
+                tracker.set_count(copied as usize);
+                tracker.notify();
+            },
+        );
 
         // Copy icon
         if let Some(icon_path) = to_import.icon_path {
@@ -146,6 +159,7 @@ pub fn read_profiles_from_modrinth_db(modrinth: &Path) -> rusqlite::Result<Optio
     let app_db = modrinth.join("app.db");
 
     if !app_db.exists() {
+        log::warn!("app.db doesn't exist in modrinth folder");
         return Ok(None);
     }
 
@@ -162,6 +176,8 @@ pub fn read_profiles_from_modrinth_db(modrinth: &Path) -> rusqlite::Result<Optio
         let profile = profiles.join(path);
         if profile.is_dir() {
             paths.push(profile.into());
+        } else {
+            log::warn!("Modrinth profile folder {:?} doesn't exist", profile);
         }
     }
 

@@ -1,11 +1,12 @@
-use std::{collections::HashMap, io::Write, path::Path, sync::Arc, time::Duration};
+use std::{cmp::Ordering, io::Write, path::Path, sync::Arc, time::Duration};
 
+use bridge::instance::InstanceContentSummary;
 use gpui::{App, SharedString, Task};
 use rand::RngCore;
 use schema::{curseforge::CurseforgeClassId, modrinth::ModrinthProjectType};
 use serde::{Deserialize, Serialize};
 
-use crate::{pages::instance::instance_page::InstanceSubpageType, ts, ui::PageType};
+use crate::{pages::instance::instance_page::InstanceSubpageType, ui::PageType};
 
 struct InterfaceConfigHolder {
     config: InterfaceConfig,
@@ -14,14 +15,6 @@ struct InterfaceConfigHolder {
 }
 
 impl gpui::Global for InterfaceConfigHolder {}
-
-fn default_modrinth_filter_version() -> bool {
-    true
-}
-
-fn default_content_filter_version() -> bool {
-    true
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InterfaceConfig {
@@ -41,34 +34,124 @@ pub struct InterfaceConfig {
     pub quick_delete_instance: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub quick_delete_skins: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instance_mods_sort_key: InstanceContentSortKey,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instance_mods_sort_enabled_first: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instance_resourcepacks_sort_key: InstanceContentSortKey,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instance_resourcepacks_sort_enabled_first: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instance_shaders_sort_key: InstanceContentSortKey,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub instance_shaders_sort_enabled_first: bool,
     #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
     pub content_install_latest: bool,
-    pub modrinth_install_normally: bool,
-    #[serde(default = "default_modrinth_filter_version", deserialize_with = "schema::try_deserialize")]
-    pub modrinth_filter_version: bool,
-    #[serde(default = "default_content_filter_version", deserialize_with = "schema::try_deserialize")]
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub content_filter_version: bool,
-    #[serde(default = "default_modrinth_project_type", deserialize_with = "schema::try_deserialize")]
+    #[serde(
+        default = "default_modrinth_project_type",
+        deserialize_with = "schema::try_deserialize"
+    )]
     pub modrinth_page_project_type: ModrinthProjectType,
-    #[serde(default = "default_curseforge_class_id", deserialize_with = "schema::try_deserialize")]
+    #[serde(
+        default = "default_curseforge_class_id",
+        deserialize_with = "schema::try_deserialize"
+    )]
     pub curseforge_page_class_id: CurseforgeClassId,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub quit_on_main_closed: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub show_snapshots_in_create_instance: bool,
+    pub use_os_titlebar: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_usernames: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub hide_skins: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_server_addresses: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub instances_view_mode: InstancesViewMode,
-    /// Per-instance datapack world: key = dot_minecraft_folder path, value = world folder name.
+    pub show_snapshots_in_create_instance: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
-    pub datapack_world_by_instance: HashMap<String, String>,
+    pub instances_view_mode: InstancesViewMode,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub instance_subpage: InstanceSubpageType,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub collapse_capes_in_skins_page: bool,
+    #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
+    pub skin_list_show_3d: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, strum::EnumIter)]
+#[serde(rename_all = "lowercase")]
+pub enum InstanceContentSortKey {
+    #[default]
+    Name,
+    ModId,
+    Filename,
+    ModifiedTime,
+    FileSize,
+}
+
+impl InstanceContentSortKey {
+    pub fn name(self) -> SharedString {
+        match self {
+            InstanceContentSortKey::Name => "Name".into(),
+            InstanceContentSortKey::ModId => "Mod Id".into(),
+            InstanceContentSortKey::Filename => "Filename".into(),
+            InstanceContentSortKey::ModifiedTime => "Modified Time".into(),
+            InstanceContentSortKey::FileSize => "Filesize".into(),
+        }
+    }
+
+    pub fn compare(self, a: &InstanceContentSummary, b: &InstanceContentSummary) -> Ordering {
+        match self {
+            InstanceContentSortKey::Name => {
+                let name_a = a
+                    .content_summary
+                    .name
+                    .as_deref()
+                    .or(a.content_summary.id.as_deref())
+                    .unwrap_or(&*a.filename);
+                let name_b = b
+                    .content_summary
+                    .name
+                    .as_deref()
+                    .or(b.content_summary.id.as_deref())
+                    .unwrap_or(&*b.filename);
+                lexical_sort::natural_lexical_cmp(name_a, name_b)
+            },
+            InstanceContentSortKey::ModId => {
+                let name_a = a
+                    .content_summary
+                    .id
+                    .as_deref()
+                    .or(a.content_summary.name.as_deref())
+                    .unwrap_or(&*a.filename);
+                let name_b = b
+                    .content_summary
+                    .id
+                    .as_deref()
+                    .or(b.content_summary.name.as_deref())
+                    .unwrap_or(&*b.filename);
+                lexical_sort::natural_lexical_cmp(name_a, name_b)
+            },
+            InstanceContentSortKey::Filename => {
+                let name_a = &*a.filename;
+                let name_b = &*b.filename;
+                lexical_sort::natural_lexical_cmp(name_a, name_b)
+            },
+            InstanceContentSortKey::ModifiedTime => a.modified_unix_ms.cmp(&b.modified_unix_ms).reverse(),
+            InstanceContentSortKey::FileSize => a
+                .content_summary
+                .filesize
+                .unwrap_or(0)
+                .cmp(&b.content_summary.filesize.unwrap_or(0))
+                .reverse(),
+        }
+    }
 }
 
 fn default_modrinth_project_type() -> ModrinthProjectType {
@@ -90,20 +173,27 @@ impl Default for InterfaceConfig {
             quick_delete_mods: Default::default(),
             quick_delete_instance: Default::default(),
             quick_delete_skins: Default::default(),
+            instance_mods_sort_key: Default::default(),
+            instance_mods_sort_enabled_first: Default::default(),
+            instance_resourcepacks_sort_key: Default::default(),
+            instance_resourcepacks_sort_enabled_first: Default::default(),
+            instance_shaders_sort_key: Default::default(),
+            instance_shaders_sort_enabled_first: Default::default(),
             content_install_latest: true,
-            modrinth_install_normally: Default::default(),
-            modrinth_filter_version: default_modrinth_filter_version(),
-            content_filter_version: default_content_filter_version(),
+            content_filter_version: Default::default(),
             modrinth_page_project_type: default_modrinth_project_type(),
             curseforge_page_class_id: default_curseforge_class_id(),
-            hide_main_window_on_launch: Default::default(),
-            quit_on_main_closed: Default::default(),
+            hide_main_window_on_launch: false,
+            quit_on_main_closed: false,
+            use_os_titlebar: false,
+            hide_server_addresses: false,
+            hide_usernames: false,
+            hide_skins: false,
             show_snapshots_in_create_instance: Default::default(),
-            hide_usernames: Default::default(),
-            hide_server_addresses: Default::default(),
             instances_view_mode: Default::default(),
-            datapack_world_by_instance: Default::default(),
-            instance_subpage: Default::default()
+            instance_subpage: Default::default(),
+            collapse_capes_in_skins_page: false,
+            skin_list_show_3d: true,
         }
     }
 }
@@ -144,8 +234,8 @@ pub enum InstancesViewMode {
 impl InstancesViewMode {
     pub fn name(self) -> SharedString {
         match self {
-            InstancesViewMode::Cards => ts!("common.layout.cards").into(),
-            InstancesViewMode::List => ts!("common.layout.list").into(),
+            InstancesViewMode::Cards => t::common::layout::cards().into(),
+            InstancesViewMode::List => t::common::layout::list().into(),
         }
     }
 }

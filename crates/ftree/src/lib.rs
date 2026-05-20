@@ -381,9 +381,9 @@ mod tests {
         // The prefix sum up until the zeroth element is 0, since there is nothing before it
         // The prefix sum up until an index larger than the length is undefined, since every
         // element after the length - 1 is undefined
-        cases.into_iter().for_each(|(idx, expected_sum)| {
-            assert_eq!(fenwick_array.prefix_sum(idx, 0), expected_sum)
-        })
+        cases
+            .into_iter()
+            .for_each(|(idx, expected_sum)| assert_eq!(fenwick_array.prefix_sum(idx, 0), expected_sum))
     }
 
     #[test]

@@ -30,19 +30,19 @@ pub struct UpdatePrompt {
 #[derive(Deserialize, Debug, Clone)]
 pub struct UpdateManifest {
     pub version: Arc<str>,
-    pub downloads: UpdateManifestArchs
+    pub downloads: UpdateManifestArchs,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct UpdateManifestArchs {
     #[serde(flatten)]
-    pub archs: HashMap<Arc<str>, UpdateManifestExes>
+    pub archs: HashMap<Arc<str>, UpdateManifestExes>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct UpdateManifestExes {
     #[serde(flatten)]
-    pub exes: HashMap<Arc<str>, UpdateManifestExe>
+    pub exes: HashMap<Arc<str>, UpdateManifestExe>,
 }
 
 #[derive(Deserialize, Debug, Clone)]

@@ -1,7 +1,10 @@
 // Code adapted from https://gist.github.com/ThatGravyBoat/fcdab4a3562b082f82e09e6263cc0210
 // Licensed as MIT Copyright (c) 2026 ThatGravyBoat
 
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use bridge::instance::InstanceID;
 use hickory_resolver::name_server::TokioConnectionProvider;
@@ -10,10 +13,10 @@ use parking_lot::RwLock;
 use rc_zip_sync::ReadZip;
 use rustc_hash::{FxHashMap, FxHashSet};
 use schema::server_status::ServerStatus;
-use tokio::net::TcpStream;
-use ustr::Ustr;
 use std::io::{Cursor, Error, ErrorKind};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use ustr::Ustr;
 
 use crate::BackendState;
 
@@ -34,7 +37,7 @@ enum PingEntry {
     },
     Loaded {
         status: Arc<ServerStatus>,
-        ping: Option<Duration>
+        ping: Option<Duration>,
     },
     Failed,
 }
@@ -43,7 +46,7 @@ pub enum PingResult {
     Pinging,
     Loaded {
         status: Arc<ServerStatus>,
-        ping: Option<Duration>
+        ping: Option<Duration>,
     },
     Error,
 }
@@ -64,14 +67,19 @@ impl ServerListPinger {
         let bytes = version_json.bytes().ok()?;
 
         let Ok(serde_json::Value::Object(json)) = serde_json::from_slice(&bytes) else {
-            return None
+            return None;
         };
 
         let protocol_version = json.get("protocol_version")?;
         protocol_version.as_i64().map(|v| v as i32)
     }
 
-    pub fn load_status(backend: &Arc<BackendState>, server: Arc<str>, version: Ustr, instance: InstanceID) -> PingResult {
+    pub fn load_status(
+        backend: &Arc<BackendState>,
+        server: Arc<str>,
+        version: Ustr,
+        instance: InstanceID,
+    ) -> PingResult {
         let protocol_version = {
             let mut protocol_versions = backend.server_list_pinger.protocol_versions.upgradable_read();
             let mut protocol_version = protocol_versions.get(&version).copied();
@@ -80,7 +88,8 @@ impl ServerListPinger {
                 let minecraft_jar_pathname = format!("net/minecraft/{0}/minecraft-client-{0}.jar", version);
                 let minecraft_jar_path = backend.directories.libraries_dir.join(minecraft_jar_pathname);
                 if let Ok(minecraft_jar) = std::fs::File::open(minecraft_jar_path) {
-                    let protocol_version_number = Self::load_minecraft_data_version(minecraft_jar).unwrap_or(FALLBACK_PROTOCOL_VERSION);
+                    let protocol_version_number =
+                        Self::load_minecraft_data_version(minecraft_jar).unwrap_or(FALLBACK_PROTOCOL_VERSION);
                     protocol_versions.with_upgraded(|upgraded| {
                         upgraded.insert(version, protocol_version_number);
                     });
@@ -101,7 +110,10 @@ impl ServerListPinger {
                         return PingResult::Pinging;
                     },
                     PingEntry::Loaded { status, ping } => {
-                        return PingResult::Loaded { status: status.clone(), ping: ping.clone() };
+                        return PingResult::Loaded {
+                            status: status.clone(),
+                            ping: ping.clone(),
+                        };
                     },
                     PingEntry::Failed => {
                         return PingResult::Error;
@@ -124,13 +136,16 @@ impl ServerListPinger {
             } else {
                 (&*server, None)
             };
-            let status = backend.server_list_pinger.request_status(host, port, 774).await;
+            let status = backend.server_list_pinger.request_status(host, port, protocol_version).await;
             let Ok((status, ping)) = status else {
                 backend.server_list_pinger.data.write().insert(key.clone(), PingEntry::Failed);
                 return;
             };
 
-            let entry = PingEntry::Loaded { status: Arc::new(status), ping };
+            let entry = PingEntry::Loaded {
+                status: Arc::new(status),
+                ping,
+            };
             let old_status = backend.server_list_pinger.data.write().insert(key.clone(), entry);
 
             if let Some(PingEntry::Loading { instances }) = old_status {
@@ -146,9 +161,16 @@ impl ServerListPinger {
         PingResult::Pinging
     }
 
-    pub async fn request_status_as_string(&self, host: &str, port: Option<u16>, protocol: i32) -> std::io::Result<(String, Option<Duration>)> {
+    pub async fn request_status_as_string(
+        &self,
+        host: &str,
+        port: Option<u16>,
+        protocol: i32,
+    ) -> std::io::Result<(String, Option<Duration>)> {
         let port = port.unwrap_or(MINECRAFT_PORT);
-        let (host, port) = if port == MINECRAFT_PORT && let Some(result) = self.srv_lookup(host).await {
+        let (host, port) = if port == MINECRAFT_PORT
+            && let Some(result) = self.srv_lookup(host).await
+        {
             result
         } else {
             (host.to_string(), port)
@@ -174,28 +196,27 @@ impl ServerListPinger {
 
             let response = ClientboundPacket::read_from_stream(&mut stream).await?;
             std::io::Result::Ok((response, stream))
-        }).await??;
+        })
+        .await??;
 
         match response {
             ClientboundPacket::StatusResponse { response } => {
                 let ping = tokio::time::timeout(TIMEOUT, self.request_ping(stream))
-                    .await.ok().map(Result::ok).flatten();
+                    .await
+                    .ok()
+                    .map(Result::ok)
+                    .flatten();
 
                 Ok((response, ping))
             },
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("Expected status response, got other packet"),
-            ))
+            _ => Err(Error::new(ErrorKind::InvalidData, format!("Expected status response, got other packet"))),
         }
     }
 
     async fn request_ping(&self, mut stream: TcpStream) -> std::io::Result<Duration> {
         let ping_start = Instant::now();
         let time = ping_start.checked_duration_since(self.start).map(|d| d.as_millis()).unwrap_or(0);
-        let ping_request = ServerboundPacket::PingRequest {
-            id: time as i64
-        };
+        let ping_request = ServerboundPacket::PingRequest { id: time as i64 };
 
         ping_request.write_to_stream(&mut stream).await?;
         stream.flush().await?;
@@ -203,31 +224,29 @@ impl ServerListPinger {
         let response = ClientboundPacket::read_from_stream(&mut stream).await?;
 
         match response {
-            ClientboundPacket::PingResponse { _id } => {
-                Ok(Instant::now() - ping_start)
-            },
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("Expected ping response, got other packet"),
-            ))
+            ClientboundPacket::PingResponse { _id } => Ok(Instant::now() - ping_start),
+            _ => Err(Error::new(ErrorKind::InvalidData, format!("Expected ping response, got other packet"))),
         }
     }
 
-    async fn request_status(&self, address: &str, port: Option<u16>, protocol: i32) -> std::io::Result<(ServerStatus, Option<Duration>)> {
+    async fn request_status(
+        &self,
+        address: &str,
+        port: Option<u16>,
+        protocol: i32,
+    ) -> std::io::Result<(ServerStatus, Option<Duration>)> {
         let (response, ping) = self.request_status_as_string(address, port, protocol).await?;
         let status = serde_json::from_str(&response)?;
         Ok((status, ping))
     }
 
     async fn srv_lookup(&self, host: &str) -> Option<(String, u16)> {
-        let resolver = self.resolver.get_or_init(|| {
-            Some(Box::new(hickory_resolver::Resolver::builder_tokio().ok()?.build()))
-        }).as_ref()?;
+        let resolver = self
+            .resolver
+            .get_or_init(|| Some(Box::new(hickory_resolver::Resolver::builder_tokio().ok()?.build())))
+            .as_ref()?;
         let query = &format!("_minecraft._tcp.{}", host);
-        let lookup = tokio::time::timeout(TIMEOUT, resolver.srv_lookup(query))
-            .await
-            .ok()?
-            .ok()?;
+        let lookup = tokio::time::timeout(TIMEOUT, resolver.srv_lookup(query)).await.ok()?.ok()?;
 
         let record = lookup.iter().next()?;
         let mut host = record.target().to_utf8();
@@ -252,7 +271,7 @@ trait PacketBufferExt {
     async fn read_string(&mut self, max_length: Option<usize>) -> std::io::Result<String>;
 }
 
-impl <Buffer : AsyncReadExt + AsyncWriteExt + Unpin> PacketBufferExt for Buffer {
+impl<Buffer: AsyncReadExt + AsyncWriteExt + Unpin> PacketBufferExt for Buffer {
     async fn write_varint(&mut self, value: impl Into<VarInt>) -> std::io::Result<()> {
         let mut value = value.into() as u32;
         loop {
@@ -260,7 +279,8 @@ impl <Buffer : AsyncReadExt + AsyncWriteExt + Unpin> PacketBufferExt for Buffer 
                 self.write_u8(value as u8).await?;
                 return Ok(());
             } else {
-                self.write_u8(((value & VAR_INT_SECTION_BITS) | VAR_INT_SECTION_CONTINUE_BIT) as u8).await?;
+                self.write_u8(((value & VAR_INT_SECTION_BITS) | VAR_INT_SECTION_CONTINUE_BIT) as u8)
+                    .await?;
                 value >>= 7;
             }
         }
@@ -269,7 +289,9 @@ impl <Buffer : AsyncReadExt + AsyncWriteExt + Unpin> PacketBufferExt for Buffer 
     async fn write_string(&mut self, value: impl Into<&str>, max_length: Option<usize>) -> std::io::Result<()> {
         let bytes = value.into().as_bytes();
         let length = bytes.len();
-        if let Some(max) = max_length && length > max {
+        if let Some(max) = max_length
+            && length > max
+        {
             return Err(Error::new(
                 ErrorKind::QuotaExceeded,
                 format!("String length {} exceeds maximum of {}", length, max),
@@ -303,7 +325,9 @@ impl <Buffer : AsyncReadExt + AsyncWriteExt + Unpin> PacketBufferExt for Buffer 
 
     async fn read_string(&mut self, max_length: Option<usize>) -> std::io::Result<String> {
         let length = self.read_varint().await? as usize;
-        if let Some(max) = max_length && length > max {
+        if let Some(max) = max_length
+            && length > max
+        {
             return Err(Error::new(
                 ErrorKind::QuotaExceeded,
                 format!("String length {} exceeds maximum of {}", length, max),
@@ -330,17 +354,13 @@ enum ServerboundPacket {
     StatusRequest,
     PingRequest {
         id: i64,
-    }
+    },
 }
 
 #[derive(Debug)]
 enum ClientboundPacket {
-    StatusResponse {
-        response: String,
-    },
-    PingResponse {
-        _id: i64,
-    }
+    StatusResponse { response: String },
+    PingResponse { _id: i64 },
 }
 
 impl ServerboundPacket {
@@ -356,7 +376,12 @@ impl ServerboundPacket {
         let mut buffer = Cursor::new(Vec::new());
 
         match self {
-            ServerboundPacket::Handshake { pvn: protocol_version, host: host_name, port, intention } => {
+            ServerboundPacket::Handshake {
+                pvn: protocol_version,
+                host: host_name,
+                port,
+                intention,
+            } => {
                 buffer.write_varint(0x00).await?; // Packet ID for Handshake
                 buffer.write_varint(*protocol_version).await?;
                 buffer.write_string(host_name.as_str(), Some(255)).await?;
@@ -397,18 +422,17 @@ impl ClientboundPacket {
         let packet_id = buffer.read_varint().await?;
 
         match packet_id {
-            0x00 => { // Packet ID for Status Response
+            0x00 => {
+                // Packet ID for Status Response
                 let response = buffer.read_string(Some(32767)).await?;
                 Ok(ClientboundPacket::StatusResponse { response })
             },
-            0x01 => { // Packet ID for Ping Response
+            0x01 => {
+                // Packet ID for Ping Response
                 let id = buffer.read_i64().await?;
                 Ok(ClientboundPacket::PingResponse { _id: id })
             },
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("Unexpected packet ID: {}", packet_id),
-            )),
+            _ => Err(Error::new(ErrorKind::InvalidData, format!("Unexpected packet ID: {}", packet_id))),
         }
     }
 }

@@ -1,12 +1,12 @@
 pub mod create_instance;
 pub mod curseforge_install;
+pub mod delete_content;
 pub mod delete_instance;
-pub mod delete_skin;
+pub mod export_instance;
 pub mod generic;
 pub mod modrinth_install;
-pub mod modrinth_install_auto;
 pub mod rename_instance;
 pub mod select_icon;
 pub mod settings;
-pub mod upload_skin_modal;
 pub mod update_prompt;
+pub mod upload_skin_modal;

@@ -1,44 +1,34 @@
-use crate::ts;
-use std::sync::{Arc, atomic::{AtomicBool, AtomicU8, Ordering}};
-
 use bridge::{handle::BackendHandle, modal_action::ModalAction};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    Disableable, WindowExt,
+    WindowExt,
     button::{Button, ButtonVariants},
-    h_flex,
-    input::{Input, InputEvent, InputState},
-    v_flex,
+    h_flex, v_flex,
 };
 use schema::pandora_update::UpdatePrompt;
 
-pub fn open_update_prompt(
-    update: UpdatePrompt,
-    handle: BackendHandle,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let title = ts!("system.update.title");
-    let old_version = ts!("system.update.current", ver = update.old_version);
-    let new_version = ts!("system.update.new", ver = update.new_version);
+pub fn open_update_prompt(update: UpdatePrompt, handle: BackendHandle, window: &mut Window, cx: &mut App) {
+    let title = t::system::update::title();
+    let old_version: SharedString = t::system::update::current(&update.old_version).into();
+    let new_version: SharedString = t::system::update::new(&update.new_version).into();
 
     let size = if update.exe.size < 1000 * 10 {
-        ts!("system.update.size", num = format!("{} bytes", update.exe.size))
+        t::system::update::size::bytes(update.exe.size)
     } else if update.exe.size < 1000 * 1000 * 10 {
-        ts!("system.update.size", num = format!("{}kB", update.exe.size / 1000))
+        t::system::update::size::kb(update.exe.size / 1000)
     } else if update.exe.size < 1000 * 1000 * 1000 * 10 {
-        ts!("system.update.size", num = format!("{}MB", update.exe.size / 1000 / 1000))
+        t::system::update::size::mb(update.exe.size / 1000 / 1000)
     } else {
-        ts!("system.update.size", num = format!("{}GB", update.exe.size / 1000 / 1000 / 1000))
+        t::system::update::size::gb(update.exe.size / 1000 / 1000 / 1000)
     };
 
-    let size = SharedString::new(size);
+    let size = SharedString::from(size);
 
     window.open_dialog(cx, move |dialog, _, _| {
         let buttons = h_flex()
             .w_full()
             .gap_2()
-            .child(Button::new("update").flex_1().label("Update").success().on_click({
+            .child(Button::new("update").flex_1().label(t::common::update()).success().on_click({
                 let handle = handle.clone();
                 let update = update.clone();
                 move |_, window, cx| {
@@ -51,16 +41,16 @@ pub fn open_update_prompt(
                     crate::modals::generic::show_notification(
                         window,
                         cx,
-                        "Unable to install update".into(),
+                        t::system::update::install_error().into(),
                         modal_action,
                     );
                 }
             }))
-            .child(Button::new("later").flex_1().label("Later").on_click(|_, window, cx| {
+            .child(Button::new("later").flex_1().label(t::system::update::later()).on_click(|_, window, cx| {
                 window.close_all_dialogs(cx);
             }));
 
-        dialog.title(title.clone()).child(
+        dialog.title(title).overlay_closable(false).child(
             v_flex()
                 .gap_2()
                 .child(v_flex().child(old_version.clone()).child(new_version.clone()).child(size.clone()))

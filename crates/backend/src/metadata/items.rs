@@ -1,13 +1,16 @@
 use std::{
-    borrow::Cow, fmt::Debug, path::{Path, PathBuf}, sync::Arc
+    borrow::Cow,
+    fmt::Debug,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use reqwest::RequestBuilder;
 use schema::{
     assets_index::AssetsIndex,
     curseforge::{
-        CURSEFORGE_SEARCH_URL, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest,
-        CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult,
+        CURSEFORGE_SEARCH_URL, CurseforgeFingerprintRequest, CurseforgeFingerprintResponse, CurseforgeGetFilesRequest,
+        CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult,
         MINECRAFT_GAME_ID,
     },
     fabric_launch::FabricLaunch,
@@ -17,9 +20,10 @@ use schema::{
     java_runtimes::{JAVA_RUNTIMES_URL, JavaRuntimes},
     maven::MavenMetadataXml,
     modrinth::{
-        MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectVersion,
-        ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthSearchRequest,
-        ModrinthSearchResult, ModrinthVersionFileUpdateResult,
+        MODRINTH_PROJECT_URL, MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectRequest, ModrinthProjectResult,
+        ModrinthProjectVersion, ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthProjectsRequest,
+        ModrinthProjectsResponse, ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult,
+        ModrinthVersionsFromHashesRequest, ModrinthVersionsFromHashesResponse,
     },
     version::MinecraftVersion,
     version_manifest::{MOJANG_VERSION_MANIFEST_URL, MinecraftVersionLink, MinecraftVersionManifest},
@@ -244,7 +248,10 @@ impl MetadataItem for FabricLaunchMetadataItem {
     type T = FabricLaunch;
 
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(format!("https://meta.fabricmc.net/v2/versions/loader/{}/{}", self.minecraft_version, self.loader_version))
+        client.get(format!(
+            "https://meta.fabricmc.net/v2/versions/loader/{}/{}",
+            self.minecraft_version, self.loader_version
+        ))
     }
 
     fn expires(&self) -> bool {
@@ -298,12 +305,19 @@ impl<'a> MetadataItem for ModrinthProjectVersionsMetadataItem<'a> {
     type T = ModrinthProjectVersionsResult;
 
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        let url = format!("https://api.modrinth.com/v2/project/{}/version", self.0.project_id);
+        let url = format!(
+            "https://api.modrinth.com/v2/project/{}/version?include_changelog=false",
+            self.0.project_id
+        );
         let mut request = client.get(url);
-        if let Some(loaders) = &self.0.loaders && let Ok(str) = serde_json::to_string(loaders) {
+        if let Some(loaders) = &self.0.loaders
+            && let Ok(str) = serde_json::to_string(loaders)
+        {
             request = request.query(&[("loaders", str)]);
         }
-        if let Some(game_versions) = &self.0.game_versions && let Ok(str) = serde_json::to_string(game_versions) {
+        if let Some(game_versions) = &self.0.game_versions
+            && let Ok(str) = serde_json::to_string(game_versions)
+        {
             request = request.query(&[("game_versions", str)]);
         }
         request
@@ -419,6 +433,63 @@ impl MetadataItem for ModrinthV3VersionUpdateMetadataItem {
 }
 
 #[derive(Debug)]
+pub struct ModrinthVersionsFromHashesMetadataItem<'a>(pub &'a ModrinthVersionsFromHashesRequest);
+
+impl<'a> MetadataItem for ModrinthVersionsFromHashesMetadataItem<'a> {
+    type T = ModrinthVersionsFromHashesResponse;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        client.post("https://api.modrinth.com/v2/version_files").json(self.0)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.modrinth_versions_from_hashes.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
+#[derive(Debug)]
+pub struct ModrinthProjectsMetadataItem<'a>(pub &'a ModrinthProjectsRequest);
+
+impl<'a> MetadataItem for ModrinthProjectsMetadataItem<'a> {
+    type T = ModrinthProjectsResponse;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        let mut ids = String::from("[");
+        for (i, id) in self.0.ids.iter().enumerate() {
+            if i > 0 {
+                ids.push(',');
+            }
+            ids.push('"');
+            ids.push_str(id.as_ref());
+            ids.push('"');
+        }
+        ids.push(']');
+
+        client.get("https://api.modrinth.com/v2/projects").query(&[("ids", ids)])
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.modrinth_projects.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(ModrinthProjectsResponse(serde_json::from_slice::<Arc<[ModrinthProjectResult]>>(bytes)?))
+    }
+}
+
+#[derive(Debug)]
 pub struct NeoforgeInstallerMavenMetadataItem;
 
 impl MetadataItem for NeoforgeInstallerMavenMetadataItem {
@@ -445,9 +516,7 @@ impl MetadataItem for NeoforgeInstallerMavenMetadataItem {
 
         let mut versions: Vec<Ustr> = maven.versioning.versions.version.iter().cloned().collect();
 
-        versions.sort_by_cached_key(|version| {
-            VersionFragment::string_to_parts(version.as_str())
-        });
+        versions.sort_by_cached_key(|version| VersionFragment::string_to_parts(version.as_str()));
 
         Ok(NeoforgeMavenManifest(versions.into_iter().rev().collect()))
     }
@@ -497,6 +566,31 @@ impl MetadataItem for ForgeInstallerMavenMetadataItem {
         Ok(ForgeMavenManifest(versions.into_iter().rev().collect()))
     }
 }
+
+#[derive(Debug)]
+pub struct ModrinthProjectMetadataItem<'a>(pub &'a ModrinthProjectRequest);
+
+impl<'a> MetadataItem for ModrinthProjectMetadataItem<'a> {
+    type T = ModrinthProjectResult;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        let url = format!("{}/{}", MODRINTH_PROJECT_URL, self.0.project_id);
+        client.get(url)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.modrinth_project.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
 #[derive(Debug)]
 pub struct CurseforgeSearchMetadataItem<'a>(pub &'a CurseforgeSearchRequest);
 
@@ -504,9 +598,10 @@ impl<'a> MetadataItem for CurseforgeSearchMetadataItem<'a> {
     type T = CurseforgeSearchResult;
 
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(CURSEFORGE_SEARCH_URL)
+        client
+            .get(CURSEFORGE_SEARCH_URL)
             .query(self.0)
-            .query(&[("gameId", MINECRAFT_GAME_ID), ("sortField", 2)])
+            .query(&[("gameId", MINECRAFT_GAME_ID)])
             .query(&[("sortOrder", "desc")])
             .header("x-api-key", "$2a$10$YXf6dyJfJZM4zeChdr.RDOvWN.L48AN0dQShQO8/cVc5ho1wA8ZbS")
     }
@@ -525,13 +620,40 @@ impl<'a> MetadataItem for CurseforgeSearchMetadataItem<'a> {
 }
 
 #[derive(Debug)]
+pub struct CurseforgeFingerprintMetadataItem<'a>(pub &'a CurseforgeFingerprintRequest);
+
+impl<'a> MetadataItem for CurseforgeFingerprintMetadataItem<'a> {
+    type T = CurseforgeFingerprintResponse;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        client
+            .post("https://api.curseforge.com/v1/fingerprints")
+            .json(self.0)
+            .header("x-api-key", "$2a$10$YXf6dyJfJZM4zeChdr.RDOvWN.L48AN0dQShQO8/cVc5ho1wA8ZbS")
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.curseforge_fingerprints.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
+#[derive(Debug)]
 pub struct CurseforgeGetModFilesMetadataItem<'a>(pub &'a CurseforgeGetModFilesRequest);
 
 impl<'a> MetadataItem for CurseforgeGetModFilesMetadataItem<'a> {
     type T = CurseforgeGetModFilesResult;
 
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        let mut req = client.get(format!("https://api.curseforge.com/v1/mods/{}/files", self.0.mod_id))
+        let mut req = client
+            .get(format!("https://api.curseforge.com/v1/mods/{}/files", self.0.mod_id))
             .query(&[("gameId", MINECRAFT_GAME_ID)])
             .header("x-api-key", "$2a$10$YXf6dyJfJZM4zeChdr.RDOvWN.L48AN0dQShQO8/cVc5ho1wA8ZbS");
 
@@ -568,7 +690,8 @@ impl<'a> MetadataItem for CurseforgeGetFilesMetadataItem<'a> {
     type T = CurseforgeGetModFilesResult;
 
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.post("https://api.curseforge.com/v1/mods/files")
+        client
+            .post("https://api.curseforge.com/v1/mods/files")
             .json(self.0)
             .header("x-api-key", "$2a$10$YXf6dyJfJZM4zeChdr.RDOvWN.L48AN0dQShQO8/cVc5ho1wA8ZbS")
     }

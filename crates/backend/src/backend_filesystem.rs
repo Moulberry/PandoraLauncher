@@ -1,14 +1,17 @@
-use std::{ffi::OsStr, path::Path, sync::{Arc, atomic::Ordering}};
+use std::{ffi::OsStr, path::Path, sync::Arc};
 
-use bridge::{instance::InstanceID, message::MessageToFrontend};
+use bridge::{
+    instance::{ContentFolder, InstanceID},
+    message::MessageToFrontend,
+};
 use notify::{
     EventKind,
     event::{DataChange, ModifyKind, RenameMode},
 };
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use strum::IntoEnumIterator;
 
-use crate::{BackendState, WatchTarget, instance::ContentFolder};
+use crate::{BackendState, FolderChanges, WatchTarget, skin_manager::SkinManager};
 
 #[derive(Debug)]
 enum FilesystemEvent {
@@ -28,17 +31,21 @@ impl FilesystemEvent {
 }
 
 struct AfterDebounceEffects {
-    reload_immediately: FxHashSet<(InstanceID, ContentFolder)>,
-    worlds_to_reload: FxHashSet<InstanceID>,
+    skin_manager_changes: FolderChanges,
+    content_changes: FxHashMap<(InstanceID, ContentFolder), FolderChanges>,
+    world_changes: FxHashMap<InstanceID, FolderChanges>,
+    server_dat_changes: FxHashSet<InstanceID>,
 }
 
 impl BackendState {
-    pub async fn handle_filesystem(&mut self, result: notify_debouncer_full::DebounceEventResult) {
+    pub async fn handle_filesystem(self: &Arc<Self>, result: notify_debouncer_full::DebounceEventResult) {
         match result {
             Ok(events) => {
                 let mut after_debounce_effects = AfterDebounceEffects {
-                    reload_immediately: Default::default(),
-                    worlds_to_reload: Default::default(),
+                    skin_manager_changes: FolderChanges::no_changes(),
+                    content_changes: Default::default(),
+                    world_changes: Default::default(),
+                    server_dat_changes: Default::default(),
                 };
 
                 let mut last_event: Option<FilesystemEvent> = None;
@@ -62,48 +69,56 @@ impl BackendState {
                 if let Some(last_event) = last_event.take() {
                     self.handle_filesystem_event(last_event, &mut after_debounce_effects).await;
                 }
-                for (instance_id, folder) in after_debounce_effects.reload_immediately {
-                    tokio::task::spawn(self.clone().load_instance_content(instance_id, folder));
+                SkinManager::skin_library_mark_dirty(self, after_debounce_effects.skin_manager_changes);
+                let mut instances = self.instance_state.write();
+                for ((instance, folder), changes) in after_debounce_effects.content_changes {
+                    if let Some(instance) = instances.instances.get_mut(instance) {
+                        instance.mark_content_dirty(self, folder, changes, true);
+                    }
                 }
-                for instance_id in after_debounce_effects.worlds_to_reload {
-                    tokio::task::spawn(self.clone().load_instance_worlds(instance_id));
+                for (instance, changes) in after_debounce_effects.world_changes {
+                    if let Some(instance) = instances.instances.get_mut(instance) {
+                        instance.mark_world_dirty(self, changes, true);
+                    }
+                }
+                for instance in after_debounce_effects.server_dat_changes {
+                    if let Some(instance) = instances.instances.get_mut(instance) {
+                        instance.mark_servers_dirty(self, true);
+                    }
                 }
             },
             Err(_) => {
-                log::error!("An error occurred while watching the filesystem! The launcher might be out-of-sync with your files!");
+                log::error!(
+                    "An error occurred while watching the filesystem! The launcher might be out-of-sync with your files!"
+                );
                 self.send.send_error("An error occurred while watching the filesystem! The launcher might be out-of-sync with your files!");
             },
         }
     }
 
     async fn handle_filesystem_change_event(
-        &mut self,
+        self: &Arc<Self>,
         path: Arc<Path>,
         after_debounce_effects: &mut AfterDebounceEffects,
     ) {
-        let target = {
-            let file_watching = self.file_watching.read();
-            file_watching.get_target(&path).copied()
-                .or_else(|| file_watching.get_target_for_path(&path))
-        };
-        if let Some(target) = target && self.filesystem_handle_change(target, &path, after_debounce_effects).await {
+        let target = self.file_watching.read().get_target(&path).copied();
+        if let Some(target) = target
+            && self.filesystem_handle_change(target, &path, after_debounce_effects).await
+        {
             return;
         }
         let Some(parent_path) = path.parent() else {
             return;
         };
-        let parent = {
-            let file_watching = self.file_watching.read();
-            file_watching.get_target(parent_path).copied()
-                .or_else(|| file_watching.get_target_for_path(parent_path))
-        };
+        let parent = self.file_watching.read().get_target(parent_path).copied();
         if let Some(parent) = parent {
-            self.filesystem_handle_child_change(parent, parent_path, &path, after_debounce_effects).await;
+            self.filesystem_handle_child_change(parent, parent_path, &path, after_debounce_effects)
+                .await;
         }
     }
 
     async fn handle_filesystem_remove_event(
-        &mut self,
+        self: &Arc<Self>,
         path: Arc<Path>,
         target: Option<WatchTarget>,
         after_debounce_effects: &mut AfterDebounceEffects,
@@ -116,18 +131,15 @@ impl BackendState {
         let Some(parent_path) = path.parent() else {
             return;
         };
-        let parent = {
-            let file_watching = self.file_watching.write();
-            file_watching.get_target(parent_path).copied()
-                .or_else(|| file_watching.get_target_for_path(parent_path))
-        };
+        let parent = self.file_watching.write().get_target(parent_path).copied();
         if let Some(parent) = parent {
-            self.filesystem_handle_child_removed(parent, parent_path, &path, after_debounce_effects).await;
+            self.filesystem_handle_child_removed(parent, parent_path, &path, after_debounce_effects)
+                .await;
         }
     }
 
     async fn handle_filesystem_event(
-        &mut self,
+        self: &Arc<Self>,
         event: FilesystemEvent,
         after_debounce_effects: &mut AfterDebounceEffects,
     ) {
@@ -146,7 +158,10 @@ impl BackendState {
                 }
             },
             FilesystemEvent::Rename(from, to) => {
-                if let Some(from_parent) = from.parent() && to.parent() == Some(from_parent) && let Some(to_name) = to.file_name() {
+                if let Some(from_parent) = from.parent()
+                    && to.parent() == Some(from_parent)
+                    && let Some(to_name) = to.file_name()
+                {
                     let from_paths = self.file_watching.write().all_paths(from.clone());
                     for from in from_paths {
                         let to = from_parent.join(to_name).into();
@@ -172,13 +187,12 @@ impl BackendState {
                         self.handle_filesystem_change_event(to, after_debounce_effects).await;
                     }
                 }
-
             },
         }
     }
 
     async fn filesystem_handle_change(
-        &mut self,
+        self: &Arc<Self>,
         _target: WatchTarget,
         _path: &Arc<Path>,
         _after_debounce_effects: &mut AfterDebounceEffects,
@@ -187,10 +201,10 @@ impl BackendState {
     }
 
     async fn filesystem_handle_removed(
-        &mut self,
+        self: &Arc<Self>,
         target: WatchTarget,
         path: &Arc<Path>,
-        _after_debounce_effects: &mut AfterDebounceEffects,
+        after_debounce_effects: &mut AfterDebounceEffects,
     ) -> bool {
         match target {
             WatchTarget::RootDir => {
@@ -206,54 +220,52 @@ impl BackendState {
                     self.send.send(MessageToFrontend::InstanceRemoved { id: instance.id });
                 }
 
-                instance_state.reload_immediately.clear();
-
-                true
-            },
-            WatchTarget::OwnedSkinsDir => {
-                self.request_minecraft_profile_reload().await;
                 true
             },
             WatchTarget::InstanceDir { id } => {
                 self.remove_instance(id);
                 true
             },
-            WatchTarget::InvalidInstanceDir => {
-                true
-            },
+            WatchTarget::InvalidInstanceDir => true,
             WatchTarget::InstanceWorldDir { id } => {
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    instance.mark_world_dirty(Some(path.clone()));
-                }
+                after_debounce_effects
+                    .world_changes
+                    .entry(id)
+                    .or_insert_with(FolderChanges::no_changes)
+                    .dirty_path(path.clone());
                 true
             },
             WatchTarget::InstanceSavesDir { id } => {
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    instance.mark_world_dirty(None);
-                }
+                after_debounce_effects
+                    .world_changes
+                    .entry(id)
+                    .or_insert_with(FolderChanges::no_changes)
+                    .dirty_all();
                 true
             },
             WatchTarget::InstanceContentDir { id, folder } => {
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    instance.content_state[folder].mark_dirty(None);
-                }
+                after_debounce_effects
+                    .content_changes
+                    .entry((id, folder))
+                    .or_insert_with(FolderChanges::no_changes)
+                    .dirty_all();
                 true
             },
             WatchTarget::InstanceDotMinecraftDir { id } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    instance.mark_world_dirty(None);
-                    instance.mark_servers_dirty();
-                    for folder in ContentFolder::iter() {
-                        instance.content_state[folder].mark_dirty(None);
-                    }
+                    instance.mark_all_dirty(self, false);
                 }
+                true
+            },
+            WatchTarget::SkinLibraryDir => {
+                after_debounce_effects.skin_manager_changes.dirty_all();
                 true
             },
         }
     }
 
     async fn filesystem_handle_renamed(
-        &mut self,
+        self: &Arc<Self>,
         from_target: WatchTarget,
         from: &Arc<Path>,
         to: &Arc<Path>,
@@ -265,7 +277,7 @@ impl BackendState {
                     && from.parent() == to.parent()
                 {
                     let old_name = instance.name;
-                    instance.on_root_renamed(to);
+                    instance.on_root_renamed(self, to);
 
                     let mut file_watching = self.file_watching.write();
                     instance.rewatch_directories(&mut *file_watching);
@@ -285,7 +297,7 @@ impl BackendState {
     }
 
     async fn filesystem_handle_child_change(
-        &mut self,
+        self: &Arc<Self>,
         parent: WatchTarget,
         parent_path: &Path,
         path: &Arc<Path>,
@@ -304,22 +316,23 @@ impl BackendState {
                     let mut account_info = self.account_info.write();
                     account_info.mark_changed(&path);
                     self.send.send(account_info.get().create_update_message());
-                } else if path.starts_with(self.directories.owned_skins_dir.as_ref()) {
-                    // Owned skins folder changed (file added/removed) - reload profile so cards update
-                    self.request_minecraft_profile_reload().await;
+                } else if file_name == "skins" {
+                    let is_not_unloaded = self.skin_manager.read().skin_library_state.is_not_unloaded();
+                    if is_not_unloaded {
+                        self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::SkinLibraryDir);
+                        after_debounce_effects.skin_manager_changes.dirty_all();
+                    }
                 }
-            },
-            WatchTarget::OwnedSkinsDir => {
-                // File added/removed/modified in owned_skins (copy, paste, move) - reload profile
-                self.request_minecraft_profile_reload().await;
             },
             WatchTarget::InstancesDir => {
                 if path.is_dir() {
-                    if let Some(file_name) = path.file_name() {
-                        if file_name.to_string_lossy().starts_with('.') {
-                            return;
-                        }
+                    let Some(file_name) = path.file_name() else {
+                        return;
+                    };
+                    if file_name.as_encoded_bytes()[0] == b'.' {
+                        return;
                     }
+
                     let success = self.load_instance_from_path(path, false, true);
                     if !success {
                         self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::InvalidInstanceDir);
@@ -337,10 +350,15 @@ impl BackendState {
                     } else {
                         self.load_instance_from_path(parent_path, true, true);
                     }
+                } else if file_name == "stats_v1.json" {
+                    if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                        instance.stats.mark_changed(&path);
+                        self.send.send(instance.create_modify_message());
+                    }
                 } else if file_name == ".minecraft"
                     && let Some(instance) = self.instance_state.write().instances.get_mut(id)
                 {
-                    instance.mark_all_dirty();
+                    instance.mark_all_dirty(self, false);
                     instance.rewatch_directories(&mut *self.file_watching.write());
                 }
             },
@@ -354,23 +372,35 @@ impl BackendState {
                     };
                     match name {
                         "saves" => {
-                            instance.mark_world_dirty(None);
-                            if instance.worlds_state.load(Ordering::SeqCst).is_not_unloaded() {
-                                self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::InstanceSavesDir { id });
+                            after_debounce_effects
+                                .world_changes
+                                .entry(id)
+                                .or_insert_with(FolderChanges::no_changes)
+                                .dirty_all();
+                            if instance.worlds_state.is_not_unloaded() {
+                                self.file_watching
+                                    .write()
+                                    .watch_filesystem(path.clone(), WatchTarget::InstanceSavesDir { id });
                             }
                             return;
                         },
                         "servers.dat" => {
-                            instance.mark_servers_dirty();
+                            after_debounce_effects.server_dat_changes.insert(id);
                             return;
                         },
                         _ => {},
                     }
                     for folder in ContentFolder::iter() {
-                        if name == folder.path().as_str() {
-                            instance.content_state[folder].mark_dirty(None);
-                            if instance.content_state[folder].load_state.load(Ordering::SeqCst).is_not_unloaded() {
-                                self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::InstanceContentDir { id, folder });
+                        if name == folder.folder_name() {
+                            after_debounce_effects
+                                .content_changes
+                                .entry((id, folder))
+                                .or_insert_with(FolderChanges::no_changes)
+                                .dirty_all();
+                            if instance.content_state[folder].load_state.is_not_unloaded() {
+                                self.file_watching
+                                    .write()
+                                    .watch_filesystem(path.clone(), WatchTarget::InstanceContentDir { id, folder });
                             }
                             return;
                         }
@@ -386,63 +416,56 @@ impl BackendState {
                 }
             },
             WatchTarget::InstanceWorldDir { id } => {
-                // If a file inside the world folder is changed (e.g. icon.png, datapack), mark the world dirty and reload
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    let world_path = if parent_path.file_name() == Some(OsStr::new("datapacks")) {
-                        parent_path.parent().map(Arc::from)
-                    } else {
-                        Some(parent_path.into())
-                    };
-                    if let Some(wp) = world_path {
-                        instance.mark_world_dirty(Some(wp));
-                    }
+                // If a file inside the world folder is changed (e.g. icon.png), mark the world (parent) as dirty
+                let Some(file_name) = path.file_name() else {
+                    return;
+                };
+                if file_name == "level.dat" || file_name == "icon.png" {
+                    after_debounce_effects
+                        .world_changes
+                        .entry(id)
+                        .or_insert_with(FolderChanges::no_changes)
+                        .dirty_path(parent_path.into());
                 }
-                after_debounce_effects.worlds_to_reload.insert(id);
             },
             WatchTarget::InstanceSavesDir { id } => {
-                // If a world folder or file inside a world (e.g. datapack) changed, mark the world folder dirty
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    let world_path = if path.is_dir() {
-                        Some(path.clone())
-                    } else {
-                        path.parent().and_then(|p| p.parent()).map(Arc::from)
-                    };
-                    if let Some(world_path) = world_path {
-                        instance.mark_world_dirty(Some(world_path));
-                    }
-                }
-                after_debounce_effects.worlds_to_reload.insert(id);
+                // If a world folder is added to the saves directory, mark the world (path) as dirty
+                after_debounce_effects
+                    .world_changes
+                    .entry(id)
+                    .or_insert_with(FolderChanges::no_changes)
+                    .dirty_path(path.clone());
             },
             WatchTarget::InstanceContentDir { id, folder } => {
-                let mut instance_state = self.instance_state.write();
-                if let Some(instance) = instance_state.instances.get_mut(id) {
-                    instance.content_state[folder].mark_dirty(Some(path.clone()));
-                    if instance_state.reload_immediately.remove(&(id, folder)) {
-                        after_debounce_effects.reload_immediately.insert((id, folder));
-                    }
-                }
+                after_debounce_effects
+                    .content_changes
+                    .entry((id, folder))
+                    .or_insert_with(FolderChanges::no_changes)
+                    .dirty_path(path.clone());
+            },
+            WatchTarget::SkinLibraryDir => {
+                after_debounce_effects.skin_manager_changes.dirty_path(path.clone());
             },
         }
     }
 
     async fn filesystem_handle_child_removed(
-        &mut self,
+        self: &Arc<Self>,
         parent: WatchTarget,
         parent_path: &Path,
         path: &Arc<Path>,
         after_debounce_effects: &mut AfterDebounceEffects,
     ) {
         match parent {
-            WatchTarget::OwnedSkinsDir => {
-                self.request_minecraft_profile_reload().await;
-            },
             WatchTarget::InstanceDir { id } => {
                 let Some(file_name) = path.file_name() else {
                     return;
                 };
                 if file_name == "info_v1.json" {
                     self.remove_instance(id);
-                    self.file_watching.write().watch_filesystem(parent_path.into(), WatchTarget::InvalidInstanceDir);
+                    self.file_watching
+                        .write()
+                        .watch_filesystem(parent_path.into(), WatchTarget::InvalidInstanceDir);
                 }
             },
             WatchTarget::InstanceDotMinecraftDir { id } => {
@@ -450,45 +473,37 @@ impl BackendState {
                     return;
                 };
                 if file_name == "servers.dat" {
-                    if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                        instance.mark_servers_dirty();
-                    }
+                    after_debounce_effects.server_dat_changes.insert(id);
                 }
             },
             WatchTarget::InstanceWorldDir { id } => {
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    let world_path = if parent_path.file_name() == Some(OsStr::new("datapacks")) {
-                        parent_path.parent().map(Arc::from)
-                    } else {
-                        Some(parent_path.into())
-                    };
-                    if let Some(wp) = world_path {
-                        instance.mark_world_dirty(Some(wp));
-                    }
+                let Some(file_name) = path.file_name() else {
+                    return;
+                };
+                if file_name == "level.dat" || file_name == "icon.png" {
+                    after_debounce_effects
+                        .world_changes
+                        .entry(id)
+                        .or_insert_with(FolderChanges::no_changes)
+                        .dirty_path(parent_path.into());
                 }
-                after_debounce_effects.worlds_to_reload.insert(id);
             },
             WatchTarget::InstanceSavesDir { id } => {
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                    let world_path = if path.is_dir() {
-                        Some(path.clone())
-                    } else {
-                        path.parent().and_then(|p| p.parent()).map(Arc::from)
-                    };
-                    if let Some(world_path) = world_path {
-                        instance.mark_world_dirty(Some(world_path));
-                    }
-                }
-                after_debounce_effects.worlds_to_reload.insert(id);
+                after_debounce_effects
+                    .world_changes
+                    .entry(id)
+                    .or_insert_with(FolderChanges::no_changes)
+                    .dirty_path(path.clone());
             },
             WatchTarget::InstanceContentDir { id, folder } => {
-                let mut instance_state = self.instance_state.write();
-                if let Some(instance) = instance_state.instances.get_mut(id) {
-                    instance.content_state[folder].mark_dirty(Some(path.clone()));
-                    if instance_state.reload_immediately.remove(&(id, folder)) {
-                        after_debounce_effects.reload_immediately.insert((id, folder));
-                    }
-                }
+                after_debounce_effects
+                    .content_changes
+                    .entry((id, folder))
+                    .or_insert_with(FolderChanges::no_changes)
+                    .dirty_path(path.clone());
+            },
+            WatchTarget::SkinLibraryDir => {
+                after_debounce_effects.skin_manager_changes.dirty_path(path.clone());
             },
             _ => {},
         }

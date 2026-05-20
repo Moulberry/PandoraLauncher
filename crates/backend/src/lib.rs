@@ -1,7 +1,12 @@
 #![deny(unused_must_use)]
 
 mod backend;
-use std::{ffi::{OsStr, OsString}, io::{Error, ErrorKind, Write}, path::{Path, PathBuf}, sync::Arc};
+use std::{
+    ffi::{OsStr, OsString},
+    io::{Error, ErrorKind, Write},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 pub use backend::*;
 use bridge::instance::InstanceContentSummary;
@@ -16,6 +21,8 @@ mod backend_handler;
 mod account;
 mod arcfactory;
 mod directories;
+mod export;
+mod id_slab;
 mod install_content;
 mod instance;
 mod java_manifest;
@@ -26,9 +33,10 @@ mod lockfile;
 mod log_reader;
 mod metadata;
 mod mod_metadata;
-mod id_slab;
 mod persistent;
+mod server_list_pinger;
 mod shortcut;
+mod skin_manager;
 mod syncing;
 mod update;
 
@@ -39,7 +47,9 @@ pub(crate) fn is_single_component_path_str(path: &str) -> bool {
 pub(crate) fn is_single_component_path(path: &Path) -> bool {
     let mut components = path.components().peekable();
 
-    if let Some(first) = components.peek() && !matches!(first, std::path::Component::Normal(_)) {
+    if let Some(first) = components.peek()
+        && !matches!(first, std::path::Component::Normal(_))
+    {
         return false;
     }
 
@@ -64,7 +74,7 @@ pub enum IoOrSerializationError {
     Serialization(#[from] serde_json::Error),
 }
 
-pub(crate) fn read_json<T: for <'de> Deserialize<'de>>(path: &Path) -> Result<T, IoOrSerializationError> {
+pub(crate) fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T, IoOrSerializationError> {
     let data = std::fs::read(path)?;
     Ok(serde_json::from_slice(&data)?)
 }
@@ -130,7 +140,11 @@ pub(crate) fn pandora_aux_path_for_content(content: &InstanceContentSummary) -> 
     pandora_aux_path(&content.content_summary.id, &content.content_summary.name, &content.path)
 }
 
-pub(crate) fn create_content_library_path(content_library_dir: &Path, expected_hash: [u8; 20], extension: Option<&str>) -> PathBuf {
+pub(crate) fn create_content_library_path(
+    content_library_dir: &Path,
+    expected_hash: [u8; 20],
+    extension: Option<&str>,
+) -> PathBuf {
     let hash_as_str = hex::encode(expected_hash);
 
     let hash_folder = content_library_dir.join(&hash_as_str[..2]);
@@ -151,11 +165,17 @@ pub struct FolderChanges {
 
 impl FolderChanges {
     pub fn no_changes() -> Self {
-        Self { all_dirty: false, paths: Default::default() }
+        Self {
+            all_dirty: false,
+            paths: Default::default(),
+        }
     }
 
     pub fn all_dirty() -> Self {
-        Self { all_dirty: true, paths: Default::default() }
+        Self {
+            all_dirty: true,
+            paths: Default::default(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -197,7 +217,12 @@ impl FolderChanges {
     }
 }
 
-pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &dyn Fn(u64, u64)) -> std::io::Result<()> {
+pub fn copy_content_recursive(
+    from: &Path,
+    to: &Path,
+    strict: bool,
+    progress: &dyn Fn(u64, u64),
+) -> std::io::Result<()> {
     let from = from.canonicalize()?;
     if !from.is_dir() {
         return Err(ErrorKind::NotADirectory.into());
@@ -240,7 +265,6 @@ pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &d
                 let metadata = entry.metadata()?;
                 files.push((relative.to_path_buf(), path));
                 total_bytes += metadata.len();
-
             } else if file_type.is_dir() {
                 #[cfg(windows)]
                 if let Ok(target) = junction::get_target(&path) {
@@ -257,7 +281,7 @@ pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &d
                 }
 
                 directories.push(relative.to_path_buf());
-                directories_to_visit.push((path, depth+1));
+                directories_to_visit.push((path, depth + 1));
             }
         }
     }
@@ -271,26 +295,36 @@ pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &d
         let dest = to.join(relative);
         match std::fs::copy(copy_from, dest) {
             Ok(bytes) => copied_bytes += bytes,
-            Err(err) => if strict {
-                return Err(err);
+            Err(err) => {
+                if strict {
+                    return Err(err);
+                }
             },
         }
         (progress)(copied_bytes, total_bytes);
     }
     if strict && copied_bytes != total_bytes {
-        return Err(Error::new(ErrorKind::Other,
-            format!("Expected copy size did not match. Expected to copy {total_bytes} bytes, copied {copied_bytes} instead")));
+        return Err(Error::new(
+            ErrorKind::Other,
+            format!(
+                "Expected copy size did not match. Expected to copy {total_bytes} bytes, copied {copied_bytes} instead"
+            ),
+        ));
     }
     for (relative, internal) in internal_symlinks {
         let dest = to.join(relative);
         let target = to.join(internal);
-        if let Err(err) = symlink_dir_or_file(&target, &dest) && strict {
+        if let Err(err) = symlink_dir_or_file(&target, &dest)
+            && strict
+        {
             return Err(err);
         }
     }
     for (relative, target) in external_symlinks {
         let dest = to.join(relative);
-        if let Err(err) = symlink_dir_or_file(&target, &dest) && strict {
+        if let Err(err) = symlink_dir_or_file(&target, &dest)
+            && strict
+        {
             return Err(err);
         }
     }
@@ -298,14 +332,18 @@ pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &d
     for (relative, internal) in internal_junctions {
         let dest = to.join(relative);
         let target = to.join(internal);
-        if let Err(err) = junction::create(&target, &dest) && strict {
+        if let Err(err) = junction::create(&target, &dest)
+            && strict
+        {
             return Err(err);
         }
     }
     #[cfg(windows)]
     for (relative, target) in external_junctions {
         let dest = to.join(relative);
-        if let Err(err) = junction::create(&target, &dest) && strict {
+        if let Err(err) = junction::create(&target, &dest)
+            && strict
+        {
             return Err(err);
         }
     }
@@ -335,9 +373,29 @@ pub fn symlink_dir_or_file(original: &Path, link: &Path) -> std::io::Result<()> 
     compile_error!("Unsupported platform: can't symlink");
 }
 
+pub fn hard_link_or_copy(from: &Path, to: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(to) {
+        Ok(()) => {},
+        Err(err) if err.kind() == ErrorKind::NotFound => {},
+        Err(err) => return Err(err),
+    }
+
+    if let Err(err) = std::fs::hard_link(from, to) {
+        if err.kind() == ErrorKind::CrossesDevices {
+            // Cannot hard link across devices, do a copy instead
+            return std::fs::copy(from, to).map(|_| ());
+        }
+        Err(err)
+    } else {
+        Ok(())
+    }
+}
+
 pub fn rename_with_fallback_across_devices(from: &Path, to: &Path) -> std::io::Result<()> {
     // Remove empty 'to' directory to ensure consistent behaviour across unix and windows
-    if let Err(err) = std::fs::remove_dir(to) && !matches!(err.kind(), ErrorKind::NotADirectory | ErrorKind::NotFound) {
+    if let Err(err) = std::fs::remove_dir(to)
+        && !matches!(err.kind(), ErrorKind::NotADirectory | ErrorKind::NotFound)
+    {
         return Err(err);
     }
     if let Err(err) = std::fs::rename(from, to) {
@@ -369,6 +427,8 @@ pub fn rename_with_fallback_across_devices(from: &Path, to: &Path) -> std::io::R
         Ok(())
     }
 }
+
+pub const KNOWN_SHADER_MODS: &[&'static str] = &["iris", "oculus", "optifine"];
 
 pub fn join_windows_shell(args: &[&str]) -> String {
     let mut string = String::new();
@@ -406,6 +466,7 @@ pub fn join_windows_shell(args: &[&str]) -> String {
                 for _ in 0..backslashes {
                     string.push('\\');
                 }
+                backslashes = 0;
                 string.push(char);
             }
         }
@@ -456,7 +517,7 @@ pub fn join_windows_shell_os(args: &[&OsStr]) -> OsString {
             if *byte == b'\\' {
                 backslashes += 1;
             } else if *byte == b'"' {
-                for _ in 0..backslashes*2 {
+                for _ in 0..backslashes * 2 {
                     string.push(b'\\');
                 }
                 string.push(b'\\');
@@ -466,12 +527,13 @@ pub fn join_windows_shell_os(args: &[&OsStr]) -> OsString {
                 for _ in 0..backslashes {
                     string.push(b'\\');
                 }
+                backslashes = 0;
                 string.push(*byte);
             }
         }
 
         if quoted {
-            for _ in 0..backslashes*2 {
+            for _ in 0..backslashes * 2 {
                 string.push(b'\\');
             }
         } else {
@@ -485,7 +547,5 @@ pub fn join_windows_shell_os(args: &[&OsStr]) -> OsString {
         }
     }
 
-    unsafe {
-        OsString::from_encoded_bytes_unchecked(string)
-    }
+    unsafe { OsString::from_encoded_bytes_unchecked(string) }
 }

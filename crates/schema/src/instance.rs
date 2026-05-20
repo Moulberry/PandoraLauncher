@@ -13,26 +13,66 @@ pub struct InstanceConfiguration {
     pub loader: Loader,
     #[serde(default, skip_serializing_if = "crate::skip_if_none")]
     pub preferred_loader_version: Option<Ustr>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "crate::skip_if_none")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "crate::skip_if_none"
+    )]
     pub preferred_account: Option<Uuid>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_memory_configuration")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_memory_configuration"
+    )]
     pub memory: Option<InstanceMemoryConfiguration>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_wrapper_command_configuration")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_wrapper_command_configuration"
+    )]
     pub wrapper_command: Option<InstanceWrapperCommandConfiguration>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_flags_configuration")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_jvm_flags_configuration"
+    )]
     pub jvm_flags: Option<InstanceJvmFlagsConfiguration>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_binary_configuration")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_jvm_binary_configuration"
+    )]
     pub jvm_binary: Option<InstanceJvmBinaryConfiguration>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_linux_wrapper_configuration")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_linux_wrapper_configuration"
+    )]
     pub linux_wrapper: Option<InstanceLinuxWrapperConfiguration>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_system_libraries_configuration")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "is_default_system_libraries_configuration"
+    )]
     pub system_libraries: Option<InstanceSystemLibrariesConfiguration>,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "crate::skip_if_none")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "crate::skip_if_none"
+    )]
     pub instance_fallback_icon: Option<Ustr>,
     #[serde(default, deserialize_with = "crate::try_deserialize")]
     pub disable_file_syncing: bool,
-    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "crate::try_deserialize",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub created_shortcuts: Vec<Arc<str>>,
+    #[serde(default, deserialize_with = "crate::try_deserialize")]
+    pub show_shader_tab: bool,
+    #[serde(default, deserialize_with = "crate::try_deserialize")]
+    pub sandbox: bool,
 }
 
 impl InstanceConfiguration {
@@ -51,6 +91,8 @@ impl InstanceConfiguration {
             instance_fallback_icon: None,
             disable_file_syncing: false,
             created_shortcuts: Vec::new(),
+            show_shader_tab: false,
+            sandbox: false,
         }
     }
 }
@@ -72,7 +114,7 @@ impl Default for InstanceMemoryConfiguration {
         Self {
             enabled: false,
             min: Self::DEFAULT_MIN,
-            max: Self::DEFAULT_MAX
+            max: Self::DEFAULT_MAX,
         }
     }
 }
@@ -147,19 +189,21 @@ impl Default for InstanceLinuxWrapperConfiguration {
             use_mangohud: false,
             use_gamemode: false,
             use_discrete_gpu: true,
-            disable_gl_threaded_optimizations: false
+            disable_gl_threaded_optimizations: false,
         }
     }
 }
 
 fn is_default_linux_wrapper_configuration(config: &Option<InstanceLinuxWrapperConfiguration>) -> bool {
     if let Some(config) = config {
-        !config.use_mangohud && !config.use_gamemode && config.use_discrete_gpu && !config.disable_gl_threaded_optimizations
+        !config.use_mangohud
+            && !config.use_gamemode
+            && config.use_discrete_gpu
+            && !config.disable_gl_threaded_optimizations
     } else {
         true
     }
 }
-
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct InstanceSystemLibrariesConfiguration {
@@ -196,9 +240,7 @@ impl LwjglLibraryPath {
                     auto.clone()
                 }
             },
-            LwjglLibraryPath::Explicit(path) => {
-                Some(path)
-            },
+            LwjglLibraryPath::Explicit(path) => Some(path),
         }
     }
 }
@@ -222,7 +264,7 @@ fn get_shared_library_path_for_name(name: &str) -> Option<Arc<Path>> {
         "/usr/lib64/",
         "/usr/local/lib/",
         #[cfg(target_os = "macos")]
-        "/opt/homebrew/lib/"
+        "/opt/homebrew/lib/",
     ];
 
     for search_path in search_paths {

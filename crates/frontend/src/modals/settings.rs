@@ -1,8 +1,12 @@
 use std::{path::Path, sync::Arc};
 
-use bridge::{handle::BackendHandle, message::{BackendConfigWithPassword, MessageToBackend}};
+use bridge::{
+    handle::BackendHandle,
+    message::{BackendConfigWithPassword, MessageToBackend},
+};
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
+    ActiveTheme, Disableable, Sizable, ThemeRegistry,
     button::{Button, ButtonVariants},
     checkbox::Checkbox,
     h_flex,
@@ -11,11 +15,11 @@ use gpui_component::{
     sheet::Sheet,
     spinner::Spinner,
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme, Disableable, Sizable, ThemeRegistry,
+    v_flex,
 };
 use schema::backend_config::{BackendConfig, ProxyConfig, ProxyProtocol};
 
-use crate::{entity::DataEntities, icon::PandoraIcon, interface_config::InterfaceConfig, ts};
+use crate::{entity::DataEntities, icon::PandoraIcon, interface_config::InterfaceConfig};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum SettingsTab {
@@ -43,11 +47,20 @@ struct Settings {
     proxy_password_changed: bool,
 }
 
-pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
+pub fn build_settings_sheet(
+    data: &DataEntities,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
     let theme_folder = data.theme_folder.clone();
     let settings = cx.new(|cx| {
-        let theme_select_delegate = SearchableVec::new(ThemeRegistry::global(cx).sorted_themes()
-            .iter().map(|cfg| cfg.name.clone()).collect::<Vec<_>>());
+        let theme_select_delegate = SearchableVec::new(
+            ThemeRegistry::global(cx)
+                .sorted_themes()
+                .iter()
+                .map(|cfg| cfg.name.clone())
+                .collect::<Vec<_>>(),
+        );
 
         let theme_select = cx.new(|cx| {
             let mut state = SelectState::new(theme_select_delegate, Default::default(), window, cx).searchable(true);
@@ -62,12 +75,17 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
 
             InterfaceConfig::get_mut(cx).active_theme = theme_name.clone();
 
-            let Some(theme) = gpui_component::ThemeRegistry::global(cx).themes().get(&SharedString::new(theme_name.trim_ascii())).cloned() else {
+            let Some(theme) = gpui_component::ThemeRegistry::global(cx)
+                .themes()
+                .get(&SharedString::new(theme_name.trim_ascii()))
+                .cloned()
+            else {
                 return;
             };
 
             gpui_component::Theme::global_mut(cx).apply_config(&theme);
-        }).detach();
+        })
+        .detach();
 
         let proxy_protocol_select = cx.new(|cx| {
             let protocols = vec!["HTTP", "HTTPS", "SOCKS5"];
@@ -103,7 +121,8 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             proxy_password_changed: false,
         };
 
-        cx.subscribe(&settings.proxy_protocol_select, Settings::on_proxy_protocol_changed).detach();
+        cx.subscribe(&settings.proxy_protocol_select, Settings::on_proxy_protocol_changed)
+            .detach();
         cx.subscribe(&settings.proxy_host_input, Settings::on_proxy_input_changed).detach();
         cx.subscribe(&settings.proxy_port_input, Settings::on_proxy_input_changed).detach();
         cx.subscribe(&settings.proxy_username_input, Settings::on_proxy_input_changed).detach();
@@ -114,17 +133,26 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
         settings
     });
 
+    let version = option_env!("PANDORA_RELEASE_VERSION").unwrap_or("Dev");
+    let version_string = if let Some(git_rev) = option_env!("GIT_REVISION") {
+        SharedString::new(format!("{} ({})", version, git_rev))
+    } else {
+        version.into()
+    };
+    let version_icon = if version == "Dev" {
+        PandoraIcon::GitBranch
+    } else {
+        PandoraIcon::Rocket
+    };
+
     move |sheet, _, cx| {
         sheet
-            .title(ts!("settings.title"))
+            .title(t::settings::title())
             .size(px(420.))
             .p_0()
             .when(cfg!(target_os = "macos"), |this| this.pt_5())
-            .child(v_flex()
-                .border_t_1()
-                .border_color(cx.theme().border)
-                .child(settings.clone())
-            )
+            .child(v_flex().size_full().border_t_1().border_color(cx.theme().border).child(settings.clone()))
+            .child(h_flex().p_2().gap_2().child(version_icon.clone()).child(version_string.clone()))
     }
 }
 
@@ -171,9 +199,7 @@ impl Settings {
             });
         }));
 
-        self.backend_handle.send(MessageToBackend::GetBackendConfiguration {
-            channel: send,
-        });
+        self.backend_handle.send(MessageToBackend::GetBackendConfiguration { channel: send });
     }
 
     fn on_proxy_protocol_changed(
@@ -186,40 +212,28 @@ impl Settings {
         self.save_proxy_config(_cx);
     }
 
-    fn on_proxy_input_changed(
-        &mut self,
-        _state: Entity<InputState>,
-        event: &InputEvent,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_proxy_input_changed(&mut self, _state: Entity<InputState>, event: &InputEvent, cx: &mut Context<Self>) {
         if let InputEvent::Blur = event {
             self.save_proxy_config(cx);
         }
     }
 
-    fn on_proxy_password_changed(
-        &mut self,
-        _state: Entity<InputState>,
-        event: &InputEvent,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_proxy_password_changed(&mut self, _state: Entity<InputState>, event: &InputEvent, cx: &mut Context<Self>) {
         match event {
             InputEvent::Change => {
                 self.proxy_password_changed = true;
-            }
+            },
             InputEvent::Blur => {
                 if self.proxy_password_changed {
                     self.save_proxy_config(cx);
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
     fn get_proxy_config(&self, cx: &App) -> ProxyConfig {
-        let protocol_name = self.proxy_protocol_select.read(cx).selected_value()
-            .map(|s| *s)
-            .unwrap_or("HTTP");
+        let protocol_name = self.proxy_protocol_select.read(cx).selected_value().map(|s| *s).unwrap_or("HTTP");
 
         ProxyConfig {
             enabled: self.proxy_enabled,
@@ -247,10 +261,7 @@ impl Settings {
             None
         };
 
-        self.backend_handle.send(MessageToBackend::SetProxyConfiguration {
-            config,
-            password,
-        });
+        self.backend_handle.send(MessageToBackend::SetProxyConfiguration { config, password });
 
         self.proxy_password_changed = false;
     }
@@ -262,90 +273,135 @@ impl Settings {
             .px_4()
             .py_3()
             .gap_3()
+            .child(crate::labelled(t::settings::theme::title(), Select::new(&self.theme_select)))
+            .child(
+                Button::new("open-theme-folder")
+                    .info()
+                    .icon(PandoraIcon::FolderOpen)
+                    .label(t::settings::theme::open_folder())
+                    .on_click({
+                        let theme_folder = self.theme_folder.clone();
+                        move |_, window, cx| {
+                            crate::open_folder(&theme_folder, window, cx);
+                        }
+                    }),
+            )
+            .child(
+                Button::new("open-theme-repo")
+                    .info()
+                    .icon(PandoraIcon::Globe)
+                    .label(t::settings::theme::open_repo())
+                    .on_click({
+                        move |_, _, cx| {
+                            cx.open_url("https://github.com/longbridge/gpui-component/tree/main/themes");
+                        }
+                    }),
+            )
             .child(crate::labelled(
-                ts!("settings.theme.title"),
-                Select::new(&self.theme_select)
-            ))
-            .child(Button::new("open-theme-folder").info().icon(PandoraIcon::FolderOpen).label(ts!("settings.theme.open_folder")).on_click({
-                let theme_folder = self.theme_folder.clone();
-                move |_, window, cx| {
-                    crate::open_folder(&theme_folder, window, cx);
-                }
-            }))
-            .child(Button::new("open-theme-repo").info().icon(PandoraIcon::Globe).label(ts!("settings.theme.open_repo")).on_click({
-                move |_, _, cx| {
-                    cx.open_url("https://github.com/longbridge/gpui-component/tree/main/themes");
-                }
-            }))
-            .child(crate::labelled(ts!("settings.delete.title"),
-                v_flex().gap_2()
-                    .child(Checkbox::new("confirm-delete-mods")
-                        .label(ts!("settings.delete.skip_mod_delete_confirmation"))
-                        .checked(interface_config.quick_delete_mods)
-                        .on_click(|value, _, cx| {
-                            InterfaceConfig::get_mut(cx).quick_delete_mods = *value;
-                        }))
-                    .child(Checkbox::new("confirm-delete-instance")
-                        .label(ts!("settings.delete.skip_instance_delete_confirmation"))
-                        .checked(interface_config.quick_delete_instance).on_click(|value, _, cx| {
-                            InterfaceConfig::get_mut(cx).quick_delete_instance = *value;
-                        }))
-                    .child(Checkbox::new("confirm-delete-skin")
-                        .label(ts!("settings.delete.skip_skin_delete_confirmation"))
-                        .checked(interface_config.quick_delete_skins).on_click(|value, _, cx| {
-                            InterfaceConfig::get_mut(cx).quick_delete_skins = *value;
-                        }))
+                t::settings::delete::title(),
+                v_flex()
+                    .gap_2()
+                    .child(
+                        Checkbox::new("confirm-delete-mods")
+                            .label(t::settings::delete::skip_mod_delete_confirmation())
+                            .checked(interface_config.quick_delete_mods)
+                            .on_click(|value, _, cx| {
+                                InterfaceConfig::get_mut(cx).quick_delete_mods = *value;
+                            }),
                     )
-            );
+                    .child(
+                        Checkbox::new("confirm-delete-instance")
+                            .label(t::settings::delete::skip_instance_delete_confirmation())
+                            .checked(interface_config.quick_delete_instance)
+                            .on_click(|value, _, cx| {
+                                InterfaceConfig::get_mut(cx).quick_delete_instance = *value;
+                            }),
+                    )
+                    .child(
+                        Checkbox::new("confirm-delete-skin")
+                            .label(t::settings::delete::skip_skin_delete_confirmation())
+                            .checked(interface_config.quick_delete_skins)
+                            .on_click(|value, _, cx| {
+                                InterfaceConfig::get_mut(cx).quick_delete_skins = *value;
+                            }),
+                    ),
+            ));
 
         if let Some(backend_config) = &self.backend_config {
-            div = div
-                .child(crate::labelled(
-                    ts!("settings.windows.title"),
-                    v_flex().gap_2()
-                        .child(Checkbox::new("hide-on-launch")
-                            .label(ts!("settings.windows.hide_main_window"))
+            div = div.child(crate::labelled(
+                t::settings::windows::title(),
+                v_flex()
+                    .gap_2()
+                    .child(
+                        Checkbox::new("hide-on-launch")
+                            .label(t::settings::windows::hide_main_window())
                             .checked(interface_config.hide_main_window_on_launch)
                             .on_click(|value, _, cx| {
                                 InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
-                            }))
-                        .child(Checkbox::new("open-game-output")
-                            .label(ts!("settings.windows.open_game_output"))
+                            }),
+                    )
+                    .child(
+                        Checkbox::new("open-game-output")
+                            .label(t::settings::windows::open_game_output())
                             .checked(!backend_config.dont_open_game_output_when_launching)
                             .on_click(cx.listener({
                                 let backend_handle = self.backend_handle.clone();
                                 move |settings, value, window, cx| {
-                                    backend_handle.send(MessageToBackend::SetOpenGameOutputAfterLaunching {
-                                        value: *value
-                                    });
+                                    backend_handle
+                                        .send(MessageToBackend::SetOpenGameOutputAfterLaunching { value: *value });
                                     settings.update_backend_configuration(window, cx);
                                 }
-                            })))
-                        .child(Checkbox::new("quit-on-main-close")
-                            .label(ts!("settings.windows.close_all_when_main_closed"))
+                            })),
+                    )
+                    .child(
+                        Checkbox::new("quit-on-main-close")
+                            .label(t::settings::windows::close_all_when_main_closed())
                             .checked(interface_config.quit_on_main_closed)
                             .on_click(|value, _, cx| {
                                 InterfaceConfig::get_mut(cx).quit_on_main_closed = *value;
-                            }))
-                ))
+                            }),
+                    )
+                    .child(
+                        Checkbox::new("use-os-titlebar")
+                            .label(t::settings::windows::use_os_titlebar())
+                            .checked(interface_config.use_os_titlebar)
+                            .on_click(|value, _, cx| {
+                                InterfaceConfig::get_mut(cx).use_os_titlebar = *value;
+                            }),
+                    ),
+            ))
         } else {
             div = div.child(Spinner::new().large());
         }
 
-        div = div.child(crate::labelled(ts!("settings.privacy.title"),
-            v_flex().gap_2()
-                .child(Checkbox::new("hide-usernames")
-                    .label(ts!("settings.privacy.hide_usernames"))
-                    .checked(interface_config.hide_usernames)
-                    .on_click(|value, _, cx| {
-                        InterfaceConfig::get_mut(cx).hide_usernames = *value;
-                    }))
-                .child(Checkbox::new("hide-server-addresses")
-                    .label(ts!("settings.privacy.hide_server_addresses"))
-                    .checked(interface_config.hide_server_addresses)
-                    .on_click(|value, _, cx| {
-                        InterfaceConfig::get_mut(cx).hide_server_addresses = *value;
-                    }))
+        div = div.child(crate::labelled(
+            t::settings::privacy::title(),
+            v_flex()
+                .gap_2()
+                .child(
+                    Checkbox::new("hide-usernames")
+                        .label(t::settings::privacy::hide_usernames())
+                        .checked(interface_config.hide_usernames)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).hide_usernames = *value;
+                        }),
+                )
+                .child(
+                    Checkbox::new("hide-skins")
+                        .label(t::settings::privacy::hide_skins())
+                        .checked(interface_config.hide_skins)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).hide_skins = *value;
+                        }),
+                )
+                .child(
+                    Checkbox::new("hide-server-addresses")
+                        .label(t::settings::privacy::hide_server_addresses())
+                        .checked(interface_config.hide_server_addresses)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).hide_server_addresses = *value;
+                        }),
+                ),
         ));
 
         div
@@ -360,58 +416,78 @@ impl Settings {
             .py_3()
             .gap_3()
             .child(crate::labelled(
-                ts!("settings.proxy.title"),
-                v_flex().gap_2()
-                    .child(Checkbox::new("proxy-enabled")
-                        .label(ts!("settings.proxy.enabled"))
-                        .checked(proxy_enabled)
-                        .on_click(cx.listener(|settings, value, _, cx| {
-                            settings.proxy_enabled = *value;
-                            settings.save_proxy_config(cx);
-                            cx.notify();
-                        })))
-                    .child(h_flex().gap_2()
-                        .child(v_flex().gap_1().w_32()
-                            .child(ts!("settings.proxy.protocol"))
-                            .child(Select::new(&self.proxy_protocol_select)
-                                .disabled(!proxy_enabled)
-                                .w_full()))
-                        .child(v_flex().gap_1().flex_1()
-                            .child(ts!("settings.proxy.host"))
-                            .child(Input::new(&self.proxy_host_input)
-                                .disabled(!proxy_enabled)))
-                        .child(v_flex().gap_1().w_32()
-                            .child(ts!("settings.proxy.port"))
-                            .child(NumberInput::new(&self.proxy_port_input)
-                                .disabled(!proxy_enabled))))
+                t::settings::proxy::title(),
+                v_flex()
+                    .gap_2()
+                    .child(
+                        Checkbox::new("proxy-enabled")
+                            .label(t::settings::proxy::enabled())
+                            .checked(proxy_enabled)
+                            .on_click(cx.listener(|settings, value, _, cx| {
+                                settings.proxy_enabled = *value;
+                                settings.save_proxy_config(cx);
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .w_32()
+                                    .child(t::settings::proxy::protocol())
+                                    .child(Select::new(&self.proxy_protocol_select).disabled(!proxy_enabled).w_full()),
+                            )
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .flex_1()
+                                    .child(t::settings::proxy::host())
+                                    .child(Input::new(&self.proxy_host_input).disabled(!proxy_enabled)),
+                            )
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .w_32()
+                                    .child(t::settings::proxy::port())
+                                    .child(NumberInput::new(&self.proxy_port_input).disabled(!proxy_enabled)),
+                            ),
+                    ),
             ))
             .child(crate::labelled(
-                ts!("settings.proxy.auth"),
-                v_flex().gap_2()
-                    .child(Checkbox::new("proxy-auth-enabled")
-                        .label(ts!("settings.proxy.use_auth"))
-                        .checked(proxy_auth_enabled)
-                        .disabled(!proxy_enabled)
-                        .on_click(cx.listener(|settings, value, _, cx| {
-                            settings.proxy_auth_enabled = *value;
-                            settings.save_proxy_config(cx);
-                            cx.notify();
-                        })))
-                    .child(h_flex().gap_2()
-                        .child(v_flex().gap_1().flex_1()
-                            .child(ts!("settings.proxy.username"))
-                            .child(Input::new(&self.proxy_username_input)
-                                .disabled(!proxy_enabled || !proxy_auth_enabled)))
-                        .child(v_flex().gap_1().flex_1()
-                            .child(ts!("settings.proxy.password"))
-                            .child(Input::new(&self.proxy_password_input)
-                                .disabled(!proxy_enabled || !proxy_auth_enabled))))
+                t::settings::proxy::auth(),
+                v_flex()
+                    .gap_2()
+                    .child(
+                        Checkbox::new("proxy-auth-enabled")
+                            .label(t::settings::proxy::use_auth())
+                            .checked(proxy_auth_enabled)
+                            .disabled(!proxy_enabled)
+                            .on_click(cx.listener(|settings, value, _, cx| {
+                                settings.proxy_auth_enabled = *value;
+                                settings.save_proxy_config(cx);
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(v_flex().gap_1().flex_1().child(t::settings::proxy::username()).child(
+                                Input::new(&self.proxy_username_input).disabled(!proxy_enabled || !proxy_auth_enabled),
+                            ))
+                            .child(v_flex().gap_1().flex_1().child(t::settings::proxy::password()).child(
+                                Input::new(&self.proxy_password_input).disabled(!proxy_enabled || !proxy_auth_enabled),
+                            )),
+                    ),
             ))
-            .child(div()
-                .pt_2()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(ts!("settings.proxy.launcher_only_note")))
+            .child(
+                div()
+                    .pt_2()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(t::settings::proxy::launcher_only_note()),
+            )
     }
 }
 impl Render for Settings {
@@ -425,8 +501,8 @@ impl Render for Settings {
                 SettingsTab::Network => 1,
             })
             .underline()
-            .child(Tab::new().label(ts!("settings.interface")))
-            .child(Tab::new().label(ts!("settings.network")))
+            .child(Tab::new().label(t::settings::interface()))
+            .child(Tab::new().label(t::settings::network()))
             .on_click(cx.listener(|settings, index, _window, cx| {
                 settings.selected_tab = match index {
                     0 => SettingsTab::Interface,
@@ -441,8 +517,6 @@ impl Render for Settings {
             SettingsTab::Network => self.render_network_tab(window, cx).into_any_element(),
         };
 
-        v_flex()
-            .child(tab_bar)
-            .child(content)
+        v_flex().child(tab_bar).child(content)
     }
 }

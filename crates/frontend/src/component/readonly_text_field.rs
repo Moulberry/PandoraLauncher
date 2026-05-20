@@ -3,7 +3,7 @@ use std::{cell::RefCell, num::NonZeroUsize, ops::Range, rc::Rc, sync::Arc};
 use ftree::FenwickTree;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable,
+    ActiveTheme as _, Icon, Sizable,
     button::Button,
     h_flex,
     input::{Input, InputEvent, InputState},
@@ -13,7 +13,7 @@ use gpui_component::{
 use lru::LruCache;
 use rustc_hash::FxBuildHasher;
 
-use crate::{icon::PandoraIcon, ts};
+use crate::icon::PandoraIcon;
 
 struct CachedShapedLines {
     item_lines: LruCache<usize, WrappedLines, FxBuildHasher>,
@@ -798,7 +798,7 @@ impl ReadonlyTextFieldWithControls {
     ) -> Self {
         let scroll_state = Rc::clone(&text_field.read(cx).scroll_state);
 
-        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(ts!("common.search")).clean_on_escape());
+        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(t::common::search()).clean_on_escape());
 
         let _search_input_subscription = cx.subscribe_in(&search_state, window, Self::on_search_input_event);
 
@@ -904,22 +904,25 @@ impl Render for ReadonlyTextFieldWithControls {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let search = Input::new(&self.search_state).prefix(Icon::new(PandoraIcon::Search).small());
 
-        let bar = h_flex()
-            .w_full()
-            .rounded(cx.theme().radius)
-            .flex_1()
-            .gap_4()
-            .child(search)
-            .child(Button::new("top").label(ts!("common.nav.top")).on_click(cx.listener(|root, _, _, cx| {
-                let mut state = root.scroll_handler.state.borrow_mut();
-                state.scrolling = GameOutputScrolling::Top { offset: Pixels::ZERO };
-                cx.notify();
-            })))
-            .child(Button::new("bottom").label(ts!("common.nav.bottom")).on_click(cx.listener(|root, _, _, cx| {
-                let mut state = root.scroll_handler.state.borrow_mut();
-                state.scrolling = GameOutputScrolling::Bottom;
-                cx.notify();
-            })));
+        let bar =
+            h_flex()
+                .w_full()
+                .rounded(cx.theme().radius)
+                .flex_1()
+                .gap_4()
+                .child(search)
+                .child(Button::new("top").label(t::common::nav::top()).on_click(cx.listener(|root, _, _, cx| {
+                    let mut state = root.scroll_handler.state.borrow_mut();
+                    state.scrolling = GameOutputScrolling::Top { offset: Pixels::ZERO };
+                    cx.notify();
+                })))
+                .child(Button::new("bottom").label(t::common::nav::bottom()).on_click(cx.listener(
+                    |root, _, _, cx| {
+                        let mut state = root.scroll_handler.state.borrow_mut();
+                        state.scrolling = GameOutputScrolling::Bottom;
+                        cx.notify();
+                    },
+                )));
 
         let bar = (self.extra)(bar);
 

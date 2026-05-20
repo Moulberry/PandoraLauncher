@@ -9,7 +9,10 @@ use crate::text_component::FlatTextComponent;
 
 #[derive(Deserialize, Debug)]
 pub struct ServerStatus {
-    #[serde(default, deserialize_with = "crate::text_component::deserialize_flat_text_component_json")]
+    #[serde(
+        default,
+        deserialize_with = "crate::text_component::deserialize_flat_text_component_json"
+    )]
     pub description: FlatTextComponent,
     #[serde(default, deserialize_with = "crate::try_deserialize")]
     pub players: Option<StatusPlayers>,

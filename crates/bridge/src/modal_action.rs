@@ -50,7 +50,9 @@ pub struct ModalActionInner {
 
 impl ModalActionInner {
     pub fn set_finished(&self) {
-        let _ = self.finished_at.compare_exchange(None, Some(Instant::now()), Ordering::SeqCst, Ordering::Relaxed);
+        let _ = self
+            .finished_at
+            .compare_exchange(None, Some(Instant::now()), Ordering::SeqCst, Ordering::Relaxed);
     }
 
     pub fn get_finished_at(&self) -> Option<Instant> {
@@ -130,11 +132,7 @@ pub enum ProgressTrackerFinishType {
 
 impl ProgressTrackerFinishType {
     pub fn from_err(error: bool) -> Self {
-        if error {
-            Self::Error
-        } else {
-            Self::Normal
-        }
+        if error { Self::Error } else { Self::Normal }
     }
 }
 
@@ -185,15 +183,15 @@ impl ProgressTracker {
     }
 
     pub fn get(&self) -> (usize, usize) {
-        (
-            self.inner.count.load(Ordering::SeqCst),
-            self.inner.total.load(Ordering::SeqCst)
-        )
+        (self.inner.count.load(Ordering::SeqCst), self.inner.total.load(Ordering::SeqCst))
     }
 
     pub fn set_finished(&self, finish_type: ProgressTrackerFinishType) {
         self.inner.finish_type.store(finish_type, Ordering::SeqCst);
-        let _ = self.inner.finished_at.compare_exchange(None, Some(Instant::now()), Ordering::SeqCst, Ordering::Relaxed);
+        let _ =
+            self.inner
+                .finished_at
+                .compare_exchange(None, Some(Instant::now()), Ordering::SeqCst, Ordering::Relaxed);
     }
 
     pub fn get_finished_at(&self) -> Option<Instant> {

@@ -1,16 +1,21 @@
 use std::{
-    collections::BTreeMap, ffi::OsString, path::{Path, PathBuf}, sync::Arc
+    collections::BTreeMap,
+    ffi::OsString,
+    path::{Path, PathBuf},
+    sync::{Arc, atomic::AtomicU8},
 };
 
 use schema::{
-    backend_config::{BackendConfig, ProxyConfig, SyncTargets},
+    backend_config::{BackendConfig, ProxyConfig},
     instance::{
         InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
         InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration,
         InstanceWrapperCommandConfiguration,
     },
     loader::Loader,
-    pandora_update::{UpdateManifest, UpdateManifestExe, UpdatePrompt},
+    minecraft_profile::{MinecraftProfileCape, SkinVariant},
+    pandora_update::UpdatePrompt,
+    unique_bytes::UniqueBytes,
 };
 use ustr::Ustr;
 use uuid::Uuid;
@@ -18,22 +23,56 @@ use uuid::Uuid;
 use crate::{
     account::Account,
     game_output::GameOutputLogLevel,
-    import::{ImportFromOtherLaunchers, OtherLauncher},
+    import::{ImportFromOtherLauncherJob, OtherLauncher},
     install::ContentInstall,
     instance::{
-        InstanceContentID, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceStatus,
-        InstanceWorldSummary, WorldDatapackSummary,
+        ContentFolder, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary,
+        InstanceStatus, InstanceWorldSummary,
     },
-    keep_alive::{KeepAlive, KeepAliveHandle},
+    keep_alive::KeepAliveHandle,
     meta::{MetadataRequest, MetadataResult},
     modal_action::ModalAction,
 };
 
-#[derive(Debug)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct BackendConfigWithPassword {
     pub config: BackendConfig,
     pub proxy_password: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExportFormat {
+    Zip,
+    Modrinth,
+    Curseforge,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportModrinthOptions {
+    pub name: Arc<str>,
+    pub version: Arc<str>,
+    pub summary: Option<Arc<str>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportCurseforgeOptions {
+    pub name: Arc<str>,
+    pub version: Arc<str>,
+    pub author: Option<Arc<str>>,
+    pub recommended_ram: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExportOptions {
+    pub include_saves: bool,
+    pub include_mods: bool,
+    pub include_resourcepacks: bool,
+    pub include_configs: bool,
+    pub include_logs: bool,
+    pub include_cache: bool,
+    pub include_synced: bool,
+    pub modrinth: ExportModrinthOptions,
+    pub curseforge: ExportCurseforgeOptions,
 }
 
 pub enum MessageToBackend {
@@ -50,13 +89,16 @@ pub enum MessageToBackend {
     DeleteInstance {
         id: InstanceID,
     },
+    ExportInstance {
+        id: InstanceID,
+        format: ExportFormat,
+        options: ExportOptions,
+        output: PathBuf,
+        modal_action: ModalAction,
+    },
     RenameInstance {
         id: InstanceID,
         name: Ustr,
-    },
-    SetInstanceIcon {
-        id: InstanceID,
-        icon: Option<EmbeddedOrRaw>,
     },
     SetInstanceMinecraftVersion {
         id: InstanceID,
@@ -66,6 +108,10 @@ pub enum MessageToBackend {
         id: InstanceID,
         loader: Loader,
     },
+    SetInstancePreferredAccount {
+        id: InstanceID,
+        account: Option<Uuid>,
+    },
     SetInstancePreferredLoaderVersion {
         id: InstanceID,
         loader_version: Option<&'static str>,
@@ -73,6 +119,10 @@ pub enum MessageToBackend {
     SetInstanceDisableFileSyncing {
         id: InstanceID,
         disable_file_syncing: bool,
+    },
+    SetInstanceSandboxing {
+        id: InstanceID,
+        sandbox: bool,
     },
     SetInstanceMemory {
         id: InstanceID,
@@ -98,41 +148,36 @@ pub enum MessageToBackend {
         id: InstanceID,
         system_libraries: InstanceSystemLibrariesConfiguration,
     },
+    SetInstanceIcon {
+        id: InstanceID,
+        icon: Option<EmbeddedOrRaw>,
+    },
     KillInstance {
         id: InstanceID,
+    },
+    StartInstanceByName {
+        name: String,
+        quick_play: Option<QuickPlayLaunch>,
     },
     StartInstance {
         id: InstanceID,
         quick_play: Option<QuickPlayLaunch>,
-        allow_running_instance: bool,
         modal_action: ModalAction,
     },
     RequestLoadWorlds {
         id: InstanceID,
     },
-    RequestLoadWorldDatapacks {
-        id: InstanceID,
-        world_folder: String,
-    },
-    DeleteDatapack {
-        id: InstanceID,
-        world_folder: String,
-        filename: String,
-    },
-    SetDatapackEnabled {
-        id: InstanceID,
-        world_folder: String,
-        filename: String,
-        enabled: bool,
-    },
     RequestLoadServers {
         id: InstanceID,
     },
-    RequestLoadMods {
+    ReorderServers {
         id: InstanceID,
+        from_index: usize,
+        to_index: usize,
     },
-    RequestLoadResourcePacks {
+    RequestLoadContentFolder {
         id: InstanceID,
+        content_folder: ContentFolder,
     },
     SetContentEnabled {
         id: InstanceID,
@@ -145,6 +190,7 @@ pub enum MessageToBackend {
         child_id: Option<Arc<str>>,
         child_name: Option<Arc<str>>,
         child_filename: Arc<str>,
+        disabled_default: bool,
         enabled: bool,
         delete: bool,
     },
@@ -159,6 +205,10 @@ pub enum MessageToBackend {
     },
     InstallContent {
         content: ContentInstall,
+        modal_action: ModalAction,
+    },
+    CreateInstanceFromFile {
+        file: PathBuf,
         modal_action: ModalAction,
     },
     DownloadAllMetadata,
@@ -179,6 +229,11 @@ pub enum MessageToBackend {
     GetLogFiles {
         instance: InstanceID,
         channel: tokio::sync::oneshot::Sender<LogFiles>,
+    },
+    GetImportFromOtherLauncherJob {
+        channel: tokio::sync::oneshot::Sender<Option<ImportFromOtherLauncherJob>>,
+        launcher: OtherLauncher,
+        path: Arc<Path>,
     },
     GetSyncState {
         channel: tokio::sync::oneshot::Sender<SyncState>,
@@ -230,50 +285,43 @@ pub enum MessageToBackend {
         update: UpdatePrompt,
         modal_action: ModalAction,
     },
-    GetMinecraftProfile {
-        modal_action: ModalAction,
-    },
-    SetSkin {
-        skin_url: Arc<str>,
-        skin_variant: Arc<str>,
-        modal_action: ModalAction,
-    },
-    UploadSkin {
-        skin_data: Arc<[u8]>,
-        skin_variant: Arc<str>,
-        modal_action: ModalAction,
-    },
-    AddOwnedSkin {
-        skin_data: Arc<[u8]>,
-        skin_variant: Arc<str>,
-        modal_action: ModalAction,
-    },
-    AddOwnedSkinFromUrl {
-        skin_url: Arc<str>,
-        skin_variant: Arc<str>,
-        modal_action: ModalAction,
-    },
-    DeleteOwnedSkin {
-        skin_id: Arc<str>,
-    },
-    SetSkinFromPath {
-        path: Arc<str>,
-        skin_variant: Arc<str>,
-        modal_action: ModalAction,
-    },
-    SetCape {
-        cape_id: Option<uuid::Uuid>,
-        modal_action: ModalAction,
-    },
     ImportFromOtherLauncher {
         launcher: OtherLauncher,
-        import_accounts: bool,
-        import_instances: bool,
+        import_job: ImportFromOtherLauncherJob,
         modal_action: ModalAction,
     },
-    GetImportFromOtherLauncherPaths {
-        channel: tokio::sync::oneshot::Sender<ImportFromOtherLaunchers>,
+    GetAccountSkin {
+        account: Uuid,
+        result: tokio::sync::oneshot::Sender<AccountSkinResult>,
     },
+    SetAccountSkin {
+        account: Uuid,
+        skin: UniqueBytes,
+        variant: SkinVariant,
+    },
+    GetAccountCapes {
+        account: Uuid,
+        result: tokio::sync::oneshot::Sender<AccountCapesResult>,
+    },
+    SetAccountCape {
+        account: Uuid,
+        cape: Option<Uuid>,
+    },
+    RequestSkinLibrary,
+    RemoveFromSkinLibrary {
+        skin: UniqueBytes,
+    },
+    AddToSkinLibrary {
+        source: UrlOrFile,
+    },
+    CopyPlayerSkin {
+        username: Arc<str>,
+    },
+    Login {
+        account: Uuid,
+        modal_action: ModalAction,
+    },
+    Quit,
 }
 
 #[derive(Debug)]
@@ -281,14 +329,14 @@ pub enum MessageToFrontend {
     InstanceAdded {
         id: InstanceID,
         name: Ustr,
-        icon: Option<Arc<[u8]>>,
+        icon: Option<UniqueBytes>,
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
-        worlds_state: Arc<AtomicBridgeDataLoadState>,
-        servers_state: Arc<AtomicBridgeDataLoadState>,
-        mods_state: Arc<AtomicBridgeDataLoadState>,
-        resource_packs_state: Arc<AtomicBridgeDataLoadState>,
+        playtime: InstancePlaytime,
+        worlds_state: BridgeDataLoadState,
+        servers_state: BridgeDataLoadState,
+        content_states: enum_map::EnumMap<ContentFolder, BridgeDataLoadState>,
     },
     InstanceRemoved {
         id: InstanceID,
@@ -296,42 +344,32 @@ pub enum MessageToFrontend {
     InstanceModified {
         id: InstanceID,
         name: Ustr,
-        icon: Option<Arc<[u8]>>,
+        icon: Option<UniqueBytes>,
         root_path: Arc<Path>,
         dot_minecraft_folder: Arc<Path>,
         configuration: InstanceConfiguration,
+        playtime: InstancePlaytime,
         status: InstanceStatus,
+    },
+    InstancePlaytimeUpdated {
+        id: InstanceID,
+        playtime: InstancePlaytime,
     },
     InstanceWorldsUpdated {
         id: InstanceID,
         worlds: Arc<[InstanceWorldSummary]>,
     },
-    InstanceWorldDatapacksUpdated {
-        id: InstanceID,
-        world_folder: String,
-        datapacks: Arc<[WorldDatapackSummary]>,
-    },
     InstanceServersUpdated {
         id: InstanceID,
         servers: Arc<[InstanceServerSummary]>,
     },
-    InstanceModsUpdated {
+    InstanceContentUpdated {
         id: InstanceID,
-        mods: Arc<[InstanceContentSummary]>,
-    },
-    InstanceResourcePacksUpdated {
-        id: InstanceID,
-        resource_packs: Arc<[InstanceContentSummary]>,
+        content_folder: ContentFolder,
+        content: Arc<[InstanceContentSummary]>,
     },
     CreateGameOutputWindow {
-        id: usize,
-        keep_alive: KeepAlive,
-    },
-    AddGameOutput {
-        id: usize,
-        time: i64,
-        level: GameOutputLogLevel,
-        text: Arc<[Arc<str>]>,
+        receiver: tokio::sync::mpsc::UnboundedReceiver<GameOutputMsg>,
     },
     AddNotification {
         notification_type: BridgeNotificationType,
@@ -342,6 +380,7 @@ pub enum MessageToFrontend {
         selected_account: Option<Uuid>,
     },
     Refresh,
+    Quit,
     CloseModal,
     MoveInstanceToTop {
         id: InstanceID,
@@ -351,36 +390,13 @@ pub enum MessageToFrontend {
         result: Result<MetadataResult, Arc<str>>,
         keep_alive_handle: Option<KeepAliveHandle>,
     },
+    SkinLibraryUpdated {
+        skin_library: SkinLibrary,
+    },
     UpdateAvailable {
         update: UpdatePrompt,
     },
-    MinecraftProfileResult {
-        profile: MinecraftProfileInfo,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub struct MinecraftProfileInfo {
-    pub id: Uuid,
-    pub name: Arc<str>,
-    pub skins: Vec<MinecraftSkinInfo>,
-    pub capes: Vec<MinecraftCapeInfo>,
-}
-
-#[derive(Debug, Clone)]
-pub struct MinecraftSkinInfo {
-    pub id: Arc<str>,
-    pub url: Arc<str>,
-    pub variant: Arc<str>,
-    pub state: Arc<str>,
-    pub local_path: Option<Arc<str>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct MinecraftCapeInfo {
-    pub id: Arc<str>,
-    pub url: Arc<str>,
-    pub state: Arc<str>,
+    OpenOrFocusMainWindow,
 }
 
 #[derive(Debug, Default)]
@@ -412,29 +428,45 @@ pub enum BridgeNotificationType {
     Warning,
 }
 
-#[atomic_enum::atomic_enum]
-#[derive(PartialEq, Eq)]
-pub enum BridgeDataLoadState {
-    Unloaded,
-    LoadingDirty,
-    LoadedDirty,
-    Loading,
-    Loaded,
+#[derive(Clone, Debug)]
+pub struct BridgeDataLoadState(Arc<AtomicU8>);
+
+impl Default for BridgeDataLoadState {
+    fn default() -> Self {
+        Self(Arc::new(AtomicU8::new(BridgeDataLoadState::UNLOADED)))
+    }
 }
 
 impl BridgeDataLoadState {
-    pub fn should_send_load_request(self) -> bool {
-        match self {
-            BridgeDataLoadState::Unloaded => true,
-            BridgeDataLoadState::LoadingDirty => false,
-            BridgeDataLoadState::LoadedDirty => true,
-            BridgeDataLoadState::Loading => false,
-            BridgeDataLoadState::Loaded => false,
-        }
+    const LOADING: u8 = 1;
+    const OBSERVED: u8 = 2;
+    const DIRTY: u8 = 4;
+    const UNLOADED: u8 = !Self::LOADING;
+
+    pub fn should_load(&self) -> bool {
+        // Must be observed and dirty, but not loading
+        let value = self.0.load(std::sync::atomic::Ordering::Acquire);
+        (value == Self::OBSERVED | Self::DIRTY) || (value == Self::UNLOADED)
     }
 
-    pub fn is_not_unloaded(self) -> bool {
-        self != Self::Unloaded
+    pub fn is_not_unloaded(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::Acquire) != Self::UNLOADED
+    }
+
+    pub fn set_observed(&self) {
+        self.0.fetch_or(Self::OBSERVED, std::sync::atomic::Ordering::AcqRel);
+    }
+
+    pub fn set_dirty(&self) {
+        self.0.fetch_or(Self::DIRTY, std::sync::atomic::Ordering::AcqRel);
+    }
+
+    pub fn load_started(&self) {
+        self.0.store(Self::LOADING, std::sync::atomic::Ordering::Release);
+    }
+
+    pub fn load_finished(&self) {
+        self.0.fetch_and(!Self::LOADING, std::sync::atomic::Ordering::AcqRel);
     }
 }
 
@@ -448,5 +480,41 @@ pub enum QuickPlayLaunch {
 #[derive(Debug, Clone)]
 pub enum EmbeddedOrRaw {
     Embedded(Arc<str>),
-    Raw(Arc<[u8]>),
+    Raw(UniqueBytes),
+}
+
+#[derive(Debug, Clone)]
+pub enum AccountSkinResult {
+    Success {
+        skin: Option<UniqueBytes>,
+        variant: SkinVariant,
+    },
+    NeedsLogin,
+    UnableToLoadSkin,
+}
+
+#[derive(Debug, Clone)]
+pub enum AccountCapesResult {
+    Success {
+        capes: Vec<MinecraftProfileCape>,
+    },
+    NeedsLogin,
+}
+
+#[derive(Clone, Debug)]
+pub struct SkinLibrary {
+    pub state: BridgeDataLoadState,
+    pub skins: Arc<[UniqueBytes]>,
+    pub folder: Arc<Path>,
+}
+
+pub enum UrlOrFile {
+    Url { url: Arc<str> },
+    File { path: PathBuf },
+}
+
+pub struct GameOutputMsg {
+    pub time: i64,
+    pub level: GameOutputLogLevel,
+    pub text: Arc<[Arc<str>]>,
 }

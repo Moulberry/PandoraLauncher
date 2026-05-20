@@ -10,3 +10,4 @@ config.toml
 build_windows.ps1
 minisign.pub
 .idea/
+/vendor

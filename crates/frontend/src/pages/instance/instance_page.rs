@@ -5,13 +5,29 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    WindowExt, button::{Button, ButtonGroup, ButtonVariants}, h_flex, tab::{Tab, TabBar}, v_flex
+    WindowExt,
+    button::{Button, ButtonGroup, ButtonVariants},
+    h_flex,
+    tab::{Tab, TabBar},
+    v_flex,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entity::{DataEntities, instance::InstanceEntry}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{logs_subpage::InstanceLogsSubpage, mods_subpage::InstanceModsSubpage, quickplay_subpage::InstanceQuickplaySubpage, resource_packs_subpage::InstanceResourcePacksSubpage, settings_subpage::InstanceSettingsSubpage}, page::{Page, page_layout}}, root, ts
+    entity::{DataEntities, instance::InstanceEntry},
+    icon::PandoraIcon,
+    interface_config::InterfaceConfig,
+    pages::{
+        instance::{
+            content_subpage::InstanceContentSubpage, logs_subpage::InstanceLogsSubpage,
+            quickplay_subpage::InstanceQuickplaySubpage, settings_subpage::InstanceSettingsSubpage,
+        },
+        page::Page,
+    },
+    root,
 };
+
+use super::content_subpage::ContentType;
 
 pub struct InstancePage {
     backend_handle: BackendHandle,
@@ -45,94 +61,92 @@ impl Page for InstancePage {
 
         let button = match instance.status {
             InstanceStatus::NotRunning => {
-                Button::new("start_instance").success().icon(PandoraIcon::Play).label(ts!("instance.start.label")).on_click(
+                Button::new("start_instance").success().icon(PandoraIcon::Play).label(t::instance::start::label()).on_click(
                     move |_, window, cx| {
-                        root::start_instance(id, name.clone(), None, false, &backend_handle, window, cx);
+                        root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
                     },
                 ).into_any_element()
             },
             InstanceStatus::Launching => {
-                Button::new("launching").warning().icon(PandoraIcon::Loader).label(ts!("instance.start.starting")).into_any_element()
+                Button::new("launching").warning().icon(PandoraIcon::Loader).label(t::instance::start::starting()).into_any_element()
             },
-            InstanceStatus::Running => ButtonGroup::new("running")
-                .child(
-                    Button::new("kill_instance")
+            InstanceStatus::Stopping => {
+                Button::new("stopping")
+                    .danger()
+                    .icon(PandoraIcon::Loader)
+                    .label(t::instance::start::stopping())
+                    .on_click({
+                        let backend_handle = backend_handle.clone();
+                        move |_, _, _| {
+                            backend_handle.send(MessageToBackend::KillInstance { id });
+                        }
+                    })
+                    .into_any_element()
+            },
+            InstanceStatus::Running => {
+                ButtonGroup::new("running")
+                    .child(Button::new("kill_instance")
                         .danger()
                         .icon(PandoraIcon::Close)
-                        .label(ts!("instance.kill"))
+                        .label(t::instance::kill_instance())
                         .on_click({
                             let backend_handle = backend_handle.clone();
                             move |_, _, _| {
                                 backend_handle.send(MessageToBackend::KillInstance { id });
                             }
-                        }),
-                )
-                .child(
-                    Button::new("start_again")
+                        }))
+                    .child(Button::new("start_again")
                         .success()
                         .icon(PandoraIcon::Play)
-                        .label(ts!("instance.start.label"))
                         .on_click(move |_, window, cx| {
                             let name = name.clone();
                             let backend_handle = backend_handle.clone();
                             window.open_dialog(cx, move |dialog, _, _| {
-                                dialog
-                                    .title("Instance already running")
+                                dialog.title("Instance already running")
                                     .overlay_closable(false)
                                     .flex()
                                     .line_height(rems(1.2))
                                     .child("Starting it again may cause malfunction or corrupt your saved worlds.")
                                     .child(div().h_2())
                                     .child("We cannot take responsibility for any issues if you choose to start another game. Would you like to continue anyway?")
-                                    .footer(
-                                        h_flex()
-                                            .gap_2()
-                                            .w_full()
-                                            .child(
-                                                Button::new("cancel")
-                                                    .label("Cancel")
-                                                    .on_click(|_, window, cx| {
+                                    .footer(h_flex()
+                                        .gap_2()
+                                        .w_full()
+                                        .child(
+                                            Button::new("cancel")
+                                                .label("Cancel")
+                                                .on_click(|_, window, cx| {
+                                                    window.close_dialog(cx);
+                                                }).flex_grow()
+                                        )
+                                        .child(
+                                            Button::new("ok")
+                                                .success()
+                                                .label("Start anyway")
+                                                .on_click({
+                                                    let name = name.clone();
+                                                    let backend_handle = backend_handle.clone();
+                                                    move |_, window, cx| {
                                                         window.close_dialog(cx);
-                                                    })
-                                                    .flex_grow(),
-                                            )
-                                            .child(
-                                                Button::new("ok")
-                                                    .success()
-                                                    .label("Start anyway")
-                                                    .on_click({
-                                                        let name = name.clone();
-                                                        let backend_handle = backend_handle.clone();
-                                                        move |_, window, cx| {
-                                                            window.close_dialog(cx);
-                                                            root::start_instance(
-                                                                id,
-                                                                name.clone(),
-                                                                None,
-                                                                true,
-                                                                &backend_handle,
-                                                                window,
-                                                                cx,
-                                                            );
-                                                        }
-                                                    }),
-                                            ),
-                                    )
-                            });
-                        }),
-                ).into_any_element(),
+                                                        root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
+                                                    }
+                                                })
+                                        ))
+                            })
+                        })).into_any_element()
+            },
         };
 
         let open_dot_minecraft_button = Button::new("open_dot_minecraft")
             .info()
             .icon(PandoraIcon::FolderOpen)
-            .label(ts!("instance.open_folder"))
+            .label(t::instance::open_folder())
             .on_click({
-            let dot_minecraft = instance.dot_minecraft_folder.clone();
-            move |_, window, cx| {
-                crate::open_folder(&dot_minecraft, window, cx);
-            }
-        });
+                let dot_minecraft = instance.dot_minecraft_folder.clone();
+                move |_, window, cx| {
+                    crate::open_folder(&dot_minecraft, window, cx);
+                }
+            });
 
         h_flex().gap_3().child(button).child(open_dot_minecraft_button)
     }
@@ -149,47 +163,65 @@ impl Render for InstancePage {
             self.subpage = instance_subpage.create(&self.instance, &self.data, self.backend_handle.clone(), window, cx);
         }
 
+        let show_shader_tab =
+            self.instance.read(cx).configuration.show_shader_tab || matches!(self.subpage, InstanceSubpage::Shaders(_));
+
         let selected_index = match &self.subpage {
             InstanceSubpage::Quickplay(_) => 0,
             InstanceSubpage::Logs(_) => 1,
             InstanceSubpage::Mods(_) => 2,
             InstanceSubpage::ResourcePacks(_) => 3,
-            InstanceSubpage::Settings(_) => 4,
+            InstanceSubpage::Shaders(_) => 4,
+            InstanceSubpage::Settings(_) => {
+                if show_shader_tab {
+                    5
+                } else {
+                    4
+                }
+            },
         };
 
-        let tab_bar = TabBar::new("bar")
-            .prefix(div().w_4())
-            .selected_index(selected_index)
-            .underline()
-            .child(Tab::new().label(ts!("instance.quickplay")))
-            .child(Tab::new().label(ts!("instance.logs.title")))
-            .child(Tab::new().label(ts!("instance.content.mods")))
-            .child(Tab::new().label(ts!("instance.content.resourcepacks")))
-            .child(Tab::new().label(ts!("settings.title")))
-            .on_click(cx.listener(|_, index, _, cx| {
-                let page_type = match *index {
-                    0 => InstanceSubpageType::Quickplay,
-                    1 => InstanceSubpageType::Logs,
-                    2 => InstanceSubpageType::Mods,
-                    3 => InstanceSubpageType::ResourcePacks,
-                    4 => InstanceSubpageType::Settings,
-                    _ => {
-                        return;
-                    },
-                };
-                InterfaceConfig::get_mut(cx).instance_subpage = page_type;
-            }));
-
-        let inner = v_flex()
+        v_flex()
             .size_full()
-            .child(tab_bar)
-            .child(self.subpage.clone().into_any_element());
-
-        let page_type = InterfaceConfig::get(cx).main_page.clone();
-        let page_path = InterfaceConfig::get(cx).page_path.clone();
-        let scrollable = self.scrollable(cx);
-        let controls = self.controls(window, cx);
-        page_layout(page_type, page_path, controls, scrollable, inner)
+            .child(
+                TabBar::new("bar")
+                    .prefix(div().w_4())
+                    .selected_index(selected_index)
+                    .underline()
+                    .child(Tab::new().label(t::instance::quickplay()))
+                    .child(Tab::new().label(t::instance::logs::title()))
+                    .child(Tab::new().label(t::instance::content::mods()))
+                    .child(Tab::new().label(t::instance::content::resourcepacks()))
+                    .when(show_shader_tab, |this| this.child(Tab::new().label(t::instance::content::shaders())))
+                    .child(Tab::new().label(t::settings::title()))
+                    .on_click(cx.listener(move |_, index, _, cx| {
+                        let page_type = match *index {
+                            0 => InstanceSubpageType::Quickplay,
+                            1 => InstanceSubpageType::Logs,
+                            2 => InstanceSubpageType::Mods,
+                            3 => InstanceSubpageType::ResourcePacks,
+                            4 => {
+                                if show_shader_tab {
+                                    InstanceSubpageType::Shaders
+                                } else {
+                                    InstanceSubpageType::Settings
+                                }
+                            },
+                            5 => {
+                                if show_shader_tab {
+                                    InstanceSubpageType::Settings
+                                } else {
+                                    return;
+                                }
+                            },
+                            _ => {
+                                return;
+                            },
+                        };
+                        InterfaceConfig::get_mut(cx).instance_subpage = page_type;
+                    })),
+            )
+            .child(self.subpage.clone().into_any_element())
     }
 }
 
@@ -201,6 +233,7 @@ pub enum InstanceSubpageType {
     Logs,
     Mods,
     ResourcePacks,
+    Shaders,
     Settings,
 }
 
@@ -211,24 +244,27 @@ impl InstanceSubpageType {
         data: &DataEntities,
         backend_handle: BackendHandle,
         window: &mut gpui::Window,
-        cx: &mut App
+        cx: &mut App,
     ) -> InstanceSubpage {
         match self {
-            InstanceSubpageType::Quickplay => InstanceSubpage::Quickplay(cx.new(|cx| {
-                InstanceQuickplaySubpage::new(instance, backend_handle, window, cx)
-            })),
-            InstanceSubpageType::Logs => InstanceSubpage::Logs(cx.new(|cx| {
-                InstanceLogsSubpage::new(instance, backend_handle, window, cx)
-            })),
-            InstanceSubpageType::Mods => InstanceSubpage::Mods(cx.new(|cx| {
-                InstanceModsSubpage::new(instance, backend_handle, window, cx)
-            })),
+            InstanceSubpageType::Quickplay => InstanceSubpage::Quickplay(
+                cx.new(|cx| InstanceQuickplaySubpage::new(instance, backend_handle, window, cx)),
+            ),
+            InstanceSubpageType::Logs => {
+                InstanceSubpage::Logs(cx.new(|cx| InstanceLogsSubpage::new(instance, backend_handle, window, cx)))
+            },
+            InstanceSubpageType::Mods => InstanceSubpage::Mods(
+                cx.new(|cx| InstanceContentSubpage::new(instance, ContentType::Mods, backend_handle, window, cx)),
+            ),
             InstanceSubpageType::ResourcePacks => InstanceSubpage::ResourcePacks(cx.new(|cx| {
-                InstanceResourcePacksSubpage::new(instance, backend_handle, window, cx)
+                InstanceContentSubpage::new(instance, ContentType::ResourcePacks, backend_handle, window, cx)
             })),
-            InstanceSubpageType::Settings => InstanceSubpage::Settings(cx.new(|cx| {
-                InstanceSettingsSubpage::new(instance, data, backend_handle, window, cx)
-            })),
+            InstanceSubpageType::Shaders => InstanceSubpage::Shaders(
+                cx.new(|cx| InstanceContentSubpage::new(instance, ContentType::Shaders, backend_handle, window, cx)),
+            ),
+            InstanceSubpageType::Settings => InstanceSubpage::Settings(
+                cx.new(|cx| InstanceSettingsSubpage::new(instance, data, backend_handle, window, cx)),
+            ),
         }
     }
 }
@@ -237,8 +273,9 @@ impl InstanceSubpageType {
 pub enum InstanceSubpage {
     Quickplay(Entity<InstanceQuickplaySubpage>),
     Logs(Entity<InstanceLogsSubpage>),
-    Mods(Entity<InstanceModsSubpage>),
-    ResourcePacks(Entity<InstanceResourcePacksSubpage>),
+    Mods(Entity<InstanceContentSubpage>),
+    ResourcePacks(Entity<InstanceContentSubpage>),
+    Shaders(Entity<InstanceContentSubpage>),
     Settings(Entity<InstanceSettingsSubpage>),
 }
 
@@ -249,6 +286,7 @@ impl InstanceSubpage {
             InstanceSubpage::Logs(_) => InstanceSubpageType::Logs,
             InstanceSubpage::Mods(_) => InstanceSubpageType::Mods,
             InstanceSubpage::ResourcePacks(_) => InstanceSubpageType::ResourcePacks,
+            InstanceSubpage::Shaders(_) => InstanceSubpageType::Shaders,
             InstanceSubpage::Settings(_) => InstanceSubpageType::Settings,
         }
     }
@@ -259,6 +297,7 @@ impl InstanceSubpage {
             Self::Logs(entity) => entity.into_any_element(),
             Self::Mods(entity) => entity.into_any_element(),
             Self::ResourcePacks(entity) => entity.into_any_element(),
+            Self::Shaders(entity) => entity.into_any_element(),
             Self::Settings(entity) => entity.into_any_element(),
         }
     }

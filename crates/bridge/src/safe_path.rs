@@ -1,4 +1,7 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use relative_path::RelativePath;
 
@@ -14,10 +17,13 @@ impl SafePath {
                     return None;
                 },
                 relative_path::Component::Normal(component) => {
-                    let sanitized = sanitize_filename::is_sanitized_with_options(component, sanitize_filename::OptionsForCheck {
-                        windows: true,
-                        truncate: false
-                    });
+                    let sanitized = sanitize_filename::is_sanitized_with_options(
+                        component,
+                        sanitize_filename::OptionsForCheck {
+                            windows: true,
+                            truncate: false,
+                        },
+                    );
                     if !sanitized {
                         return None;
                     }
@@ -25,6 +31,10 @@ impl SafePath {
             }
         }
         Some(Self(Arc::from(relative.normalize())))
+    }
+
+    pub fn from_std_path(path: &Path) -> Option<SafePath> {
+        Self::from_relative_path(RelativePath::from_path(path).ok()?)
     }
 
     pub fn new(path: &str) -> Option<SafePath> {
@@ -47,6 +57,14 @@ impl SafePath {
         self.0.as_str()
     }
 
+    pub fn strip_extension(&self, extension: &str) -> Option<Self> {
+        debug_assert!(!extension.contains('.'));
+        if self.0.extension() != Some(extension) {
+            return None;
+        }
+        Some(Self(Arc::from(self.0.with_extension(""))))
+    }
+
     pub fn strip_prefix(&self, prefix: &str) -> Option<Self> {
         Some(Self(Arc::from(self.0.strip_prefix(prefix).ok()?)))
     }
@@ -61,5 +79,11 @@ impl SafePath {
 
     pub fn file_name(&self) -> Option<&str> {
         self.0.file_name()
+    }
+}
+
+impl AsRef<RelativePath> for SafePath {
+    fn as_ref(&self) -> &RelativePath {
+        &self.0
     }
 }

@@ -1,12 +1,20 @@
-use std::{collections::BTreeMap, path::{Path, PathBuf}, sync::Arc, time::SystemTime};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::SystemTime,
+};
 
-use bridge::{message::{SyncState, SyncTargetState}, safe_path::SafePath};
+use bridge::{
+    message::{SyncState, SyncTargetState},
+    safe_path::SafePath,
+};
 use once_cell::sync::Lazy;
 use relative_path::PathExt;
 use rustc_hash::FxHashMap;
 use schema::backend_config::SyncTargets;
 
-use crate::{directories::LauncherDirectories, BackendStateInstances};
+use crate::{BackendStateInstances, directories::LauncherDirectories};
 
 pub fn apply_to_instance(sync_targets: &SyncTargets, directories: &LauncherDirectories, dot_minecraft: Arc<Path>) {
     _ = std::fs::create_dir_all(&dot_minecraft);
@@ -216,7 +224,11 @@ fn read_options_txt(path: &Path) -> FxHashMap<String, String> {
     values
 }
 
-pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateInstances, directories: &LauncherDirectories) -> std::io::Result<SyncState> {
+pub fn get_sync_state(
+    sync_targets: &SyncTargets,
+    instances: &mut BackendStateInstances,
+    directories: &LauncherDirectories,
+) -> std::io::Result<SyncState> {
     let mut dot_minecraft_paths = Vec::new();
 
     for instance in instances.instances.iter_mut() {
@@ -239,19 +251,25 @@ pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateIn
                 }
             }
 
-            entries.insert(file_target.clone(), SyncTargetState {
-                enabled: true,
-                is_file: true,
-                sync_count: total.saturating_sub(cannot_sync_count),
-                cannot_sync_count,
-            });
+            entries.insert(
+                file_target.clone(),
+                SyncTargetState {
+                    enabled: true,
+                    is_file: true,
+                    sync_count: total.saturating_sub(cannot_sync_count),
+                    cannot_sync_count,
+                },
+            );
         } else {
-            entries.insert(file_target.clone(), SyncTargetState {
-                enabled: true,
-                is_file: true,
-                sync_count: 0,
-                cannot_sync_count: total,
-            });
+            entries.insert(
+                file_target.clone(),
+                SyncTargetState {
+                    enabled: true,
+                    is_file: true,
+                    sync_count: 0,
+                    cannot_sync_count: total,
+                },
+            );
         }
     }
 
@@ -267,12 +285,15 @@ pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateIn
 
     for (folder_target, enabled) in enabled_iter.chain(disabled_iter) {
         let Some(safe_path) = SafePath::new(folder_target) else {
-            entries.insert(folder_target.clone(), SyncTargetState {
-                enabled,
-                is_file: false,
-                sync_count: 0,
-                cannot_sync_count: total,
-            });
+            entries.insert(
+                folder_target.clone(),
+                SyncTargetState {
+                    enabled,
+                    is_file: false,
+                    sync_count: 0,
+                    cannot_sync_count: total,
+                },
+            );
             continue;
         };
 
@@ -291,12 +312,15 @@ pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateIn
             }
         }
 
-        entries.insert(folder_target.clone(), SyncTargetState {
-            enabled,
-            is_file: false,
-            sync_count,
-            cannot_sync_count,
-        });
+        entries.insert(
+            folder_target.clone(),
+            SyncTargetState {
+                enabled,
+                is_file: false,
+                sync_count,
+                cannot_sync_count,
+            },
+        );
     }
 
     Ok(SyncState {
@@ -329,12 +353,21 @@ static DEFAULT_FOLDERS: Lazy<Vec<Arc<str>>> = Lazy::new(|| {
         "Distant_Horizons_server_data",
         ".voxy",
         "xaero",
+        "journeymap",
         ".bobby",
         "schematics",
-    ].into_iter().map(Arc::from).collect()
+    ]
+    .into_iter()
+    .map(Arc::from)
+    .collect()
 });
 
-pub fn enable_all(name: &str, is_file: bool, instances: &mut BackendStateInstances, directories: &LauncherDirectories) -> std::io::Result<bool> {
+pub fn enable_all(
+    name: &str,
+    is_file: bool,
+    instances: &mut BackendStateInstances,
+    directories: &LauncherDirectories,
+) -> std::io::Result<bool> {
     if is_file {
         return Ok(true);
     }
@@ -354,9 +387,7 @@ pub fn enable_all(name: &str, is_file: bool, instances: &mut BackendStateInstanc
     let target_dir = safe_path.to_path(&directories.synced_dir);
 
     // Exclude links that already point to target_dir
-    paths.retain(|path| {
-        !linking::is_targeting(&target_dir, &path)
-    });
+    paths.retain(|path| !linking::is_targeting(&target_dir, &path));
 
     for path in &paths {
         if path.exists() && std::fs::remove_dir(&path).is_err() {

@@ -31,8 +31,6 @@ pub struct LauncherDirectories {
     pub root_launcher_dir: Arc<Path>,
     pub config_json: Arc<Path>,
     pub accounts_json: Arc<Path>,
-    pub owned_skins_dir: Arc<Path>,
-    pub skin_thumbnails_dir: Arc<Path>,
 }
 
 impl LauncherDirectories {
@@ -65,8 +63,6 @@ impl LauncherDirectories {
 
         let config_json = launcher_dir.join("config.json");
         let accounts_json = launcher_dir.join("accounts.json");
-        let owned_skins_dir = launcher_dir.join("owned_skins");
-        let skin_thumbnails_dir = launcher_dir.join("skin_thumbnails");
 
         Self {
             instances_dir: instances_dir.into(),
@@ -96,8 +92,6 @@ impl LauncherDirectories {
             root_launcher_dir: launcher_dir.into(),
             config_json: config_json.into(),
             accounts_json: accounts_json.into(),
-            owned_skins_dir: owned_skins_dir.into(),
-            skin_thumbnails_dir: skin_thumbnails_dir.into(),
         }
     }
 }

@@ -1,15 +1,16 @@
 [package]
 name = "frontend"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 
 [dependencies]
-backtrace.workspace = true
+t.workspace = true
 chrono.workspace = true
 ftree.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
 gpui-component.workspace = true
+gpui-component-assets.workspace = true
 image.workspace = true
 lexical-sort.workspace = true
 lru.workspace = true
@@ -24,7 +25,6 @@ once_cell.workspace = true
 ustr.workspace = true
 indexmap.workspace = true
 heapless.workspace = true
-slab.workspace = true
 intrusive-collections.workspace = true
 atomic-time.workspace = true
 reqwest_client.workspace = true
@@ -32,7 +32,6 @@ reqwest.workspace = true
 futures.workspace = true
 uuid.workspace = true
 enumset.workspace = true
-hex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 rand.workspace = true
@@ -45,8 +44,8 @@ strum.workspace = true
 urlencoding.workspace = true
 itertools.workspace = true
 command.workspace = true
-
-rust-i18n = "3.1.5"
+hex.workspace = true
+enum-map.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows.workspace = true

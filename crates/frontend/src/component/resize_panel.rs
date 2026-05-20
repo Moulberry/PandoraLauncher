@@ -1,6 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
-use gpui::{AnyElement, App, AvailableSpace, Bounds, ContentMask, DispatchPhase, Element, Hitbox, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Size, Style, Window, px};
+use gpui::{
+    AnyElement, App, AvailableSpace, Bounds, ContentMask, DispatchPhase, Element, Hitbox, IntoElement, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Size, Style, Window, px,
+};
 use gpui_component::ActiveTheme;
 
 const RESIZE_WIDTH: Pixels = px(1.0);
@@ -51,7 +54,6 @@ impl ResizePanel {
         }
     }
 }
-
 
 impl IntoElement for ResizePanel {
     type Element = Self;
@@ -115,13 +117,14 @@ impl Element for ResizePanel {
         let size = state.size.clamp(Pixels::ZERO, bounds.size.width - RESIZE_WIDTH);
         drop(state);
 
-        let left_size = Size::new(AvailableSpace::Definite(size),
-            AvailableSpace::Definite(bounds.size.height));
+        let left_size = Size::new(AvailableSpace::Definite(size), AvailableSpace::Definite(bounds.size.height));
         self.left.layout_as_root(left_size, window, cx);
         self.left.prepaint_at(bounds.origin, window, cx);
 
-        let right_size = Size::new(AvailableSpace::Definite(bounds.size.width - size - RESIZE_WIDTH),
-            AvailableSpace::Definite(bounds.size.height));
+        let right_size = Size::new(
+            AvailableSpace::Definite(bounds.size.width - size - RESIZE_WIDTH),
+            AvailableSpace::Definite(bounds.size.height),
+        );
         self.right.layout_as_root(right_size, window, cx);
         let mut right_origin = bounds.origin.clone();
         right_origin.x += size + RESIZE_WIDTH;
@@ -131,7 +134,7 @@ impl Element for ResizePanel {
         line_origin.x += size - RESIZE_PADDING;
         let mut line_bounds = Bounds {
             origin: line_origin,
-            size: Size::new(RESIZE_PADDING*2 + RESIZE_WIDTH, bounds.size.height),
+            size: Size::new(RESIZE_PADDING * 2 + RESIZE_WIDTH, bounds.size.height),
         };
 
         if cfg!(target_os = "macos") && line_bounds.origin.y < px(28.0) {
@@ -198,10 +201,7 @@ impl Element for ResizePanel {
             let line_x = line_origin.x;
             let hitbox = hitbox.clone();
             move |event: &MouseDownEvent, phase, window, _| {
-                if phase == DispatchPhase::Bubble
-                    && event.button == MouseButton::Left
-                    && hitbox.is_hovered(window)
-                {
+                if phase == DispatchPhase::Bubble && event.button == MouseButton::Left && hitbox.is_hovered(window) {
                     let mut state = state.borrow_mut();
                     state.drag_offset = Some(event.position.x - line_x);
                     state.ratio = None;

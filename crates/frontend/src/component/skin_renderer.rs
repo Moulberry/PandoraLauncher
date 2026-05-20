@@ -192,12 +192,22 @@ struct Triangle {
 
 fn normalize_cape_texture(image: DynamicImage) -> RgbaImage {
     let source = image.to_rgba8();
+    let (src_w, src_h) = (source.width(), source.height());
+
+    if src_w % 46 == 0 {
+        let ratio = src_w / 46;
+        if ratio > 0 && src_h == 22 * ratio {
+            let mut normalized = RgbaImage::new(64 * ratio, 32 * ratio);
+            image::imageops::replace(&mut normalized, &source, 0, 0);
+            return normalized;
+        }
+    }
 
     // OptiFine pastes donor/special capes onto a 64x32 canvas and keeps doubling
     // until the source fits, preserving the expected 2:1 cape UV space.
     let mut width = 64;
     let mut height = 32;
-    while width < source.width() || height < source.height() {
+    while width < src_w || height < src_h {
         width *= 2;
         height *= 2;
     }
@@ -207,7 +217,7 @@ fn normalize_cape_texture(image: DynamicImage) -> RgbaImage {
     normalized
 }
 
-fn generate_triangles(part: &BodyPart, is_64x32: bool) -> Vec<Triangle> {
+fn generate_triangles(part: &BodyPart, is_64x32: bool, cape_is_optifine_hd: bool) -> Vec<Triangle> {
     let bloat = if part.is_overlay { 0.5 } else { 0.0 };
     let sw = part.size.x + bloat;
     let sh = part.size.y + bloat;
@@ -327,7 +337,13 @@ fn generate_triangles(part: &BodyPart, is_64x32: bool) -> Vec<Triangle> {
     add_face(p011, p111, p101, p001, front_u, v + d, w, h);
     // Back face (visible part for cape)
     let (back_u, back_v, back_w, back_h) = if part.limb == Limb::Cape {
-        (u + d, v + d, w, h)
+        if cape_is_optifine_hd {
+            // OptiFine 46×22: outer face lives at UV (22,0)→(42,32) in 64×32 space.
+            // The rasterizer scales by (tex_w/64, tex_h/32), landing on the correct pixels.
+            (22.0, 0.0, 20.0, 32.0)
+        } else {
+            (u + d, v + d, w, h)
+        }
     } else {
         (u + d + w + d, v + d, w, h)
     };
@@ -362,6 +378,7 @@ pub struct SkinRenderer {
     pub nameplate: Option<SharedString>,
     pub cape_bytes: Option<Arc<[u8]>>,
     parsed_cape: Option<RgbaImage>,
+    cape_is_optifine_hd: bool,
     _window_event_subscription: Option<Subscription>,
 }
 
@@ -387,6 +404,7 @@ impl SkinRenderer {
             nameplate: None,
             cape_bytes: None,
             parsed_cape: None,
+            cape_is_optifine_hd: false,
             _window_event_subscription: None,
         }
     }
@@ -420,11 +438,14 @@ impl SkinRenderer {
             };
             if should_update {
                 if let Ok(img) = image::load_from_memory(new_bytes) {
-                    self.parsed_cape = Some(normalize_cape_texture(img));
+                    let raw = img.to_rgba8();
+                    self.cape_is_optifine_hd = false;
+                    self.parsed_cape = Some(normalize_cape_texture(DynamicImage::ImageRgba8(raw)));
                 }
             }
         } else {
             self.parsed_cape = None;
+            self.cape_is_optifine_hd = false;
         }
         self.cape_bytes = cape_bytes;
     }
@@ -559,7 +580,7 @@ impl SkinRenderer {
                 tex
             };
 
-            let tris = generate_triangles(&part, is_64x32);
+            let tris = generate_triangles(&part, is_64x32, self.cape_is_optifine_hd);
             for t in tris {
                 // Project normal
                 let mut norm = t.normal;
@@ -615,18 +636,16 @@ impl SkinRenderer {
                             let idx = (y as usize) * (width as usize) + (x as usize);
 
                             if z > zbuf[idx] {
-                                let u = w0 * v_proj[0].1 .0 + w1 * v_proj[1].1 .0 + w2 * v_proj[2].1 .0;
-                                let v = w0 * v_proj[0].1 .1 + w1 * v_proj[1].1 .1 + w2 * v_proj[2].1 .1;
+                                let u = w0 * v_proj[0].1.0 + w1 * v_proj[1].1.0 + w2 * v_proj[2].1.0;
+                                let v = w0 * v_proj[0].1.1 + w1 * v_proj[1].1.1 + w2 * v_proj[2].1.1;
 
                                 let (tx, ty) = if part.limb == Limb::Cape {
                                     // Cape: UVs in 64×32 space; scale by texture size (Mojang 64×32, OptiFine 46×22).
                                     // Half-texel inset for cape to avoid sampling transparent edge pixels (cf. skinview3d alpha handling).
                                     let w = tex_to_use.width() as f32;
                                     let h = tex_to_use.height() as f32;
-                                    let tx_f = (u * (w / 64.0))
-                                        .clamp(0.5, w - 1.5);
-                                    let ty_f = (v * (h / 32.0))
-                                        .clamp(0.5, h - 1.5);
+                                    let tx_f = (u * (w / 64.0)).clamp(0.5, w - 1.5);
+                                    let ty_f = (v * (h / 32.0)).clamp(0.5, h - 1.5);
                                     (tx_f as u32, ty_f as u32)
                                 } else {
                                     let tx = (u * (tex_to_use.width() as f32 / 64.0))
@@ -738,23 +757,17 @@ impl Render for SkinRenderer {
             )
             .when_some(self.nameplate.clone(), |this, name| {
                 this.child(
-                    div()
-                        .absolute()
-                        .top_1()
-                        .w_full()
-                        .h_flex()
-                        .justify_center()
-                        .child(
-                            div()
-                                .px_2()
-                                .py_0p5()
-                                .bg(gpui::rgba(0x000000a0))
-                                .rounded_md()
-                                .child(name)
-                                .text_sm()
-                                .font_weight(gpui::FontWeight::BOLD)
-                                .text_color(gpui::white()),
-                        ),
+                    div().absolute().top_1().w_full().h_flex().justify_center().child(
+                        div()
+                            .px_2()
+                            .py_0p5()
+                            .bg(gpui::rgba(0x000000a0))
+                            .rounded_md()
+                            .child(name)
+                            .text_sm()
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(gpui::white()),
+                    ),
                 )
             })
     }

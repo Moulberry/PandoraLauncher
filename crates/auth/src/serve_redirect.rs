@@ -49,7 +49,7 @@ pub async fn start_server(
             read += n;
 
             if read == buf.len() {
-                log::debug!("Resizing read buffer from {} to {}", buf.len(), buf.len()*2);
+                log::debug!("Resizing read buffer from {} to {}", buf.len(), buf.len() * 2);
                 buf.resize(buf.len() * 2, 0);
                 continue;
             }
@@ -112,7 +112,8 @@ pub async fn start_server(
 
             if let Some(error) = error {
                 let full_error = if let Some(error_description) = error_description {
-                    let response = create_response(&format!("An error occurred: {}", &*error), &error_description, true);
+                    let response =
+                        create_response(&format!("An error occurred: {}", &*error), &error_description, true);
                     stream.write_all(response.as_bytes()).await?;
                     format!("An error occurred: {}\n{}", error, error_description)
                 } else {
@@ -153,14 +154,13 @@ pub async fn start_server(
 }
 
 fn create_response(main: &str, secondary: &str, error: bool) -> String {
-    let status = if error {
-        "200 OK"
-    } else {
-        "400 Bad Request"
-    };
+    let status = if error { "200 OK" } else { "400 Bad Request" };
 
     let body = format!(include_str!("auth_page.html"), main, secondary);
     let body_length = body.len();
 
-    format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Length: {}\r\n\r\n{}", body_length, body)
+    format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Length: {}\r\n\r\n{}",
+        body_length, body
+    )
 }

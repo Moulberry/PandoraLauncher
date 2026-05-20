@@ -1,12 +1,13 @@
 use std::{
     borrow::Cow,
-    io::{BufRead, BufReader},
-    process::{ChildStderr, ChildStdout},
-    sync::{atomic::AtomicUsize, Arc},
+    io::{BufRead, BufReader, PipeReader},
+    sync::Arc,
 };
 
 use bridge::{
-    game_output::GameOutputLogLevel, handle::FrontendHandle, keep_alive::KeepAlive, message::MessageToFrontend,
+    game_output::GameOutputLogLevel,
+    handle::FrontendHandle,
+    message::{GameOutputMsg, MessageToFrontend},
 };
 use chrono::Utc;
 use memchr::memchr;
@@ -14,7 +15,6 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use thiserror::Error;
 
-static GAME_OUTPUT_ID: AtomicUsize = AtomicUsize::new(0);
 static REPLACEMENTS: Lazy<[(Regex, &'static str); 7]> = Lazy::new(|| {
     [
         // Access token replacements
@@ -39,34 +39,39 @@ pub fn replace(string: &str) -> Cow<'_, str> {
     replaced
 }
 
-pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sender: FrontendHandle) {
-    let id = GAME_OUTPUT_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let keep_alive = KeepAlive::new();
-    let keep_alive_handle = keep_alive.create_handle();
-    sender.send(MessageToFrontend::CreateGameOutputWindow { id, keep_alive });
+pub fn start_game_output(stdout: PipeReader, stderr: Option<PipeReader>, frontend: FrontendHandle) {
+    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+    frontend.send(MessageToFrontend::CreateGameOutputWindow { receiver });
 
     if let Some(stderr) = stderr {
         let sender = sender.clone();
-        let keep_alive_handle = keep_alive_handle.clone();
         std::thread::spawn(move || {
             let mut raw_text = String::new();
             let mut reader = BufReader::new(stderr);
 
-            while keep_alive_handle.is_alive() {
+            loop {
                 match reader.read_line(&mut raw_text) {
                     Err(e) => panic!("Error while reading stderr: {:?}", e),
                     Ok(0) => {
-                        break; // EOF
+                        return; // EOF
                     },
                     Ok(_) => {
                         let replaced = replace(&*raw_text);
+                        let replaced = replaced.trim_end();
 
-                        sender.send(MessageToFrontend::AddGameOutput {
-                            id,
+                        #[cfg(debug_assertions)]
+                        if replaced.contains('\n') {
+                            panic!("Line contains newline: {replaced:?}")
+                        }
+
+                        let res = sender.send(GameOutputMsg {
                             time: Utc::now().timestamp_millis(),
                             level: GameOutputLogLevel::Error,
-                            text: Arc::new([replaced.trim_end().into()]),
+                            text: Arc::new([replaced.into()]),
                         });
+                        if res.is_err() {
+                            return; // Window closed
+                        }
                         raw_text.clear();
                     },
                 }
@@ -78,9 +83,8 @@ pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sende
         let reader = BufReader::new(stdout);
         let mut log_reader = LogReader {
             stack: Vec::new(),
-            id,
             sender: sender.clone(),
-            empty_message: "<empty>".into()
+            empty_message: "<empty>".into(),
         };
         let mut log_input = LogInput {
             buffer: Vec::new(),
@@ -89,9 +93,7 @@ pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sende
 
         #[cfg(debug_assertions)]
         let result = {
-            let panic_result = std::panic::catch_unwind(move || {
-                log_reader.handle_output(&mut log_input)
-            });
+            let panic_result = std::panic::catch_unwind(move || log_reader.handle_output(&mut log_input));
             match panic_result {
                 Ok(result) => result,
                 Err(panic_error) => {
@@ -103,11 +105,13 @@ pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sende
                         },
                     };
 
-                    sender.send(MessageToFrontend::AddGameOutput {
-                        id,
+                    let panic_message =
+                        format!("(Pandora) There was an error while reading the log: {panic_error_str}");
+
+                    _ = sender.send(GameOutputMsg {
                         time: Utc::now().timestamp_millis(),
                         level: GameOutputLogLevel::Fatal,
-                        text: Arc::new([format!("(Pandora) There was an error while reading the log: {panic_error_str}").into()]),
+                        text: panic_message.lines().map(Arc::from).collect::<Arc<[_]>>(),
                     });
                     return;
                 },
@@ -116,12 +120,17 @@ pub fn start_game_output(stdout: ChildStdout, stderr: Option<ChildStderr>, sende
         #[cfg(not(debug_assertions))]
         let result = log_reader.handle_output(&mut log_input);
 
+        if let Err(HandleOutputError::ReceiverClosed) = result {
+            return;
+        }
+
         if let Err(error) = result {
-            sender.send(MessageToFrontend::AddGameOutput {
-                id,
+            let error_message = format!("(Pandora) There was an error while reading the log: {error}");
+
+            _ = sender.send(GameOutputMsg {
                 time: Utc::now().timestamp_millis(),
                 level: GameOutputLogLevel::Fatal,
-                text: Arc::new([format!("(Pandora) There was an error while reading the log: {error}").into()]),
+                text: error_message.lines().map(Arc::from).collect::<Arc<[_]>>(),
             });
         }
     });
@@ -141,18 +150,19 @@ enum HandleOutputError {
     InvalidComment,
     #[error("Unmatched element")]
     UnmatchedElement(String),
+    #[error("Receiver closed")]
+    ReceiverClosed,
 }
 
 struct LogReader {
     stack: Vec<LogOutputState>,
-    id: usize,
-    sender: FrontendHandle,
+    sender: tokio::sync::mpsc::UnboundedSender<GameOutputMsg>,
     empty_message: Arc<str>,
 }
 
 struct LogInput {
     buffer: Vec<u8>,
-    reader: BufReader<ChildStdout>
+    reader: BufReader<PipeReader>,
 }
 
 #[derive(Debug)]
@@ -203,7 +213,7 @@ impl LogReader {
                     continue;
                 };
 
-                input.reader.consume(index+1);
+                input.reader.consume(index + 1);
                 self.read_markup(input)?;
 
                 continue;
@@ -226,12 +236,12 @@ impl LogReader {
 
             if available[index] == b'\n' {
                 self.finish_text(&available[..index], &mut input.buffer)?;
-                input.reader.consume(index+1);
+                input.reader.consume(index + 1);
             } else if !available[..index].trim_ascii().is_empty() {
                 // Line contains non-whitespace before <, treat as a literal line instead of markup
                 if let Some(new_index) = memchr::memchr(b'\n', &available[index..]) {
-                    self.finish_text(&available[..index+new_index], &mut input.buffer)?;
-                    input.reader.consume(index+new_index+1);
+                    self.finish_text(&available[..index + new_index], &mut input.buffer)?;
+                    input.reader.consume(index + new_index + 1);
                     continue;
                 }
 
@@ -242,7 +252,7 @@ impl LogReader {
                 self.read_rest_of_line(input)?;
             } else {
                 input.buffer.clear();
-                input.reader.consume(index+1);
+                input.reader.consume(index + 1);
                 self.read_markup(input)?;
             }
         }
@@ -297,8 +307,8 @@ impl LogReader {
                         continue;
                     };
 
-                    if available.len() >= 3 && available[..index+1].ends_with(b"]]>") {
-                        let remaining_text = &available[..index-2];
+                    if available.len() >= 3 && available[..index + 1].ends_with(b"]]>") {
+                        let remaining_text = &available[..index - 2];
                         if input.buffer.is_empty() {
                             self.apply_cdata(remaining_text)?;
                         } else {
@@ -306,15 +316,15 @@ impl LogReader {
                             self.apply_cdata(&input.buffer)?;
                             input.buffer.clear();
                         }
-                        input.reader.consume(index+1);
+                        input.reader.consume(index + 1);
                         return Ok(());
                     }
 
-                    input.buffer.extend_from_slice(&available[..index+1]);
-                    input.reader.consume(index+1);
+                    input.buffer.extend_from_slice(&available[..index + 1]);
+                    input.reader.consume(index + 1);
 
                     if input.buffer.len() >= 3 && input.buffer.ends_with(b"]]>") {
-                        self.apply_cdata(&input.buffer[..input.buffer.len()-3])?;
+                        self.apply_cdata(&input.buffer[..input.buffer.len() - 3])?;
                         input.buffer.clear();
                         return Ok(());
                     }
@@ -355,9 +365,9 @@ impl LogReader {
                     let Some(index) = memchr::memchr(b'>', available) else {
                         if available.len() == 1 && available[0] == b'-' && partial_end_sequence == 1 {
                             partial_end_sequence = 2; // Case when the buffer size is exactly 1 (we need 3 reads)
-                        } else if available.len() >= 2 && &available[available.len()-2..] == b"--" {
+                        } else if available.len() >= 2 && &available[available.len() - 2..] == b"--" {
                             partial_end_sequence = 2;
-                        } else if available[available.len()-1] == b'-' {
+                        } else if available[available.len() - 1] == b'-' {
                             partial_end_sequence = 1;
                         } else {
                             partial_end_sequence = 0;
@@ -371,14 +381,14 @@ impl LogReader {
                         true
                     } else if index == 1 && partial_end_sequence == 1 && available[0] == b'-' {
                         true
-                    } else if index >= 2 && &available[index-2..index] == b"--" {
+                    } else if index >= 2 && &available[index - 2..index] == b"--" {
                         true
                     } else {
                         false
                     };
 
                     partial_end_sequence = 0;
-                    input.reader.consume(index+1);
+                    input.reader.consume(index + 1);
 
                     if success {
                         return Ok(());
@@ -395,7 +405,7 @@ impl LogReader {
                 } else {
                     Self::skip_balanced_angle_brackets(1, input)?;
                 }
-            }
+            },
         }
 
         Ok(())
@@ -411,23 +421,22 @@ impl LogReader {
             }
 
             let Some(index) = memchr::memchr(b'>', available) else {
-                ended_with_question_mark = available[available.len()-1] == b'?';
+                ended_with_question_mark = available[available.len() - 1] == b'?';
                 let read = available.len();
                 input.reader.consume(read);
                 continue;
             };
 
-
             let success = if index == 0 && ended_with_question_mark {
                 true
-            } else if index >= 1 && available[index-1] == b'?' {
+            } else if index >= 1 && available[index - 1] == b'?' {
                 true
             } else {
                 false
             };
 
             ended_with_question_mark = false;
-            input.reader.consume(index+1);
+            input.reader.consume(index + 1);
 
             if success {
                 return Ok(());
@@ -449,7 +458,7 @@ impl LogReader {
             };
 
             let last = available[index];
-            input.reader.consume(index+1);
+            input.reader.consume(index + 1);
 
             if last == b'<' {
                 depth += 1;
@@ -512,10 +521,10 @@ impl LogReader {
                         continue;
                     }
 
-                    if terminator == b'>' && name[name.len()-1] == b'/' {
+                    if terminator == b'>' && name[name.len() - 1] == b'/' {
                         // Skip auto-closing tags
                         input.buffer.clear();
-                        input.reader.consume(end+1);
+                        input.reader.consume(end + 1);
                         return Ok(());
                     }
 
@@ -523,7 +532,7 @@ impl LogReader {
 
                     if terminator == b'>' {
                         input.buffer.clear();
-                        input.reader.consume(end+1);
+                        input.reader.consume(end + 1);
                         return Ok(());
                     }
 
@@ -538,8 +547,9 @@ impl LogReader {
                     }
                 },
                 ElementParseState::ReadingKey => {
-                    let end = available.iter().position(|b| is_xml_whitespace(*b) || *b == b'>' ||
-                        *b == b'\'' || *b == b'"' || *b == b'=');
+                    let end = available
+                        .iter()
+                        .position(|b| is_xml_whitespace(*b) || *b == b'>' || *b == b'\'' || *b == b'"' || *b == b'=');
                     let Some(end) = end else {
                         input.buffer.extend_from_slice(available);
                         let read = available.len();
@@ -554,12 +564,12 @@ impl LogReader {
                             self.stack.pop();
                         }
                         input.buffer.clear();
-                        input.reader.consume(end+1);
+                        input.reader.consume(end + 1);
                         return Ok(());
-                    } else if terminator == b'>' && available[end-1] == b'/' {
+                    } else if terminator == b'>' && available[end - 1] == b'/' {
                         self.stack.pop();
                         input.buffer.clear();
-                        input.reader.consume(end+1);
+                        input.reader.consume(end + 1);
                         return Ok(());
                     } else if terminator != b'=' {
                         if cfg!(debug_assertions) {
@@ -590,11 +600,11 @@ impl LogReader {
                             } else {
                                 NamedAttributeKey::Unknown
                             }
-                        }
+                        },
                     };
 
                     input.buffer.clear();
-                    input.reader.consume(end+1); // +1 to skip '=' as well
+                    input.reader.consume(end + 1); // +1 to skip '=' as well
 
                     state = ElementParseState::ReadingValue(key);
                 },
@@ -615,7 +625,7 @@ impl LogReader {
                     let needle = match state {
                         ElementParseState::ReadingValueDoubleQuoted(_) => b'"',
                         ElementParseState::ReadingValueSingleQuoted(_) => b'\'',
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     };
 
                     let end = memchr(needle, available);
@@ -636,7 +646,7 @@ impl LogReader {
                     self.apply_attribute_key_value(key, value);
 
                     input.buffer.clear();
-                    input.reader.consume(end+1); // +1 to skip '=' as well
+                    input.reader.consume(end + 1); // +1 to skip '=' as well
 
                     self.skip_whitespace(input)?;
                     state = ElementParseState::ReadingKey;
@@ -660,14 +670,14 @@ impl LogReader {
                     } else {
                         if end == 0 && skip_had_slash_last {
                             self.stack.pop();
-                        } else if end >= 1 && available[end-1] == b'/' {
+                        } else if end >= 1 && available[end - 1] == b'/' {
                             self.stack.pop();
                         }
-                        input.reader.consume(end+1);
+                        input.reader.consume(end + 1);
                         return Ok(());
                     }
 
-                    input.reader.consume(end+1);
+                    input.reader.consume(end + 1);
                 },
                 ElementParseState::SkipSingleQuotes => {
                     let Some(end) = memchr::memchr(b'\'', available) else {
@@ -676,7 +686,7 @@ impl LogReader {
                         continue;
                     };
 
-                    input.reader.consume(end+1);
+                    input.reader.consume(end + 1);
                     state = ElementParseState::Skip;
                 },
                 ElementParseState::SkipDoubleQuotes => {
@@ -686,7 +696,7 @@ impl LogReader {
                         continue;
                     };
 
-                    input.reader.consume(end+1);
+                    input.reader.consume(end + 1);
                     state = ElementParseState::Skip;
                 },
             }
@@ -742,7 +752,7 @@ impl LogReader {
                     };
 
                     let terminator = available[end];
-                    input.reader.consume(end+1);
+                    input.reader.consume(end + 1);
 
                     if terminator == b'\'' {
                         state = ElementParseState::SkipSingleQuotes;
@@ -759,7 +769,7 @@ impl LogReader {
                         continue;
                     };
 
-                    input.reader.consume(end+1);
+                    input.reader.consume(end + 1);
                     state = ElementParseState::Skip;
                 },
                 ElementParseState::SkipDoubleQuotes => {
@@ -769,7 +779,7 @@ impl LogReader {
                         continue;
                     };
 
-                    input.reader.consume(end+1);
+                    input.reader.consume(end + 1);
                     state = ElementParseState::Skip;
                 },
             }
@@ -781,11 +791,14 @@ impl LogReader {
             return Err(HandleOutputError::InvalidCdata);
         };
 
-        let str = str::from_utf8(cdata)?;
+        let str = match str::from_utf8(cdata) {
+            Ok(str) => Cow::Borrowed(str),
+            Err(err) => Cow::Owned(format!("{}", HandleOutputError::Utf8Error(err))),
+        };
 
         match self.stack.last_mut() {
             None => {
-                self.send_raw_text(str)?;
+                self.send_raw_text(&str)?;
             },
             Some(LogOutputState::Message { content }) => {
                 *content = Some(str.into());
@@ -797,7 +810,7 @@ impl LogReader {
                 if cfg!(debug_assertions) {
                     panic!("Unexpected cdata on {:?}", last);
                 }
-            }
+            },
         }
         Ok(())
     }
@@ -810,7 +823,7 @@ impl LogReader {
                         timestamp: None,
                         level: None,
                         text: None,
-                        throwable: None
+                        throwable: None,
                     });
                     return ReadAttributesForElement::Yes;
                 } else if cfg!(debug_assertions) {
@@ -836,7 +849,7 @@ impl LogReader {
                 } else {
                     self.stack.push(LogOutputState::Unknown);
                 }
-            }
+            },
         }
         ReadAttributesForElement::No
     }
@@ -848,7 +861,13 @@ impl LogReader {
                     return Err(HandleOutputError::UnmatchedElement(str::from_utf8(name)?.into()));
                 }
 
-                let Some(LogOutputState::Event { timestamp, level, mut text, mut throwable }) = self.stack.pop() else {
+                let Some(LogOutputState::Event {
+                    timestamp,
+                    level,
+                    mut text,
+                    mut throwable,
+                }) = self.stack.pop()
+                else {
                     unreachable!()
                 };
                 let mut lines = Vec::new();
@@ -868,7 +887,9 @@ impl LogReader {
 
                 if let Some(text) = &text {
                     let mut split = text.split('\n');
-                    if let Some(first) = split.next() && let Some(second) = split.next() {
+                    if let Some(first) = split.next()
+                        && let Some(second) = split.next()
+                    {
                         lines.push(Arc::from(first.trim_end()));
                         lines.push(Arc::from(second.trim_end()));
                         for next in split {
@@ -878,8 +899,12 @@ impl LogReader {
                 }
                 if let Some(throwable) = &throwable {
                     let mut split = throwable.split('\n');
-                    if let Some(first) = split.next() && let Some(second) = split.next() {
-                        if let Some(text) = text.take() && lines.is_empty() {
+                    if let Some(first) = split.next()
+                        && let Some(second) = split.next()
+                    {
+                        if let Some(text) = text.take()
+                            && lines.is_empty()
+                        {
                             lines.push(text);
                         }
 
@@ -904,12 +929,14 @@ impl LogReader {
                 } else {
                     Arc::new([self.empty_message.clone()])
                 };
-                self.sender.send(MessageToFrontend::AddGameOutput {
-                    id: self.id,
+                let res = self.sender.send(GameOutputMsg {
                     time: timestamp.unwrap_or(Utc::now().timestamp_millis()),
                     level: level.unwrap_or(GameOutputLogLevel::Other),
                     text: final_lines,
                 });
+                if res.is_err() {
+                    return Err(HandleOutputError::ReceiverClosed);
+                }
             },
             Some(LogOutputState::Message { .. }) => {
                 if name != b"log4j:Message" {
@@ -943,7 +970,7 @@ impl LogReader {
             },
             Some(LogOutputState::Unknown) => {
                 _ = self.stack.pop();
-            }
+            },
             None => {
                 return Err(HandleOutputError::UnmatchedElement(str::from_utf8(name)?.into()));
             },
@@ -979,7 +1006,7 @@ impl LogReader {
                     },
                     NamedAttributeKey::Thread => {
                         // Ignore
-                    }
+                    },
                     _ => {
                         if cfg!(debug_assertions) {
                             panic!("Unexpected attribute {:?} on {:?}", key, self.stack.last_mut());
@@ -991,7 +1018,7 @@ impl LogReader {
                 if cfg!(debug_assertions) {
                     panic!("Unexpected attribute {:?} on {:?}", key, self.stack.last_mut());
                 }
-            }
+            },
         }
     }
 
@@ -1035,30 +1062,35 @@ impl LogReader {
 
     fn finish_text(&mut self, remaining: &[u8], buffer: &mut Vec<u8>) -> Result<(), HandleOutputError> {
         let line = if buffer.is_empty() {
-            str::from_utf8(remaining)?
+            str::from_utf8(remaining)
         } else {
             buffer.extend_from_slice(remaining);
-            str::from_utf8(&buffer)?
+            str::from_utf8(&buffer)
         };
 
-        let result = self.send_raw_text(line);
+        let result = match line {
+            Ok(str) => self.send_raw_text(&str),
+            Err(err) => self.send_raw_text(&format!("{}", HandleOutputError::Utf8Error(err))),
+        };
 
         buffer.clear();
 
         result
     }
 
-    fn send_raw_text(&mut self, line: &str) -> Result<(), HandleOutputError> {
-        if line.trim_ascii().is_empty() {
+    fn send_raw_text(&mut self, text: &str) -> Result<(), HandleOutputError> {
+        if text.trim_ascii().is_empty() {
             return Ok(());
         }
 
-        self.sender.send(MessageToFrontend::AddGameOutput {
-            id: self.id,
+        let res = self.sender.send(GameOutputMsg {
             time: Utc::now().timestamp_millis(),
             level: GameOutputLogLevel::Info,
-            text: Arc::new([line.into()]),
+            text: text.lines().map(Arc::from).collect::<Arc<[_]>>(),
         });
+        if res.is_err() {
+            return Err(HandleOutputError::ReceiverClosed);
+        }
 
         Ok(())
     }

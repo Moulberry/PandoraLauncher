@@ -1,21 +1,11 @@
-use bridge::handle::BackendHandle;
-use bridge::instance::InstanceStatus;
-use bridge::message::MessageToBackend;
-use gpui::{InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, prelude::*, *};
-use gpui_component::Icon;
+use bridge::{handle::BackendHandle, instance::InstanceStatus, message::MessageToBackend};
+use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, IconName, Sizable, StyledExt,
+    ActiveTheme, Icon, Sizable,
     button::{Button, ButtonVariants},
     h_flex,
     table::{Column, ColumnSort, TableDelegate, TableState},
     v_flex,
-};
-
-const GRAY: Hsla = Hsla {
-    h: 0.0,
-    s: 0.0,
-    l: 0.5,
-    a: 1.0,
 };
 
 use crate::{
@@ -24,8 +14,7 @@ use crate::{
         instance::{InstanceAddedEvent, InstanceEntry, InstanceModifiedEvent, InstanceRemovedEvent},
     },
     interface_config::InterfaceConfig,
-    modals,
-    png_render_cache, root, ts, ui,
+    modals, png_render_cache, root, ui,
 };
 
 pub struct InstanceList {
@@ -66,9 +55,17 @@ impl InstanceList {
             let instance_list = Self {
                 columns: vec![
                     Column::new("controls", "").width(150.).fixed_left().movable(false).resizable(false),
-                    Column::new("name", "Name").width(150.).fixed_left().sortable().resizable(true),
-                    Column::new("version", "Version").width(150.).fixed_left().sortable().resizable(true),
-                    Column::new("loader", "Loader").width(150.).fixed_left().resizable(true),
+                    Column::new("name", t::instance::name())
+                        .width(150.)
+                        .fixed_left()
+                        .sortable()
+                        .resizable(true),
+                    Column::new("version", t::instance::version())
+                        .width(150.)
+                        .fixed_left()
+                        .sortable()
+                        .resizable(true),
+                    Column::new("loader", t::instance::modloader()).width(150.).fixed_left().resizable(true),
                     Column::new("remove", "").width(44.).fixed_left().movable(false).resizable(false),
                 ],
                 items,
@@ -83,8 +80,11 @@ impl InstanceList {
 
     pub fn render_card(&self, index: usize, cx: &mut App) -> Div {
         let item = &self.items[index];
-        let loader_and_version =
-            format!("{} {}", item.configuration.loader.name(), item.configuration.minecraft_version.as_str(),);
+        let loader_and_version = format!(
+            "{} {}",
+            item.configuration.loader.pretty_name(),
+            item.configuration.minecraft_version.as_str(),
+        );
 
         let icon_element = if let Some(icon) = item.icon.clone() {
             let transform = png_render_cache::ImageTransformation::Resize { width: 64, height: 64 };
@@ -99,29 +99,32 @@ impl InstanceList {
             Icon::default().path(icon_path).size_16().min_w_16().min_h_16().into_any_element()
         };
 
+        let play_button = render_play_button(item, index, self.backend_handle.clone());
+
         let theme = cx.theme();
-        let backend_handle = self.backend_handle.clone();
-        let backend_handle_for_delete = self.backend_handle.clone();
-        let backend_handle_for_rename = self.backend_handle.clone();
         let id = item.id;
         let name = item.name.clone();
+        let backend_handle = self.backend_handle.clone();
+        let backend_handle_for_icon = self.backend_handle.clone();
+        let backend_handle_for_rename = self.backend_handle.clone();
         let name_for_rename = item.name.clone();
         let trash_icon = Icon::default().path("icons/trash-2.svg");
         let edit_icon = Icon::default().path("icons/brush.svg").text_color(white());
-
+        let icon_hover_group = format!("instance-icon-edit-{index}");
+        let icon_overlay_hover_group = icon_hover_group.clone();
         let icon = div()
             .id(("icon", index))
+            .group(icon_hover_group)
             .cursor_pointer()
             .size_16()
             .min_w_16()
             .min_h_16()
             .relative()
             .on_click(move |_, window, cx| {
-                let id = id;
-                let backend_handle = backend_handle.clone();
+                let backend_handle = backend_handle_for_icon.clone();
                 crate::modals::select_icon::open_select_icon(
-                    Box::new(move |icon, cx| {
-                        backend_handle.send(bridge::message::MessageToBackend::SetInstanceIcon { id, icon: Some(icon) });
+                    Box::new(move |icon, _| {
+                        backend_handle.send(MessageToBackend::SetInstanceIcon { id, icon: Some(icon) });
                     }),
                     window,
                     cx,
@@ -132,9 +135,10 @@ impl InstanceList {
                 div()
                     .absolute()
                     .inset_0()
-                    .bg(black().clone().opacity(0.5))
+                    .bg(black().opacity(0.5))
                     .opacity(0.0)
-                    .hover(|this| this.opacity(1.0))
+                    .group_hover(icon_overlay_hover_group, |this| this.opacity(1.0))
+                    .flex()
                     .items_center()
                     .justify_center()
                     .child(edit_icon.clone().size_8()),
@@ -146,7 +150,8 @@ impl InstanceList {
             .gap_2()
             .w_full()
             .min_w_64()
-            .bg(theme.secondary)
+            .border_1()
+            .border_color(theme.border)
             .rounded(theme.radius_lg)
             .relative()
             .child(
@@ -160,36 +165,38 @@ impl InstanceList {
                     .icon(trash_icon)
                     .on_click(move |click: &ClickEvent, window, cx| {
                         if InterfaceConfig::get(cx).quick_delete_instance && click.modifiers().shift {
-                            backend_handle_for_delete.send(bridge::message::MessageToBackend::DeleteInstance { id });
+                            backend_handle.send(MessageToBackend::DeleteInstance { id });
                         } else {
                             modals::delete_instance::open_delete_instance(
                                 id,
                                 name.clone(),
-                                backend_handle_for_delete.clone(),
+                                backend_handle.clone(),
                                 window,
                                 cx,
                             );
                         }
                     }),
             )
-            .child(
+            .child({
+                let name_hover_group = format!("instance-name-edit-{index}");
+                let name_overlay_hover_group = name_hover_group.clone();
                 h_flex().w_full().gap_2().child(icon).child(
                     v_flex()
-                        .flex_1()
                         .truncate()
+                        .w_full()
                         .relative()
-                        .pr_4()
                         .child(
                             div()
-                                .id(("name", index))
+                                .id(("rename", index))
+                                .group(name_hover_group)
                                 .cursor_pointer()
                                 .w_full()
+                                .pl_5()
                                 .on_click(move |_, window, cx| {
-                                    let backend_handle = backend_handle_for_rename.clone();
                                     modals::rename_instance::open_rename_instance(
                                         id,
                                         name_for_rename.clone(),
-                                        backend_handle.clone(),
+                                        backend_handle_for_rename.clone(),
                                         window,
                                         cx,
                                     );
@@ -198,69 +205,33 @@ impl InstanceList {
                                 .child(
                                     div()
                                         .absolute()
-                                        .left_0()
                                         .top_0()
                                         .bottom_0()
-                                        .right_6()
-                                        .bg(black().clone().opacity(0.5))
+                                        .left_0()
                                         .opacity(0.0)
-                                        .hover(|this| this.opacity(1.0))
+                                        .group_hover(name_overlay_hover_group, |this| this.opacity(1.0))
                                         .flex()
                                         .items_center()
                                         .justify_start()
-                                        .pl_1()
                                         .child(edit_icon.clone().size_4()),
                                 ),
                         )
-                        .child(div().text_color(GRAY).text_xs().child(loader_and_version.clone())),
-                ),
-            )
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child({
-                        let name = item.name.clone();
-                        let id = item.id;
-                        let status = item.status;
-                        let backend_handle = self.backend_handle.clone();
-                        match status {
-                            InstanceStatus::NotRunning => {
-                                Button::new(("start", index)).flex_grow().small().success().label(ts!("instance.start.label")).on_click(
-                                    move |_, window, cx| {
-                                        root::start_instance(id, name.clone(), None, false, &backend_handle, window, cx);
-                                    },
-                                )
-                            },
-                            InstanceStatus::Launching => Button::new(("starting", index))
-                                .flex_grow()
-                                .small()
-                                .warning()
-                                .icon(IconName::Loader)
-                                .label("Starting..."),
-                            InstanceStatus::Running => Button::new(("kill", index))
-                                .flex_grow()
-                                .small()
-                                .danger()
-                                .icon(IconName::Close)
-                                .label("Kill")
-                                .on_click(move |_, _, _| {
-                                    backend_handle.send(bridge::message::MessageToBackend::KillInstance { id });
-                                }),
-                        }
-                    })
-                    .child(Button::new(("view", index)).flex_grow().small().info().label(ts!("instance.view")).on_click({
-                        let name = item.name.clone();
-                        move |_, window, cx| {
-                            root::switch_page(
-                                ui::PageType::InstancePage { name: name.clone() },
-                                &[ui::PageType::Instances],
-                                window,
-                                cx,
-                            );
-                        }
-                    })),
-            )
-
+                        .child(loader_and_version),
+                )
+            })
+            .child(h_flex().gap_2().child(play_button.flex_1().small()).child(
+                Button::new(("view", index)).flex_1().small().info().label(t::instance::view()).on_click({
+                    let name = item.name.clone();
+                    move |_, window, cx| {
+                        root::switch_page(
+                            ui::PageType::InstancePage { name: name.clone() },
+                            &[ui::PageType::Instances],
+                            window,
+                            cx,
+                        );
+                    }
+                }),
+            ))
     }
 }
 
@@ -310,39 +281,74 @@ impl TableDelegate for InstanceList {
         &mut self,
         row_ix: usize,
         col_ix: usize,
-        window: &mut Window,
-        cx: &mut Context<TableState<Self>>,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let item = &self.items[row_ix];
         if let Some(col) = self.columns.get(col_ix) {
             match col.key.as_ref() {
-                "name" => item.name.clone().into_any_element(),
+                "name" => {
+                    let id = item.id;
+                    let name = item.name.clone();
+                    let backend_handle = self.backend_handle.clone();
+                    let edit_icon = Icon::default().path("icons/brush.svg").text_color(white());
+                    let hover_group = format!("instance-list-name-edit-{row_ix}");
+                    let overlay_hover_group = hover_group.clone();
+                    div()
+                        .id(("rename-list", row_ix))
+                        .group(hover_group)
+                        .relative()
+                        .cursor_pointer()
+                        .w_full()
+                        .pl_5()
+                        .on_click(move |_, window, cx| {
+                            modals::rename_instance::open_rename_instance(
+                                id,
+                                name.clone(),
+                                backend_handle.clone(),
+                                window,
+                                cx,
+                            );
+                        })
+                        .child(item.name.clone())
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .bottom_0()
+                                .left_0()
+                                .opacity(0.0)
+                                .group_hover(overlay_hover_group, |this| this.opacity(1.0))
+                                .flex()
+                                .items_center()
+                                .justify_start()
+                                .child(edit_icon.size_4()),
+                        )
+                        .into_any_element()
+                },
                 "version" => item.configuration.minecraft_version.as_str().into_any_element(),
                 "controls" => {
-                    let backend_handle = self.backend_handle.clone();
-                    let item = item.clone();
+                    let play_button = render_play_button(item, row_ix, self.backend_handle.clone());
+
                     h_flex()
                         .size_full()
                         .gap_2()
                         .border_r_4()
-                        .child(Button::new(("start", row_ix)).w(relative(0.5)).small().success().label(ts!("instance.start.label")).on_click({
-                            let name = item.name.clone();
-                            let id = item.id;
-                            let backend_handle = backend_handle.clone();
-                            move |_, window, cx| {
-                                root::start_instance(id, name.clone(), None, false, &backend_handle, window, cx);
-                            }
-                        }))
-                        .child(Button::new(("view", row_ix)).w(relative(0.5)).small().info().label(ts!("instance.view")).on_click({
+                        .child(play_button.w_1_2().small())
+                        .child(Button::new("view").w_1_2().small().info().label(t::instance::view()).on_click({
                             let name = item.name.clone();
                             move |_, window, cx| {
-                                root::switch_page(ui::PageType::InstancePage { name: name.clone() },
-                                    &[ui::PageType::Instances], window, cx);
+                                root::switch_page(
+                                    ui::PageType::InstancePage { name: name.clone() },
+                                    &[ui::PageType::Instances],
+                                    window,
+                                    cx,
+                                );
                             }
                         }))
                         .into_any_element()
                 },
-                "loader" => item.configuration.loader.name().into_any_element(),
+                "loader" => item.configuration.loader.pretty_name().into_any_element(),
                 "remove" => {
                     let backend_handle = self.backend_handle.clone();
                     let id = item.id;
@@ -354,7 +360,7 @@ impl TableDelegate for InstanceList {
                         .child(Button::new(("remove", row_ix)).danger().small().compact().icon(trash_icon).on_click(
                             move |click: &ClickEvent, window, cx| {
                                 if InterfaceConfig::get(cx).quick_delete_instance && click.modifiers().shift {
-                                    backend_handle.send(bridge::message::MessageToBackend::DeleteInstance { id });
+                                    backend_handle.send(MessageToBackend::DeleteInstance { id });
                                 } else {
                                     modals::delete_instance::open_delete_instance(
                                         id,
@@ -368,10 +374,33 @@ impl TableDelegate for InstanceList {
                         ))
                         .into_any_element()
                 },
-                _ => "Unknown".into_any_element(),
+                _ => t::common::unknown().into_any_element(),
             }
         } else {
-            "Unknown".into_any_element()
+            t::common::unknown().into_any_element()
         }
+    }
+}
+
+fn render_play_button(item: &InstanceEntry, index: usize, backend_handle: BackendHandle) -> Button {
+    let name = item.name.clone();
+    let id = item.id;
+    match item.status {
+        InstanceStatus::NotRunning => Button::new(("start_instance", index))
+            .success()
+            .label(t::instance::start::label())
+            .on_click(move |_, window, cx| {
+                root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
+            }),
+        InstanceStatus::Launching => Button::new(("launching", index)).warning().label("..."),
+        InstanceStatus::Stopping => Button::new(("launching", index)).danger().label("..."),
+        InstanceStatus::Running => {
+            Button::new(("kill_instance", index)).danger().label(t::instance::kill()).on_click({
+                let backend_handle = backend_handle.clone();
+                move |_, _, _| {
+                    backend_handle.send(MessageToBackend::KillInstance { id });
+                }
+            })
+        },
     }
 }

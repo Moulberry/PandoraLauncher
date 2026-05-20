@@ -1,4 +1,7 @@
-use gpui::{size, AnyElement, AvailableSpace, Element, InteractiveElement, Interactivity, IntoElement, ParentElement, Pixels, Point, Size, StyleRefinement, Styled};
+use gpui::{
+    AnyElement, AvailableSpace, Element, InteractiveElement, Interactivity, IntoElement, ParentElement, Pixels, Point,
+    Size, StyleRefinement, Styled, size,
+};
 
 pub struct ResponsiveGrid {
     interactivity: Interactivity,

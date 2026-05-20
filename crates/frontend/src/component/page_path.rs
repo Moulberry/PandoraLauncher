@@ -3,17 +3,22 @@ use std::sync::Arc;
 use gpui::*;
 use gpui_component::{ActiveTheme, Icon, h_flex};
 
-use crate::{icon::PandoraIcon, ui::PageType};
+use crate::{entity::DataEntities, icon::PandoraIcon, ui::PageType};
 
 #[derive(IntoElement)]
 pub struct PagePath {
+    data: DataEntities,
     main_page: PageType,
     breadcrumb: Arc<[PageType]>,
 }
 
 impl PagePath {
-    pub fn new(main_page: PageType, breadcrumb: Arc<[PageType]>) -> Self {
-        Self { main_page, breadcrumb }
+    pub fn new(data: DataEntities, main_page: PageType, breadcrumb: Arc<[PageType]>) -> Self {
+        Self {
+            data,
+            main_page,
+            breadcrumb,
+        }
     }
 }
 
@@ -26,7 +31,7 @@ impl RenderOnce for PagePath {
             .children(self.breadcrumb.iter().enumerate().flat_map(|(i, page)| {
                 let item = div()
                     .id(i)
-                    .child(page.title())
+                    .child(page.title(&self.data, cx))
                     .cursor_pointer()
                     .on_mouse_down(MouseButton::Left, move |_, window, _| {
                         window.prevent_default();
@@ -38,12 +43,10 @@ impl RenderOnce for PagePath {
                             let rest = &pages[0..i];
                             crate::root::switch_page(page, rest, window, cx);
                         }
-                    }).into_any_element();
-                [
-                    item,
-                    Icon::new(PandoraIcon::ChevronRight).size_3p5().into_any_element()
-                ]
+                    })
+                    .into_any_element();
+                [item, Icon::new(PandoraIcon::ChevronRight).size_3p5().into_any_element()]
             }))
-            .child(div().text_color(cx.theme().foreground).child(self.main_page.title()))
+            .child(div().text_color(cx.theme().foreground).child(self.main_page.title(&self.data, cx)))
     }
 }

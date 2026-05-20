@@ -1,4 +1,7 @@
-use gpui::{App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, SharedString, Size, Style, Window};
+use gpui::{
+    App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+    Pixels, SharedString, Size, Style, Window,
+};
 
 pub struct ShrinkingText(SharedString);
 
@@ -39,8 +42,10 @@ impl Element for ShrinkingText {
         let font_size = text_style.font_size.to_pixels(window.rem_size());
         let line_height = text_style.line_height.to_pixels(font_size.into(), window.rem_size());
 
-        let shaped = window.text_system().shape_line(self.0.clone(), font_size,
-            &[text_style.to_run(self.0.len())], None);
+        let shaped =
+            window
+                .text_system()
+                .shape_line(self.0.clone(), font_size, &[text_style.to_run(self.0.len())], None);
 
         let layout_id = window.request_measured_layout(Style::default(), {
             move |known_dimensions, available_space, _window, _cx| {
@@ -58,7 +63,6 @@ impl Element for ShrinkingText {
         });
 
         (layout_id, ())
-
     }
 
     fn prepaint(
@@ -87,23 +91,29 @@ impl Element for ShrinkingText {
         let font_size = text_style.font_size.to_pixels(window.rem_size());
         let line_height = text_style.line_height.to_pixels(font_size.into(), window.rem_size());
 
-        let full_shaped = window.text_system().shape_line(self.0.clone(), font_size,
-            &[text_style.to_run(self.0.len())], None);
+        let full_shaped =
+            window
+                .text_system()
+                .shape_line(self.0.clone(), font_size, &[text_style.to_run(self.0.len())], None);
 
         let scale = bounds.size.width.as_f32().ceil() / full_shaped.width.as_f32().ceil();
         if scale >= 1.0 {
             _ = full_shaped.paint(bounds.origin, line_height, gpui::TextAlign::Left, None, window, cx);
         } else {
             let scaled_font_size = font_size * scale;
-            let shaped = window.text_system().shape_line(self.0.clone(), scaled_font_size,
-                &[text_style.to_run(self.0.len())], None);
+            let shaped = window.text_system().shape_line(
+                self.0.clone(),
+                scaled_font_size,
+                &[text_style.to_run(self.0.len())],
+                None,
+            );
 
             let baseline_offset1 = (line_height + full_shaped.ascent - full_shaped.descent) / 2.0;
-            let baseline_offset2 = (line_height*scale + shaped.ascent - shaped.descent) / 2.0;
+            let baseline_offset2 = (line_height * scale + shaped.ascent - shaped.descent) / 2.0;
 
             let mut origin = bounds.origin;
             origin.y += baseline_offset1 - baseline_offset2;
-            _ = shaped.paint(origin, line_height*scale, gpui::TextAlign::Left, None, window, cx);
+            _ = shaped.paint(origin, line_height * scale, gpui::TextAlign::Left, None, window, cx);
         }
     }
 }

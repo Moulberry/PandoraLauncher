@@ -1,12 +1,26 @@
-use std::{path::{Path, PathBuf}, str::FromStr, sync::Arc};
-use auth::{credentials::AccountCredentials, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
-use bridge::{import::ImportFromOtherLauncherJob, modal_action::{ModalAction, ProgressTracker}};
+use crate::{BackendState, account::BackendAccount, write_safe};
+use auth::{
+    credentials::AccountCredentials,
+    models::{TokenWithExpiry, XstsToken},
+    secret::PlatformSecretStorage,
+};
+use bridge::{
+    import::ImportFromOtherLauncherJob,
+    modal_action::{ModalAction, ProgressTracker},
+};
 use chrono::DateTime;
 use log::debug;
-use schema::{instance::{InstanceConfiguration, InstanceMemoryConfiguration,  InstanceWrapperCommandConfiguration}, loader::Loader};
+use schema::{
+    instance::{InstanceConfiguration, InstanceMemoryConfiguration, InstanceWrapperCommandConfiguration},
+    loader::Loader,
+};
 use serde::Deserialize;
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
+};
 use uuid::Uuid;
-use crate::{BackendState, account::BackendAccount, write_safe};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,7 +142,6 @@ struct LoaderVersion {
 //     url: String,
 // }
 
-
 // #[derive(Deserialize)]
 // #[serde(rename_all = "camelCase")]
 // struct CurseForgeFileDependency {
@@ -242,17 +255,27 @@ struct AtLauncherDisplayClaim {
     uhs: String,
 }
 
-pub async fn import_from_atlauncher(backend: &BackendState, import_job: ImportFromOtherLauncherJob, modal_action: ModalAction) {
+pub async fn import_from_atlauncher(
+    backend: &BackendState,
+    import_job: ImportFromOtherLauncherJob,
+    modal_action: ModalAction,
+) {
     let Ok(launcher_config_bytes) = std::fs::read(import_job.root.join("configs/ATLauncher.json")) else {
         return;
     };
-    let launcher_config = serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json");
+    let launcher_config =
+        serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json");
 
     import_accounts_from_atlauncher(backend, &import_job, &launcher_config, &modal_action).await;
     import_instances_from_atlauncher(backend, &import_job, &launcher_config, &modal_action);
 }
 
-async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &ImportFromOtherLauncherJob, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
+async fn import_accounts_from_atlauncher(
+    backend: &BackendState,
+    import_job: &ImportFromOtherLauncherJob,
+    launcher_config: &AtLauncherConfig,
+    modal_action: &ModalAction,
+) {
     if !import_job.import_accounts {
         return;
     }
@@ -275,7 +298,7 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &Im
         Err(error) => {
             log::error!("Error initializing secret storage: {error}");
             return;
-        }
+        },
     };
 
     let num_accounts = accounts_json.len();
@@ -285,15 +308,20 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &Im
     backend.account_info.write().modify(|accounts| {
         let mut last_account_username = None;
         for account in &accounts_json {
-               tracker.add_count(1);
-             tracker.notify();
-             accounts.accounts.insert(account.uuid, BackendAccount {
-                username: account.minecraft_username.clone().into(),
-                 offline: false,
-                  head: None,
-              });
-            if let Some(last_account) = launcher_config.last_account && account.username == last_account {
-                   last_account_username = Some(account.uuid);
+            tracker.add_count(1);
+            tracker.notify();
+            accounts.accounts.insert(
+                account.uuid,
+                BackendAccount {
+                    username: account.minecraft_username.clone().into(),
+                    offline: false,
+                    head: None,
+                },
+            );
+            if let Some(last_account) = launcher_config.last_account
+                && account.username == last_account
+            {
+                last_account_username = Some(account.uuid);
             }
         }
         accounts.selected_account = last_account_username;
@@ -306,17 +334,21 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &Im
 
     for account in accounts_json {
         let mut credentials = AccountCredentials::default();
-         let mut non_default_creds = false;
-          let now = chrono::Utc::now();
+        let mut non_default_creds = false;
+        let now = chrono::Utc::now();
 
-           if let Ok(expiry) = DateTime::from_str(&account.access_token_expires_at) && expiry < now {
-               non_default_creds = true;
-             credentials.access_token = Some(TokenWithExpiry {
-                  token: account.access_token.into(),
+        if let Ok(expiry) = DateTime::from_str(&account.access_token_expires_at)
+            && expiry < now
+        {
+            non_default_creds = true;
+            credentials.access_token = Some(TokenWithExpiry {
+                token: account.access_token.into(),
                 expiry,
-              });
+            });
         }
-        if let Ok(expiry) = DateTime::from_str(&account.xsts_auth.not_after) && expiry < now {
+        if let Ok(expiry) = DateTime::from_str(&account.xsts_auth.not_after)
+            && expiry < now
+        {
             non_default_creds = true;
             credentials.xsts = Some(XstsToken {
                 token: account.xsts_auth.token.into(),
@@ -335,7 +367,6 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &Im
     tracker.set_count(num_accounts);
     tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Normal);
     tracker.notify();
-
 }
 
 struct AtLauncherInstanceToImport {
@@ -344,40 +375,67 @@ struct AtLauncherInstanceToImport {
     folder: Arc<Path>,
 }
 
-fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConfig) -> anyhow::Result<InstanceConfiguration> {
+fn try_load_from_atlauncher(
+    config_path: &Path,
+    launcher_config: &AtLauncherConfig,
+) -> anyhow::Result<InstanceConfiguration> {
     // let instance_cfg_bytes = std::fs::read(config_path)?;
     // let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes)?;
     let instance_cfg_bytes = std::fs::read(config_path).expect("Failed to read from fs");
-    let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes).expect("Failed to convert to json");
+    let instance_cfg =
+        serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes).expect("Failed to convert to json");
 
     // tbh, idk why they have it as `id` they just do...
     // or at least, it's the most reliable one i've managed to read from so far.
-    let mut configuration = InstanceConfiguration::new(instance_cfg.id.into(), instance_cfg.launcher.loader_version.as_ref().map(|loader_version| loader_version.loader_type).unwrap_or(Loader::Vanilla));
+    let mut configuration = InstanceConfiguration::new(
+        instance_cfg.id.into(),
+        instance_cfg
+            .launcher
+            .loader_version
+            .as_ref()
+            .map(|loader_version| loader_version.loader_type)
+            .unwrap_or(Loader::Vanilla),
+    );
 
-    configuration.memory = if let Some(max_memory) = instance_cfg.launcher.maximum_memory.or(launcher_config.maximum_memory) {
-        Some(InstanceMemoryConfiguration {
-            enabled: true,
-            min: instance_cfg.launcher.required_memory as u32,
-            max: max_memory as u32,
-        })
-    } else { None };
+    configuration.memory =
+        if let Some(max_memory) = instance_cfg.launcher.maximum_memory.or(launcher_config.maximum_memory) {
+            Some(InstanceMemoryConfiguration {
+                enabled: true,
+                min: instance_cfg.launcher.required_memory as u32,
+                max: max_memory as u32,
+            })
+        } else {
+            None
+        };
 
-    if let Some(enable_commands) = instance_cfg.launcher.enable_commands && enable_commands {
+    if let Some(enable_commands) = instance_cfg.launcher.enable_commands
+        && enable_commands
+    {
         configuration.wrapper_command = if let Some(wrapper_command) = instance_cfg.launcher.wrapper_command {
             Some(InstanceWrapperCommandConfiguration {
                 enabled: true,
-                 flags: wrapper_command.into(),
-             })
-        } else { None };
+                flags: wrapper_command.into(),
+            })
+        } else {
+            None
+        };
     }
 
-    configuration.preferred_loader_version = instance_cfg.launcher.loader_version.map(|loader_version| loader_version.raw_version.into());
+    configuration.preferred_loader_version = instance_cfg
+        .launcher
+        .loader_version
+        .map(|loader_version| loader_version.raw_version.into());
     configuration.preferred_account = instance_cfg.launcher.account;
 
     Ok(configuration)
 }
 
-fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportFromOtherLauncherJob, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
+fn import_instances_from_atlauncher(
+    backend: &BackendState,
+    import_job: &ImportFromOtherLauncherJob,
+    launcher_config: &AtLauncherConfig,
+    modal_action: &ModalAction,
+) {
     if import_job.paths.is_empty() {
         return;
     }
@@ -399,7 +457,7 @@ fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportF
 
         let pandora_path = backend.directories.instances_dir.join(filename);
         if pandora_path.exists() {
-           continue;
+            continue;
         }
 
         let atlauncher_instance_cfg = folder.join("instance.json");
@@ -426,7 +484,10 @@ fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportF
 
         let Ok(configuration) = try_load_from_atlauncher(&to_import.config_path, launcher_config) else {
             tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
-            log::error!("Failed to load config path from atlauncher for {:?}", to_import.folder.file_name().unwrap());
+            log::error!(
+                "Failed to load config path from atlauncher for {:?}",
+                to_import.folder.file_name().unwrap()
+            );
             tracker.notify();
             continue;
         };
@@ -456,12 +517,12 @@ fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportF
         let resourcepacks_path = target_dot_minecraft.join("resourcepacks");
 
         let disabled_mods_path = target_dot_minecraft.join("disabledmods");
-        if let Ok(disabled_mods_folder) =  std::fs::read_dir(&disabled_mods_path){
+        if let Ok(disabled_mods_folder) = std::fs::read_dir(&disabled_mods_path) {
             // moving mods to the mods folder could throw an error if there was no mod folder, if all mods were disabled for example
             _ = std::fs::create_dir(&mods_path);
             _ = std::fs::create_dir(&resourcepacks_path);
 
-            for mod_file in disabled_mods_folder{
+            for mod_file in disabled_mods_folder {
                 let Ok(entry) = mod_file else {
                     continue;
                 };
@@ -473,10 +534,10 @@ fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportF
                 let new_path = match &file_name {
                     resourcepack if resourcepack.ends_with(".zip") => &resourcepacks_path,
                     jar_mod if jar_mod.ends_with(".jar") => &mods_path,
-                    _=> continue
+                    _ => continue,
                 };
 
-                _ = std::fs::rename(entry.path(),  new_path.join( file_name + ".disabled"));
+                _ = std::fs::rename(entry.path(), new_path.join(file_name + ".disabled"));
             }
 
             // cleanup old disabled mod folder

@@ -21,6 +21,7 @@ use crate::{
         readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls},
     },
     entity::instance::InstanceEntry,
+    icon::PandoraIcon,
     root,
 };
 
@@ -139,16 +140,18 @@ impl InstanceLogsSubpage {
                                         Box::new(move |div| {
                                             let backend_handle = backend_handle.clone();
                                             let selected = selected.clone();
-                                            div.child(Button::new("upload").label("Upload").on_click(
-                                                move |_, window, cx| {
-                                                    root::upload_log_file(
-                                                        selected.clone(),
-                                                        &backend_handle,
-                                                        window,
-                                                        cx,
-                                                    );
-                                                },
-                                            ))
+                                            div.child(
+                                                Button::new("upload")
+                                                    .label(t::instance::logs::upload::label())
+                                                    .on_click(move |_, window, cx| {
+                                                        root::upload_log_file(
+                                                            selected.clone(),
+                                                            &backend_handle,
+                                                            window,
+                                                            cx,
+                                                        );
+                                                    }),
+                                            )
                                         }),
                                         window,
                                         cx,
@@ -168,14 +171,14 @@ impl InstanceLogsSubpage {
 
                     if result.total_gzipped_size > 0 {
                         let bytes = result.total_gzipped_size;
-                        let string = if bytes < 1000 {
-                            format!("Cleanup old log files ({} bytes)", bytes)
-                        } else if bytes < 1000 * 1000 {
-                            format!("Cleanup old log files ({}kB)", bytes / 1000)
-                        } else if bytes < 1000 * 1000 * 1000 {
-                            format!("Cleanup old log files ({}MB)", bytes / 1000 / 1000)
+                        let string = if bytes < 1000 * 10 {
+                            t::instance::logs::cleanup::bytes(bytes)
+                        } else if bytes < 1000 * 1000 * 10 {
+                            t::instance::logs::cleanup::kb(bytes / 1000)
+                        } else if bytes < 1000 * 1000 * 1000 * 10 {
+                            t::instance::logs::cleanup::mb(bytes / 1000 / 1000)
                         } else {
-                            format!("Cleanup old log files ({}GB)", bytes / 1000 / 1000 / 1000)
+                            t::instance::logs::cleanup::gb(bytes / 1000 / 1000 / 1000)
                         };
                         page.clean_old_logs_text = Some(string.into());
                     }
@@ -195,15 +198,20 @@ impl Render for InstanceLogsSubpage {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
         let theme = cx.theme();
 
-        let mut header = h_flex().gap_3().mb_1().ml_1().child(div().text_lg().child("Logs"));
+        let mut header = h_flex().gap_3().mb_1().ml_1().child(div().text_lg().child(t::instance::logs::title()));
 
         let mut content = div().size_full().border_1().rounded(theme.radius).border_color(theme.border);
 
         if self.no_available_logs {
-            content = content.child(h_flex().justify_center().size_full().text_lg().child("No available logs"));
+            content = content.child(h_flex().justify_center().size_full().text_lg().child(t::instance::logs::none()));
         } else {
             if let Some(available_logs) = self.available_logs.as_ref() {
-                header = header.child(Select::new(&available_logs).small().mt_0p5().placeholder("Select log file"));
+                header = header.child(
+                    Select::new(&available_logs)
+                        .small()
+                        .mt_0p5()
+                        .placeholder(t::instance::logs::select_file()),
+                );
             } else {
                 content = content.child(
                     h_flex()
@@ -211,7 +219,7 @@ impl Render for InstanceLogsSubpage {
                         .size_full()
                         .text_lg()
                         .gap_3()
-                        .child("Loading available logs...")
+                        .child(t::instance::logs::loading())
                         .child(Spinner::new()),
                 );
             }
@@ -219,7 +227,16 @@ impl Render for InstanceLogsSubpage {
             if let Some(log_content) = self.log_content.clone() {
                 content = content.child(log_content);
             } else if self.available_logs.is_some() {
-                content = content.child(h_flex().justify_center().size_full().text_lg().child("Select log file"));
+                content = content.child(
+                    h_flex()
+                        .justify_center()
+                        .size_full()
+                        .text_lg()
+                        .gap_2()
+                        .child(PandoraIcon::ArrowUp)
+                        .child(t::instance::logs::select_file())
+                        .child(PandoraIcon::ArrowUp),
+                );
             }
         }
 

@@ -3,19 +3,24 @@ use std::{collections::HashMap, sync::Arc};
 use serde::Deserialize;
 use ustr::Ustr;
 
-use crate::{maven::MavenCoordinate, version::{GameLibrary, GameLibraryArtifact, GameLibraryDownloads, PartialMinecraftVersion}, version_manifest::MinecraftVersionType};
+use crate::{
+    maven::MavenCoordinate,
+    version::{GameLibrary, GameLibraryArtifact, GameLibraryDownloads, PartialMinecraftVersion},
+    version_manifest::MinecraftVersionType,
+};
 
-pub const NEOFORGE_INSTALLER_MAVEN_URL: &str = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
+pub const NEOFORGE_INSTALLER_MAVEN_URL: &str =
+    "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForgeInstallProfile {
     pub minecraft: Arc<str>,
     pub json: Arc<str>,
-    pub mirror_list: Arc<str>,
+    pub mirror_list: Option<Arc<str>>,
     pub data: HashMap<String, ForgeSidedData>,
     pub processors: Arc<[ForgeInstallProcessor]>,
-    pub libraries: Arc<[GameLibrary]>
+    pub libraries: Arc<[GameLibrary]>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,7 +58,8 @@ pub enum VersionFragment {
 
 impl VersionFragment {
     pub fn string_to_parts(version: &str) -> Vec<Self> {
-        version.split(&['.', '-', '+'])
+        version
+            .split(&['.', '-', '+'])
             .map(|v| {
                 if let Ok(number) = v.parse::<usize>() {
                     VersionFragment::Number(number)
@@ -110,39 +116,44 @@ pub struct LegacyLibraryDownload {
 
 impl LegacyVersionInfo {
     pub fn into_partial_version(self, side: ForgeSide) -> PartialMinecraftVersion {
-        let libraries = self.libraries.map(|libraries| libraries.into_iter().filter_map(|library| {
-            let req = match side {
-                ForgeSide::Client => library.clientreq,
-                ForgeSide::Server => library.serverreq,
-            };
-            if req == Some(false) {
-                return None;
-            }
+        let libraries = self.libraries.map(|libraries| {
+            libraries
+                .into_iter()
+                .filter_map(|library| {
+                    let req = match side {
+                        ForgeSide::Client => library.clientreq,
+                        ForgeSide::Server => library.serverreq,
+                    };
+                    if req == Some(false) {
+                        return None;
+                    }
 
-            let coordinate = MavenCoordinate::create(&library.name);
-            let artifact_path = coordinate.artifact_path();
-            let url = if let Some(url) = library.url {
-                format!("{}{}", url, artifact_path)
-            } else {
-                format!("https://libraries.minecraft.net/{}", artifact_path)
-            };
+                    let coordinate = MavenCoordinate::create(&library.name);
+                    let artifact_path = coordinate.artifact_path();
+                    let url = if let Some(url) = library.url {
+                        format!("{}{}", url, artifact_path)
+                    } else {
+                        format!("https://libraries.minecraft.net/{}", artifact_path)
+                    };
 
-            Some(GameLibrary {
-                downloads: GameLibraryDownloads {
-                    artifact: Some(GameLibraryArtifact {
-                        url: url.into(),
-                        path: artifact_path.into(),
-                        sha1: None,
-                        size: None,
-                    }),
-                    classifiers: None,
-                },
-                name: library.name,
-                rules: None,
-                natives: None,
-                extract: None,
-            })
-        }).collect());
+                    Some(GameLibrary {
+                        downloads: GameLibraryDownloads {
+                            artifact: Some(GameLibraryArtifact {
+                                url: url.into(),
+                                path: artifact_path.into(),
+                                sha1: None,
+                                size: None,
+                            }),
+                            classifiers: None,
+                        },
+                        name: library.name,
+                        rules: None,
+                        natives: None,
+                        extract: None,
+                    })
+                })
+                .collect()
+        });
 
         PartialMinecraftVersion {
             inherits_from: self.inherits_from,

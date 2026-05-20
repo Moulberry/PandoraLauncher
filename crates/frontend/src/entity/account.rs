@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bridge::account::Account;
-use gpui::{App, Entity, EventEmitter};
+use gpui::{App, Entity, SharedString};
 use uuid::Uuid;
 
 #[derive(Default)]
@@ -11,22 +11,30 @@ pub struct AccountEntries {
     pub selected_account: Option<Account>,
 }
 
-pub struct AccountChanged;
-
-impl EventEmitter<AccountChanged> for AccountEntries {}
-
 impl AccountEntries {
     pub fn set(entity: &Entity<Self>, accounts: Arc<[Account]>, selected_account: Option<Uuid>, cx: &mut App) {
         entity.update(cx, |entries, cx| {
-            let prev_selected = entries.selected_account_uuid;
             entries.selected_account =
                 selected_account.and_then(|uuid| accounts.iter().find(|acc| acc.uuid == uuid).cloned());
             entries.accounts = accounts;
             entries.selected_account_uuid = selected_account;
             cx.notify();
-            if prev_selected != selected_account {
-                cx.emit(AccountChanged);
-            }
         });
+    }
+}
+
+pub trait AccountExt {
+    fn username(&self, redact: bool) -> SharedString;
+}
+
+static REDACTED: &'static str = "********************************";
+
+impl AccountExt for Account {
+    fn username(&self, redacted: bool) -> SharedString {
+        if redacted {
+            SharedString::new_static(&REDACTED[..self.username.len().min(REDACTED.len())])
+        } else {
+            self.username.clone().into()
+        }
     }
 }

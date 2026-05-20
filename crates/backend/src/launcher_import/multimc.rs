@@ -1,18 +1,30 @@
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-use auth::{credentials::AccountCredentials, models::{TokenWithExpiry, XstsToken}, secret::PlatformSecretStorage};
-use bridge::{import::ImportFromOtherLauncherJob, modal_action::{ModalAction, ProgressTracker}};
+use auth::{
+    credentials::AccountCredentials,
+    models::{TokenWithExpiry, XstsToken},
+    secret::PlatformSecretStorage,
+};
+use bridge::{
+    import::ImportFromOtherLauncherJob,
+    modal_action::{ModalAction, ProgressTracker},
+};
 use chrono::DateTime;
-use schema::{instance::{InstanceConfiguration, LwjglLibraryPath}, loader::Loader};
+use schema::{
+    instance::{InstanceConfiguration, LwjglLibraryPath},
+    loader::Loader,
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{BackendState, account::BackendAccount, instance::InstanceStats};
 
-
 #[derive(Deserialize)]
 struct MMCPack {
-    components: Vec<MMCPackComponent>
+    components: Vec<MMCPackComponent>,
 }
 
 #[derive(Deserialize)]
@@ -67,12 +79,11 @@ pub fn try_load_from_multimc(instance_cfg: &Path, mmc_pack: &Path) -> Option<(In
                     continue;
                 };
 
-
                 let mut value = value.trim_ascii();
                 if value.len() > 1 && value.starts_with('"') && value.ends_with('"') {
-                    value = &value[1..value.len()-1];
+                    value = &value[1..value.len() - 1];
                 } else if value.len() > 1 && value.starts_with('\'') && value.ends_with('\'') {
-                    value = &value[1..value.len()-1];
+                    value = &value[1..value.len() - 1];
                 }
 
                 match (section, key) {
@@ -132,7 +143,8 @@ pub fn try_load_from_multimc(instance_cfg: &Path, mmc_pack: &Path) -> Option<(In
                         if value.is_empty() {
                             configuration.system_libraries.get_or_insert_default().openal = LwjglLibraryPath::Auto;
                         } else {
-                            configuration.system_libraries.get_or_insert_default().openal = LwjglLibraryPath::Explicit(Path::new(value).into());
+                            configuration.system_libraries.get_or_insert_default().openal =
+                                LwjglLibraryPath::Explicit(Path::new(value).into());
                         }
                     },
                     (Some("[General]"), "UseNativeGLFW") => {
@@ -145,7 +157,8 @@ pub fn try_load_from_multimc(instance_cfg: &Path, mmc_pack: &Path) -> Option<(In
                         if value.is_empty() {
                             configuration.system_libraries.get_or_insert_default().glfw = LwjglLibraryPath::Auto;
                         } else {
-                            configuration.system_libraries.get_or_insert_default().glfw = LwjglLibraryPath::Explicit(Path::new(value).into());
+                            configuration.system_libraries.get_or_insert_default().glfw =
+                                LwjglLibraryPath::Explicit(Path::new(value).into());
                         }
                     },
                     // Linux Performance
@@ -193,10 +206,10 @@ pub fn try_load_from_multimc(instance_cfg: &Path, mmc_pack: &Path) -> Option<(In
                             continue;
                         };
                         stats.last_played_unix_ms = Some(last_launcher_time);
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
-            }
+            },
         }
     }
 
@@ -216,7 +229,7 @@ pub fn try_load_from_multimc(instance_cfg: &Path, mmc_pack: &Path) -> Option<(In
 
 #[derive(Deserialize, Debug)]
 struct MultiMCAccountsJson {
-    accounts: Vec<MultiMCAccount>
+    accounts: Vec<MultiMCAccount>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -224,7 +237,7 @@ struct MultiMCAccountsJson {
 enum MultiMCAccount {
     Offline {
         active: Option<bool>,
-        profile: Option<MultiMCAccountProfile>
+        profile: Option<MultiMCAccountProfile>,
     },
     MSA {
         active: Option<bool>,
@@ -236,7 +249,7 @@ enum MultiMCAccount {
         #[serde(rename = "xrp-mc")]
         xrp_mc: Option<MultiMCAccountToken>,
         ygg: Option<MultiMCAccountToken>,
-    }
+    },
 }
 
 #[derive(Deserialize, Debug)]
@@ -258,12 +271,20 @@ struct MultiMCAccountTokenExtra {
     uhs: Option<Arc<str>>,
 }
 
-pub async fn import_from_multimc(backend: &BackendState, import_job: ImportFromOtherLauncherJob, modal_action: ModalAction) {
+pub async fn import_from_multimc(
+    backend: &BackendState,
+    import_job: ImportFromOtherLauncherJob,
+    modal_action: ModalAction,
+) {
     import_accounts_from_multimc(backend, &import_job, &modal_action).await;
     import_instances_from_multimc(backend, &import_job, &modal_action);
 }
 
-async fn import_accounts_from_multimc(backend: &BackendState, import_job: &ImportFromOtherLauncherJob, modal_action: &ModalAction) {
+async fn import_accounts_from_multimc(
+    backend: &BackendState,
+    import_job: &ImportFromOtherLauncherJob,
+    modal_action: &ModalAction,
+) {
     if !import_job.import_accounts {
         return;
     }
@@ -286,7 +307,7 @@ async fn import_accounts_from_multimc(backend: &BackendState, import_job: &Impor
         Err(error) => {
             log::error!("Error initializing secret storage: {error}");
             return;
-        }
+        },
     };
 
     let num_accounts = accounts_json.accounts.len();
@@ -308,11 +329,14 @@ async fn import_accounts_from_multimc(backend: &BackendState, import_job: &Impor
                         account.offline = false;
                         account.username = profile.name.clone();
                     } else {
-                        accounts.accounts.insert(profile.id, BackendAccount {
-                            username: profile.name.clone(),
-                            offline: false,
-                            head: None
-                        });
+                        accounts.accounts.insert(
+                            profile.id,
+                            BackendAccount {
+                                username: profile.name.clone(),
+                                offline: false,
+                                head: None,
+                            },
+                        );
                     }
 
                     if *active == Some(true) {
@@ -329,7 +353,16 @@ async fn import_accounts_from_multimc(backend: &BackendState, import_job: &Impor
     tracker.notify();
 
     for account in accounts_json.accounts {
-        if let MultiMCAccount::MSA { active: _, profile, msa_client_id, msa, utoken, xrp_mc, ygg } = account {
+        if let MultiMCAccount::MSA {
+            active: _,
+            profile,
+            msa_client_id,
+            msa,
+            utoken,
+            xrp_mc,
+            ygg,
+        } = account
+        {
             let Some(profile) = profile else {
                 continue;
             };
@@ -339,13 +372,19 @@ async fn import_accounts_from_multimc(backend: &BackendState, import_job: &Impor
 
             let now = chrono::Utc::now();
 
-            if let Some(msa) = msa && let Some(exp) = msa.exp {
-                if let Some(msa_client_id) = msa_client_id && msa.refresh_token.is_some() {
+            if let Some(msa) = msa
+                && let Some(exp) = msa.exp
+            {
+                if let Some(msa_client_id) = msa_client_id
+                    && msa.refresh_token.is_some()
+                {
                     non_default_creds = true;
                     credentials.msa_refresh = msa.refresh_token;
                     credentials.msa_refresh_force_client_id = Some(msa_client_id);
                 }
-                if let Some(exp) = DateTime::from_timestamp_secs(exp) && exp < now {
+                if let Some(exp) = DateTime::from_timestamp_secs(exp)
+                    && exp < now
+                {
                     non_default_creds = true;
                     credentials.msa_access = Some(TokenWithExpiry {
                         token: msa.token,
@@ -353,8 +392,12 @@ async fn import_accounts_from_multimc(backend: &BackendState, import_job: &Impor
                     });
                 }
             }
-            if let Some(xbl) = utoken && let Some(exp) = xbl.exp {
-                if let Some(exp) = DateTime::from_timestamp_secs(exp) && exp < now {
+            if let Some(xbl) = utoken
+                && let Some(exp) = xbl.exp
+            {
+                if let Some(exp) = DateTime::from_timestamp_secs(exp)
+                    && exp < now
+                {
                     non_default_creds = true;
                     credentials.xbl = Some(TokenWithExpiry {
                         token: xbl.token,
@@ -367,17 +410,23 @@ async fn import_accounts_from_multimc(backend: &BackendState, import_job: &Impor
                 && let Some(extra) = xsts.extra
                 && let Some(uhs) = extra.uhs
             {
-                if let Some(exp) = DateTime::from_timestamp_secs(exp) && exp < now {
+                if let Some(exp) = DateTime::from_timestamp_secs(exp)
+                    && exp < now
+                {
                     non_default_creds = true;
                     credentials.xsts = Some(XstsToken {
                         token: xsts.token,
                         expiry: exp,
-                        userhash: uhs
+                        userhash: uhs,
                     });
                 }
             }
-            if let Some(ygg) = ygg && let Some(exp) = ygg.exp {
-                if let Some(exp) = DateTime::from_timestamp_secs(exp) && exp < now {
+            if let Some(ygg) = ygg
+                && let Some(exp) = ygg.exp
+            {
+                if let Some(exp) = DateTime::from_timestamp_secs(exp)
+                    && exp < now
+                {
                     non_default_creds = true;
                     credentials.access_token = Some(TokenWithExpiry {
                         token: ygg.token,
@@ -404,7 +453,11 @@ struct MultiMCInstanceToImport {
     folder: Arc<Path>,
 }
 
-fn import_instances_from_multimc(backend: &BackendState, import_job: &ImportFromOtherLauncherJob, modal_action: &ModalAction) {
+fn import_instances_from_multimc(
+    backend: &BackendState,
+    import_job: &ImportFromOtherLauncherJob,
+    modal_action: &ModalAction,
+) {
     if import_job.paths.is_empty() {
         return;
     }
@@ -426,7 +479,7 @@ fn import_instances_from_multimc(backend: &BackendState, import_job: &ImportFrom
 
         let pandora_path = backend.directories.instances_dir.join(filename);
         if pandora_path.exists() {
-           continue;
+            continue;
         }
 
         let multimc_instance_cfg = folder.join("instance.cfg");
@@ -451,7 +504,9 @@ fn import_instances_from_multimc(backend: &BackendState, import_job: &ImportFrom
         modal_action.trackers.push(tracker.clone());
         tracker.notify();
 
-        let Some((configuration, stats)) = try_load_from_multimc(&to_import.multimc_instance_cfg, &to_import.multimc_mmc_pack) else {
+        let Some((configuration, stats)) =
+            try_load_from_multimc(&to_import.multimc_instance_cfg, &to_import.multimc_mmc_pack)
+        else {
             tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
             tracker.notify();
             continue;

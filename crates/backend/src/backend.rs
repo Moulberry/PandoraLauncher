@@ -1,69 +1,94 @@
 use std::{
-    collections::{HashMap, HashSet}, io::Cursor, path::{Path, PathBuf}, sync::Arc, time::{Duration, SystemTime}
+    collections::HashMap,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant, SystemTime},
 };
 
 use auth::{
     authenticator::{Authenticator, MsaAuthorizationError, XboxAuthenticateError},
-    credentials::{AccountCredentials, AUTH_STAGE_COUNT},
-    models::{CapeState, MinecraftAccessToken, MinecraftProfileCape, MinecraftProfileResponse, MinecraftProfileSkin, SkinState, SkinVariant},
+    credentials::{AUTH_STAGE_COUNT, AccountCredentials},
+    models::MinecraftAccessToken,
     secret::{PlatformSecretStorage, SecretStorageError},
     serve_redirect::{self, ProcessAuthorizationError},
 };
 use bridge::{
-    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentType, InstanceContentSummary, InstanceID, InstanceServerSummary, InstanceWorldSummary, WorldDatapackSummary}, message::{EmbeddedOrRaw, MessageToBackend, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
+    handle::{BackendHandle, BackendReceiver, FrontendHandle},
+    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath},
+    instance::{
+        ContentFolder, ContentType, InstanceContentSummary, InstanceID, ModpackFile, ModpackFilePath, ModpackFileSource,
+    },
+    message::{EmbeddedOrRaw, MessageToFrontend},
+    modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType},
+    quit::QuitCoordinator,
+    safe_path::SafePath,
 };
 use image::ImageFormat;
 use indexmap::IndexSet;
 use parking_lot::RwLock;
 use reqwest::{StatusCode, redirect::Policy};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 use schema::{
     auxiliary::AuxiliaryContentMeta,
     backend_config::{BackendConfig, ProxyConfig, SyncTargets},
-    content::ContentSource,
+    content::{ContentInstallReason, ContentSource},
     curseforge::{CachedCurseforgeFileInfo, CurseforgeGetFilesRequest},
     instance::InstanceConfiguration,
     loader::Loader,
-    modrinth::ModrinthSideRequirement,
+    minecraft_profile::MinecraftProfileResponse,
 };
-use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
-use tokio::sync::{mpsc::Receiver, OnceCell};
-use uuid::Uuid;
-
+use tokio::sync::{OnceCell, Semaphore, mpsc::Receiver};
 use ustr::Ustr;
+use uuid::Uuid;
 
 use crate::{
     account::{BackendAccountInfo, MinecraftLoginInfo},
     directories::LauncherDirectories,
     id_slab::IdSlab,
-    instance::{ContentFolder, Instance},
+    instance::Instance,
     launch::Launcher,
-    metadata::{items::{CurseforgeGetFilesMetadataItem, MinecraftVersionManifestMetadataItem}, manager::MetadataManager},
+    metadata::{
+        items::{CurseforgeGetFilesMetadataItem, MinecraftVersionManifestMetadataItem},
+        manager::MetadataManager,
+    },
     mod_metadata::ModMetadataManager,
     persistent::Persistent,
+    server_list_pinger::ServerListPinger,
+    skin_manager::SkinManager,
 };
 
-fn build_http_clients(user_agent: &str, proxy_config: &ProxyConfig, proxy_password: Option<&str>) -> (reqwest::Client, reqwest::Client) {
+fn build_http_clients(
+    user_agent: &str,
+    proxy_config: &ProxyConfig,
+    proxy_password: Option<&str>,
+) -> (reqwest::Client, reqwest::Client) {
     let proxy_url = proxy_config.to_url(proxy_password);
 
     let mut http_builder = reqwest::ClientBuilder::new()
-        .connect_timeout(Duration::from_secs(30))
-        .read_timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(15))
         .redirect(Policy::none())
         .use_rustls_tls()
         .user_agent(user_agent);
 
-    let mut redirecting_builder = reqwest::ClientBuilder::new()
-        .use_rustls_tls()
-        .user_agent(user_agent);
+    let mut redirecting_builder = reqwest::ClientBuilder::new().use_rustls_tls().user_agent(user_agent);
 
     if let Some(proxy_url) = &proxy_url {
         if let Ok(proxy) = reqwest::Proxy::all(proxy_url) {
             let proxy = proxy.no_proxy(reqwest::NoProxy::from_env());
             http_builder = http_builder.proxy(proxy.clone());
             redirecting_builder = redirecting_builder.proxy(proxy);
-            log::info!("Proxy configured: {}://{}:{}", proxy_config.protocol.scheme(), proxy_config.host, proxy_config.port);
+            log::info!(
+                "Proxy configured: {}://{}:{}",
+                proxy_config.protocol.scheme(),
+                proxy_config.host,
+                proxy_config.port
+            );
         } else {
             log::warn!("Failed to parse proxy URL, proceeding without proxy");
         }
@@ -75,41 +100,14 @@ fn build_http_clients(user_agent: &str, proxy_config: &ProxyConfig, proxy_passwo
     (http_client, redirecting_http_client)
 }
 
-fn auth_profile_from_schema(profile: schema::minecraft_profile::MinecraftProfileResponse) -> MinecraftProfileResponse {
-    MinecraftProfileResponse {
-        id: profile.id,
-        name: profile.name,
-        skins: profile.skins.into_iter().map(|skin| MinecraftProfileSkin {
-            id: None,
-            url: skin.url,
-            state: match skin.state {
-                schema::minecraft_profile::SkinState::Active => SkinState::Active,
-                schema::minecraft_profile::SkinState::Inactive => SkinState::Inactive,
-            },
-            variant: match skin.variant {
-                schema::minecraft_profile::SkinVariant::Classic => SkinVariant::Classic,
-                schema::minecraft_profile::SkinVariant::Slim => SkinVariant::Slim,
-                schema::minecraft_profile::SkinVariant::Other => SkinVariant::Other,
-            },
-        }).collect(),
-        capes: profile.capes.into_iter().map(|cape| MinecraftProfileCape {
-            id: cape.id,
-            url: cape.url,
-            state: match cape.state {
-                schema::minecraft_profile::SkinState::Active => CapeState::Active,
-                schema::minecraft_profile::SkinState::Inactive => CapeState::Inactive,
-            },
-        }).collect(),
-    }
-}
-
-pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHandle, recv: BackendReceiver) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .expect("Failed to initialize Tokio runtime");
-
+pub fn start(
+    runtime: tokio::runtime::Runtime,
+    launcher_dir: PathBuf,
+    send: FrontendHandle,
+    self_handle: BackendHandle,
+    recv: BackendReceiver,
+    quit_handler: QuitCoordinator,
+) {
     let user_agent = if let Some(version) = option_env!("PANDORA_RELEASE_VERSION") {
         format!("PandoraLauncher/{version} (https://github.com/Moulberry/PandoraLauncher)")
     } else {
@@ -128,36 +126,35 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
                     Err(e) => {
                         log::warn!("Failed to read proxy password from keyring: {:?}", e);
                         None
-                    }
+                    },
                 },
                 Err(e) => {
                     log::warn!("Failed to initialize secret storage: {:?}", e);
                     None
-                }
+                },
             }
         })
     } else {
         None
     };
 
-    let (http_client, redirecting_http_client) = build_http_clients(&user_agent, &proxy_config, proxy_password.as_deref());
+    let (http_client, redirecting_http_client) =
+        build_http_clients(&user_agent, &proxy_config, proxy_password.as_deref());
 
-    let meta = Arc::new(MetadataManager::new(
-        http_client.clone(),
-        directories.metadata_dir.clone(),
-    ));
+    let meta = Arc::new(MetadataManager::new(http_client.clone(), directories.metadata_dir.clone()));
 
     let (watcher_tx, watcher_rx) = tokio::sync::mpsc::channel::<notify_debouncer_full::DebounceEventResult>(64);
     let watcher = notify_debouncer_full::new_debouncer(Duration::from_millis(100), None, move |event| {
         let _ = watcher_tx.blocking_send(event);
-    }).unwrap();
+    })
+    .unwrap();
 
-    let mod_metadata_manager = ModMetadataManager::load(directories.content_meta_dir.clone(), directories.content_library_dir.clone());
+    let mod_metadata_manager =
+        ModMetadataManager::load(directories.content_meta_dir.clone(), directories.content_library_dir.clone());
 
     let state_instances = BackendStateInstances {
         instances: IdSlab::default(),
         instances_generation: 0,
-        reload_immediately: Default::default(),
     };
 
     let mut state_file_watching = BackendStateFileWatching {
@@ -175,9 +172,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
     // Load accounts
     let account_info = Persistent::load(directories.accounts_json.clone());
 
-    let (profile_reload_tx, profile_reload_rx) = tokio::sync::mpsc::channel(1);
-
-    let mut state = BackendState {
+    let state = BackendState {
         self_handle,
         send: send.clone(),
         http_client,
@@ -191,8 +186,13 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         account_info: Arc::new(RwLock::new(account_info)),
         config: Arc::new(RwLock::new(config)),
         secret_storage: Arc::new(OnceCell::new()),
-        head_cache: Default::default(),
-        profile_reload_tx,
+        login_semaphore: Arc::new(Semaphore::new(1)),
+        cached_minecraft_profiles: Default::default(),
+        skin_manager: Default::default(),
+        server_list_pinger: Arc::new(ServerListPinger::new()),
+        quit_coordinator: quit_handler,
+        should_quit: AtomicBool::new(false),
+        content_install_semaphore: Semaphore::new(8),
     };
 
     log::debug!("Doing initial backend load");
@@ -202,7 +202,7 @@ pub fn start(launcher_dir: PathBuf, send: FrontendHandle, self_handle: BackendHa
         state.load_all_instances().await;
     });
 
-    runtime.spawn(state.start(recv, watcher_rx, profile_reload_rx));
+    runtime.spawn(state.start(recv, watcher_rx));
 
     std::mem::forget(runtime);
 }
@@ -212,18 +212,28 @@ pub enum WatchTarget {
     RootDir,
     InstancesDir,
     InvalidInstanceDir,
-    InstanceDir { id: InstanceID },
-    InstanceDotMinecraftDir { id: InstanceID },
-    InstanceWorldDir { id: InstanceID },
-    InstanceSavesDir { id: InstanceID },
-    InstanceContentDir { id: InstanceID, folder: ContentFolder },
-    OwnedSkinsDir,
+    InstanceDir {
+        id: InstanceID,
+    },
+    InstanceDotMinecraftDir {
+        id: InstanceID,
+    },
+    InstanceWorldDir {
+        id: InstanceID,
+    },
+    InstanceSavesDir {
+        id: InstanceID,
+    },
+    InstanceContentDir {
+        id: InstanceID,
+        folder: ContentFolder,
+    },
+    SkinLibraryDir,
 }
 
 pub struct BackendStateInstances {
     pub instances: IdSlab<Instance>,
     pub instances_generation: usize,
-    pub reload_immediately: FxHashSet<(InstanceID, ContentFolder)>,
 }
 
 pub struct BackendStateFileWatching {
@@ -234,7 +244,6 @@ pub struct BackendStateFileWatching {
     symlink_link_to_src: HashMap<Arc<Path>, Arc<Path>>,
 }
 
-#[derive(Clone)]
 pub struct BackendState {
     pub self_handle: BackendHandle,
     pub send: FrontendHandle,
@@ -249,46 +258,38 @@ pub struct BackendState {
     pub account_info: Arc<RwLock<Persistent<BackendAccountInfo>>>,
     pub config: Arc<RwLock<Persistent<BackendConfig>>>,
     pub secret_storage: Arc<OnceCell<Result<PlatformSecretStorage, SecretStorageError>>>,
-    pub head_cache: Arc<RwLock<FxHashMap<Arc<str>, HeadCacheEntry>>>,
-    pub profile_reload_tx: tokio::sync::mpsc::Sender<()>,
+    pub login_semaphore: Arc<Semaphore>,
+    pub cached_minecraft_profiles: Arc<RwLock<FxHashMap<Uuid, CachedMinecraftProfile>>>,
+    pub skin_manager: Arc<RwLock<SkinManager>>,
+    pub server_list_pinger: Arc<ServerListPinger>,
+    pub quit_coordinator: QuitCoordinator,
+    pub should_quit: AtomicBool,
+    pub content_install_semaphore: Semaphore,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
-pub struct OwnedSkins {
-    pub skins: Vec<OwnedSkin>,
+pub struct CachedMinecraftProfile {
+    pub profile: MinecraftProfileResponse,
+    pub not_before: Instant,
+    pub not_after: Instant,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct OwnedSkin {
-    pub id: String,
-    pub file_name: String,
-    pub variant: String,
-    pub skin_id: String,
-    /// URL for deduplication - same URL = same skin
-    #[serde(default)]
-    pub url: Option<String>,
-    /// Stable texture hash from URL (last path segment). skin.id changes every equip - use this for dedup.
-    #[serde(default)]
-    pub texture_key: Option<String>,
-}
+impl CachedMinecraftProfile {
+    pub fn new(profile: MinecraftProfileResponse) -> Self {
+        let now = Instant::now();
+        Self {
+            profile,
+            not_before: now,
+            not_after: now + Duration::from_mins(5),
+        }
+    }
 
-pub enum HeadCacheEntry {
-    Pending {
-        accounts: Vec<Uuid>,
-    },
-    Success {
-        head: Arc<[u8]>,
-    },
-    Failed,
+    pub fn is_valid(&self, now: Instant) -> bool {
+        now >= self.not_before && now < self.not_after
+    }
 }
 
 impl BackendState {
-    async fn start(
-        self,
-        recv: BackendReceiver,
-        watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>,
-        mut profile_reload_rx: tokio::sync::mpsc::Receiver<()>,
-    ) {
+    async fn start(self, recv: BackendReceiver, watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>) {
         log::info!("Starting backend");
 
         tokio::task::spawn(crate::update::check_for_updates(self.redirecting_http_client.clone(), self.send.clone()));
@@ -296,15 +297,17 @@ impl BackendState {
         // Pre-fetch version manifest
         self.meta.load(&MinecraftVersionManifestMetadataItem).await;
 
-        self.handle(recv, watcher_rx, profile_reload_rx).await;
+        Arc::new(self).handle(recv, watcher_rx).await;
     }
 
-    pub async fn load_all_instances(&mut self) {
+    pub async fn load_all_instances(&self) {
         log::info!("Loading all instances");
 
         let mut paths_with_time = Vec::new();
 
-        self.file_watching.write().watch_filesystem(self.directories.instances_dir.clone(), WatchTarget::InstancesDir);
+        self.file_watching
+            .write()
+            .watch_filesystem(self.directories.instances_dir.clone(), WatchTarget::InstancesDir);
         for entry in std::fs::read_dir(&self.directories.instances_dir).unwrap() {
             let Ok(entry) = entry else {
                 log::warn!("Error reading directory in instances folder: {:?}", entry.unwrap_err());
@@ -313,8 +316,18 @@ impl BackendState {
 
             let path = entry.path();
 
+            let Some(file_name) = path.file_name() else {
+                continue;
+            };
+            if file_name.as_encoded_bytes()[0] == b'.' {
+                continue;
+            }
+
             let mut time = SystemTime::UNIX_EPOCH;
-            if let Ok(metadata) = path.metadata() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() {
+                    continue;
+                }
                 if let Ok(created) = metadata.created() {
                     time = time.max(created);
                 }
@@ -348,7 +361,7 @@ impl BackendState {
         }
     }
 
-    pub fn remove_instance(&mut self, id: InstanceID) {
+    pub fn remove_instance(&self, id: InstanceID) {
         log::info!("Removing instance {id:?}");
 
         let mut instance_state = self.instance_state.write();
@@ -359,7 +372,7 @@ impl BackendState {
         }
     }
 
-    pub fn load_instance_from_path(&mut self, path: &Path, mut show_errors: bool, show_success: bool) -> bool {
+    pub fn load_instance_from_path(&self, path: &Path, mut show_errors: bool, show_success: bool) -> bool {
         let instance = Instance::load_from_folder(&path);
 
         let instance_id = {
@@ -392,6 +405,7 @@ impl BackendState {
                 }
 
                 existing.copy_basic_attributes_from(instance);
+                existing.rewatch_directories(&mut self.file_watching.write());
 
                 let _ = self.send.send(existing.create_modify_message());
 
@@ -406,13 +420,12 @@ impl BackendState {
             instance_state.instances_generation = instance_state.instances_generation.wrapping_add(1);
 
             let instance = instance_state.instances.insert(move |index| {
-                let instance_id = InstanceID {
-                    index,
-                    generation,
-                };
+                let instance_id = InstanceID { index, generation };
                 instance.id = instance_id;
                 instance
             });
+
+            self.restore_mods_folder_if_stopped(instance);
 
             if show_success {
                 self.send.send_success(format!("Instance '{}' created", instance.name));
@@ -424,31 +437,29 @@ impl BackendState {
                 root_path: instance.resolve_real_root_path(),
                 dot_minecraft_folder: instance.dot_minecraft_path.clone(),
                 configuration: instance.configuration.get().clone(),
-                worlds_state: Arc::clone(&instance.worlds_state),
-                servers_state: Arc::clone(&instance.servers_state),
-                mods_state: Arc::clone(&instance.content_state[ContentFolder::Mods].load_state),
-                resource_packs_state: Arc::clone(&instance.content_state[ContentFolder::ResourcePacks].load_state),
+                playtime: instance.playtime(),
+                worlds_state: instance.worlds_state.clone(),
+                servers_state: instance.servers_state.clone(),
+                content_states: enum_map::EnumMap::from_fn(|folder| instance.content_state[folder].load_state.clone()),
             };
             self.send.send(message);
-            if instance.status() == bridge::instance::InstanceStatus::Running {
-                self.send.send(instance.create_modify_message());
-            }
 
             instance.id
         };
 
-        self.file_watching.write().watch_filesystem(path.into(), WatchTarget::InstanceDir { id: instance_id });
+        self.file_watching
+            .write()
+            .watch_filesystem(path.into(), WatchTarget::InstanceDir { id: instance_id });
         true
     }
 
     async fn handle(
-        mut self,
+        self: Arc<Self>,
         mut backend_recv: BackendReceiver,
         mut watcher_rx: Receiver<notify_debouncer_full::DebounceEventResult>,
-        mut profile_reload_rx: tokio::sync::mpsc::Receiver<()>,
     ) {
         let mut interval = tokio::time::interval(Duration::from_millis(1000));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         tokio::pin!(interval);
 
         loop {
@@ -461,74 +472,133 @@ impl BackendState {
                         break;
                     }
                 },
-                instance_change = watcher_rx.recv() => {
-                    if let Some(instance_change) = instance_change {
-                        self.handle_filesystem(instance_change).await;
+                event = watcher_rx.recv() => {
+                    if let Some(event) = event {
+                        self.handle_filesystem(event).await;
                     } else {
                         log::info!("Backend filesystem has shut down");
                         break;
                     }
                 },
-                _ = profile_reload_rx.recv() => {
-                    // Owned skins dir changed - request profile reload so skins page updates
-                    self.handle_message(MessageToBackend::GetMinecraftProfile {
-                        modal_action: ModalAction::default(),
-                    }).await;
-                },
                 _ = interval.tick() => {
                     self.handle_tick().await;
                 }
             }
+
+            if self.should_quit.load(Ordering::Relaxed) {
+                while let Some(message) = backend_recv.try_recv() {
+                    self.handle_message(message).await;
+                }
+                self.handle_tick().await;
+                break;
+            }
         }
+
+        self.send.send(MessageToFrontend::Quit);
     }
 
-    async fn handle_tick(&mut self) {
+    async fn handle_tick(&self) {
+        // todo: make this non-async
         self.meta.expire().await;
         self.mod_metadata_manager.write_changes();
 
+        let mut any_process_alive = false;
+
         let mut instance_state = self.instance_state.write();
         for instance in instance_state.instances.iter_mut() {
-            if let Some(child) = &mut instance.child
-                && !matches!(child.try_wait(), Ok(None))
-            {
-                log::debug!("Child process is no longer alive");
-                instance.child = None;
-                instance.clear_running_pid();
-                self.send.send(instance.create_modify_message());
-                continue;
+            let mut killed = false;
+
+            instance.processes.retain_mut(|process| match process.try_wait() {
+                Ok(None) => true,
+                Ok(Some(status)) => {
+                    log::info!("Child process {} is no longer alive: {}", process.id(), status);
+                    killed = true;
+                    false
+                },
+                Err(err) => {
+                    log::error!("An error occured while waiting for process {}: {:?}", process.id(), err);
+                    killed = true;
+                    false
+                },
+            });
+            instance.closing_processes.retain_mut(|(process, _)| match process.try_wait() {
+                Ok(None) => true,
+                Ok(Some(status)) => {
+                    log::info!("Child process {} closed: {}", process.id(), status);
+                    killed = true;
+                    false
+                },
+                Err(err) => {
+                    log::error!("An error occured while waiting for closing process {}: {:?}", process.id(), err);
+                    killed = true;
+                    false
+                },
+            });
+
+            let now = Instant::now();
+            let to_kill = instance.closing_processes.extract_if(.., |(_, deadline)| now > *deadline);
+            for (process, _) in to_kill {
+                log::info!("Force killed process {}", process.id());
+                let result = process.kill();
+                killed = true;
+                if let Err(err) = result {
+                    self.send.send_error("Failed to kill instance");
+                    log::error!("Failed to kill instance: {err:?}");
+                }
             }
 
-            if instance.child.is_none() && instance.refresh_running_pid() {
+            if killed {
+                instance.update_session();
                 self.send.send(instance.create_modify_message());
+            } else if let Some(launch_keepalive) = &instance.launch_keepalive
+                && !launch_keepalive.is_alive()
+            {
+                self.send.send(instance.create_modify_message());
+            } else if instance.has_active_session() {
+                self.send.send(MessageToFrontend::InstancePlaytimeUpdated {
+                    id: instance.id,
+                    playtime: instance.playtime(),
+                });
             }
+
+            self.restore_mods_folder_if_stopped(instance);
+            any_process_alive |= !instance.processes.is_empty() || !instance.closing_processes.is_empty();
         }
+
+        self.quit_coordinator.set_can_quit(!any_process_alive);
     }
 
     pub async fn login(
         &self,
         credentials: &mut AccountCredentials,
-        login_tracker: &ProgressTracker,
-        modal_action: &ModalAction,
+        login_tracker: Option<&ProgressTracker>,
+        modal_action: Option<&ModalAction>,
     ) -> Result<(MinecraftProfileResponse, MinecraftAccessToken), LoginError> {
         log::info!("Starting login");
 
         let mut authenticator = Authenticator::new(self.http_client.clone());
 
-        login_tracker.set_total(AUTH_STAGE_COUNT as usize + 1);
-        login_tracker.notify();
+        if let Some(login_tracker) = login_tracker {
+            login_tracker.set_total(AUTH_STAGE_COUNT as usize + 1);
+            login_tracker.notify();
+        }
 
         let mut last_auth_stage = None;
         let mut allow_backwards = true;
         loop {
-            if modal_action.has_requested_cancel() {
+            if let Some(modal_action) = modal_action
+                && modal_action.has_requested_cancel()
+            {
                 return Err(LoginError::CancelledByUser);
             }
 
             let stage_with_data = credentials.stage();
             let stage = stage_with_data.stage();
 
-            login_tracker.set_count(stage as usize + 1);
-            login_tracker.notify();
+            if let Some(login_tracker) = login_tracker {
+                login_tracker.set_count(stage as usize + 1);
+                login_tracker.notify();
+            }
 
             if let Some(last_stage) = last_auth_stage {
                 if stage > last_stage {
@@ -536,7 +606,8 @@ impl BackendState {
                 } else if stage < last_stage && !allow_backwards {
                     log::error!(
                         "Stage {:?} went backwards from {:?} when going backwards isn't allowed. This is most likely a bug with the auth flow!",
-                        stage, last_stage
+                        stage,
+                        last_stage
                     );
                     return Err(LoginError::LoginStageErrorBackwards);
                 } else if stage == last_stage {
@@ -549,6 +620,10 @@ impl BackendState {
             match credentials.stage() {
                 auth::credentials::AuthStageWithData::Initial => {
                     log::debug!("Auth Flow: Initial");
+
+                    let Some(modal_action) = modal_action else {
+                        return Err(LoginError::NeedsUserInteraction);
+                    };
 
                     let pending = authenticator.create_authorization();
                     modal_action.set_visit_url(ModalActionVisitUrl {
@@ -664,10 +739,12 @@ impl BackendState {
 
                     match authenticator.get_minecraft_profile(&access_token).await {
                         Ok(profile) => {
-                            login_tracker.set_count(AUTH_STAGE_COUNT as usize + 1);
-                            login_tracker.notify();
+                            if let Some(login_tracker) = login_tracker {
+                                login_tracker.set_count(AUTH_STAGE_COUNT as usize + 1);
+                                login_tracker.notify();
+                            }
 
-                            return Ok((auth_profile_from_schema(profile), access_token));
+                            return Ok((profile, access_token));
                         },
                         Err(error) => {
                             if !allow_backwards || error.is_connection_error() {
@@ -684,104 +761,9 @@ impl BackendState {
         }
     }
 
-    pub fn update_profile_head(&self, profile: &MinecraftProfileResponse) {
-        log::info!("Updating profile head for {}", profile.id);
-
-        let Some(skin) = profile.skins.iter().find(|skin| skin.state == SkinState::Active).cloned() else {
-            return;
-        };
-
-        let mut head_cache = self.head_cache.write();
-        if let Some(existing) = head_cache.get_mut(&skin.url) {
-            match existing {
-                HeadCacheEntry::Pending { accounts } => {
-                    accounts.push(profile.id);
-                },
-                HeadCacheEntry::Success { head } => {
-                    let head = head.clone();
-                    drop(head_cache);
-                    self.account_info.write().modify(move |account_info| {
-                        if let Some(account) = account_info.accounts.get_mut(&profile.id) {
-                            account.head = Some(head);
-                        }
-                    });
-                },
-                HeadCacheEntry::Failed => {}
-            }
-            return;
-        }
-
-        head_cache.insert(skin.url.clone(), HeadCacheEntry::Pending { accounts: vec![profile.id] });
-
-        let head_cache = self.head_cache.clone();
-        let account_info = self.account_info.clone();
-        let skin_url = skin.url;
-
-        let http_client = self.http_client.clone();
-
-        tokio::task::spawn(async move {
-            log::info!("Downloading skin from {}", skin_url);
-            let Ok(response) = http_client.get(&*skin_url).send().await else {
-                log::warn!("Http error while requesting skin from {}", skin_url);
-                head_cache.write().insert(skin_url.clone(), HeadCacheEntry::Failed);
-                return;
-            };
-            let Ok(bytes) = response.bytes().await else {
-                log::warn!("Http error while downloading skin bytes from {}", skin_url);
-                head_cache.write().insert(skin_url.clone(), HeadCacheEntry::Failed);
-                return;
-            };
-            let Ok(mut image) = image::load_from_memory(&bytes) else {
-                log::warn!("Image load error for skin from {}", skin_url);
-                head_cache.write().insert(skin_url.clone(), HeadCacheEntry::Failed);
-                return;
-            };
-
-            let mut head = image.crop(8, 8, 8, 8);
-            let head_overlay = image.crop(40, 8, 8, 8);
-
-            image::imageops::overlay(&mut head, &head_overlay, 0, 0);
-
-            let mut head_bytes = Vec::new();
-            let mut cursor = Cursor::new(&mut head_bytes);
-            if head.write_to(&mut cursor, image::ImageFormat::Png).is_err() {
-                head_cache.write().insert(skin_url.clone(), HeadCacheEntry::Failed);
-                return;
-            }
-
-            let head_png: Arc<[u8]> = Arc::from(head_bytes);
-
-            let accounts = {
-                let mut head_cache = head_cache.write();
-                let previous = head_cache.insert(skin_url.clone(), HeadCacheEntry::Success { head: head_png.clone() });
-
-                if let Some(HeadCacheEntry::Pending { accounts }) = previous {
-                    accounts
-                } else {
-                    Vec::new()
-                }
-            };
-
-            log::info!("Successfully downloaded skin from {}", skin_url);
-
-            if accounts.is_empty() {
-                return;
-            }
-
-            let mut account_info = account_info.write();
-            account_info.modify(move |info| {
-                for uuid in accounts {
-                    if let Some(account) = info.accounts.get_mut(&uuid) {
-                        account.head = Some(head_png.clone());
-                    }
-                }
-            });
-        });
-    }
-
-    pub async fn prelaunch(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
+    pub async fn prelaunch(self: &Arc<Self>, id: InstanceID, modal_action: &ModalAction) -> std::io::Result<()> {
         self.apply_syncing_to_instance(id);
-        self.prelaunch_apply_modpacks(id, modal_action).await
+        self.prelaunch_setup_mods(id, modal_action).await
     }
 
     pub fn apply_syncing_to_instance(&self, id: InstanceID) {
@@ -798,209 +780,248 @@ impl BackendState {
         }
     }
 
-    pub async fn prelaunch_apply_modpacks(&self, id: InstanceID, modal_action: &ModalAction) -> Vec<PathBuf> {
-        let (loader, minecraft_version, mod_dir) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let configuration = instance.configuration.get();
-            (configuration.loader, configuration.minecraft_version, instance.content_state[ContentFolder::Mods].path.clone())
-        } else {
-            return Vec::new();
-        };
-
-        let Some(mods) = self.clone().load_instance_content(id, ContentFolder::Mods).await else {
-            return Vec::new();
-        };
-
-        struct HashedDownload {
-            sha1: Arc<str>,
-            path: Arc<str>,
-            add_content_folder_to_path: bool,
+    pub fn restore_mods_folder_if_stopped(&self, instance: &mut Instance) {
+        if !instance.processes.is_empty() || !instance.closing_processes.is_empty() {
+            return;
+        }
+        if let Some(keepalive) = &instance.launch_keepalive
+            && keepalive.is_alive()
+        {
+            return;
         }
 
-        struct ModpackInstall {
-            hashed_downloads: Vec<HashedDownload>,
-            aux_path: Option<PathBuf>,
-            overrides: Arc<[(SafePath, Arc<[u8]>)]>,
+        let original_mods_dir = instance.root_path.join("original_mods");
+        if !original_mods_dir.exists() {
+            instance.set_frozen_mods_folder(false);
+            return;
         }
 
-        // Remove pandora.filename mods (modpack mods linked at launch)
-        if let Ok(read_dir) = std::fs::read_dir(&mod_dir) {
+        let mod_dir = instance.content_state[ContentFolder::Mods].path.clone();
+
+        // Copy sinytra connector cache
+        if !instance.configuration.get().sandbox {
+            let connector = mod_dir.join(".connector");
+            if connector.exists() {
+                let original_connector = original_mods_dir.join(".connector");
+                _ = std::fs::create_dir_all(&original_connector);
+                _ = crate::copy_content_recursive(&connector, &original_connector, false, &|_, _| {});
+            }
+        }
+
+        _ = std::fs::remove_dir_all(&mod_dir);
+        if let Err(err) = std::fs::rename(&original_mods_dir, &mod_dir) {
+            self.send.send_error(format!("Unable to restore mods directory: {}", err));
+            log::error!("Unable to restore mods directory: {err:?}");
+        }
+
+        instance.set_frozen_mods_folder(false);
+    }
+
+    pub async fn prelaunch_setup_mods(
+        self: &Arc<Self>,
+        id: InstanceID,
+        modal_action: &ModalAction,
+    ) -> std::io::Result<()> {
+        let (loader, minecraft_version, root_dir, dot_minecraft_dir, mods_dir) =
+            if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                if !instance.processes.is_empty() {
+                    return Ok(());
+                }
+
+                let configuration = instance.configuration.get();
+                (
+                    configuration.loader,
+                    configuration.minecraft_version,
+                    instance.root_path.clone(),
+                    instance.dot_minecraft_path.clone(),
+                    instance.content_state[ContentFolder::Mods].path.clone(),
+                )
+            } else {
+                return Ok(());
+            };
+
+        if !mods_dir.is_dir() {
+            return Ok(());
+        }
+
+        let Some(mods) = Instance::load_content(self.clone(), id, ContentFolder::Mods).await else {
+            return Ok(());
+        };
+
+        let mut mod_copies = Vec::new();
+
+        // Remove .pandora.filename mods (todo: get rid of this)
+        if let Ok(read_dir) = std::fs::read_dir(&mods_dir) {
             for entry in read_dir {
                 let Ok(entry) = entry else {
                     continue;
                 };
-                let file_name = entry.file_name();
-                if file_name.to_string_lossy().starts_with("pandora.") {
+                let path = entry.path();
+                let Some(file_name) = path.file_name() else {
+                    continue;
+                };
+
+                let file_name = file_name.as_encoded_bytes();
+                if file_name.starts_with(b".pandora.") {
                     log::trace!("Removing temporary mod file {:?}", &file_name);
                     _ = std::fs::remove_file(entry.path());
                 }
             }
         }
 
+        self.prelaunch_collect_mods_and_apply_modpack(
+            loader,
+            minecraft_version,
+            &mods,
+            &dot_minecraft_dir,
+            &mods_dir,
+            &mut mod_copies,
+            modal_action,
+        )
+        .await;
+
+        let sandbox = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+            instance.set_frozen_mods_folder(true);
+            instance.configuration.get().sandbox
+        } else {
+            true
+        };
+
+        let original_mods_dir = root_dir.join("original_mods");
+        std::fs::rename(&mods_dir, &original_mods_dir)?;
+        if let Err(err) = self.prelaunch_create_mods_dir(mod_copies, &mods_dir, modal_action) {
+            _ = std::fs::remove_dir_all(&mods_dir);
+            _ = std::fs::rename(&original_mods_dir, &mods_dir);
+
+            if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                instance.set_frozen_mods_folder(true);
+            }
+
+            return Err(err);
+        }
+
+        // Copy sinytra connector cache
+        if !sandbox {
+            let original_connector = original_mods_dir.join(".connector");
+            if original_connector.exists() {
+                let connector = mods_dir.join(".connector");
+                _ = std::fs::create_dir_all(&connector);
+                _ = crate::copy_content_recursive(&original_connector, &connector, false, &|_, _| {});
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn prelaunch_collect_mods_and_apply_modpack(
+        self: &Arc<Self>,
+        loader: Loader,
+        minecraft_version: Ustr,
+        mods: &[InstanceContentSummary],
+        dot_minecraft_dir: &Path,
+        mod_dir: &Path,
+        mod_copies: &mut Vec<PrelaunchModCopy>,
+        modal_action: &ModalAction,
+    ) {
+        struct ModpackInstall {
+            aux_path: Option<PathBuf>,
+            files: Vec<ModpackFile>,
+        }
+
         let mut modpack_installs = Vec::new();
+        let content_library_dir = self.directories.content_library_dir.clone();
 
         for summary in &*mods {
             if !summary.enabled {
                 continue;
             }
 
-            if let ContentType::ModrinthModpack { downloads, overrides, .. } = &summary.content_summary.extra {
-                let downloads = downloads.clone();
-
-                let filtered_downloads = downloads.iter().filter(|dl| {
-                    if let Some(env) = dl.env {
-                        if env.client == ModrinthSideRequirement::Unsupported {
-                            return false;
-                        }
-                    }
-
-                    if let Some(metadata) = self.mod_metadata_manager.get_cached_by_sha1(&*dl.hashes.sha1) {
-                        if let Some(id) = &metadata.id && summary.disabled_children.disabled_ids.contains(id) {
-                            return false;
-                        }
-                        if let Some(name) = &metadata.name && summary.disabled_children.disabled_names.contains(name) {
-                            return false;
-                        }
-                    }
-
-                    !summary.disabled_children.disabled_filenames.contains(&dl.path)
-                        && !summary.disabled_children.deleted_filenames.contains(&dl.path)
-                });
-
-                let content_install = ContentInstall {
-                    target: bridge::install::InstallTarget::Library,
-                    loader_hint: loader,
-                    version_hint: Some(minecraft_version.into()),
-                    datapack_world: None,
-                    files: filtered_downloads.clone().filter_map(|file| {
-                        let path = SafePath::new(&file.path)?;
-                        Some(ContentInstallFile {
-                            replace_old: None,
-                            path: ContentInstallPath::Safe(path),
-                            download: ContentDownload::Url {
-                                url: file.downloads[0].clone(),
-                                sha1: file.hashes.sha1.clone(),
-                                size: file.file_size,
-                            },
-                            content_source: schema::content::ContentSource::ModrinthUnknown,
-                        })
-                    }).collect(),
+            let content_summary =
+                if self.download_modpack_children(summary, loader, minecraft_version, modal_action).await {
+                    self.mod_metadata_manager.get_path(&summary.path)
+                } else {
+                    summary.content_summary.clone()
                 };
 
-                self.install_content(content_install, modal_action.clone()).await;
-
-                modpack_installs.push(ModpackInstall {
-                    hashed_downloads: filtered_downloads.map(|download| {
-                        HashedDownload {
-                            sha1: download.hashes.sha1.clone(),
-                            path: download.path.clone(),
-                            add_content_folder_to_path: false,
-                        }
-                    }).collect(),
-                    aux_path: crate::pandora_aux_path_for_content(&summary),
-                    overrides: overrides.clone(),
-                });
-            } else if let ContentType::CurseforgeModpack { files, summaries, overrides, .. } = &summary.content_summary.extra {
-                let mut file_ids = Vec::new();
-                let mut hashed_downloads = Vec::new();
-
-                for (index, file) in files.iter().enumerate() {
-                    let Some((_, Some(file_info))) = summaries.get(index) else {
-                        file_ids.push(file.file_id);
+            let modpack = match &content_summary.extra {
+                ContentType::ModrinthModpack { files, .. } => Some(files),
+                ContentType::CurseforgeModpack {
+                    unknown_files, files, ..
+                } => {
+                    if !unknown_files.is_empty() {
+                        log::warn!("Unable to resolve some curseforge files, mods might be missing from modpack");
+                    }
+                    Some(files)
+                },
+                _ => {
+                    let path = &summary.path;
+                    let Ok(rel_path) = path.strip_prefix(&mod_dir) else {
                         continue;
                     };
 
-                    let file_hash_as_str = hex::encode(file_info.hash);
-                    hashed_downloads.push(HashedDownload {
-                        sha1: file_hash_as_str.into(),
-                        path: file_info.filename.clone(),
-                        add_content_folder_to_path: true,
-                    });
-                }
+                    let extension = path.extension().and_then(OsStr::to_str);
+                    let content_library_path = crate::create_content_library_path(
+                        &content_library_dir,
+                        summary.content_summary.hash,
+                        extension,
+                    );
 
-                if !file_ids.is_empty() {
-                    if let Ok(files) = self.meta.fetch(&CurseforgeGetFilesMetadataItem(&CurseforgeGetFilesRequest {
-                        file_ids,
-                    })).await {
-                        let mut files_to_install = Vec::new();
-
-                        for file in files.data.iter() {
-                            let sha1 = file.hashes.iter()
-                                .find(|hash| hash.algo == 1)
-                                .map(|hash| &hash.value);
-                            let Some(sha1) = sha1 else {
-                                continue;
-                            };
-
-                            let mut hash = [0u8; 20];
-                            let Ok(_) = hex::decode_to_slice(&**sha1, &mut hash) else {
-                                log::warn!("File {} has invalid sha1: {}", file.file_name, sha1);
-                                continue;
-                            };
-
-                            self.mod_metadata_manager.set_cached_curseforge_info(file.id, CachedCurseforgeFileInfo {
-                                hash,
-                                filename: file.file_name.clone(),
-                                disabled_third_party_downloads: file.download_url.is_none(),
-                            });
-
-                            let Some(download_url) = &file.download_url else {
-                                continue;
-                            };
-
-                            hashed_downloads.push(HashedDownload {
-                                sha1: sha1.clone(),
-                                path: file.file_name.clone(),
-                                add_content_folder_to_path: true,
-                            });
-                            files_to_install.push(ContentInstallFile {
-                                replace_old: None,
-                                path: ContentInstallPath::Automatic,
-                                download: ContentDownload::Url {
-                                    url: download_url.clone(),
-                                    sha1: sha1.clone(),
-                                    size: file.file_length as usize,
-                                },
-                                content_source: ContentSource::CurseforgeProject { project_id: file.mod_id },
-                            });
-                        }
-
-                        if !files_to_install.is_empty() {
-                            self.install_content(ContentInstall {
-                                target: bridge::install::InstallTarget::Library,
-                                loader_hint: loader,
-                                version_hint: Some(minecraft_version.into()),
-                                datapack_world: None,
-                                files: files_to_install.into(),
-                            }, modal_action.clone()).await;
-                        }
+                    if content_library_path.exists() {
+                        mod_copies.push(PrelaunchModCopy {
+                            path: rel_path.to_path_buf(),
+                            source: PrelaunchModCopySource::FromContentLibrary {
+                                hash: summary.content_summary.hash,
+                            },
+                        });
+                    } else if let Ok(file) = std::fs::read(&path) {
+                        mod_copies.push(PrelaunchModCopy {
+                            path: rel_path.to_path_buf(),
+                            source: PrelaunchModCopySource::FromBytes { bytes: file.into() },
+                        });
                     }
-                }
+
+                    None
+                },
+            };
+
+            if let Some(files) = modpack {
+                let filtered_files = files
+                    .iter()
+                    .filter(|dl| {
+                        let mut id = None;
+                        let mut name = None;
+
+                        if let Some(content_summary) = &dl.summary {
+                            id = content_summary.id.as_ref().map(|s| &**s);
+                            name = content_summary.name.as_ref().map(|s| &**s);
+                        }
+
+                        summary.disabled_children.is_enabled(dl.default_disabled, id, name, dl.path.as_str())
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
 
                 modpack_installs.push(ModpackInstall {
-                    hashed_downloads,
                     aux_path: crate::pandora_aux_path_for_content(&summary),
-                    overrides: overrides.clone(),
+                    files: filtered_files,
                 });
             }
         }
 
-        let dot_minecraft_path = if let Some(instance) = self.instance_state.read().instances.get(id) {
-            instance.dot_minecraft_path.clone()
-        } else {
-            return Vec::new();
-        };
-
         for modpack_install in modpack_installs {
-            let overrides = modpack_install.overrides;
             let content_library_dir = &self.directories.content_library_dir.clone();
             let mut aux: Option<AuxiliaryContentMeta> = if let Some(aux_path) = &modpack_install.aux_path {
                 Some(crate::read_json(&aux_path).unwrap_or_default())
             } else {
                 None
             };
-            let mut aux_changed = false;
 
-            fn should_override_file(path: &str, dest: &Path, new_sha1: [u8; 20], aux: &Option<AuxiliaryContentMeta>) -> bool {
+            fn should_override_file(
+                path: &str,
+                dest: &Path,
+                new_sha1: [u8; 20],
+                aux: &Option<AuxiliaryContentMeta>,
+            ) -> bool {
                 let Some(aux) = aux else {
                     return true;
                 };
@@ -1029,237 +1050,276 @@ impl BackendState {
                 }
             }
 
-            for file in modpack_install.hashed_downloads {
-                if let Some(aux) = &aux {
-                    if let Some(metadata) = self.mod_metadata_manager.get_cached_by_sha1(&*file.sha1) {
-                        if let Some(id) = &metadata.id && aux.disabled_children.disabled_ids.contains(id) {
-                            continue;
-                        }
-                        if let Some(name) = &metadata.name && aux.disabled_children.disabled_names.contains(name) {
-                            continue;
-                        }
-                    }
-                    if aux.disabled_children.disabled_filenames.contains(&file.path)
-                        || aux.disabled_children.deleted_filenames.contains(&file.path)
-                    {
-                        continue;
-                    }
-                }
-
-                let mut expected_hash = [0u8; 20];
-                let Ok(_) = hex::decode_to_slice(&*file.sha1, &mut expected_hash) else {
-                    continue;
-                };
-                let Some(mut dest_path) = SafePath::new(&file.path) else {
-                    continue;
-                };
-
-                let path = crate::create_content_library_path(content_library_dir, expected_hash, dest_path.extension());
-
-                if file.add_content_folder_to_path {
-                    let Some(summary) = self.mod_metadata_manager.get_path(&path) else {
-                        continue;
-                    };
-                    match summary.extra {
-                        ContentType::Fabric
-                        | ContentType::Forge
-                        | ContentType::LegacyForge
-                        | ContentType::NeoForge
-                        | ContentType::JavaModule
-                        | ContentType::ModrinthModpack { .. }
-                        | ContentType::CurseforgeModpack { .. } => {
-                            dest_path = SafePath::new(&format!("mods/{}", dest_path.as_str())).unwrap();
-                        }
-                        ContentType::ResourcePack => {
-                            dest_path = SafePath::new(&format!("resourcepacks/{}", dest_path.as_str())).unwrap();
-                        }
-                    }
-                }
-
-                if dest_path.starts_with("mods") && dest_path.extension() == Some("jar") {
-                    if let Some(filename) = dest_path.file_name() {
-                        let filename = format!("pandora.{filename}");
-                        let hidden_dest_path = mod_dir.join(filename);
-                        let _ = std::fs::hard_link(path, hidden_dest_path);
-                    }
-                } else {
-                    let dest_path = dest_path.to_path(&dot_minecraft_path);
-
-                    if should_override_file(&file.path, &dest_path, expected_hash, &aux) {
-                        if let Some(aux) = &mut aux {
-                            aux.applied_overrides.filename_to_hash.insert(file.path.clone(), file.sha1.clone());
-                            aux_changed = true;
-                        }
-
-                        let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
-                        let _ = std::fs::copy(path, dest_path);
-                    }
-                }
-            }
-
-            if !overrides.is_empty() {
-                let tracker = ProgressTracker::new("Copying overrides".into(), self.send.clone());
+            if !modpack_install.files.is_empty() {
+                let tracker = ProgressTracker::new("Copying modpack files".into(), self.send.clone());
                 modal_action.trackers.push(tracker.clone());
-
-                tracker.set_total(overrides.len());
+                tracker.set_total(modpack_install.files.len());
                 tracker.notify();
 
-                for (rel_path, file) in overrides.iter() {
-                    let mut hasher = Sha1::new();
-                    hasher.update(&file);
-                    let expected_hash = hasher.finalize().into();
+                let mut aux_changed = false;
 
-                    let path = crate::create_content_library_path(content_library_dir, expected_hash, rel_path.extension());
+                for file in modpack_install.files {
+                    let Some(rel_path) = file.path() else {
+                        continue;
+                    };
 
-                    if !path.exists() {
-                        let _ = std::fs::create_dir_all(path.parent().unwrap());
-                        let _ = std::fs::write(&path, file);
-                    }
+                    if let ModpackFileSource::Builtin { bytes } = file.source {
+                        if let Some(filename) = rel_path.strip_prefix("mods") {
+                            mod_copies.push(PrelaunchModCopy {
+                                path: filename.to_path(Path::new("")),
+                                source: PrelaunchModCopySource::FromBytes { bytes: bytes.clone() },
+                            });
+                        } else {
+                            let dest_path = rel_path.to_path(&dot_minecraft_dir);
 
-                    if rel_path.starts_with("mods") && let Some(extension) = rel_path.extension() && extension == "jar" {
-                        if let Some(filename) = rel_path.file_name() {
-                            let filename = format!("pandora.{filename}");
-                            let hidden_dest_path = mod_dir.join(filename);
-                            let _ = std::fs::hard_link(path, hidden_dest_path);
+                            if should_override_file(file.path.as_str(), &dest_path, file.hash, &aux) {
+                                if let Some(aux) = &mut aux {
+                                    let sha1 = hex::encode(file.hash);
+                                    aux.applied_overrides
+                                        .filename_to_hash
+                                        .insert(file.path.as_str().into(), sha1.into());
+                                    aux_changed = true;
+                                }
+
+                                _ = crate::write_safe(&dest_path, &bytes);
+                            }
                         }
                     } else {
-                        let dest_path = rel_path.to_path(&dot_minecraft_path);
+                        if let Some(filename) = rel_path.strip_prefix("mods") {
+                            mod_copies.push(PrelaunchModCopy {
+                                path: filename.to_path(Path::new("")),
+                                source: PrelaunchModCopySource::FromContentLibrary { hash: file.hash },
+                            });
+                        } else {
+                            let dest_path = rel_path.to_path(&dot_minecraft_dir);
 
-                        if should_override_file(&rel_path.as_str(), &dest_path, expected_hash, &aux) {
-                            if let Some(aux) = &mut aux {
-                                let sha1 = hex::encode(expected_hash);
-                                aux.applied_overrides.filename_to_hash.insert(rel_path.as_str().into(), sha1.into());
-                                aux_changed = true;
+                            let content_path = crate::create_content_library_path(
+                                content_library_dir,
+                                file.hash,
+                                rel_path.extension(),
+                            );
+
+                            if should_override_file(file.path.as_str(), &dest_path, file.hash, &aux) {
+                                if let Some(aux) = &mut aux {
+                                    let sha1 = hex::encode(file.hash);
+                                    aux.applied_overrides
+                                        .filename_to_hash
+                                        .insert(file.path.as_str().into(), sha1.into());
+                                    aux_changed = true;
+                                }
+
+                                let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
+                                let _ = std::fs::copy(content_path, dest_path);
                             }
-
-                            let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
-                            let _ = std::fs::copy(path, dest_path);
                         }
                     }
+
                     tracker.add_count(1);
                     tracker.notify();
                 }
 
-                if let Some(aux_path) = &modpack_install.aux_path && aux_changed {
+                if let Some(aux_path) = &modpack_install.aux_path
+                    && aux_changed
+                {
                     if let Ok(bytes) = serde_json::to_vec(aux.as_ref().unwrap()) {
                         _ = crate::write_safe(&aux_path, &bytes);
                     }
                 }
 
-                tracker.set_finished(ProgressTrackerFinishType::Fast);
+                tracker.set_finished(ProgressTrackerFinishType::Normal);
+                tracker.notify();
+            }
+        }
+    }
+
+    fn prelaunch_create_mods_dir(
+        &self,
+        mod_copies: Vec<PrelaunchModCopy>,
+        mods_dir: &Path,
+        modal_action: &ModalAction,
+    ) -> std::io::Result<()> {
+        let tracker = ProgressTracker::new("Copying immutable mods directory".into(), self.send.clone());
+        modal_action.trackers.push(tracker.clone());
+
+        tracker.set_total(mod_copies.len());
+        tracker.notify();
+
+        let content_library_dir = &self.directories.content_library_dir.clone();
+
+        for mod_copy in mod_copies {
+            let target_path = mods_dir.join(&mod_copy.path);
+            if let Some(parent) = target_path.parent() {
+                _ = std::fs::create_dir_all(parent);
+            }
+            match mod_copy.source {
+                PrelaunchModCopySource::FromContentLibrary { hash } => {
+                    let extension = mod_copy.path.extension().and_then(OsStr::to_str);
+                    let path = crate::create_content_library_path(&content_library_dir, hash, extension);
+                    std::fs::copy(path, target_path)?;
+                },
+                PrelaunchModCopySource::FromBytes { bytes } => {
+                    std::fs::write(target_path, &bytes)?;
+                },
+            }
+            tracker.add_count(1);
+            tracker.notify();
+        }
+
+        tracker.set_finished(ProgressTrackerFinishType::Normal);
+        Ok(())
+    }
+
+    pub async fn download_modpack_children(
+        self: &Arc<Self>,
+        summary: &InstanceContentSummary,
+        loader: Loader,
+        minecraft_version: Ustr,
+        modal_action: &ModalAction,
+    ) -> bool {
+        let mut curseforge_file_ids = Vec::new();
+
+        let (files, fallback_source) =
+            if let ContentType::ModrinthModpack { files, .. } = &summary.content_summary.extra {
+                (files.to_vec(), ContentSource::ModrinthUnknown)
+            } else if let ContentType::CurseforgeModpack {
+                unknown_files, files, ..
+            } = &summary.content_summary.extra
+            {
+                for unknown_file in unknown_files.iter() {
+                    curseforge_file_ids.push(unknown_file.file_id);
+                }
+
+                (files.to_vec(), ContentSource::Manual)
+            } else {
+                return false;
+            };
+
+        let mut content_install_files = Vec::new();
+
+        for file in files.iter() {
+            if let Some(summary) = &file.summary
+                && summary.hash == file.hash
+            {
+                continue;
+            }
+
+            match &file.source {
+                ModpackFileSource::DownloadUrl { url, size } => {
+                    content_install_files.push(ContentInstallFile {
+                        replace_old: None,
+                        path: ContentInstallPath::ModpackFilePath(file.path.clone()),
+                        download: ContentDownload::Url {
+                            url: url.clone(),
+                            sha1: file.hash,
+                            size: *size,
+                        },
+                        content_source: fallback_source.clone(),
+                        reason: ContentInstallReason::Modpack,
+                    });
+                },
+                ModpackFileSource::DownloadCurseforge { file_id } => {
+                    if file.disabled_third_party_downloads {
+                        continue;
+                    }
+
+                    curseforge_file_ids.push(*file_id);
+                },
+                ModpackFileSource::Builtin { .. } => {},
             }
         }
 
-        Vec::new()
-    }
+        if !curseforge_file_ids.is_empty() {
+            let tracker = ProgressTracker::new("Requesting download URLs from CurseForge".into(), self.send.clone());
+            modal_action.trackers.push(tracker.clone());
+            tracker.set_total(1);
+            tracker.notify();
 
-    pub async fn load_instance_servers(self, id: InstanceID) -> Option<Arc<[InstanceServerSummary]>> {
-        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let mut file_watching = self.file_watching.write();
-            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                id: instance.id,
-            });
-        }
+            let files_result = self
+                .meta
+                .fetch(&CurseforgeGetFilesMetadataItem(&CurseforgeGetFilesRequest {
+                    file_ids: curseforge_file_ids,
+                }))
+                .await;
 
-        let result = Instance::load_servers(self.instance_state.clone(), id).await;
+            tracker.set_count(1);
+            tracker.set_finished(ProgressTrackerFinishType::from_err(files_result.is_err()));
+            tracker.notify();
 
-        if let Some((servers, newly_loaded)) = result.clone() && newly_loaded {
-            self.send.send(MessageToFrontend::InstanceServersUpdated {
-                id,
-                servers: Arc::clone(&servers)
-            });
-        }
+            if let Ok(files) = files_result {
+                for file in files.data.iter() {
+                    let sha1 = file.hashes.iter().find(|hash| hash.algo == 1).map(|hash| &hash.value);
+                    let Some(sha1) = sha1 else {
+                        continue;
+                    };
 
-        result.map(|(servers, _)| servers)
+                    let mut hash = [0u8; 20];
+                    let Ok(_) = hex::decode_to_slice(&**sha1, &mut hash) else {
+                        log::warn!("File {} has invalid sha1: {}", file.file_name, sha1);
+                        continue;
+                    };
 
-    }
+                    self.mod_metadata_manager.set_cached_curseforge_info(
+                        file.id,
+                        CachedCurseforgeFileInfo {
+                            hash,
+                            filename: file.file_name.clone(),
+                            disabled_third_party_downloads: file.download_url.is_none(),
+                        },
+                    );
 
-    pub async fn load_instance_content(self, id: InstanceID, folder: ContentFolder) -> Option<Arc<[InstanceContentSummary]>> {
-        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let mut file_watching = self.file_watching.write();
-            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                id: instance.id,
-            });
-            let content_state = &mut instance.content_state[folder];
-            file_watching.watch_filesystem(content_state.path.clone(), WatchTarget::InstanceContentDir {
-                id: instance.id,
-                folder
-            });
-        }
+                    let Some(filename) = SafePath::new(&file.file_name) else {
+                        log::warn!("Skipping file because of invalid filename: {}", file.file_name);
+                        continue;
+                    };
 
-        let result = Instance::load_content(self.instance_state.clone(), id, &self.mod_metadata_manager, folder).await;
-
-        if let Some((content, newly_loaded)) = result.clone() && newly_loaded {
-            match folder {
-                ContentFolder::Mods => {
-                    self.send.send(MessageToFrontend::InstanceModsUpdated {
-                        id,
-                        mods: Arc::clone(&content)
-                    });
-                },
-                ContentFolder::ResourcePacks => {
-                    self.send.send(MessageToFrontend::InstanceResourcePacksUpdated {
-                        id,
-                        resource_packs: Arc::clone(&content)
-                    });
-                },
-            }
-        }
-
-        result.map(|(content, _)| content)
-    }
-
-    pub async fn load_instance_worlds(self, id: InstanceID) -> Option<Arc<[InstanceWorldSummary]>> {
-        if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let mut file_watching = self.file_watching.write();
-            file_watching.watch_filesystem(instance.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
-                id: instance.id,
-            });
-            file_watching.watch_filesystem(instance.saves_path.clone(), WatchTarget::InstanceSavesDir {
-                id: instance.id,
-            });
-        }
-
-        let result = Instance::load_worlds(self.instance_state.clone(), id).await;
-
-        if let Some((worlds, newly_loaded)) = result.clone() {
-            if newly_loaded {
-                let mut file_watching = self.file_watching.write();
-                for summary in worlds.iter() {
-                    file_watching.watch_filesystem(summary.level_path.clone(), WatchTarget::InstanceWorldDir {
-                        id,
-                    });
+                    if let Some(download_url) = &file.download_url {
+                        content_install_files.push(ContentInstallFile {
+                            replace_old: None,
+                            path: ContentInstallPath::ModpackFilePath(ModpackFilePath::Filename(filename)),
+                            download: ContentDownload::Url {
+                                url: download_url.clone(),
+                                sha1: hash,
+                                size: file.file_length as usize,
+                            },
+                            content_source: ContentSource::CurseforgeProject {
+                                project_id: file.mod_id,
+                            },
+                            reason: ContentInstallReason::Modpack,
+                        });
+                    }
                 }
             }
-            // Always notify frontend so refill runs (e.g. after datapack install)
-            self.send.send(MessageToFrontend::InstanceWorldsUpdated {
-                id,
-                worlds: Arc::clone(&worlds)
-            });
         }
 
-        result.map(|(worlds, _)| worlds)
-    }
+        if !content_install_files.is_empty() {
+            let content_install = ContentInstall {
+                target: bridge::install::InstallTarget::Library,
+                loader,
+                minecraft_version,
+                files: content_install_files.into(),
+            };
 
-    pub async fn load_instance_world_datapacks(self, id: InstanceID, world_folder: String) {
-        let instance_state = self.instance_state.read();
-        let Some(instance) = instance_state.instances.get(id).map(|i| i.clone()) else {
-            return;
-        };
-        let world_path = instance.saves_path.join(&world_folder);
-        if !world_path.is_dir() {
-            return;
+            self.install_content(content_install, modal_action.clone()).await;
+            true
+        } else {
+            false
         }
-        let datapacks = crate::instance::load_world_datapacks(&world_path);
-        self.send.send(MessageToFrontend::InstanceWorldDatapacksUpdated {
-            id,
-            world_folder,
-            datapacks: datapacks.into(),
-        });
     }
 
-    pub async fn create_instance_sanitized(&self, name: &str, version: &str, loader: Loader, icon: Option<EmbeddedOrRaw>) -> Option<PathBuf> {
-        let mut name = sanitize_filename::sanitize_with_options(name, sanitize_filename::Options { windows: true, ..Default::default() });
+    pub async fn create_instance_sanitized(
+        &self,
+        name: &str,
+        version: &str,
+        loader: Loader,
+        icon: Option<EmbeddedOrRaw>,
+    ) -> Option<PathBuf> {
+        let mut name = sanitize_filename::sanitize_with_options(
+            name,
+            sanitize_filename::Options {
+                windows: true,
+                ..Default::default()
+            },
+        );
 
         if self.instance_state.read().instances.iter().any(|i| i.name == name) {
             let original_name = name.clone();
@@ -1275,17 +1335,26 @@ impl BackendState {
         return self.create_instance(&name, version, loader, icon).await;
     }
 
-    pub async fn create_instance(&self, name: &str, version: &str, loader: Loader, icon: Option<EmbeddedOrRaw>) -> Option<PathBuf> {
+    pub async fn create_instance(
+        &self,
+        name: &str,
+        version: &str,
+        loader: Loader,
+        icon: Option<EmbeddedOrRaw>,
+    ) -> Option<PathBuf> {
         log::info!("Creating instance {name}");
-        if loader == Loader::Unknown {
-            self.send.send_warning(format!("Unable to create instance, unknown loader"));
-            return None;
-        }
         if !crate::is_single_component_path_str(&name) {
-            self.send.send_warning(format!("Unable to create instance, name must not be a path: {}", name));
+            self.send
+                .send_warning(format!("Unable to create instance, name must not be a path: {}", name));
             return None;
         }
-        if !sanitize_filename::is_sanitized_with_options(&*name, sanitize_filename::OptionsForCheck { windows: true, ..Default::default() }) {
+        if !sanitize_filename::is_sanitized_with_options(
+            &*name,
+            sanitize_filename::OptionsForCheck {
+                windows: true,
+                ..Default::default()
+            },
+        ) {
             self.send.send_warning(format!("Unable to create instance, name is invalid: {}", name));
             return None;
         }
@@ -1294,7 +1363,9 @@ impl BackendState {
             return None;
         }
 
-        self.file_watching.write().watch_filesystem(self.directories.instances_dir.clone(), WatchTarget::InstancesDir);
+        self.file_watching
+            .write()
+            .watch_filesystem(self.directories.instances_dir.clone(), WatchTarget::InstancesDir);
 
         let instance_dir = self.directories.instances_dir.join(name);
 
@@ -1318,9 +1389,7 @@ impl BackendState {
                     self.send.send_error("Unable to apply icon: unknown format");
                 }
             },
-            None => {
-                instance_info.instance_fallback_icon = Some(Ustr::from("icons/box.svg"));
-            },
+            None => {},
         }
 
         let info_path = instance_dir.join("info_v1.json");
@@ -1329,12 +1398,19 @@ impl BackendState {
         Some(instance_dir.clone())
     }
 
-    pub async fn rename_instance(&self, id: InstanceID, name: &str) {
+    pub async fn rename_instance(self: &Arc<Self>, id: InstanceID, name: &str) {
         if !crate::is_single_component_path_str(&name) {
-            self.send.send_warning(format!("Unable to rename instance, name must not be a path: {}", name));
+            self.send
+                .send_warning(format!("Unable to rename instance, name must not be a path: {}", name));
             return;
         }
-        if !sanitize_filename::is_sanitized_with_options(&*name, sanitize_filename::OptionsForCheck { windows: true, ..Default::default() }) {
+        if !sanitize_filename::is_sanitized_with_options(
+            &*name,
+            sanitize_filename::OptionsForCheck {
+                windows: true,
+                ..Default::default()
+            },
+        ) {
             self.send.send_warning(format!("Unable to rename instance, name is invalid: {}", name));
             return;
         }
@@ -1343,84 +1419,57 @@ impl BackendState {
             return;
         }
 
-        let Ok(current_exe) = std::env::current_exe() else {
-            self.send.send_error("Unable to rename instance shortcuts: failed to locate current executable");
-            return;
-        };
-
         if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-            let old_name = instance.name.to_string();
-            let args = &["--run-instance", name];
-            let mut shortcut_candidates: HashSet<PathBuf> = instance
-                .configuration
-                .get()
-                .created_shortcuts
-                .iter()
-                .map(|shortcut_path| PathBuf::from(shortcut_path.as_ref()))
-                .collect();
-
-            if let Some(user_dirs) = directories::UserDirs::new()
-                && let Some(desktop_dir) = user_dirs.desktop_dir()
-            {
-                for filename in crate::shortcut::known_shortcut_filenames(&old_name) {
-                    shortcut_candidates.insert(desktop_dir.join(filename));
-                }
-            }
-
-            let updated_shortcuts: Vec<Arc<str>> = shortcut_candidates
-                .into_iter()
-                .filter(|shortcut_path| shortcut_path.exists())
-                .filter_map(|shortcut_path| {
-                    crate::shortcut::update_shortcut(shortcut_path, &old_name, name, &current_exe, args)
-                        .map(|updated| Arc::<str>::from(updated.to_string_lossy().to_string()))
-                })
-                .collect();
-
-            instance.configuration.modify(|configuration| {
-                configuration.created_shortcuts = updated_shortcuts;
-            });
-
             if cfg!(windows) {
                 self.file_watching.write().unwatch_subdirectories_of_instance(id);
-                instance.mark_all_dirty();
+                instance.mark_all_dirty(self, false);
             }
 
             let new_instance_dir = self.directories.instances_dir.join(name);
-            if let Err(err) = std::fs::rename(&instance.root_path, &new_instance_dir) {
+            if let Err(err) = std::fs::rename(&instance.root_path, new_instance_dir) {
                 self.send.send_error(format!("Unable to rename instance folder: {}", err));
-            } else {
-                instance.on_root_renamed(&new_instance_dir);
-                self.send.send(instance.create_modify_message());
             }
         }
-
     }
 
-    pub async fn get_login_info(&self, modal_action: &ModalAction) -> Option<MinecraftLoginInfo> {
-        let selected_account = {
+    pub async fn get_login_info(
+        &self,
+        modal_action: &ModalAction,
+        instance_account: Option<Uuid>,
+    ) -> Option<MinecraftLoginInfo> {
+        let selected_account_with_name = {
             let mut account_info = self.account_info.write();
             let account_info = account_info.get();
 
-            let mut selected_account = account_info.selected_account;
-
-            if let Some(uuid) = selected_account {
+            if let Some(uuid) = instance_account.or(account_info.selected_account) {
                 if let Some(account) = account_info.accounts.get(&uuid) {
                     if account.offline {
                         return Some(MinecraftLoginInfo {
                             uuid,
                             username: account.username.clone(),
-                            access_token: None
-                        })
+                            access_token: None,
+                        });
                     }
+                    Some((uuid, account.username.clone()))
                 } else {
-                    selected_account = None;
+                    None
                 }
+            } else {
+                None
             }
-
-            selected_account
         };
 
+        let selected_account = selected_account_with_name.as_ref().map(|v| v.0);
         let Some((profile, access_token)) = self.login_flow(modal_action, selected_account).await else {
+            if let Some((uuid, username)) = selected_account_with_name {
+                self.send.send_error("Unable to log into Minecraft account, using offline mode...");
+                return Some(MinecraftLoginInfo {
+                    uuid,
+                    username,
+                    access_token: None,
+                });
+            }
+
             return None;
         };
 
@@ -1434,33 +1483,43 @@ impl BackendState {
 
 impl BackendStateFileWatching {
     pub fn watch_filesystem(&mut self, path: Arc<Path>, target: WatchTarget) {
-        // Ensure path exists so canonicalize can succeed (e.g. .minecraft/mods may not exist yet)
-        if !path.exists() {
-            let is_file = false;
-            if is_file {
-                if let Some(parent) = path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::File::create(&path);
+        let Ok(canonical) = path.canonicalize() else {
+            return;
+        };
+
+        let canonical: Arc<Path> = if canonical == &*path {
+            path.clone()
+        } else {
+            let is_just_long_path_prefixed = if cfg!(windows) {
+                let canonical_bytes = canonical.as_os_str().as_encoded_bytes();
+                let path_bytes = path.as_os_str().as_encoded_bytes();
+                canonical_bytes.len() == path_bytes.len() + 4
+                    && &canonical_bytes[..4] == b"\\\\?\\"
+                    && &canonical_bytes[4..] == path_bytes
             } else {
-                let _ = std::fs::create_dir_all(&path);
+                false
+            };
+            if is_just_long_path_prefixed {
+                path.clone()
+            } else {
+                canonical.into()
+            }
+        };
+
+        if let Some(old_path) = self.watch_target_to_path.get(&target)
+            && old_path == &path
+        {
+            let old_canonical = self.symlink_link_to_src.get(old_path).cloned().unwrap_or(old_path.clone());
+            if old_canonical == canonical {
+                return;
             }
         }
 
-        if let Some(old_path) = self.watch_target_to_path.get(&target) && old_path == &path {
-            return;
-        }
-        let Ok(canonical) = path.canonicalize() else {
-            log::error!("Unable to watch {:?} because it could not be canonicalized", path);
-            return;
-        };
-        let canonical: Arc<Path> = if canonical == &*path {
+        if path == canonical {
             log::debug!("Watching {:?} as {:?}", path, target);
-            path.clone()
         } else {
             log::debug!("Watching {:?} (real path {:?}) as {:?}", path, canonical, target);
-            canonical.into()
-        };
+        }
 
         if let Err(err) = self.watcher.watch(&path, notify::RecursiveMode::NonRecursive) {
             log::error!("Unable to watch filesystem: {:?}", err);
@@ -1482,17 +1541,6 @@ impl BackendStateFileWatching {
 
     pub fn get_target(&self, path: &Path) -> Option<&WatchTarget> {
         self.watching.get(path)
-    }
-
-    /// Find the watch target for a path by walking up to find a watched ancestor.
-    pub fn get_target_for_path(&self, path: &Path) -> Option<WatchTarget> {
-        let mut current: &Path = path;
-        loop {
-            if let Some(target) = self.watching.get(current) {
-                return Some(*target);
-            }
-            current = current.parent()?;
-        }
     }
 
     pub fn remove(&mut self, path: &Path) -> Option<WatchTarget> {
@@ -1518,9 +1566,7 @@ impl BackendStateFileWatching {
             WatchTarget::InstanceWorldDir { id },
             WatchTarget::InstanceSavesDir { id },
         ];
-        let content_folder_targets = ContentFolder::iter().map(|folder| {
-            WatchTarget::InstanceContentDir { id, folder }
-        });
+        let content_folder_targets = ContentFolder::iter().map(|folder| WatchTarget::InstanceContentDir { id, folder });
         for target in targets.into_iter().chain(content_folder_targets) {
             if let Some(path) = self.watch_target_to_path.remove(&target) {
                 self.remove(&path);
@@ -1534,7 +1580,9 @@ impl BackendStateFileWatching {
 
         if self.watching.contains_key(&path) {
             paths.push(path.clone());
-        } else if let Some(parent) = path.parent() && self.watching.contains_key(parent) {
+        } else if let Some(parent) = path.parent()
+            && self.watching.contains_key(parent)
+        {
             paths.push(path.clone());
         }
 
@@ -1542,13 +1590,17 @@ impl BackendStateFileWatching {
             for link in links {
                 if self.watching.contains_key(link) {
                     paths.push(link.clone());
-                } else if let Some(link_parent) = link.parent() && self.watching.contains_key(link_parent) {
+                } else if let Some(link_parent) = link.parent()
+                    && self.watching.contains_key(link_parent)
+                {
                     paths.push(link.clone());
                 }
             }
         }
 
-        if let Some(parent) = path.parent() && let Some(filename) = path.file_name() {
+        if let Some(parent) = path.parent()
+            && let Some(filename) = path.file_name()
+        {
             if let Some(links) = self.symlink_src_to_links.get(parent) {
                 for link_parent in links {
                     let child_link: Arc<Path> = link_parent.join(filename).into();
@@ -1577,6 +1629,18 @@ pub enum LoginError {
     MsaAuthorizationError(#[from] MsaAuthorizationError),
     #[error("XboxLive authentication error: {0}")]
     XboxAuthenticateError(#[from] XboxAuthenticateError),
+    #[error("Needs user interaction")]
+    NeedsUserInteraction,
     #[error("Cancelled by user")]
     CancelledByUser,
+}
+
+struct PrelaunchModCopy {
+    path: PathBuf,
+    source: PrelaunchModCopySource,
+}
+
+enum PrelaunchModCopySource {
+    FromContentLibrary { hash: [u8; 20] },
+    FromBytes { bytes: Arc<[u8]> },
 }

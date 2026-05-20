@@ -6,7 +6,7 @@ use crate::fabric_mod::Person;
 
 #[derive(Deserialize, Debug)]
 pub struct ModsToml {
-    pub mods: Vec<ModsTomlMod>
+    pub mods: Vec<ModsTomlMod>,
 }
 
 #[derive(Deserialize, Debug)]

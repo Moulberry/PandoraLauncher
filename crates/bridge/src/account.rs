@@ -1,3 +1,4 @@
+use schema::unique_bytes::UniqueBytes;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -6,5 +7,5 @@ pub struct Account {
     pub uuid: Uuid,
     pub username: Arc<str>,
     pub offline: bool,
-    pub head: Option<Arc<[u8]>>,
+    pub head: Option<UniqueBytes>,
 }

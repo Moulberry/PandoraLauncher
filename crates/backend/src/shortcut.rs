@@ -61,20 +61,24 @@ pub fn create_shortcut(path: PathBuf, name: &str, bin: &Path, args: &[&str]) -> 
     };
     let exec = shell_words::join(std::iter::once(bin).chain(args.iter().map(|s| *s)));
 
-    _ = std::fs::write(&path, format!(r#"[Desktop Entry]
+    _ = std::fs::write(
+        &path,
+        format!(
+            r#"[Desktop Entry]
 Type=Application
 Version=1.0
 Name={name}
 Exec={exec}
 Categories=Games;Minecraft;Launcher;
-"#).as_bytes());
+"#
+        )
+        .as_bytes(),
+    );
 
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
     Some(path)
 }
-
-// todo: use actual windows shell escaping instead of unix escaping
 
 #[cfg(target_os = "windows")]
 pub fn create_shortcut(path: PathBuf, name: &str, bin: &Path, args: &[&str]) -> Option<PathBuf> {
@@ -101,7 +105,10 @@ pub fn create_shortcut(path: PathBuf, name: &str, bin: &Path, args: &[&str]) -> 
     _ = std::fs::create_dir_all(&contents);
 
     let info_plist = contents.join("Info.plist");
-    _ = std::fs::write(&info_plist, format!(r#"<?xml version="1.0" encoding="UTF-8"?>
+    _ = std::fs::write(
+        &info_plist,
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -124,7 +131,10 @@ pub fn create_shortcut(path: PathBuf, name: &str, bin: &Path, args: &[&str]) -> 
     <key>CFBundleVersion</key>
     <string>0</string>
 </dict>
-</plist>"#).as_bytes());
+</plist>"#
+        )
+        .as_bytes(),
+    );
 
     let macos = contents.join("MacOS");
     _ = std::fs::create_dir_all(&macos);
@@ -135,8 +145,15 @@ pub fn create_shortcut(path: PathBuf, name: &str, bin: &Path, args: &[&str]) -> 
     let exec = shell_words::join(std::iter::once(bin).chain(args.iter().map(|s| *s)));
 
     let script_path = macos.join("run.sh");
-    _ = std::fs::write(&script_path, format!(r#"#!/bin/sh
-{}"#, exec).as_bytes());
+    _ = std::fs::write(
+        &script_path,
+        format!(
+            r#"#!/bin/sh
+{}"#,
+            exec
+        )
+        .as_bytes(),
+    );
 
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755));

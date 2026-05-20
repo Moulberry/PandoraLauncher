@@ -1,12 +1,24 @@
 use bridge::handle::BackendHandle;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    IndexPath, button::{Button, ButtonVariants}, h_flex, select::{Select, SelectDelegate, SelectEvent, SelectItem, SelectState}, table::{DataTable, TableDelegate, TableState}
+    IndexPath,
+    button::{Button, ButtonVariants},
+    h_flex,
+    select::{Select, SelectDelegate, SelectEvent, SelectItem, SelectState},
+    table::{DataTable, TableDelegate, TableState},
 };
 use strum::IntoEnumIterator;
 
 use crate::{
-    component::{instance_list::InstanceList, named_dropdown::{NamedDropdown, NamedDropdownItem}, responsive_grid::ResponsiveGrid}, entity::{DataEntities, instance::InstanceEntries, metadata::FrontendMetadata}, icon::PandoraIcon, interface_config::{InstancesViewMode, InterfaceConfig}, pages::page::{Page, page_layout}, ts, ui::PageType
+    component::{
+        instance_list::InstanceList,
+        named_dropdown::{NamedDropdown, NamedDropdownItem},
+        responsive_grid::ResponsiveGrid,
+    },
+    entity::{DataEntities, instance::InstanceEntries, metadata::FrontendMetadata},
+    icon::PandoraIcon,
+    interface_config::{InstancesViewMode, InterfaceConfig},
+    pages::page::Page,
 };
 
 pub struct InstancesPage {
@@ -23,9 +35,12 @@ impl InstancesPage {
     pub fn new(data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let instance_table = InstanceList::create_table(data, window, cx);
         let view_dropdown = cx.new(|cx| {
-            let items = InstancesViewMode::iter().map(|view| {
-                NamedDropdownItem { name: view.name(), item: view }
-            }).collect::<Vec<_>>();
+            let items = InstancesViewMode::iter()
+                .map(|view| NamedDropdownItem {
+                    name: view.name(),
+                    item: view,
+                })
+                .collect::<Vec<_>>();
             let current_view = InterfaceConfig::get(cx).instances_view_mode;
             let row = items.iter().position(|v| v.item == current_view).unwrap_or(0);
             let delegate = NamedDropdown::new(items);
@@ -38,7 +53,8 @@ impl InstancesPage {
             let view = value.item;
 
             InterfaceConfig::get_mut(cx).instances_view_mode = view;
-        }).detach();
+        })
+        .detach();
 
         Self {
             instance_table,
@@ -55,12 +71,19 @@ impl Page for InstancesPage {
         let create_instance = Button::new("create_instance")
             .success()
             .icon(PandoraIcon::Plus)
-            .label(ts!("instance.create"))
+            .label(t::instance::create())
             .on_click(cx.listener(|this, _, window, cx| {
-                crate::modals::create_instance::open_create_instance(this.metadata.clone(), this.instances.clone(),
-                    this.backend_handle.clone(), window, cx);
+                crate::modals::create_instance::open_create_instance(
+                    this.metadata.clone(),
+                    this.instances.clone(),
+                    this.backend_handle.clone(),
+                    window,
+                    cx,
+                );
             }));
-        let select_view = Select::new(&self.view_dropdown).title_prefix(format!("{}: ", ts!("instance.view")));
+        // wrapping in div makes it not take up the full space of the titlebar
+        let select_view =
+            div().child(Select::new(&self.view_dropdown).title_prefix(format!("{}: ", t::instance::view())));
 
         h_flex().gap_3().child(create_instance).child(select_view)
     }
@@ -74,30 +97,23 @@ impl Page for InstancesPage {
 }
 
 impl Render for InstancesPage {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let page_type = PageType::Instances;
-        let page_path = InterfaceConfig::get(cx).page_path.clone();
-        let scrollable = self.scrollable(cx);
-        let content = match InterfaceConfig::get(cx).instances_view_mode {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        match InterfaceConfig::get(cx).instances_view_mode {
             InstancesViewMode::Cards => {
                 let cards = self.instance_table.update(cx, |table, cx| {
                     let rows = table.delegate().rows_count(cx);
                     (0..rows).map(|i| table.delegate().render_card(i, cx)).collect::<Vec<_>>()
                 });
 
-                let size = Size::new(
-                    gpui::AvailableSpace::MinContent,
-                    gpui::AvailableSpace::MinContent
-                );
+                let size = Size::new(gpui::AvailableSpace::MinContent, gpui::AvailableSpace::MinContent);
 
-                div().p_4().child(ResponsiveGrid::new(size).size_full().gap_4().children(cards)).into_any_element()
+                div()
+                    .p_4()
+                    .child(ResponsiveGrid::new(size).size_full().gap_4().children(cards))
+                    .into_any_element()
             },
-            InstancesViewMode::List => {
-                DataTable::new(&self.instance_table).bordered(false).into_any_element()
-            },
-        };
-        let controls = self.controls(window, cx);
-        page_layout(page_type, page_path, controls, scrollable, content)
+            InstancesViewMode::List => DataTable::new(&self.instance_table).bordered(false).into_any_element(),
+        }
     }
 }
 

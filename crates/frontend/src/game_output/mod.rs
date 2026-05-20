@@ -3,7 +3,7 @@ use std::{cell::RefCell, num::NonZeroUsize, ops::Range, rc::Rc, sync::Arc};
 use ftree::FenwickTree;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable,
+    ActiveTheme as _, Icon, Sizable,
     button::Button,
     h_flex,
     input::{Input, InputEvent, InputState},
@@ -13,9 +13,9 @@ use gpui_component::{
 use lru::LruCache;
 use rustc_hash::FxBuildHasher;
 
-use bridge::{game_output::GameOutputLogLevel, keep_alive::KeepAlive};
+use bridge::{game_output::GameOutputLogLevel, message::GameOutputMsg};
 
-use crate::{CloseWindow, icon::PandoraIcon, ts};
+use crate::{CloseWindow, icon::PandoraIcon};
 
 struct CachedShapedLogLevels {
     fatal: Arc<ShapedLine>,
@@ -46,15 +46,33 @@ pub struct GameOutputItemState {
 pub struct GameOutput {
     font: Font,
     scroll_state: Rc<RefCell<GameOutputScrollState>>,
-    pending: Vec<(i64, GameOutputLogLevel, Arc<[Arc<str>]>)>,
+    pending: Vec<GameOutputMsg>,
     item_state: Option<GameOutputItemState>,
     time_column_width: Pixels,
     level_column_width: Pixels,
     shaped_log_levels: Option<CachedShapedLogLevels>,
+    _receive_lines_task: Task<()>,
 }
 
-impl Default for GameOutput {
-    fn default() -> Self {
+impl GameOutput {
+    pub fn new(mut receiver: tokio::sync::mpsc::UnboundedReceiver<GameOutputMsg>, cx: &mut Context<Self>) -> Self {
+        let task = cx.spawn(async move |output, cx| {
+            loop {
+                let Some(msg) = receiver.recv().await else {
+                    return;
+                };
+                _ = output.update(cx, |output, cx| {
+                    output.pending.push(msg);
+
+                    while let Ok(msg) = receiver.try_recv() {
+                        output.pending.push(msg);
+                    }
+
+                    cx.notify();
+                });
+            }
+        });
+
         Self {
             font: Font {
                 family: SharedString::new_static("Roboto Mono"),
@@ -80,13 +98,8 @@ impl Default for GameOutput {
             time_column_width: Default::default(),
             level_column_width: Default::default(),
             shaped_log_levels: None,
+            _receive_lines_task: task,
         }
-    }
-}
-
-impl GameOutput {
-    pub fn add(&mut self, time: i64, level: GameOutputLogLevel, text: Arc<[Arc<str>]>) {
-        self.pending.push((time, level, text));
     }
 
     fn shape_log_level(
@@ -163,8 +176,8 @@ impl GameOutput {
         let Some(item_state) = &mut self.item_state else {
             return;
         };
-        for (time, level, text) in self.pending.drain(..) {
-            let shaped_level = match level {
+        for msg in self.pending.drain(..) {
+            let shaped_level = match msg.level {
                 GameOutputLogLevel::Fatal => self.shaped_log_levels.as_ref().unwrap().fatal.clone(),
                 GameOutputLogLevel::Error => self.shaped_log_levels.as_ref().unwrap().error.clone(),
                 GameOutputLogLevel::Warn => self.shaped_log_levels.as_ref().unwrap().warn.clone(),
@@ -177,7 +190,7 @@ impl GameOutput {
             let mut highlighted_text = None;
 
             if !item_state.search_query.is_empty() {
-                for (line_index, line) in text.iter().enumerate() {
+                for (line_index, line) in msg.text.iter().enumerate() {
                     if let Some(found) = line.find(item_state.search_query.as_str()) {
                         highlighted_text = Some((line_index, found..found + item_state.search_query.as_str().len()));
                         break;
@@ -185,12 +198,12 @@ impl GameOutput {
                 }
                 if highlighted_text.is_none() {
                     // Item doesn't match search query, push skipped item
-                    let backup_total_lines_while_skipped = text.len();
+                    let backup_total_lines_while_skipped = msg.text.len();
                     item_state.item_sizes.push(0);
                     item_state.items.push(GameOutputItem {
-                        time: TimeShapedLine::Timestamp(time),
+                        time: TimeShapedLine::Timestamp(msg.time),
                         level: shaped_level.clone(),
-                        text: text.clone(),
+                        text: msg.text.clone(),
                         index: item_state.items.len(),
                         backup_total_lines_while_skipped,
                         total_lines: 0,
@@ -201,13 +214,13 @@ impl GameOutput {
                 }
             }
 
-            let total_lines = text.len();
+            let total_lines = msg.text.len();
             item_state.item_sizes.push(total_lines);
             item_state.total_line_count += total_lines;
             item_state.items.push(GameOutputItem {
-                time: TimeShapedLine::Timestamp(time),
+                time: TimeShapedLine::Timestamp(msg.time),
                 level: shaped_level.clone(),
-                text: text.clone(),
+                text: msg.text.clone(),
                 index: item_state.items.len(),
                 backup_total_lines_while_skipped: total_lines,
                 total_lines,
@@ -865,7 +878,6 @@ fn paint_lines<'a, const REVERSE: bool>(
 
 pub struct GameOutputRoot {
     scroll_handler: ScrollHandler,
-    _keep_alive: KeepAlive,
     game_output: Entity<GameOutput>,
     search_state: Entity<InputState>,
     _search_task: Task<()>,
@@ -975,15 +987,10 @@ impl ScrollbarHandle for ScrollHandler {
 }
 
 impl GameOutputRoot {
-    pub fn new(
-        keep_alive: KeepAlive,
-        game_output: Entity<GameOutput>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(game_output: Entity<GameOutput>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let scroll_state = Rc::clone(&game_output.read(cx).scroll_state);
 
-        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(ts!("common.search")).clean_on_escape());
+        let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(t::common::search()).clean_on_escape());
 
         let _search_input_subscription = cx.subscribe_in(&search_state, window, Self::on_search_input_event);
 
@@ -992,7 +999,6 @@ impl GameOutputRoot {
 
         Self {
             scroll_handler: ScrollHandler { state: scroll_state },
-            _keep_alive: keep_alive,
             game_output,
             search_state,
             _search_task: Task::ready(()),
@@ -1096,23 +1102,26 @@ impl Render for GameOutputRoot {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let search = Input::new(&self.search_state).prefix(Icon::new(PandoraIcon::Search).small());
 
-        let bar = h_flex()
-            .w_full()
-            .rounded(cx.theme().radius)
-            .id("controls")
-            .flex_1()
-            .gap_4()
-            .child(search)
-            .child(Button::new("top").label(ts!("common.nav.top")).on_click(cx.listener(|root, _, _, cx| {
-                let mut state = root.scroll_handler.state.borrow_mut();
-                state.scrolling = GameOutputScrolling::Top { offset: Pixels::ZERO };
-                cx.notify();
-            })))
-            .child(Button::new("bottom").label(ts!("common.nav.bottom")).on_click(cx.listener(|root, _, _, cx| {
-                let mut state = root.scroll_handler.state.borrow_mut();
-                state.scrolling = GameOutputScrolling::Bottom;
-                cx.notify();
-            })));
+        let bar =
+            h_flex()
+                .w_full()
+                .rounded(cx.theme().radius)
+                .id("controls")
+                .flex_1()
+                .gap_4()
+                .child(search)
+                .child(Button::new("top").label(t::common::nav::top()).on_click(cx.listener(|root, _, _, cx| {
+                    let mut state = root.scroll_handler.state.borrow_mut();
+                    state.scrolling = GameOutputScrolling::Top { offset: Pixels::ZERO };
+                    cx.notify();
+                })))
+                .child(Button::new("bottom").label(t::common::nav::bottom()).on_click(cx.listener(
+                    |root, _, _, cx| {
+                        let mut state = root.scroll_handler.state.borrow_mut();
+                        state.scrolling = GameOutputScrolling::Bottom;
+                        cx.notify();
+                    },
+                )));
 
         v_flex()
             .size_full()

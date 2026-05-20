@@ -1,6 +1,6 @@
 [package]
 name = "bridge"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 
 [dependencies]
@@ -12,11 +12,9 @@ tokio.workspace = true
 uuid.workspace = true
 tokio-util.workspace = true
 enum-map.workspace = true
-enumset.workspace = true
 strum.workspace = true
 relative-path.workspace = true
 sanitize-filename.workspace = true
-rustc-hash.workspace = true
 indexmap.workspace = true
 parking_lot.workspace = true
 once_cell.workspace = true

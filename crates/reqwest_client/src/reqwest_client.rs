@@ -26,16 +26,11 @@ pub struct ReqwestClient {
 
 impl ReqwestClient {
     fn builder() -> reqwest::ClientBuilder {
-        reqwest::Client::builder()
-            .use_rustls_tls()
-            .connect_timeout(Duration::from_secs(10))
+        reqwest::Client::builder().use_rustls_tls().connect_timeout(Duration::from_secs(10))
     }
 
     pub fn new() -> Self {
-        Self::builder()
-            .build()
-            .expect("Failed to initialize HTTP client")
-            .into()
+        Self::builder().build().expect("Failed to initialize HTTP client").into()
     }
 
     pub fn user_agent(agent: &str) -> anyhow::Result<Self> {
@@ -53,9 +48,7 @@ impl ReqwestClient {
         let mut client = Self::builder().default_headers(map);
         let client_has_proxy;
 
-        if let Some(proxy) = proxy.as_ref().and_then(|proxy_url| {
-            reqwest::Proxy::all(proxy_url.clone()).ok()
-        }) {
+        if let Some(proxy) = proxy.as_ref().and_then(|proxy_url| reqwest::Proxy::all(proxy_url.clone()).ok()) {
             // Respect NO_PROXY env var
             client = client.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
             client_has_proxy = true;
@@ -63,9 +56,7 @@ impl ReqwestClient {
             client_has_proxy = false;
         };
 
-        let client = client
-            .use_preconfigured_tls(http_client_tls::tls_config())
-            .build()?;
+        let client = client.use_preconfigured_tls(http_client_tls::tls_config()).build()?;
         let mut client: ReqwestClient = client.into();
         client.proxy = client_has_proxy.then_some(proxy).flatten();
         client.user_agent = Some(user_agent);
@@ -118,10 +109,7 @@ impl StreamReader {
 impl futures::Stream for StreamReader {
     type Item = std::io::Result<Bytes>;
 
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.as_mut();
 
         let mut reader = match this.reader.take() {
@@ -140,16 +128,16 @@ impl futures::Stream for StreamReader {
                 self.reader = None;
 
                 Poll::Ready(Some(Err(err)))
-            }
+            },
             Poll::Ready(Ok(0)) => {
                 self.reader = None;
                 Poll::Ready(None)
-            }
+            },
             Poll::Ready(Ok(_)) => {
                 let chunk = this.buf.split();
                 self.reader = Some(reader);
                 Poll::Ready(Some(Ok(chunk.freeze())))
-            }
+            },
         }
     }
 }
@@ -214,10 +202,7 @@ impl http_client::HttpClient for ReqwestClient {
     fn send(
         &self,
         req: http::Request<http_client::AsyncBody>,
-    ) -> futures::future::BoxFuture<
-        'static,
-        anyhow::Result<http_client::Response<http_client::AsyncBody>>,
-    > {
+    ) -> futures::future::BoxFuture<'static, anyhow::Result<http_client::Response<http_client::AsyncBody>>> {
         let (parts, body) = req.into_parts();
 
         let mut request = self.client.request(parts.method, parts.uri.to_string());
@@ -232,28 +217,18 @@ impl http_client::HttpClient for ReqwestClient {
         let request = request.body(match body.0 {
             http_client::Inner::Empty => reqwest::Body::default(),
             http_client::Inner::Bytes(cursor) => cursor.into_inner().into(),
-            http_client::Inner::AsyncReader(stream) => {
-                reqwest::Body::wrap_stream(StreamReader::new(stream))
-            }
+            http_client::Inner::AsyncReader(stream) => reqwest::Body::wrap_stream(StreamReader::new(stream)),
         });
 
         let handle = self.handle.clone();
         async move {
-            let mut response = handle
-                .spawn(async { request.send().await })
-                .await?
-                .map_err(redact_error)?;
+            let mut response = handle.spawn(async { request.send().await }).await?.map_err(redact_error)?;
 
             let headers = mem::take(response.headers_mut());
-            let mut builder = http::Response::builder()
-                .status(response.status().as_u16())
-                .version(response.version());
+            let mut builder = http::Response::builder().status(response.status().as_u16()).version(response.version());
             *builder.headers_mut().unwrap() = headers;
 
-            let bytes = response
-                .bytes_stream()
-                .map_err(futures::io::Error::other)
-                .into_async_read();
+            let bytes = response.bytes_stream().map_err(futures::io::Error::other).into_async_read();
             let body = http_client::AsyncBody::from_reader(bytes);
 
             builder.body(body).map_err(|e| anyhow!(e))
@@ -302,9 +277,6 @@ mod tests {
     fn test_invalid_proxy_uri() {
         let proxy = Url::parse("socks://127.0.0.1:20170").unwrap();
         let client = ReqwestClient::proxy_and_user_agent(Some(proxy), "test").unwrap();
-        assert!(
-            client.proxy.is_none(),
-            "An invalid proxy URL should add no proxy to the client!"
-        )
+        assert!(client.proxy.is_none(), "An invalid proxy URL should add no proxy to the client!")
     }
 }

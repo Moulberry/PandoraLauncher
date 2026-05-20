@@ -7,7 +7,13 @@ use bridge::{
     meta::{MetadataRequest, MetadataResult},
 };
 use gpui::{prelude::*, *};
-use schema::{curseforge::{CurseforgeGetModFilesResult, CurseforgeSearchResult}, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, maven::MavenMetadataXml, modrinth::{ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
+use schema::{
+    curseforge::{CurseforgeGetModFilesResult, CurseforgeSearchResult},
+    fabric_loader_manifest::FabricLoaderManifest,
+    forge::{ForgeMavenManifest, NeoforgeMavenManifest},
+    modrinth::{ModrinthProjectResult, ModrinthProjectVersionsResult, ModrinthSearchResult},
+    version_manifest::MinecraftVersionManifest,
+};
 
 #[derive(Debug)]
 pub enum FrontendMetadataState {
@@ -129,9 +135,7 @@ macro_rules! define_as_metadata_result {
                     FrontendMetadataState::Loading => FrontendMetadataResult::Loading,
                     FrontendMetadataState::Loaded { result, .. } => match result {
                         Ok(MetadataResult::$t(result)) => FrontendMetadataResult::Loaded(&*result),
-                        Ok(_) => {
-                            FrontendMetadataResult::Error(SharedString::new_static("Wrong metadata type! Pandora bug!"))
-                        },
+                        Ok(_) => FrontendMetadataResult::Error(t::system::metadata_error().into()),
                         Err(error) => FrontendMetadataResult::Error(SharedString::new(error.clone())),
                     },
                 }
@@ -146,5 +150,6 @@ define_as_metadata_result!(ModrinthProjectVersionsResult);
 define_as_metadata_result!(FabricLoaderManifest);
 define_as_metadata_result!(ForgeMavenManifest);
 define_as_metadata_result!(NeoforgeMavenManifest);
+define_as_metadata_result!(ModrinthProjectResult);
 define_as_metadata_result!(CurseforgeSearchResult);
 define_as_metadata_result!(CurseforgeGetModFilesResult);

@@ -1,4 +1,9 @@
-use std::{ffi::{OsStr, OsString}, path::{Path, PathBuf}, sync::Arc, time::{Duration, Instant}};
+use std::{
+    ffi::{OsStr, OsString},
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
@@ -37,10 +42,13 @@ pub fn get_command_path_cached(command: &OsStr) -> Option<Arc<Path>> {
     };
 
     cache.with_upgraded(|cache| {
-        cache.insert(command.into(), CommandPathCacheEntry {
-            expiry,
-            path: path.clone()
-        })
+        cache.insert(
+            command.into(),
+            CommandPathCacheEntry {
+                expiry,
+                path: path.clone(),
+            },
+        )
     });
 
     path
@@ -58,10 +66,13 @@ pub fn get_command_path(command: &OsStr) -> Option<Arc<Path>> {
         Instant::now() + Duration::from_secs(60)
     };
 
-    COMMAND_PATH_CACHE.write().insert(command.into(), CommandPathCacheEntry {
-        expiry,
-        path: path.clone()
-    });
+    COMMAND_PATH_CACHE.write().insert(
+        command.into(),
+        CommandPathCacheEntry {
+            expiry,
+            path: path.clone(),
+        },
+    );
 
     path
 }

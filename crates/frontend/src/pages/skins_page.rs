@@ -1,905 +1,825 @@
-use std::{path::Path, sync::Arc};
-
-use bridge::{
-    handle::BackendHandle,
-    message::{MessageToBackend, MinecraftProfileInfo},
-    modal_action::ModalAction,
-};
-use gpui::{InteractiveElement, IntoElement, ParentElement, Styled, Window, prelude::*, *};
-use gpui_component::{
-    Disableable, IconName,
-    button::{Button, ButtonVariants},
-    checkbox::Checkbox,
-    h_flex,
-    scroll::ScrollableElement,
-    v_flex,
-};
+use std::sync::Arc;
 
 use crate::{
-    component::{cape_card, skin_renderer::SkinRenderer},
-    entity::{account::{AccountEntries, AccountChanged}, minecraft_profile::MinecraftProfileEntries, skin_thumbnail_cache::SkinThumbnailCache, DataEntities},
+    component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText},
+    data_asset_loader::DataAssetLoader,
+    entity::{DataEntities, account::AccountExt},
+    icon::PandoraIcon,
     interface_config::InterfaceConfig,
-    modals::{delete_skin, upload_skin_modal},
-    pages::page::{Page, page_layout},
-    ui::PageType,
+    pages::page::Page,
+    png_render_cache::ImageTransformation,
+    skin_renderer::determine_skin_variant,
+    skin_thumbnail_cache::SkinThumbnailCache,
 };
+use bridge::{
+    message::{AccountCapesResult, AccountSkinResult, MessageToBackend, UrlOrFile},
+    modal_action::ModalAction,
+};
+use futures::FutureExt;
+use gpui::{prelude::*, *};
+use gpui_component::{
+    ActiveTheme, Disableable, Icon, Selectable, Sizable, WindowExt,
+    button::{Button, ButtonVariants},
+    h_flex,
+    input::{Input, InputState},
+    notification::{Notification, NotificationType},
+    popover::Popover,
+    scroll::ScrollableElement,
+    skeleton::Skeleton,
+    spinner::Spinner,
+    v_flex,
+};
+use once_cell::sync::Lazy;
+use rustc_hash::FxHashMap;
+use schema::{
+    minecraft_profile::{SkinState, SkinVariant},
+    unique_bytes::UniqueBytes,
+};
+use uuid::Uuid;
 
-/// OptiFine serves donor capes at this URL by Minecraft username (same as used by the Capes mod).
-/// See: https://github.com/CaelTheColher/Capes and https://optifine.readthedocs.io/capes.html
 fn optifine_cape_url(username: &str) -> String {
     format!("https://optifine.net/capes/{}.png", username)
 }
 
-enum SkinPageState {
-    Loading,
-    NotAuthenticated,
-    Ready(MinecraftProfileInfo),
-}
-
-const INITIAL_SKINS_VISIBLE: usize = 8;
-
 pub struct SkinsPage {
-    backend_handle: BackendHandle,
-    minecraft_profile: Entity<MinecraftProfileEntries>,
-    accounts: Entity<AccountEntries>,
-    skin_thumbnail_cache: Entity<SkinThumbnailCache>,
-    launcher_dir: Arc<Path>,
-    state: SkinPageState,
-    selected_skin_id: Option<Arc<str>>,
-    selected_cape_id: Option<uuid::Uuid>,
-    skins_expanded: bool,
+    account_skins: FxHashMap<Uuid, AccountSkinResult>,
+    account_capes: FxHashMap<Uuid, AccountCapesResult>,
+    pending_login: Option<ModalAction>,
+    applying_to_account: Option<Uuid>,
+    request_account_skin: Option<Task<()>>,
+    request_account_skin_for: Option<Uuid>,
+    selected_skin: UniqueBytes,
+    selected_cape: Option<(Uuid, Arc<str>)>,
+    active_cape: Option<(Uuid, Arc<str>)>,
+    pending_apply_cape: bool,
     optifine_cape_in_preview: bool,
-    _subscription: Subscription,
-    _account_subscription: Subscription,
-    _get_profile_task: Task<()>,
-    pub skin_renderer: Entity<SkinRenderer>,
-    _download_active_skin_task: Option<Task<()>>,
-    last_rendered_skin_url: Option<String>,
-    _download_active_cape_task: Option<Task<()>>,
-    last_rendered_cape_url: Option<String>,
-    _download_optifine_cape_task: Option<Task<()>>,
-    last_rendered_optifine_username: Option<String>,
-
-    _thumbnail_tasks: std::collections::HashMap<Arc<str>, Task<()>>,
-    _cape_thumbnail_tasks: std::collections::HashMap<Arc<str>, Task<()>>, // key: "skin_url\0cape_url"
+    player_model_widget: Entity<PlayerModelWidget>,
+    copy_skin_popover_open: bool,
+    copy_skin_input: Entity<InputState>,
+    add_from_file_task: Task<()>,
+    data: DataEntities,
+    skin_thumbnail_cache: Entity<SkinThumbnailCache>,
+    hovering_skin_idx: Option<usize>,
 }
+
+static DEFAULT_SKIN: Lazy<UniqueBytes> =
+    Lazy::new(|| UniqueBytes::new(include_bytes!("../../../../assets/images/default_skin.png")));
 
 impl SkinsPage {
-    pub fn new(data: &DataEntities, _window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let profile = data.minecraft_profile.read(cx).profile.clone();
-
-        let state = match profile {
-            Some(p) => SkinPageState::Ready(p),
-            None => SkinPageState::Loading,
-        };
-
-        let _subscription = cx.subscribe(&data.minecraft_profile, |this, _, _, cx| {
-            this.refresh_from_entity(cx);
-            this.update_skin_renderer(cx);
-            cx.notify();
-        });
-
-        let _account_subscription = cx.subscribe::<_, AccountChanged>(&data.accounts, |this, _, _, cx| {
-            this.load_profile(cx);
-            this.update_skin_renderer(cx);
-            cx.notify();
-        });
-
-        let mut page = Self {
-            backend_handle: data.backend_handle.clone(),
-            minecraft_profile: data.minecraft_profile.clone(),
-            accounts: data.accounts.clone(),
-            skin_thumbnail_cache: data.skin_thumbnail_cache.clone(),
-            launcher_dir: data.launcher_dir.clone(),
-            state,
-            selected_skin_id: None,
-            selected_cape_id: None,
-            skins_expanded: false,
+    pub fn new(data: &DataEntities, window: &mut Window, cx: &mut App) -> Self {
+        Self {
+            account_skins: FxHashMap::default(),
+            account_capes: FxHashMap::default(),
+            pending_login: None,
+            applying_to_account: None,
+            request_account_skin: None,
+            request_account_skin_for: None,
+            selected_skin: DEFAULT_SKIN.clone(),
+            selected_cape: None,
+            active_cape: None,
+            pending_apply_cape: false,
             optifine_cape_in_preview: false,
-            _subscription,
-            _account_subscription,
-            _get_profile_task: Task::ready(()),
-            skin_renderer: cx.new(|_| SkinRenderer::new(None, false)),
-            _download_active_skin_task: None,
-            last_rendered_skin_url: None,
-            _download_active_cape_task: None,
-            last_rendered_cape_url: None,
-            _download_optifine_cape_task: None,
-            last_rendered_optifine_username: None,
-            _thumbnail_tasks: std::collections::HashMap::new(),
-            _cape_thumbnail_tasks: std::collections::HashMap::new(),
-        };
-        page.load_profile(cx);
-        page.update_skin_renderer(cx);
-        page
-    }
-
-    fn active_skin_id(profile: &MinecraftProfileInfo) -> Option<Arc<str>> {
-        profile.skins.iter().find(|s| s.state.as_ref() == "ACTIVE").map(|s| s.id.clone())
-    }
-
-    fn active_cape_id(profile: &MinecraftProfileInfo) -> Option<uuid::Uuid> {
-        profile
-            .capes
-            .iter()
-            .find(|c| c.state.as_ref() == "ACTIVE")
-            .and_then(|c| uuid::Uuid::parse_str(c.id.as_ref()).ok())
-    }
-
-    fn reset_pending_selection(&mut self, profile: &MinecraftProfileInfo, cx: &mut Context<Self>) {
-        self.selected_skin_id = Self::active_skin_id(profile);
-        self.selected_cape_id = Self::active_cape_id(profile);
-        self.update_skin_renderer(cx);
-    }
-
-    fn apply_pending_selection(&mut self, profile: &MinecraftProfileInfo) {
-        let active_skin_id = Self::active_skin_id(profile);
-        if self.selected_skin_id != active_skin_id
-            && let Some(selected_skin_id) = self.selected_skin_id.as_ref()
-            && let Some(selected_skin) = profile.skins.iter().find(|skin| &skin.id == selected_skin_id)
-        {
-            if let Some(path) = &selected_skin.local_path {
-                self.set_skin_from_path(path.clone(), selected_skin.variant.clone());
-            } else {
-                self.set_skin(selected_skin.url.clone(), selected_skin.variant.clone());
-            }
-        }
-
-        let active_cape_id = Self::active_cape_id(profile);
-        if self.selected_cape_id != active_cape_id {
-            self.set_cape(self.selected_cape_id);
+            player_model_widget: cx.new(|cx| PlayerModelWidget::new(cx, DEFAULT_SKIN.clone())),
+            copy_skin_popover_open: false,
+            copy_skin_input: cx.new(|cx| InputState::new(window, cx)),
+            add_from_file_task: Task::ready(()),
+            data: data.clone(),
+            skin_thumbnail_cache: SkinThumbnailCache::new(cx),
+            hovering_skin_idx: None,
         }
     }
 
-    fn refresh_from_entity(&mut self, cx: &mut Context<Self>) {
-        let profile = self.minecraft_profile.read(cx).profile.clone();
-        self.state = match profile {
-            Some(p) => {
-                self.selected_skin_id = Self::active_skin_id(&p);
-                self.selected_cape_id = Self::active_cape_id(&p);
-                SkinPageState::Ready(p)
-            },
-            None => SkinPageState::NotAuthenticated,
-        };
+    fn can_request_account_skin(&self, uuid: Uuid) -> bool {
+        if self.request_account_skin_for == Some(uuid) {
+            return false;
+        }
+        !self.has_pending_login()
     }
 
-    fn load_profile(&mut self, cx: &mut Context<Self>) {
-        if self.accounts.read(cx).selected_account.is_none() {
-            self.state = SkinPageState::NotAuthenticated;
-            return;
-        }
+    fn select_skin(&mut self, skin: UniqueBytes, variant: SkinVariant, cx: &mut Context<Self>) {
+        self.selected_skin = skin.clone();
+        self.player_model_widget.update(cx, |widget, cx| {
+            widget.set_skin(cx, skin, variant);
+        });
+    }
 
-        if let SkinPageState::Ready(_) = self.state {
-            // Already have data, don't show loading screen
-        } else {
-            self.state = SkinPageState::Loading;
-        }
+    fn select_cape(&mut self, id: Uuid, url: Arc<str>) {
+        self.optifine_cape_in_preview = false;
+        self.selected_cape = Some((id, url));
+        self.pending_apply_cape = true;
+    }
 
-        let action = ModalAction::default();
-        let action_clone = action.clone();
-        let profile_entity = self.minecraft_profile.clone();
+    fn select_no_cape(&mut self, cx: &mut Context<Self>) {
+        self.optifine_cape_in_preview = false;
+        self.selected_cape = None;
+        self.pending_apply_cape = false;
+        self.player_model_widget.update(cx, |widget, cx| {
+            widget.set_cape(cx, None);
+        });
+    }
 
-        self.backend_handle.send(MessageToBackend::GetMinecraftProfile { modal_action: action });
+    fn request_account_skin(&mut self, uuid: Uuid, cx: &mut Context<Self>) {
+        self.pending_login = None;
 
-        self._get_profile_task = cx.spawn(async move |this, cx| {
-            let mut elapsed_ms = 0;
-            while action_clone.get_finished_at().is_none() && elapsed_ms < 10000 {
-                cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
-                elapsed_ms += 100;
-            }
+        let (send, recv) = tokio::sync::oneshot::channel();
+        self.data.backend_handle.send(MessageToBackend::GetAccountSkin {
+            account: uuid,
+            result: send,
+        });
+        let (send2, recv2) = tokio::sync::oneshot::channel();
+        self.data.backend_handle.send(MessageToBackend::GetAccountCapes {
+            account: uuid,
+            result: send2,
+        });
 
-            let _ = this.update(cx, |this, cx| {
-                if let SkinPageState::Loading = this.state {
-                    let profile_result = profile_entity.read(cx).profile.clone();
-                    if let Some(p) = profile_result {
-                        this.selected_skin_id = Self::active_skin_id(&p);
-                        this.selected_cape_id = Self::active_cape_id(&p);
-                        this.state = SkinPageState::Ready(p);
-                    } else {
-                        this.state = SkinPageState::NotAuthenticated;
+        self.request_account_skin = Some(cx.spawn(async move |page, cx| {
+            let skin_result = recv.await;
+            let capes_result = recv2.await;
+
+            let _ = page.update(cx, move |page, cx| {
+                let is_current_account = page.data.accounts.read(cx).selected_account_uuid == Some(uuid);
+
+                // Handle skin result
+                let mut new_skin = None;
+                if let Ok(skin_result) = skin_result {
+                    if let AccountSkinResult::Success { skin, variant } = &skin_result {
+                        if is_current_account && let Some(skin) = skin.clone() {
+                            page.selected_skin = skin.clone();
+                            new_skin = Some((skin, *variant));
+                        }
                     }
-                    this.update_skin_renderer(cx);
-                    cx.notify();
+                    page.account_skins.insert(uuid, skin_result);
                 }
-            });
-        });
-    }
 
-    fn set_skin(&mut self, url: Arc<str>, variant: Arc<str>) {
-        self.backend_handle.send(MessageToBackend::SetSkin {
-            skin_url: url,
-            skin_variant: variant,
-            modal_action: ModalAction::default(),
-        });
-    }
-
-    fn set_skin_from_path(&mut self, path: Arc<str>, variant: Arc<str>) {
-        self.backend_handle.send(MessageToBackend::SetSkinFromPath {
-            path,
-            skin_variant: variant,
-            modal_action: ModalAction::default(),
-        });
-    }
-
-    fn set_cape(&mut self, cape_id: Option<uuid::Uuid>) {
-        self.backend_handle.send(MessageToBackend::SetCape {
-            cape_id,
-            modal_action: ModalAction::default(),
-        });
-    }
-
-    fn update_skin_renderer(&mut self, cx: &mut Context<Self>) {
-        if let SkinPageState::Ready(profile) = &self.state {
-            // Update nameplate with profile name
-            let profile_name = profile.name.clone();
-            self.skin_renderer.update(cx, |r, _| {
-                r.nameplate = Some(profile_name.clone().into());
-            });
-
-            let preview_skin = self
-                .selected_skin_id
-                .as_ref()
-                .and_then(|selected_skin_id| profile.skins.iter().find(|skin| &skin.id == selected_skin_id))
-                .or_else(|| profile.skins.iter().find(|s| s.state.as_ref() == "ACTIVE"));
-
-            if let Some(preview_skin) = preview_skin {
-                let render_source = preview_skin
-                    .local_path
-                    .as_ref()
-                    .map(|path| path.to_string())
-                    .unwrap_or_else(|| preview_skin.url.to_string());
-                let is_slim = preview_skin.variant.as_ref() == "SLIM";
-                if self.last_rendered_skin_url.as_deref() != Some(render_source.as_str()) {
-                    self.last_rendered_skin_url = Some(render_source.clone());
-                    let skin_renderer = self.skin_renderer.clone();
-                    let client = cx.http_client();
-                    let preview_skin_local_path = preview_skin.local_path.clone();
-                    let preview_skin_url = preview_skin.url.clone();
-                    self._download_active_skin_task = Some(cx.spawn(async move |_page, cx| {
-                        let bytes: Option<Arc<[u8]>> = if let Some(local_path) = preview_skin_local_path {
-                            std::fs::read(local_path.as_ref()).ok().map(|bytes| Arc::from(bytes.into_boxed_slice()))
-                        } else if let Ok(mut response) = client.get(preview_skin_url.as_ref(), ().into(), true).await {
-                            use futures::AsyncReadExt;
-                            let mut bytes = Vec::new();
-                            if response.body_mut().read_to_end(&mut bytes).await.is_ok() {
-                                Some(Arc::from(bytes.into_boxed_slice()))
-                            } else {
-                                None
+                // Handle cape result
+                if is_current_account {
+                    page.active_cape = None;
+                    page.selected_cape = None;
+                    page.pending_apply_cape = false;
+                }
+                if let Ok(capes_result) = capes_result {
+                    if is_current_account && let AccountCapesResult::Success { capes } = &capes_result {
+                        for cape in capes {
+                            if cape.state == SkinState::Active {
+                                page.active_cape = Some((cape.id, cape.url.clone()));
+                                page.selected_cape = page.active_cape.clone();
+                                page.pending_apply_cape = true;
+                                break;
                             }
+                        }
+                    }
+                    page.account_capes.insert(uuid, capes_result);
+                }
+
+                // Update model widget
+                if is_current_account {
+                    page.player_model_widget.update(cx, |widget, cx| {
+                        if let Some((skin, variant)) = new_skin {
+                            widget.set_skin_and_cape(cx, skin, variant, None);
                         } else {
-                            None
-                        };
-
-                        if let Some(data) = bytes {
-                            let _ = skin_renderer.update(cx, |r, _| r.update_image(Some(data), is_slim));
+                            widget.set_cape(cx, None);
                         }
-                    }));
-                } else {
-                    self.skin_renderer.update(cx, |r, _| r.slim = is_slim);
-                }
-            } else {
-                self.skin_renderer.update(cx, |r, _| r.update_image(None, false));
-            }
-
-            // Cape logic: OptiFine toggle takes precedence when ON. When OFF, show Mojang cape if equipped.
-            if self.optifine_cape_in_preview {
-                // Show OptiFine cape when toggle is on (same API as Capes mod)
-                self.last_rendered_cape_url = None;
-                let username = profile.name.to_string();
-                if self.last_rendered_optifine_username.as_deref() != Some(username.as_str()) {
-                    let optifine_url = optifine_cape_url(&username);
-                    let skin_renderer = self.skin_renderer.clone();
-                    let client = cx.http_client();
-                    let username_clone = username.clone();
-                    self._download_optifine_cape_task = Some(cx.spawn(async move |this, cx| {
-                        let ok = async {
-                            let mut response = client.get(&optifine_url, ().into(), true).await.ok()?;
-                            // OptiFine returns 404 if the player has no donor cape
-                            if response.status().as_u16() != 200 {
-                                return None;
-                            }
-                            use futures::AsyncReadExt;
-                            let mut bytes = Vec::new();
-                            response.body_mut().read_to_end(&mut bytes).await.ok()?;
-                            Some(Arc::from(bytes.into_boxed_slice()) as Arc<[u8]>)
-                        };
-                        if let Some(data) = ok.await {
-                            let _ = skin_renderer.update(cx, |r, cx| {
-                                r.update_cape(Some(data));
-                                cx.notify();
-                            });
-                        } else {
-                            let _ = skin_renderer.update(cx, |r, cx| {
-                                r.update_cape(None);
-                                cx.notify();
-                            });
-                        }
-                        let _ = this.update(cx, |p, cx| {
-                            p.last_rendered_optifine_username = Some(username_clone);
-                            cx.notify();
-                        });
-                    }));
-                }
-            } else if let Some(selected_cape_id) = self.selected_cape_id
-                && let Some(selected_cape) = profile
-                    .capes
-                    .iter()
-                    .find(|cape| uuid::Uuid::parse_str(cape.id.as_ref()).ok() == Some(selected_cape_id))
-            {
-                self.last_rendered_optifine_username = None;
-                let url = selected_cape.url.to_string();
-                if self.last_rendered_cape_url.as_deref() != Some(url.as_str()) {
-                    self.last_rendered_cape_url = Some(url.clone());
-                    let skin_renderer = self.skin_renderer.clone();
-                    let client = cx.http_client();
-                    self._download_active_cape_task = Some(cx.spawn(async move |_page, cx| {
-                        if let Ok(mut response) = client.get(&url, ().into(), true).await {
-                            use futures::AsyncReadExt;
-                            let mut bytes = Vec::new();
-                            if response.body_mut().read_to_end(&mut bytes).await.is_ok() {
-                                let data: Arc<[u8]> = Arc::from(bytes.into_boxed_slice());
-                                let _ = skin_renderer.update(cx, |r, cx| {
-                                    r.update_cape(Some(data));
-                                    cx.notify();
-                                });
-                            }
-                        }
-                    }));
-                }
-            } else {
-                self.last_rendered_cape_url = None;
-                if self.last_rendered_optifine_username.take().is_some() {
-                    self.skin_renderer.update(cx, |r, cx| {
-                        r.update_cape(None);
-                        cx.notify();
                     });
                 }
-            }
-
-            // Lazy load thumbnails - keyed by URL to avoid duplicates
-            let mut urls_to_load: Vec<(String, Arc<str>, bool)> = Vec::new();
-            let thumbnail_cache = self.skin_thumbnail_cache.read(cx);
-            for skin in &profile.skins {
-                let is_slim = skin.variant.as_ref() == "SLIM";
-                
-                // Use local_path if available, otherwise use URL
-                let url_key = skin.url.to_string();
-                let load_url = if let Some(local) = &skin.local_path {
-                    format!("file://{}", local)
-                } else {
-                    url_key.clone()
-                };
-                
-                // Skip if already cached or loading
-                let url_key_arc: Arc<str> = url_key.clone().into();
-                if !thumbnail_cache.contains(url_key.as_str()) && !self._thumbnail_tasks.contains_key(&url_key_arc) {
-                    urls_to_load.push((load_url.clone(), url_key_arc.clone(), is_slim));
+                if page.applying_to_account == Some(uuid) {
+                    page.applying_to_account = None;
                 }
-            }
-            let _ = thumbnail_cache;
-
-            // Load thumbnails
-            for (load_url, cache_key, is_slim) in urls_to_load {
-                let client = cx.http_client();
-                let cache_key_clone = cache_key.clone();
-                let task = cx.spawn(async move |this, cx| {
-                    let bytes: Option<Arc<[u8]>> = if load_url.starts_with("file://") {
-                        // Load from local file
-                        let path = &load_url[7..]; // Remove "file://" prefix
-                        std::fs::read(path).ok().map(|b| Arc::from(b.into_boxed_slice()))
-                    } else {
-                        // Load from URL
-                        if let Ok(mut response) = client.get(&load_url, ().into(), true).await {
-                            use futures::AsyncReadExt;
-                            let mut bytes = Vec::new();
-                            if response.body_mut().read_to_end(&mut bytes).await.is_ok() {
-                                Some(Arc::from(bytes.into_boxed_slice()))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    };
-                    
-                    if let Some(data) = bytes {
-                        let renderer = SkinRenderer::new(Some(data), is_slim);
-                        let front = renderer.render_to_buffer_with_params(200, 200, 0.3, 0.05, true);
-                        let back = renderer.render_to_buffer_with_params(200, 200, std::f32::consts::PI + 0.3, 0.05, true);
-                        // Capeless back with same framing as cape thumbnails (for None card)
-                        let back_yaw = std::f32::consts::PI + 0.3;
-                        let none_card_back = renderer.render_to_buffer_with_params_ext(200, 200, back_yaw, 0.05, true, true);
-
-                        if let (Some(f), Some(b)) = (front, back) {
-                            let _ = this.update(cx, |this, cx| {
-                                this.skin_thumbnail_cache.update(cx, |cache, _| {
-                                    cache.insert(cache_key_clone.clone(), f, b);
-                                    if let Some(nb) = none_card_back {
-                                        cache.insert_none_card(cache_key_clone.clone(), nb);
-                                    }
-                                });
-                                cx.notify();
-                            });
-                        }
-                    }
-                });
-                self._thumbnail_tasks.insert(cache_key, task);
-            }
-
-            // Lazy load cape thumbnails (render 3D model with active skin + each cape)
-            if let Some(active_skin) = profile.skins.iter().find(|s| s.state.as_ref() == "ACTIVE") {
-                let skin_url: String = active_skin.url.to_string();
-                let skin_url_arc: Arc<str> = skin_url.clone().into();
-                let skin_load_url = if let Some(local) = &active_skin.local_path {
-                    format!("file://{}", local)
-                } else {
-                    skin_url.clone()
-                };
-                let is_slim = active_skin.variant.as_ref() == "SLIM";
-                let thumbnail_cache = self.skin_thumbnail_cache.read(cx);
-                for cape in &profile.capes {
-                    let cape_url: String = cape.url.to_string();
-                    let cache_key: Arc<str> = format!("{}\0{}", skin_url, cape_url).into();
-                    if !thumbnail_cache.contains_cape(&skin_url, &cape_url)
-                        && !self._cape_thumbnail_tasks.contains_key(&cache_key)
-                    {
-                        let client = cx.http_client();
-                        let skin_load_url = skin_load_url.clone();
-                        let cape_url_clone = cape_url.clone();
-                        let skin_url_for_insert = skin_url_arc.clone();
-                        let task = cx.spawn(async move |this, cx| {
-                            use futures::AsyncReadExt;
-                            let skin_bytes: Option<Arc<[u8]>> = if skin_load_url.starts_with("file://") {
-                                std::fs::read(&skin_load_url[7..]).ok().map(|b| Arc::from(b.into_boxed_slice()))
-                            } else if let Ok(mut r) = client.get(&skin_load_url, ().into(), true).await {
-                                let mut bytes = Vec::new();
-                                if r.body_mut().read_to_end(&mut bytes).await.is_ok() {
-                                    Some(Arc::from(bytes.into_boxed_slice()))
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            };
-                            let cape_bytes: Option<Arc<[u8]>> = if let Ok(mut r) = client.get(&cape_url_clone, ().into(), true).await {
-                                let mut bytes = Vec::new();
-                                if r.body_mut().read_to_end(&mut bytes).await.is_ok() {
-                                    Some(Arc::from(bytes.into_boxed_slice()))
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            };
-                            if let (Some(skin), Some(cape)) = (skin_bytes, cape_bytes) {
-                                let mut renderer = SkinRenderer::new(Some(skin), is_slim);
-                                renderer.update_cape(Some(cape));
-                                // Cape cards show back view only; use wider framing to fit whole player + full cape
-                                let back_yaw = std::f32::consts::PI + 0.3;
-                                let front = renderer.render_to_buffer_with_params_ext(200, 200, 0.3, 0.05, true, true);
-                                let back = renderer.render_to_buffer_with_params_ext(200, 200, back_yaw, 0.05, true, true);
-                                if let (Some(f), Some(b)) = (front, back) {
-                                    let _ = this.update(cx, |this, cx| {
-                                        this.skin_thumbnail_cache.update(cx, |c, _| {
-                                            c.insert_cape(
-                                                skin_url_for_insert.clone(),
-                                                cape_url_clone.clone().into(),
-                                                f,
-                                                b,
-                                            );
-                                        });
-                                        cx.notify();
-                                    });
-                                }
-                            }
-                        });
-                        self._cape_thumbnail_tasks.insert(cache_key, task);
-                    }
+                if page.request_account_skin_for == Some(uuid) {
+                    page.request_account_skin = None;
+                    page.request_account_skin_for = None;
                 }
-                let _ = thumbnail_cache;
-            }
+                cx.notify();
+            });
+        }));
+        self.request_account_skin_for = Some(uuid);
+    }
+
+    fn has_pending_login(&self) -> bool {
+        if let Some(pending_login) = &self.pending_login {
+            !pending_login.get_finished_at().is_some() && !pending_login.has_requested_cancel()
+        } else {
+            false
         }
     }
 }
 
 impl Page for SkinsPage {
-    fn controls(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let SkinPageState::Ready(profile) = &self.state else {
-            return gpui::Empty.into_any_element();
-        };
-
-        let active_skin_id = Self::active_skin_id(profile);
-        let active_cape_id = Self::active_cape_id(profile);
-        let can_apply_changes =
-            self.selected_skin_id != active_skin_id || self.selected_cape_id != active_cape_id;
-        let profile = profile.clone();
-        let account_name: String = (&*profile.name).to_string();
-        let skins_folder = self.launcher_dir.join("owned_skins").join(&account_name);
-
-        h_flex()
-            .gap_2()
-            .child(
-                Button::new("reset_skin_changes")
-                    .label("Reset")
-                    .disabled(!can_apply_changes)
-                    .on_click({
-                        let profile = profile.clone();
-                        cx.listener(move |this, _, _, cx| {
-                            this.reset_pending_selection(&profile, cx);
-                            cx.notify();
-                        })
-                    }),
-            )
-            .child(
-                Button::new("apply_skin_changes")
-                    .label("Apply Changes")
-                    .success()
-                    .disabled(!can_apply_changes)
-                    .on_click({
-                        let profile = profile.clone();
-                        cx.listener(move |this, _, _, cx| {
-                            this.apply_pending_selection(&profile);
-                            this.load_profile(cx);
-                            cx.notify();
-                        })
-                    }),
-            )
-            .child(
-                Button::new("open_skins_folder")
-                    .ml_2()
-                    .icon(IconName::FolderOpen)
-                    .label("Open skins folder")
-                    .on_click(move |_button, window, cx| {
-                        crate::open_folder(&skins_folder, window, cx);
-                    }),
-            )
-            .into_any_element()
+    fn controls(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
     }
 
     fn scrollable(&self, _cx: &App) -> bool {
-        true
+        false
     }
 }
 
 impl Render for SkinsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let content = v_flex().p_4().gap_4().children(match &self.state {
-            SkinPageState::Loading => {
-                vec![div().child("Loading...").into_any_element()]
-            },
-            SkinPageState::NotAuthenticated => {
-                vec![
-                    div().child("Not Authenticated").into_any_element(),
-                    div().child("Please log in with a Minecraft account to manage skins.").into_any_element(),
-                ]
-            },
-            SkinPageState::Ready(profile) => {
-                let optifine_cape_in_preview = self.optifine_cape_in_preview;
-                let active_cape_id = Self::active_cape_id(profile);
-                let left_panel = v_flex()
-                    .w(px(320.0))
-                    .flex_shrink_0()
-                    .p_4()
-                    .bg(gpui::rgba(0x1e1e24ff))
-                    .rounded_lg()
-                    .child(div().text_xl().font_weight(FontWeight::BOLD).child("3D Preview"))
-                    .child(
-                        div()
-                            .mt_4()
-                            .text_color(gpui::rgba(0xccccccff))
-                            .child("(Drag to rotate)"),
-                    )
-                    .child(
-                        div()
-                            .w(px(288.0))
-                            .h(px(288.0))
-                            .flex_shrink_0()
-                            .overflow_hidden()
-                            .child(self.skin_renderer.clone()),
-                    )
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .mt_4()
-                            .pt_4()
-                            .border_t_1()
-                            .border_color(gpui::rgba(0x404050ff))
-                            .child(
-                                Checkbox::new("optifine_cape_preview")
-                                    .label("Show OptiFine cape in preview")
-                                    .checked(optifine_cape_in_preview)
-                                    .on_click(cx.listener(move |this, value, _, cx| {
-                                        this.optifine_cape_in_preview = *value;
-                                        this.last_rendered_optifine_username = None;
-                                        this.update_skin_renderer(cx);
-                                        cx.notify();
-                                    })),
-                            ),
-                    );
+        let theme = cx.theme();
+        let secondary = theme.secondary;
+        let secondary_hover = theme.secondary_hover;
+        let radius = theme.radius;
+        let list_active = theme.list_active;
+        let list_active_border = theme.list_active_border;
+        let secondary_skeleton = theme.secondary_foreground.opacity(0.5);
 
-                let add_skin_card = div()
-                    .flex()
-                    .flex_col()
-                    .w(px(155.0))
-                    .h(px(155.0))
-                    .bg(gpui::rgba(0x2d2d35ff))
-                    .rounded_lg()
-                    .items_center()
-                    .justify_center()
+        if self.pending_apply_cape
+            && let Some((_, cape_url)) = &self.selected_cape
+        {
+            let uri: SharedUri = SharedString::new(cape_url.clone()).into();
+            let bytes = window.use_asset::<DataAssetLoader>(&Resource::Uri(uri), cx).flatten();
+            if let Some(bytes) = bytes {
+                self.player_model_widget.update(cx, |widget, cx| {
+                    widget.set_cape(cx, Some(bytes));
+                });
+                self.pending_apply_cape = false;
+            }
+        }
+
+        let mut library = v_flex()
+            .flex_1()
+            .min_w_0()
+            .overflow_hidden()
+            .w_full()
+            .text_xl()
+            .content_start()
+            .items_start();
+
+        let mut active_skin = None;
+        let mut active_skin_variant = None;
+        let controls;
+
+        let selected_account = self.data.accounts.read(cx).selected_account.clone();
+        if let Some(account) = selected_account {
+            let uuid = account.uuid;
+            let username = account.username(InterfaceConfig::get(cx).hide_usernames);
+            let optifine_url = optifine_cape_url(&account.username);
+            let optifine_uri: SharedUri = SharedString::new(optifine_url).into();
+            let optifine_cape = window.use_asset::<DataAssetLoader>(&Resource::Uri(optifine_uri), cx).flatten();
+            if self.optifine_cape_in_preview {
+                self.player_model_widget.update(cx, |widget, cx| {
+                    widget.set_cape(cx, optifine_cape.clone());
+                });
+            }
+            if account.offline {
+                controls = t::skins::no_offline().into_any_element();
+            } else if self.applying_to_account == Some(uuid) {
+                if let Some(AccountSkinResult::Success { skin, variant }) = self.account_skins.get(&uuid) {
+                    active_skin = skin.clone();
+                    active_skin_variant = Some(*variant);
+                }
+
+                controls = h_flex()
                     .gap_2()
-                    .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
-                        upload_skin_modal::open(this.backend_handle.clone(), window, cx);
-                    }))
-                    .child(div().text_3xl().child("+"))
-                    .child(div().text_sm().child("Add a skin"));
-
-                let mut skin_cards = Vec::new();
-                skin_cards.push(add_skin_card.into_any_element());
-                
-                for skin in profile.skins.iter().filter(|skin| {
-                    // Skip local skins whose file was deleted (card should disappear immediately)
-                    if let Some(local) = &skin.local_path {
-                        let path = Path::new(&**local);
-                        if !path.exists() {
-                            return false;
-                        }
-                    }
-                    true
-                }) {
-                    let is_equipped = skin.state.as_ref() == "ACTIVE";
-                    let is_selected = self.selected_skin_id.as_ref() == Some(&skin.id);
-                    let thumbnail_cache = self.skin_thumbnail_cache.read(cx);
-                    let (front, back) = thumbnail_cache.get(&skin.url).map(|(f, b)| (Some(f.clone()), Some(b.clone()))).unwrap_or((None, None));
-                    let _ = thumbnail_cache;
-                    let skin_id = skin.id.clone();
-                    let this_entity = cx.entity().clone();
-                    
-                    // Get file path for reveal (as string)
-                    let skin_file_path_str = if let Some(local) = &skin.local_path {
-                        let local_str: String = (&*local).to_string();
-                        let path = Path::new(&local_str);
-                        if path.exists() {
-                            Some(local_str)
+                    .child(Button::new("reset-changes").label(t::common::reset()).disabled(true))
+                    .child(
+                        Button::new("apply-changes")
+                            .flex_1()
+                            .label(t::common::apply_changes())
+                            .success()
+                            .icon(Spinner::new())
+                            .loading(true),
+                    )
+                    .into_any_element();
+            } else {
+                match self.account_skins.get(&uuid) {
+                    Some(AccountSkinResult::Success { skin, variant }) => {
+                        active_skin = skin.clone();
+                        active_skin_variant = Some(*variant);
+                        let selected_variant = self.player_model_widget.read(cx).get_variant();
+                        let can_apply_changes = if let Some(skin) = skin {
+                            *skin != self.selected_skin
+                                || *variant != selected_variant
+                                || self.active_cape != self.selected_cape
                         } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
+                            self.active_cape != self.selected_cape
+                        };
+                        controls = h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("reset-changes")
+                                    .label(t::common::reset())
+                                    .disabled(!can_apply_changes)
+                                    .on_click({
+                                        let skin = skin.clone();
+                                        let variant = *variant;
+                                        cx.listener(move |page, _, _, cx| {
+                                            if let Some((cape_id, cape_url)) = &page.active_cape {
+                                                page.select_cape(*cape_id, cape_url.clone());
+                                            } else {
+                                                page.select_no_cape(cx);
+                                            }
 
-                    skin_cards.push(
-                        crate::component::skin_card::render_skin_card(
-                            skin.id.clone(),
-                            is_selected,
-                            is_equipped,
-                            skin.url.clone(),
-                            skin.variant.clone(),
-                            front,
-                            back,
-                            move |_, cx| {
-                                let _ = this_entity.update(cx, |this, cx| {
-                                    this.selected_skin_id = Some(skin_id.clone());
-                                    this.update_skin_renderer(cx);
-                                    cx.notify();
+                                            if let Some(skin) = skin.clone() {
+                                                page.select_skin(skin, variant, cx);
+                                            }
+                                            cx.notify();
+                                        })
+                                    }),
+                            )
+                            .child(
+                                Button::new("apply-changes")
+                                    .flex_1()
+                                    .label(t::common::apply_changes())
+                                    .success()
+                                    .disabled(!can_apply_changes)
+                                    .on_click({
+                                        let skin = skin.clone();
+                                        cx.listener(move |page, _, _, cx| {
+                                            if let Some(skin) = &skin
+                                                && skin != &page.selected_skin
+                                            {
+                                                page.data.backend_handle.send(MessageToBackend::SetAccountSkin {
+                                                    account: uuid,
+                                                    skin: page.selected_skin.clone(),
+                                                    variant: selected_variant,
+                                                });
+                                            }
+                                            if page.active_cape != page.selected_cape {
+                                                page.data.backend_handle.send(MessageToBackend::SetAccountCape {
+                                                    account: uuid,
+                                                    cape: page.selected_cape.as_ref().map(|(id, _)| *id),
+                                                });
+                                            }
+                                            page.applying_to_account = Some(uuid);
+                                            page.request_account_skin(uuid, cx);
+                                            cx.notify();
+                                        })
+                                    }),
+                            )
+                            .into_any_element();
+                    },
+                    Some(AccountSkinResult::NeedsLogin) => {
+                        controls = Button::new("login")
+                            .label(t::skins::login_to_view_edit(&username))
+                            .success()
+                            .on_click(cx.listener(move |page, _, window, cx| {
+                                let modal_action = ModalAction::default();
+                                page.pending_login = Some(modal_action.clone());
+                                page.account_skins.remove(&uuid);
+                                page.account_capes.remove(&uuid);
+
+                                page.data.backend_handle.send(MessageToBackend::Login {
+                                    account: uuid,
+                                    modal_action: modal_action.clone(),
                                 });
-                            },
-                            skin_file_path_str.map(|file_path| {
-                                let fp = file_path.clone();
-                                move |_: &mut Window, _: &mut App| {
-                                    let path = Path::new(&fp).to_path_buf();
-                                    std::thread::spawn(move || {
-                                        #[cfg(target_os = "macos")]
-                                        {
-                                            use std::process::Command;
-                                            let _ = Command::new("open").args(["-R", &path.to_string_lossy()]).spawn();
-                                        }
-                                        #[cfg(target_os = "windows")]
-                                        {
-                                            use std::process::Command;
-                                            let _ = Command::new("explorer").args(["/select,", &path.to_string_lossy()]).spawn();
-                                        }
-                                        #[cfg(target_os = "linux")]
-                                        {
-                                            use std::process::Command;
-                                            let _ = Command::new("xdg-open").arg(path.parent().unwrap_or(&path)).spawn();
-                                        }
+
+                                let title: SharedString = t::login::title().into();
+                                crate::modals::generic::show_modal(
+                                    window,
+                                    cx,
+                                    title,
+                                    t::login::error().into(),
+                                    modal_action,
+                                );
+                            }))
+                            .into_any_element();
+                    },
+                    Some(AccountSkinResult::UnableToLoadSkin) => {
+                        controls = t::skins::unable_to_load(&username).into_any_element();
+                    },
+                    None => {
+                        if self.can_request_account_skin(uuid) {
+                            self.request_account_skin(uuid, cx);
+                        }
+                        controls = t::skins::loading(&username).into_any_element();
+                    },
+                }
+            }
+
+            if let Some(AccountCapesResult::Success { capes }) = self.account_capes.get(&uuid) {
+                if !capes.is_empty() {
+                    if InterfaceConfig::get(cx).collapse_capes_in_skins_page {
+                        library = library.child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    h_flex()
+                                        .id("toggle-capes")
+                                        .cursor_pointer()
+                                        .child(t::skins::capes())
+                                        .child(PandoraIcon::ChevronLeft)
+                                        .on_click(|_, _, cx| {
+                                            InterfaceConfig::get_mut(cx).collapse_capes_in_skins_page = false;
+                                        }),
+                                )
+                                .when(optifine_cape.is_some(), |this| {
+                                    this.child(
+                                        Button::new("optifine-cape-preview")
+                                            .label("Show OptiFine cape")
+                                            .selected(self.optifine_cape_in_preview)
+                                            .small()
+                                            .compact()
+                                            .on_click(cx.listener(|page, _, _, cx| {
+                                                if page.optifine_cape_in_preview {
+                                                    page.optifine_cape_in_preview = false;
+                                                    if page.selected_cape.is_some() {
+                                                        page.pending_apply_cape = true;
+                                                    } else {
+                                                        page.player_model_widget.update(cx, |widget, cx| {
+                                                            widget.set_cape(cx, None);
+                                                        });
+                                                    }
+                                                } else {
+                                                    page.optifine_cape_in_preview = true;
+                                                }
+                                                cx.notify();
+                                            })),
+                                    )
+                                }),
+                        )
+                    } else {
+                        let cape_buttons = capes
+                            .iter()
+                            .enumerate()
+                            .map(|(i, cape)| {
+                                let selected = self.selected_cape.as_ref().map(|(id, _)| *id) == Some(cape.id);
+                                let active = self.active_cape.as_ref().map(|(id, _)| *id) == Some(cape.id);
+                                let padding = if selected { px(7.0) } else { px(8.0) };
+                                let button = v_flex()
+                                    .gap_1()
+                                    .size(px(144.0))
+                                    .min_size(px(144.0))
+                                    .max_size(px(144.0))
+                                    .text_base()
+                                    .id(("select-cape", i))
+                                    .rounded(radius)
+                                    .items_center()
+                                    .justify_center()
+                                    .p(padding)
+                                    .when_else(
+                                        selected,
+                                        |this| this.bg(list_active).pt_0().border_1().border_color(list_active_border),
+                                        |this| this.bg(secondary).pt_px().hover(|style| style.bg(secondary_hover)),
+                                    )
+                                    .when(active, |this| {
+                                        this.child(
+                                            Icon::new(PandoraIcon::Flag).absolute().right(padding).bottom(padding),
+                                        )
+                                    })
+                                    .child(ShrinkingText::new(cape.alias.clone().into()))
+                                    .on_click({
+                                        let cape_url = cape.url.clone();
+                                        let uuid = cape.id;
+                                        cx.listener(move |page, _, _, cx| {
+                                            if page.selected_cape.as_ref().map(|(id, _)| *id) == Some(uuid) {
+                                                page.select_no_cape(cx);
+                                            } else {
+                                                page.select_cape(uuid, cape_url.clone());
+                                            }
+                                            cx.notify();
+                                        })
                                     });
+
+                                let uri: SharedUri = SharedString::new(cape.url.clone()).into();
+                                let bytes =
+                                    cx.fetch_asset::<DataAssetLoader>(&Resource::Uri(uri)).0.now_or_never().flatten();
+                                if let Some(bytes) = bytes {
+                                    let variant = self.player_model_widget.read(cx).get_variant();
+                                    let thumbnail = self.skin_thumbnail_cache.update(cx, |cache, cx| {
+                                        cache.get_cape_or_queue(
+                                            &self.selected_skin,
+                                            variant,
+                                            cape.url.clone(),
+                                            &bytes,
+                                            cx,
+                                        )
+                                    });
+                                    let thumb_w = px(crate::skin_thumbnail_cache::THUMB_WIDTH as f32);
+                                    let thumb_h = px(crate::skin_thumbnail_cache::THUMB_HEIGHT as f32);
+                                    if let Some(img) = thumbnail {
+                                        button.child(gpui::img(img).w(thumb_w).h(thumb_h))
+                                    } else {
+                                        button.child(Skeleton::new().w(thumb_w).h(thumb_h).bg(secondary_skeleton))
+                                    }
+                                } else {
+                                    let thumb_w = px(crate::skin_thumbnail_cache::THUMB_WIDTH as f32);
+                                    let thumb_h = px(crate::skin_thumbnail_cache::THUMB_HEIGHT as f32);
+                                    button.child(Skeleton::new().w(thumb_w).h(thumb_h).bg(secondary_skeleton))
+                                }
+                            })
+                            .collect::<Vec<_>>();
+
+                        library = library
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        h_flex()
+                                            .id("toggle-capes")
+                                            .cursor_pointer()
+                                            .child(t::skins::capes())
+                                            .child(PandoraIcon::ChevronDown)
+                                            .on_click(|_, _, cx| {
+                                                InterfaceConfig::get_mut(cx).collapse_capes_in_skins_page = true;
+                                            }),
+                                    )
+                                    .when(optifine_cape.is_some(), |this| {
+                                        this.child(
+                                            Button::new("optifine-cape-preview")
+                                                .label("Show OptiFine cape")
+                                                .selected(self.optifine_cape_in_preview)
+                                                .small()
+                                                .compact()
+                                                .on_click(cx.listener(|page, _, _, cx| {
+                                                    if page.optifine_cape_in_preview {
+                                                        page.optifine_cape_in_preview = false;
+                                                        if page.selected_cape.is_some() {
+                                                            page.pending_apply_cape = true;
+                                                        } else {
+                                                            page.player_model_widget.update(cx, |widget, cx| {
+                                                                widget.set_cape(cx, None);
+                                                            });
+                                                        }
+                                                    } else {
+                                                        page.optifine_cape_in_preview = true;
+                                                    }
+                                                    cx.notify();
+                                                })),
+                                        )
+                                    }),
+                            )
+                            .child(h_flex().w_full().mb_4().gap_2().flex_wrap().children(cape_buttons))
+                    }
+                }
+            }
+        } else {
+            controls = "Select an account to view/edit skins".into_any_element();
+        }
+
+        let skin_library = self.data.use_skin_library(cx).cloned();
+        let skin_library_iter = skin_library.iter().map(|l| l.skins.iter()).flatten();
+        let skins = active_skin.iter().chain(skin_library_iter).enumerate();
+
+        library = library
+            .child(
+                h_flex()
+                    .flex_wrap()
+                    .gap_x_3()
+                    .gap_y_1()
+                    .mb_1()
+                    .child(h_flex().max_h_6().child(t::skins::title()))
+                    .child(
+                        Button::new("add-file")
+                            .label(t::skins::add_from_file())
+                            .icon(PandoraIcon::File)
+                            .success()
+                            .small()
+                            .compact()
+                            .on_click({
+                                cx.listener(move |page, _, window, cx| {
+                                    let receiver = cx.prompt_for_paths(PathPromptOptions {
+                                        files: true,
+                                        directories: false,
+                                        multiple: true,
+                                        prompt: Some(t::skins::select_skin().into()),
+                                    });
+
+                                    let entity = cx.entity();
+                                    let add_from_file_task = window.spawn(cx, async move |cx| {
+                                        let Ok(result) = receiver.await else {
+                                            return;
+                                        };
+                                        _ = cx.update_window_entity(&entity, move |this, window, cx| match result {
+                                            Ok(Some(paths)) => {
+                                                for path in paths {
+                                                    this.data.backend_handle.send(MessageToBackend::AddToSkinLibrary {
+                                                        source: UrlOrFile::File { path },
+                                                    });
+                                                }
+                                            },
+                                            Ok(None) => {},
+                                            Err(error) => {
+                                                let error = format!("{}", error);
+                                                let notification = Notification::new()
+                                                    .autohide(false)
+                                                    .with_type(NotificationType::Error)
+                                                    .title(error);
+                                                window.push_notification(notification, cx);
+                                            },
+                                        });
+                                    });
+                                    page.add_from_file_task = add_from_file_task;
+                                })
+                            }),
+                    )
+                    .child(
+                        Popover::new("copy-skin-popover")
+                            .trigger(
+                                Button::new("copy-skin")
+                                    .label(t::skins::copy_from_player())
+                                    .icon(PandoraIcon::Download)
+                                    .success()
+                                    .small()
+                                    .compact(),
+                            )
+                            .gap_2()
+                            .w_full()
+                            .items_start()
+                            .child(Input::new(&self.copy_skin_input).w_128())
+                            .open(self.copy_skin_popover_open)
+                            .on_open_change({
+                                let copy_skin_input = self.copy_skin_input.clone();
+                                cx.listener(move |page, open, window, cx| {
+                                    if *open {
+                                        copy_skin_input.update(cx, |input, cx| {
+                                            input.focus(window, cx);
+                                        });
+                                    }
+                                    page.copy_skin_popover_open = *open;
+                                })
+                            })
+                            .child(Button::new("copy-skin-confirm").label(t::skins::copy()).success().on_click({
+                                cx.listener(move |page, _, _, cx| {
+                                    let value = page.copy_skin_input.read(cx).value();
+                                    let username: Arc<str> = value.into();
+                                    if !username.trim().is_empty() {
+                                        page.data.backend_handle.send(MessageToBackend::CopyPlayerSkin { username });
+                                    }
+                                    page.copy_skin_popover_open = false;
+                                    cx.notify();
+                                })
+                            })),
+                    )
+                    .child(
+                        Button::new("add-url")
+                            .label(t::skins::add_from_url())
+                            .icon(PandoraIcon::Link)
+                            .success()
+                            .small()
+                            .compact()
+                            .on_click({
+                                let backend_handle = self.data.backend_handle.clone();
+                                move |_, window, cx| {
+                                    crate::modals::upload_skin_modal::open(backend_handle.clone(), window, cx);
                                 }
                             }),
-                            if !is_equipped && skin.local_path.is_some() {
-                                let backend_handle = self.backend_handle.clone();
-                                let skin_id = skin.id.clone();
-                                Some(move |click: &ClickEvent, window: &mut Window, cx: &mut App| {
-                                    if InterfaceConfig::get(cx).quick_delete_skins && click.modifiers().shift {
-                                        backend_handle.send(MessageToBackend::DeleteOwnedSkin {
-                                            skin_id: skin_id.clone(),
-                                        });
-                                    } else {
-                                        delete_skin::open_delete_skin(
-                                            skin_id.clone(),
-                                            backend_handle.clone(),
-                                            window,
-                                            cx,
-                                        );
-                                    }
+                    )
+                    .child(
+                        Button::new("open-folder")
+                            .label(t::skins::open_folder())
+                            .icon(PandoraIcon::FolderOpen)
+                            .info()
+                            .small()
+                            .compact()
+                            .when_some(skin_library.as_ref(), |this, skin_library| {
+                                let folder = skin_library.folder.clone();
+                                this.on_click(move |_, window, cx| {
+                                    crate::open_folder(&folder, window, cx);
                                 })
+                            }),
+                    )
+                    .child(
+                        Button::new("toggle-3d")
+                            .icon(if InterfaceConfig::get(cx).skin_list_show_3d {
+                                PandoraIcon::Image
                             } else {
-                                None
-                            },
-                        ).into_any_element()
-                    );
-                }
-
-                let has_active_cape = active_cape_id.is_some();
-                let active_skin_url = profile
-                    .skins
-                    .iter()
-                    .find(|s| s.state.as_ref() == "ACTIVE")
-                    .map(|s| s.url.to_string())
-                    .unwrap_or_default();
-                let thumbnail_cache = self.skin_thumbnail_cache.read(cx);
-                // None card: capeless skin backside with same framing as cape thumbnails
-                let none_card_back = thumbnail_cache.get_none_card(&active_skin_url);
-                let mut cape_cards: Vec<_> = Vec::new();
-                let this_entity = cx.entity().clone();
-                cape_cards.push(
-                    cape_card::render_cape_card(
-                        "none".into(),
-                        self.selected_cape_id.is_none(),
-                        !has_active_cape,
-                        None,
-                        none_card_back,
-                        "None",
-                        move |_, cx| {
-                            let _ = this_entity.update(cx, |this, cx| {
-                                this.selected_cape_id = None;
-                                this.update_skin_renderer(cx);
-                                cx.notify();
-                            });
-                        },
-                    ).into_any_element(),
-                );
-                for cape in &profile.capes {
-                    let cape_uuid = uuid::Uuid::parse_str(cape.id.as_ref()).ok();
-                    let is_equipped = cape.state.as_ref() == "ACTIVE";
-                    let is_selected = cape_uuid.is_some() && self.selected_cape_id == cape_uuid;
-                    let (front, back) = thumbnail_cache
-                        .get_cape(&active_skin_url, &*cape.url)
-                        .map(|(f, b)| (Some(f.clone()), Some(b.clone())))
-                        .unwrap_or((None, None));
-                    let this_entity = cx.entity().clone();
-                    cape_cards.push(
-                        cape_card::render_cape_card(
-                            cape.id.clone(),
-                            is_selected,
-                            is_equipped,
-                            front,
-                            back,
-                            "Loading...",
-                            move |_, cx| {
-                                if let Some(uuid) = cape_uuid {
-                                    let _ = this_entity.update(cx, |this, cx| {
-                                        this.selected_cape_id = Some(uuid);
-                                        this.update_skin_renderer(cx);
-                                        cx.notify();
-                                    });
-                                }
-                            },
-                        ).into_any_element(),
-                    );
-                }
-                let _ = thumbnail_cache;
-
-                let total_skins = skin_cards.len();
-                let (skins_visible, has_more_skins) = if self.skins_expanded || total_skins <= INITIAL_SKINS_VISIBLE {
-                    (skin_cards, false)
+                                PandoraIcon::Box
+                            })
+                            .label(if InterfaceConfig::get(cx).skin_list_show_3d {
+                                t::skins::switch_view::texture()
+                            } else {
+                                t::skins::switch_view::model()
+                            })
+                            .small()
+                            .compact()
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                InterfaceConfig::get_mut(cx).skin_list_show_3d ^= true;
+                            })),
+                    ),
+            )
+            .child(h_flex().w_full().gap_2().flex_wrap().children(skins.filter_map(|(i, skin)| {
+                let selected = &self.selected_skin == skin;
+                let active = if let Some(active_skin) = &active_skin {
+                    active_skin == skin
                 } else {
-                    let visible: Vec<_> = skin_cards.into_iter().take(INITIAL_SKINS_VISIBLE).collect();
-                    (visible, total_skins > INITIAL_SKINS_VISIBLE)
+                    false
+                };
+                if active && i > 0 {
+                    return None;
+                }
+
+                let variant = if active && let Some(v) = active_skin_variant {
+                    v
+                } else {
+                    crate::skin_renderer::determine_skin_variant(skin).unwrap_or(SkinVariant::Classic)
                 };
 
-                let right_panel = v_flex()
-                    .flex_1()
-                    .h_full()
-                    .overflow_y_scrollbar()
-                    .pr_4()
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .mb_4()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_xl()
-                                    .font_weight(FontWeight::BOLD)
-                                    .child(format!("{}'s Skins", profile.name)),
-                            ),
+                let show_3d = InterfaceConfig::get(cx).skin_list_show_3d;
+
+                let padding = if selected { px(7.0) } else { px(8.0) };
+
+                let hovering = self.hovering_skin_idx == Some(i);
+                let skin_child: AnyElement = if show_3d {
+                    let thumbnails =
+                        self.skin_thumbnail_cache.update(cx, |cache, cx| cache.get_or_queue(skin, variant, cx));
+                    let thumb_w = px(crate::skin_thumbnail_cache::THUMB_WIDTH as f32);
+                    let thumb_h = px(crate::skin_thumbnail_cache::THUMB_HEIGHT as f32);
+                    if let Some((front, back)) = thumbnails {
+                        let img = if hovering { back } else { front };
+                        gpui::img(img).w(thumb_w).h(thumb_h).into_any_element()
+                    } else {
+                        Skeleton::new().w(thumb_w).h(thumb_h).bg(secondary_skeleton).into_any_element()
+                    }
+                } else {
+                    crate::png_render_cache::render_with_transform(
+                        skin.clone(),
+                        ImageTransformation::ResizeToWidth { width: 128 },
+                        cx,
                     )
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .mb_2()
-                            .child(
-                                div()
-                                    .text_lg()
-                                    .font_weight(FontWeight::BOLD)
-                                    .child("Owned Capes"),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_4()
-                            .flex_wrap()
-                            .children(cape_cards)
-                    )
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_weight(FontWeight::BOLD)
-                            .mb_2()
-                            .mt_6()
-                            .child("Owned Skins"),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_4()
-                            .flex_wrap()
-                            .children(skins_visible)
-                    )
-                    .when(has_more_skins, |this| {
-                        this.child(
-                            Button::new("show_more_skins")
-                                .mt_4()
-                                .label("Show more")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.skins_expanded = true;
-                                    cx.notify();
-                                })),
+                    .into_any_element()
+                };
+
+                Some(
+                    div()
+                        .id(("select-skin", i))
+                        .rounded(radius)
+                        .mb_4()
+                        .text_base()
+                        .p(padding)
+                        .when_else(
+                            selected,
+                            |this| this.bg(list_active).border_1().border_color(list_active_border),
+                            |this| this.bg(secondary).hover(|style| style.bg(secondary_hover)),
                         )
-                    });
-
-                let skin_cards_flex = h_flex()
-                    .w_full()
-                    .h_full()
-                    .gap_6()
-                    .items_start()
-                    .on_mouse_up(gpui::MouseButton::Left, {
-                        let skin_renderer = self.skin_renderer.clone();
-                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
-                            skin_renderer.update(cx, |r, _| {
-                                r.is_dragging = false;
-                                r.is_mouse_down = false;
-                                r.last_mouse = None;
-                            });
+                        .child(skin_child)
+                        .when_else(
+                            active,
+                            |this| this.child(Icon::new(PandoraIcon::Flag).absolute().right(padding).bottom(padding)),
+                            |this| {
+                                this.child(
+                                    Button::new("delete-skin")
+                                        .icon(PandoraIcon::Trash2)
+                                        .block_mouse_except_scroll()
+                                        .danger()
+                                        .outline()
+                                        .compact()
+                                        .absolute()
+                                        .small()
+                                        .left(padding)
+                                        .bottom(padding)
+                                        .on_click({
+                                            let skin = skin.clone();
+                                            let active_skin = active_skin.clone();
+                                            cx.listener(move |page, _, window, cx| {
+                                                page.data.backend_handle.send(
+                                                    MessageToBackend::RemoveFromSkinLibrary { skin: { skin.clone() } },
+                                                );
+                                                cx.stop_propagation();
+                                                window.prevent_default();
+                                                if skin == page.selected_skin {
+                                                    if let Some(active_skin) = active_skin.clone() {
+                                                        let variant =
+                                                            if let Some(active_skin_variant) = active_skin_variant {
+                                                                active_skin_variant
+                                                            } else {
+                                                                determine_skin_variant(&active_skin)
+                                                                    .unwrap_or(SkinVariant::Classic)
+                                                            };
+                                                        page.select_skin(active_skin, variant, cx);
+                                                    }
+                                                }
+                                            })
+                                        }),
+                                )
+                            },
+                        )
+                        .on_click({
+                            let skin = skin.clone();
+                            cx.listener(move |page, _, _, cx| {
+                                let variant = if active && let Some(active_skin_variant) = active_skin_variant {
+                                    active_skin_variant
+                                } else {
+                                    crate::skin_renderer::determine_skin_variant(&skin).unwrap_or(SkinVariant::Classic)
+                                };
+                                page.select_skin(skin.clone(), variant, cx);
+                            })
                         })
-                    })
-                    .on_mouse_up(gpui::MouseButton::Right, {
-                        let skin_renderer = self.skin_renderer.clone();
-                        cx.listener(move |_, _: &MouseUpEvent, _, cx| {
-                            skin_renderer.update(cx, |r, _| {
-                                r.is_dragging = false;
-                                r.is_mouse_down = false;
-                                r.last_mouse = None;
-                            });
-                        })
-                    })
-                    .child(left_panel)
-                    .child(right_panel);
+                        .on_hover(cx.listener(move |page, hovered: &bool, _, cx| {
+                            if *hovered {
+                                page.hovering_skin_idx = Some(i);
+                            } else if page.hovering_skin_idx == Some(i) {
+                                page.hovering_skin_idx = None;
+                            }
+                            cx.notify();
+                        })),
+                )
+            })));
 
-                vec![skin_cards_flex.into_any_element()]
-            },
-        });
-
-        let inner = v_flex()
+        h_flex()
+            .p_4()
             .gap_4()
-            .h_full()
-            .child(content.flex_1().min_h_0());
-        let page_type = PageType::Skins;
-        let page_path = InterfaceConfig::get(cx).page_path.clone();
-        let scrollable = self.scrollable(cx);
-        let controls = self.controls(window, cx);
-        page_layout(page_type, page_path, controls, scrollable, inner)
+            .child(
+                v_flex()
+                    .gap_2()
+                    .w(px(220.0))
+                    .flex_shrink_0()
+                    .child(controls)
+                    .child(self.player_model_widget.clone()),
+            )
+            .child(library.overflow_y_scrollbar())
+            .overflow_hidden()
     }
 }

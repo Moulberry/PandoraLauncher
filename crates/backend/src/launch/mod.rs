@@ -1,28 +1,61 @@
 use std::{
-    borrow::Cow, cmp::Ordering, collections::{BTreeSet, HashMap, HashSet}, ffi::{OsStr, OsString}, fs::File, io::Write, path::{Path, PathBuf}, process::{Child, Command, Stdio}, sync::{Arc, OnceLock, atomic::AtomicBool}
+    borrow::Cow,
+    cmp::Ordering,
+    collections::{BTreeSet, HashMap, HashSet},
+    ffi::{OsStr, OsString},
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+    process::Stdio,
+    sync::{Arc, OnceLock, atomic::AtomicBool},
 };
 
 use bridge::{
-    handle::FrontendHandle, message::{MessageToFrontend, QuickPlayLaunch}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType, ProgressTrackers}, safe_path::SafePath
+    handle::FrontendHandle,
+    message::{MessageToFrontend, QuickPlayLaunch},
+    modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType, ProgressTrackers},
+    safe_path::SafePath,
 };
+#[cfg(windows)]
+use command::PandoraArg;
+use command::{PandoraChild, PandoraCommand, PandoraSandbox};
 use futures::{FutureExt, TryFutureExt};
 use rand::seq::SliceRandom;
 use rc_zip_sync::{ArchiveHandle, ReadZip};
 use regex::Regex;
 use rustc_hash::FxHashMap;
 use schema::{
-    assets_index::AssetsIndex, fabric_launch::FabricLaunch, forge::{ForgeInstallProfile, ForgeInstallProfileLegacy, ForgeSide, VersionFragment}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceConfiguration, InstanceWrapperCommandConfiguration}, java_runtime_component::{JavaRuntimeComponentFile, JavaRuntimeComponentManifest}, loader::Loader, maven::MavenCoordinate, version::{
-        GameLibrary, GameLibraryArtifact, GameLibraryDownloads, GameLibraryExtractOptions, GameLogging, LaunchArgument, LaunchArgumentValue, MinecraftVersion, OsArch, OsName, PartialMinecraftVersion, Rule, RuleAction
-    }, version_manifest::MinecraftVersionManifest
+    assets_index::AssetsIndex,
+    fabric_launch::FabricLaunch,
+    forge::{ForgeInstallProfile, ForgeInstallProfileLegacy, ForgeSide, VersionFragment},
+    instance::{
+        AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceConfiguration, InstanceWrapperCommandConfiguration,
+    },
+    java_runtime_component::{JavaRuntimeComponentFile, JavaRuntimeComponentManifest},
+    loader::Loader,
+    maven::MavenCoordinate,
+    version::{
+        GameLibrary, GameLibraryArtifact, GameLibraryDownloads, GameLibraryExtractOptions, GameLogging, LaunchArgument,
+        LaunchArgumentValue, MinecraftVersion, OsArch, OsName, PartialMinecraftVersion, Rule, RuleAction,
+    },
+    version_manifest::MinecraftVersionManifest,
 };
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
 use ustr::Ustr;
 
 use crate::{
-    account::MinecraftLoginInfo, directories::LauncherDirectories, launch_wrapper, metadata::{items::{AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem}, manager::{
-        MetaLoadError, MetadataManager,
-    }}
+    account::MinecraftLoginInfo,
+    directories::LauncherDirectories,
+    launch_wrapper,
+    metadata::{
+        items::{
+            AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem,
+            ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem,
+            MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem,
+        },
+        manager::{MetaLoadError, MetadataManager},
+    },
 };
 
 #[derive(Clone)]
@@ -87,10 +120,10 @@ impl Launcher {
         instance_info: InstanceConfiguration,
         quick_play: Option<QuickPlayLaunch>,
         login_info: MinecraftLoginInfo,
-        add_mods: Vec<PathBuf>,
+        read_game_output: bool,
         launch_tracker: &ProgressTracker,
         modal_action: &ModalAction,
-    ) -> Result<Child, LaunchError> {
+    ) -> Result<PandoraChild, LaunchError> {
         log::info!("Launching {:?}", dot_minecraft_path);
 
         launch_tracker.set_total(6);
@@ -121,7 +154,11 @@ impl Launcher {
         launch_rule_context.collect_libraries(&version_info.libraries, &mut artifacts, &mut natives_to_extract);
 
         // Compute natives path based on combined hash of all libraries
-        let natives_dir = self.directories.temp_natives_base_dir.join(calculate_natives_dirname(&artifacts));
+        let mut natives_dirname = calculate_natives_dirname(&artifacts);
+        if instance_info.sandbox {
+            natives_dirname.push_str("-sandbox");
+        }
+        let natives_dir = self.directories.temp_natives_base_dir.join(natives_dirname);
         let _ = std::fs::create_dir_all(&natives_dir);
 
         if add_vanilla_jar == AddVanillaJar::Yes {
@@ -142,8 +179,14 @@ impl Launcher {
             &modal_action.trackers,
             launch_tracker,
         );
-        let load_assets_future =
-            self.load_assets(&self.meta, http_client, &dot_minecraft_path, &version_info, &modal_action.trackers, launch_tracker);
+        let load_assets_future = self.load_assets(
+            &self.meta,
+            http_client,
+            &dot_minecraft_path,
+            &version_info,
+            &modal_action.trackers,
+            launch_tracker,
+        );
         let load_libraries_future =
             self.load_libraries(http_client, &artifacts, &modal_action.trackers, launch_tracker);
         let load_log_configuration = self.load_log_configuration(http_client, version_info.logging.as_ref());
@@ -210,7 +253,7 @@ impl Launcher {
                     }
                 }
             } else {
-                classpath.push(library_path.into_os_string());
+                classpath.push(library_path);
             }
         }
 
@@ -219,6 +262,7 @@ impl Launcher {
             java_path,
             natives_dir,
             libraries_dir: self.directories.libraries_dir.clone(),
+            synced_dir: self.directories.synced_dir.clone(),
             game_dir: dot_minecraft_path,
             log_configs_dir: self.directories.log_configs_dir.clone(),
             sandbox_dir: self.directories.sandbox_dir.clone(),
@@ -229,7 +273,6 @@ impl Launcher {
             log_configuration,
             rule_context: launch_rule_context,
             login_info,
-            add_mods,
         };
 
         if modal_action.has_requested_cancel() {
@@ -238,7 +281,7 @@ impl Launcher {
         }
 
         log::info!("Launching game process");
-        let child = launch_context.launch(&version_info)?;
+        let child = launch_context.launch(&version_info, read_game_output).await?;
 
         launch_tracker.add_count(1);
 
@@ -275,7 +318,8 @@ impl Launcher {
                     if let Some(preferred_version) = instance_info.preferred_loader_version {
                         Ok(preferred_version)
                     } else {
-                        let manifest = self.meta.fetch(&FabricLoaderManifestMetadataItem).map_err(LaunchError::from).await?;
+                        let manifest =
+                            self.meta.fetch(&FabricLoaderManifestMetadataItem).map_err(LaunchError::from).await?;
 
                         let mut latest_loader_version = manifest.0.iter().find(|v| v.stable);
                         if latest_loader_version.is_none() {
@@ -295,10 +339,12 @@ impl Launcher {
                     launch_tracker2.add_count(1);
                     launch_tracker2.notify();
 
-                    let value = meta2.fetch(&FabricLaunchMetadataItem {
-                        minecraft_version,
-                        loader_version,
-                    }).await?;
+                    let value = meta2
+                        .fetch(&FabricLaunchMetadataItem {
+                            minecraft_version,
+                            loader_version,
+                        })
+                        .await?;
 
                     launch_tracker2.add_count(1);
                     launch_tracker2.notify();
@@ -402,18 +448,24 @@ impl Launcher {
                 // Download Minecraft manifest and neoforge installer maven
                 let (minecraft_versions, loader_versions) = futures::future::try_join(
                     self.meta.fetch(&MinecraftVersionManifestMetadataItem),
-                    self.meta.fetch(&ForgeInstallerMavenMetadataItem)
-                ).await?;
+                    self.meta.fetch(&ForgeInstallerMavenMetadataItem),
+                )
+                .await?;
 
-                self.create_forgelike_launch_version(http_client, progress_trackers, launch_tracker, instance_info,
+                self.create_forgelike_launch_version(
+                    http_client,
+                    progress_trackers,
+                    launch_tracker,
+                    instance_info,
                     minecraft_versions,
                     &loader_versions.0,
                     "https://maven.minecraftforge.net/net/minecraftforge/forge/{0}/forge-{0}-installer.jar.sha1",
                     "net/minecraftforge/forge/{0}/forge-{0}-installer.jar",
                     "https://maven.minecraftforge.net/net/minecraftforge/forge/{0}/forge-{0}-installer.jar",
                     true,
-                    false
-                ).await
+                    false,
+                )
+                .await
             },
             Loader::NeoForge => {
                 launch_tracker.add_total(7);
@@ -422,20 +474,25 @@ impl Launcher {
                 // Download Minecraft manifest and neoforge installer maven
                 let (minecraft_versions, loader_versions) = futures::future::try_join(
                     self.meta.fetch(&MinecraftVersionManifestMetadataItem),
-                    self.meta.fetch(&NeoforgeInstallerMavenMetadataItem)
-                ).await?;
+                    self.meta.fetch(&NeoforgeInstallerMavenMetadataItem),
+                )
+                .await?;
 
-                self.create_forgelike_launch_version(http_client, progress_trackers, launch_tracker, instance_info,
+                self.create_forgelike_launch_version(
+                    http_client,
+                    progress_trackers,
+                    launch_tracker,
+                    instance_info,
                     minecraft_versions,
                     &loader_versions.0,
                     "https://maven.neoforged.net/releases/net/neoforged/neoforge/{0}/neoforge-{0}-installer.jar.sha1",
                     "net/neoforged/neoforge/{0}/neoforge-{0}-installer.jar",
                     "https://maven.neoforged.net/releases/net/neoforged/neoforge/{0}/neoforge-{0}-installer.jar",
                     false,
-                    true
-                ).await
+                    true,
+                )
+                .await
             },
-            Loader::Unknown => todo!(),
         }
     }
 
@@ -456,14 +513,16 @@ impl Launcher {
         launch_tracker.add_count(1);
         launch_tracker.notify();
 
-        let Some(version_link) = minecraft_versions.versions.iter().find(|v| v.id == instance_info.minecraft_version) else {
+        let Some(version_link) = minecraft_versions.versions.iter().find(|v| v.id == instance_info.minecraft_version)
+        else {
             return Err(LaunchError::CantFindVersion(instance_info.minecraft_version.as_str()));
         };
 
         let loader_version = if let Some(preferred_loader_version) = instance_info.preferred_loader_version {
             preferred_loader_version
         } else {
-            let mut minecraft_version_parts = VersionFragment::string_to_parts(instance_info.minecraft_version.as_str());
+            let mut minecraft_version_parts =
+                VersionFragment::string_to_parts(instance_info.minecraft_version.as_str());
             if neoforge_versioning {
                 // 1.21.5 -> 21.5
                 // 25w14craftmine -> 0.25w14craftmine
@@ -504,8 +563,9 @@ impl Launcher {
         let installer_hash_url = installer_hash_url.replace("{0}", &loader_version);
         let (base_version, installer_sha1) = futures::future::join(
             self.meta.fetch(&MinecraftVersionMetadataItem(version_link)),
-            Self::download_sha1(http_client, &installer_hash_url)
-        ).await;
+            Self::download_sha1(http_client, &installer_hash_url),
+        )
+        .await;
         let base_version = base_version?;
 
         launch_tracker.add_count(1);
@@ -535,12 +595,14 @@ impl Launcher {
             progress_trackers,
             launch_tracker,
         );
-        let load_installer_library_future = self.load_libraries(http_client, artifacts, progress_trackers, launch_tracker);
+        let load_installer_library_future =
+            self.load_libraries(http_client, artifacts, progress_trackers, launch_tracker);
 
         let (artifact_load_result, java_load_result) = futures::future::try_join(
             load_installer_library_future.map_err(LaunchError::from),
             mojang_java_binary_future.map_err(LaunchError::from),
-        ).await?;
+        )
+        .await?;
         let installer_path = &artifact_load_result[0].1;
         let minecraft_jar_path = &artifact_load_result[1].1;
 
@@ -560,15 +622,36 @@ impl Launcher {
         if install_profile.is_err() {
             if let Ok(install_profile_legacy) = serde_json::from_slice(&install_profile_bytes) {
                 launch_tracker.add_count(1);
-                let ret = self.create_forgelike_install_version_legacy(install_profile_legacy, installer_zip,
-                    base_version, http_client, progress_trackers, launch_tracker, instance_info, check_mirrors).await;
+                let ret = self
+                    .create_forgelike_install_version_legacy(
+                        install_profile_legacy,
+                        installer_zip,
+                        base_version,
+                        http_client,
+                        progress_trackers,
+                        launch_tracker,
+                        instance_info,
+                        check_mirrors,
+                    )
+                    .await;
                 return ret;
             }
         }
 
-        self.create_forgelike_install_version_modern(install_profile?, installer_zip,
-            installer_path, minecraft_jar_path, &java_load_result, base_version, http_client,
-            progress_trackers, launch_tracker, instance_info, check_mirrors).await
+        self.create_forgelike_install_version_modern(
+            install_profile?,
+            installer_zip,
+            installer_path,
+            minecraft_jar_path,
+            &java_load_result,
+            base_version,
+            http_client,
+            progress_trackers,
+            launch_tracker,
+            instance_info,
+            check_mirrors,
+        )
+        .await
     }
 
     async fn create_forgelike_install_version_modern(
@@ -600,8 +683,8 @@ impl Launcher {
         let version: PartialMinecraftVersion = serde_json::from_slice(&version_file.bytes()?)?;
 
         // Download mirror list
-        let mirror = if check_mirrors {
-            Self::download_random_mirror(http_client, &install_profile.mirror_list).await
+        let mirror = if check_mirrors && let Some(mirror_list) = &install_profile.mirror_list {
+            Self::download_random_mirror(http_client, mirror_list).await
         } else {
             None
         };
@@ -610,15 +693,48 @@ impl Launcher {
         launch_tracker.notify();
 
         // Download libraries
-        let libraries = install_profile.libraries.iter().filter_map(|library| {
-            let mut artifact = library.downloads.artifact.clone()?;
-            if let Some(mirror) = &mirror {
-                if artifact.url.starts_with("http") && !artifact.url.starts_with("https://libraries.minecraft.net/") && artifact.url.ends_with(artifact.path.as_str()) {
-                    artifact.url = format!("{}{}", mirror, artifact.path).into();
+        let libraries = install_profile
+            .libraries
+            .iter()
+            .filter_map(|library| {
+                let mut artifact = library.downloads.artifact.clone()?;
+                if let Some(builtin) = installer_zip.by_name(format!("maven/{}", artifact.path)) {
+                    if !path_is_normal(artifact.path.as_str()) {
+                        log::warn!("Refusing to install artifact with illegal path: {}", artifact.path);
+                        return None;
+                    }
+
+                    let path = self.directories.libraries_dir.join(artifact.path);
+
+                    if let Some(sha1) = &artifact.sha1 {
+                        let mut expected_hash = [0u8; 20];
+                        if hex::decode_to_slice(sha1.as_str(), &mut expected_hash).is_ok() {
+                            if crate::check_sha1_hash(&path, expected_hash).unwrap_or(false) {
+                                return None;
+                            }
+                        };
+                    }
+
+                    if let Ok(bytes) = builtin.bytes() {
+                        _ = crate::write_safe(&path, &bytes);
+                    } else {
+                        log::warn!("Unable to copy {} from zip", artifact.path);
+                    }
                 }
-            }
-            Some(artifact)
-        }).collect::<Vec<_>>();
+                if artifact.url.is_empty() {
+                    return None;
+                }
+                if let Some(mirror) = &mirror {
+                    if artifact.url.starts_with("http")
+                        && !artifact.url.starts_with("https://libraries.minecraft.net/")
+                        && artifact.url.ends_with(artifact.path.as_str())
+                    {
+                        artifact.url = format!("{}{}", mirror, artifact.path).into();
+                    }
+                }
+                Some(artifact)
+            })
+            .collect::<Vec<_>>();
 
         self.load_libraries(http_client, &libraries, progress_trackers, launch_tracker).await?;
 
@@ -633,7 +749,7 @@ impl Launcher {
             }
 
             if value.starts_with('[') && value.ends_with(']') {
-                let artifact = MavenCoordinate::create(&value[1..value.len()-1]);
+                let artifact = MavenCoordinate::create(&value[1..value.len() - 1]);
                 let artifact_path = artifact.artifact_path();
                 if let Some(target) = SafePath::new(&artifact_path) {
                     let target = target.to_path(&self.directories.libraries_dir);
@@ -642,7 +758,7 @@ impl Launcher {
                     log::error!("Artifact generated invalid path: {}", artifact_path);
                 }
             } else if value.starts_with('\'') && value.ends_with('\'') {
-                data.insert(key, OsString::from(&value[1..value.len()-1]));
+                data.insert(key, OsString::from(&value[1..value.len() - 1]));
             } else {
                 let mut file_name = &*value;
                 if file_name.starts_with('/') {
@@ -742,16 +858,25 @@ impl Launcher {
             command.stderr(Stdio::inherit());
 
             command.arg("-cp");
-            command.arg(std::env::join_paths(processor.classpath.iter().map(|f| {
-                let artifact = MavenCoordinate::create(&**f);
-                self.directories.libraries_dir.join(artifact.artifact_path()).into_os_string()
-            }).chain(std::iter::once(jar_path.into_os_string()))).unwrap());
+            command.arg(
+                std::env::join_paths(
+                    processor
+                        .classpath
+                        .iter()
+                        .map(|f| {
+                            let artifact = MavenCoordinate::create(&**f);
+                            self.directories.libraries_dir.join(artifact.artifact_path()).into_os_string()
+                        })
+                        .chain(std::iter::once(jar_path.into_os_string())),
+                )
+                .unwrap(),
+            );
 
             command.arg(main_class);
 
             for arg in processor.args.iter() {
                 let expanded = if arg.starts_with('[') && arg.ends_with(']') {
-                    let artifact = MavenCoordinate::create(&arg[1..arg.len()-1]);
+                    let artifact = MavenCoordinate::create(&arg[1..arg.len() - 1]);
                     let artifact_path = artifact.artifact_path();
                     if let Some(target) = SafePath::new(&artifact_path) {
                         let target = target.to_path(&self.directories.libraries_dir);
@@ -784,7 +909,13 @@ impl Launcher {
         launch_tracker.add_count(1);
         launch_tracker.notify();
 
-        Ok((Arc::new(version.apply_to(&base_version)), AddVanillaJar::No))
+        let add_vanilla_jar = if install_profile.processors.is_empty() {
+            AddVanillaJar::Yes
+        } else {
+            AddVanillaJar::No
+        };
+
+        Ok((Arc::new(version.apply_to(&base_version)), add_vanilla_jar))
     }
 
     async fn create_forgelike_install_version_legacy(
@@ -804,7 +935,9 @@ impl Launcher {
 
         // Extract forge jar
         let Some(file) = installer_zip.by_name(&install_profile.install.file_path) else {
-            return Err(LaunchError::MissingFileInZipError(Cow::Owned(install_profile.install.file_path.to_string())));
+            return Err(LaunchError::MissingFileInZipError(Cow::Owned(
+                install_profile.install.file_path.to_string(),
+            )));
         };
         let forge_path = MavenCoordinate::create(&install_profile.install.path).artifact_path();
         if !path_is_normal(forge_path.as_str()) {
@@ -828,15 +961,21 @@ impl Launcher {
 
         // Download libraries with mirror
         if let Some(libraries) = &version.libraries {
-            let libraries = libraries.iter().filter_map(|library| {
-                let mut artifact = library.downloads.artifact.clone()?;
-                if let Some(mirror) = &mirror {
-                    if artifact.url.starts_with("http") && !artifact.url.starts_with("https://libraries.minecraft.net/") && artifact.url.ends_with(artifact.path.as_str()) {
-                        artifact.url = format!("{}{}", mirror, artifact.path).into();
+            let libraries = libraries
+                .iter()
+                .filter_map(|library| {
+                    let mut artifact = library.downloads.artifact.clone()?;
+                    if let Some(mirror) = &mirror {
+                        if artifact.url.starts_with("http")
+                            && !artifact.url.starts_with("https://libraries.minecraft.net/")
+                            && artifact.url.ends_with(artifact.path.as_str())
+                        {
+                            artifact.url = format!("{}{}", mirror, artifact.path).into();
+                        }
                     }
-                }
-                Some(artifact)
-            }).collect::<Vec<_>>();
+                    Some(artifact)
+                })
+                .collect::<Vec<_>>();
 
             self.load_libraries(http_client, &libraries, progress_trackers, launch_tracker).await?;
         }
@@ -845,9 +984,7 @@ impl Launcher {
     }
 
     async fn download_sha1(http_client: &reqwest::Client, url: &str) -> Option<Ustr> {
-        let response = http_client
-            .get(url)
-            .send().await.ok()?;
+        let response = http_client.get(url).send().await.ok()?;
 
         let bytes = response.bytes().await.ok()?;
 
@@ -859,9 +996,7 @@ impl Launcher {
     }
 
     async fn download_random_mirror(http_client: &reqwest::Client, url: &str) -> Option<Arc<str>> {
-        let response = http_client
-            .get(url)
-            .send().await.ok()?;
+        let response = http_client.get(url).send().await.ok()?;
 
         let bytes = response.bytes().await.ok()?;
 
@@ -887,7 +1022,9 @@ impl Launcher {
         launch_tracker: &ProgressTracker,
     ) -> Result<PathBuf, LoadJavaRuntimeError> {
         if let Some(jvm_binary) = &configuration.jvm_binary {
-            if jvm_binary.enabled && let Some(path) = &jvm_binary.path {
+            if jvm_binary.enabled
+                && let Some(path) = &jvm_binary.path
+            {
                 if let Some(binary) = Self::search_for_java_binary(&path) {
                     return Ok(binary);
                 }
@@ -921,7 +1058,10 @@ impl Launcher {
                 }
             }
 
-            return Err(LoadJavaRuntimeError::UnableToFindExternalBinary(needed_version, found_versions.into_iter().collect()));
+            return Err(LoadJavaRuntimeError::UnableToFindExternalBinary(
+                needed_version,
+                found_versions.into_iter().collect(),
+            ));
         }
 
         let mut platform: Ustr = match (std::env::consts::OS, std::env::consts::ARCH) {
@@ -975,11 +1115,13 @@ impl Launcher {
 
         let fresh_install = !runtime_component_dir.exists();
 
-        let runtime = meta.fetch(&MojangJavaRuntimeComponentMetadataItem {
-            url: runtime_component.manifest.url,
-            cache: runtime_component_dir.join("manifest.json").into(),
-            hash: runtime_component.manifest.sha1,
-        }).await?;
+        let runtime = meta
+            .fetch(&MojangJavaRuntimeComponentMetadataItem {
+                url: runtime_component.manifest.url,
+                cache: runtime_component_dir.join("manifest.json").into(),
+                hash: runtime_component.manifest.sha1,
+            })
+            .await?;
 
         let initial_title = if fresh_install {
             "Downloading Java Runtime"
@@ -991,7 +1133,9 @@ impl Launcher {
         progress_trackers.push(java_runtime_tracker.clone());
         java_runtime_tracker.notify();
 
-        let result = do_java_runtime_load(http_client, runtime_component_dir, fresh_install, runtime, &java_runtime_tracker).await;
+        let result =
+            do_java_runtime_load(http_client, runtime_component_dir, fresh_install, runtime, &java_runtime_tracker)
+                .await;
 
         java_runtime_tracker.set_finished(ProgressTrackerFinishType::from_err(result.is_err()));
         java_runtime_tracker.notify();
@@ -1013,11 +1157,13 @@ impl Launcher {
     ) -> Result<String, LoadAssetObjectsError> {
         let asset_index = format!("{}", version_info.assets);
 
-        let assets_index = meta.fetch(&AssetsIndexMetadataItem {
-            url: version_info.asset_index.url,
-            cache: self.directories.assets_index_dir.join(format!("{}.json", &asset_index)).into(),
-            hash: version_info.asset_index.sha1,
-        }).await?;
+        let assets_index = meta
+            .fetch(&AssetsIndexMetadataItem {
+                url: version_info.asset_index.url,
+                cache: self.directories.assets_index_dir.join(format!("{}.json", &asset_index)).into(),
+                hash: version_info.asset_index.sha1,
+            })
+            .await?;
 
         let initial_title = Arc::from("Verifying integrity of game assets");
         let assets_tracker = ProgressTracker::new(initial_title, self.sender.clone());
@@ -1097,9 +1243,9 @@ impl Launcher {
 
         let valid_hash_on_disk = {
             let path = path.clone();
-            tokio::task::spawn_blocking(move || {
-                crate::check_sha1_hash(&path, expected_hash).unwrap_or(false)
-            }).await.unwrap()
+            tokio::task::spawn_blocking(move || crate::check_sha1_hash(&path, expected_hash).unwrap_or(false))
+                .await
+                .unwrap()
         };
 
         if valid_hash_on_disk {
@@ -1130,7 +1276,9 @@ impl Launcher {
                 let actual_hash = hasher.finalize();
 
                 expected_hash == *actual_hash
-            }).await.unwrap()
+            })
+            .await
+            .unwrap()
         };
 
         if !correct_hash {
@@ -1146,7 +1294,12 @@ impl Launcher {
         Some(expand_logging_argument(client.argument.as_str(), &path))
     }
 
-    fn can_skip_forge_processor(&self, jar: &MavenCoordinate<'_>, processor: &schema::forge::ForgeInstallProcessor, data: &FxHashMap<String, OsString>) -> bool {
+    fn can_skip_forge_processor(
+        &self,
+        jar: &MavenCoordinate<'_>,
+        processor: &schema::forge::ForgeInstallProcessor,
+        data: &FxHashMap<String, OsString>,
+    ) -> bool {
         if let Some(outputs) = &processor.outputs {
             if outputs.is_empty() {
                 return false;
@@ -1182,38 +1335,36 @@ impl Launcher {
             }
 
             match jar.artifact_id {
-                "installertools" => {
-                    match argmap.get("--task") {
-                        Some(&"PROCESS_MINECRAFT_JAR") => {
-                            if argmap.get("--output") == Some(&"{PATCHED}") {
-                                if let Some(path) = data.get("PATCHED") {
-                                    return Path::new(path).exists();
-                                }
+                "installertools" => match argmap.get("--task") {
+                    Some(&"PROCESS_MINECRAFT_JAR") => {
+                        if argmap.get("--output") == Some(&"{PATCHED}") {
+                            if let Some(path) = data.get("PATCHED") {
+                                return Path::new(path).exists();
                             }
-                        },
-                        Some(&"MCP_DATA") => {
-                            if argmap.get("--output") == Some(&"{MAPPINGS}") {
-                                if let Some(path) = data.get("MAPPINGS") {
-                                    return Path::new(path).exists();
-                                }
+                        }
+                    },
+                    Some(&"MCP_DATA") => {
+                        if argmap.get("--output") == Some(&"{MAPPINGS}") {
+                            if let Some(path) = data.get("MAPPINGS") {
+                                return Path::new(path).exists();
                             }
-                        },
-                        Some(&"DOWNLOAD_MOJMAPS") => {
-                            if argmap.get("--output") == Some(&"{MOJMAPS}") {
-                                if let Some(path) = data.get("MOJMAPS") {
-                                    return Path::new(path).exists();
-                                }
+                        }
+                    },
+                    Some(&"DOWNLOAD_MOJMAPS") => {
+                        if argmap.get("--output") == Some(&"{MOJMAPS}") {
+                            if let Some(path) = data.get("MOJMAPS") {
+                                return Path::new(path).exists();
                             }
-                        },
-                        Some(&"MERGE_MAPPING") => {
-                            if argmap.get("--output") == Some(&"{MERGED_MAPPINGS}") {
-                                if let Some(path) = data.get("MERGED_MAPPINGS") {
-                                    return Path::new(path).exists();
-                                }
+                        }
+                    },
+                    Some(&"MERGE_MAPPING") => {
+                        if argmap.get("--output") == Some(&"{MERGED_MAPPINGS}") {
+                            if let Some(path) = data.get("MERGED_MAPPINGS") {
+                                return Path::new(path).exists();
                             }
-                        },
-                        _ => {}
-                    }
+                        }
+                    },
+                    _ => {},
                 },
                 "jarsplitter" => {
                     if argmap.get("--input") != Some(&"{MINECRAFT_JAR}") {
@@ -1255,7 +1406,7 @@ impl Launcher {
                         return Path::new(path).exists();
                     }
                 },
-                _ => {}
+                _ => {},
             }
             false
         }
@@ -1281,7 +1432,7 @@ impl Launcher {
             for fragment_index in start..paths.len() {
                 let fragment = paths[fragment_index];
                 new_path.push(fragment);
-                if fragment_index == paths.len()-1 {
+                if fragment_index == paths.len() - 1 {
                     if new_path.is_file() {
                         return Some(new_path);
                     } else {
@@ -1334,11 +1485,11 @@ fn expand_logging_argument(argument: &str, path: &Path) -> OsString {
         } else if dollar_last && character == '{' {
             let remaining = &argument[i..];
             if let Some(end) = remaining.find('}') {
-                let to_expand = &argument[i+1..i+end];
+                let to_expand = &argument[i + 1..i + end];
                 if to_expand == "path" {
-                    builder.push(&argument[copied_to_builder..i-1]);
+                    builder.push(&argument[copied_to_builder..i - 1]);
                     builder.push(path.as_os_str());
-                    copied_to_builder = i+end+1;
+                    copied_to_builder = i + end + 1;
                 } else {
                     panic!("Unsupported argument: {:?}", to_expand);
                 }
@@ -1450,7 +1601,9 @@ async fn do_java_runtime_load(
                         let permit = disk_semaphore.acquire().await.unwrap();
                         let result = tokio::task::spawn_blocking(move || {
                             crate::check_sha1_hash(&path, expected_hash).unwrap_or(false)
-                        }).await.unwrap();
+                        })
+                        .await
+                        .unwrap();
                         drop(permit);
                         result
                     };
@@ -1486,7 +1639,9 @@ async fn do_java_runtime_load(
                             let mut output = Vec::new();
                             lzma_rs::lzma_decompress(&mut std::io::Cursor::new(bytes), &mut output)?;
                             Ok(output)
-                        }).await.unwrap();
+                        })
+                        .await
+                        .unwrap();
 
                         match result {
                             Ok(decompressed) => Ok(decompressed),
@@ -1522,7 +1677,9 @@ async fn do_java_runtime_load(
                             let actual_hash = hasher.finalize();
 
                             expected_hash == *actual_hash
-                        }).await.unwrap()
+                        })
+                        .await
+                        .unwrap()
                     };
 
                     if !valid_hash {
@@ -1651,9 +1808,10 @@ async fn do_asset_objects_load(
             let valid_hash_on_disk = {
                 let path = path.clone();
                 let permit = disk_semaphore.acquire().await.unwrap();
-                let result = tokio::task::spawn_blocking(move || {
-                    crate::check_sha1_hash(&path, expected_hash).unwrap_or(false)
-                }).await.unwrap();
+                let result =
+                    tokio::task::spawn_blocking(move || crate::check_sha1_hash(&path, expected_hash).unwrap_or(false))
+                        .await
+                        .unwrap();
                 drop(permit);
                 result
             };
@@ -1687,7 +1845,9 @@ async fn do_asset_objects_load(
                     let actual_hash = hasher.finalize();
 
                     expected_hash == *actual_hash
-                }).await.unwrap()
+                })
+                .await
+                .unwrap()
             };
 
             if !correct_hash {
@@ -1777,7 +1937,9 @@ async fn do_libraries_load(
                 let permit = disk_semaphore.acquire().await.unwrap();
                 let result = tokio::task::spawn_blocking(move || {
                     crate::check_sha1_hash(&artifact_path, expected_hash).unwrap_or(false)
-                }).await.unwrap();
+                })
+                .await
+                .unwrap();
                 drop(permit);
                 result
             } else {
@@ -1800,7 +1962,9 @@ async fn do_libraries_load(
             let bytes = Arc::new(response.bytes().await?);
             drop(permit);
 
-            if let Some(artifact_size) = artifact.size && bytes.len() != artifact_size as usize {
+            if let Some(artifact_size) = artifact.size
+                && bytes.len() != artifact_size as usize
+            {
                 return Err(LoadLibrariesError::WrongResponseSize(artifact_size as usize, bytes.len()));
             }
 
@@ -1814,7 +1978,9 @@ async fn do_libraries_load(
                         let actual_hash = hasher.finalize();
 
                         expected_hash == *actual_hash
-                    }).await.unwrap()
+                    })
+                    .await
+                    .unwrap()
                 } else {
                     true
                 }
@@ -1920,7 +2086,9 @@ impl LaunchRuleContext {
         // Remove duplicate libraries
         let mut deduplicated_libraries: HashMap<String, (GameLibrary, Vec<isize>)> = HashMap::new();
         for library in libraries {
-            if let Some(rules) = &library.rules && !self.check_rules(rules) {
+            if let Some(rules) = &library.rules
+                && !self.check_rules(rules)
+            {
                 continue;
             }
 
@@ -1955,7 +2123,9 @@ impl LaunchRuleContext {
 
         for library in deduplicated_libraries.into_values().map(|v| v.0) {
             if let Some(artifact) = &library.downloads.artifact {
-                let empty = if let Some(artifact_size) = artifact.size && artifact_size <= 22 {
+                let empty = if let Some(artifact_size) = artifact.size
+                    && artifact_size <= 22
+                {
                     true
                 } else {
                     false
@@ -2005,7 +2175,8 @@ impl LaunchRuleContext {
                 // be generated by the client so we set this to false
                 return false;
             }
-            if features.is_quick_play_singleplayer && !matches!(self.quick_play, Some(QuickPlayLaunch::Singleplayer(_))) {
+            if features.is_quick_play_singleplayer && !matches!(self.quick_play, Some(QuickPlayLaunch::Singleplayer(_)))
+            {
                 return false;
             }
             if features.is_quick_play_multiplayer && !matches!(self.quick_play, Some(QuickPlayLaunch::Multiplayer(_))) {
@@ -2041,7 +2212,9 @@ impl LaunchRuleContext {
                     },
                 }
             }
-            if let Some(version) = &os.version && let Ok(regex) = Regex::new(version.as_str()) {
+            if let Some(version) = &os.version
+                && let Ok(regex) = Regex::new(version.as_str())
+            {
                 static OS_VERSION: OnceLock<String> = OnceLock::new();
                 let os_version = OS_VERSION.get_or_init(|| format!("{}", os_info::get().version()));
                 if !regex.is_match(os_version) {
@@ -2059,77 +2232,149 @@ pub struct LaunchContext {
     pub java_path: PathBuf,
     pub natives_dir: PathBuf,
     pub libraries_dir: Arc<Path>,
+    pub synced_dir: Arc<Path>,
     pub game_dir: Arc<Path>,
     pub log_configs_dir: Arc<Path>,
     pub sandbox_dir: Arc<Path>,
     pub configuration: InstanceConfiguration,
     pub assets_root: Arc<Path>,
     pub assets_index_name: String,
-    pub classpath: Vec<OsString>,
+    pub classpath: Vec<PathBuf>,
     pub log_configuration: Option<OsString>,
     pub rule_context: LaunchRuleContext,
     pub login_info: MinecraftLoginInfo,
-    pub add_mods: Vec<PathBuf>,
 }
 
 impl LaunchContext {
-    pub fn launch(mut self, version_info: &MinecraftVersion) -> std::io::Result<std::process::Child> {
+    pub async fn launch(
+        mut self,
+        version_info: &MinecraftVersion,
+        read_game_output: bool,
+    ) -> std::io::Result<PandoraChild> {
         let mut wrapping_command: Vec<Cow<'static, OsStr>> = Vec::new();
 
         #[cfg(target_os = "linux")]
         if let Some(linux_wrapper) = &self.configuration.linux_wrapper {
-            if linux_wrapper.use_mangohud && let Some(mangohud) = command::get_command_path("mangohud") {
+            if linux_wrapper.use_mangohud
+                && let Some(mangohud) = command::get_command_path("mangohud")
+            {
                 wrapping_command.push(mangohud.as_os_str().to_os_string().into());
             }
-            if linux_wrapper.use_gamemode && let Some(gamemoderun) = command::get_command_path("gamemoderun") {
+            if linux_wrapper.use_gamemode
+                && let Some(gamemoderun) = command::get_command_path("gamemoderun")
+            {
                 wrapping_command.push(gamemoderun.as_os_str().to_os_string().into());
             }
         }
 
-        if let Some(InstanceWrapperCommandConfiguration { enabled: true, ref flags }) = self.configuration.wrapper_command {
+        if let Some(InstanceWrapperCommandConfiguration {
+            enabled: true,
+            ref flags,
+        }) = self.configuration.wrapper_command
+        {
             let split = match shell_words::split(&flags) {
-              Ok(split) => split,
-              Err(_) =>  flags.split_whitespace().map(|f| f.to_string()).collect()
+                Ok(split) => split,
+                Err(_) => flags.split_whitespace().map(|f| f.to_string()).collect(),
             };
             for arg in split {
                 wrapping_command.push(Cow::Owned(OsString::from(arg)));
             }
         }
 
+        let java_path = self.java_path.canonicalize()?;
+
+        // Checks to make sure java is sane
+        let Some(java_path_parent) = java_path.parent() else {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java path is missing parent"));
+        };
+        if java_path_parent.file_name() != Some(OsStr::new("bin")) {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java parent folder must be 'bin'"));
+        }
+        let Some(java_path_parent_parent) = java_path_parent.parent() else {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "java bin folder is missing parent"));
+        };
+        if !java_path_parent_parent.join("lib").is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "java root folder must contain 'lib'",
+            ));
+        }
+
         wrapping_command.push(self.java_path.clone().into_os_string().into());
 
         let mut iter = wrapping_command.iter();
-        let mut command = Command::new(iter.next().unwrap());
-        command.args(iter);
+        let mut command = PandoraCommand::new(iter.next().unwrap().to_os_string());
+        for arg in iter {
+            command.arg(arg.to_os_string());
+        }
 
         #[cfg(target_os = "linux")]
         if std::env::var_os("DISPLAY").is_none() {
-            use std::os::linux::net::SocketAddrExt;
-            use std::os::unix::net::{UnixStream, SocketAddr};
-            if std::fs::exists("/tmp/.X11-unix/X0").unwrap_or(false) || UnixStream::connect_addr(&SocketAddr::from_abstract_name(b"/tmp/.X11-unix/X0").unwrap()).is_ok() {
-                command.env("DISPLAY", ":0");
+            if let Ok(unix_sockets) = File::open("/proc/net/unix") {
+                use std::io::BufRead;
+
+                let mut unix_sockets = std::io::BufReader::new(unix_sockets);
+
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    let Ok(read) = unix_sockets.read_line(&mut line) else {
+                        break;
+                    };
+                    if read == 0 {
+                        break;
+                    }
+
+                    if let Some((_, last)) = line.rsplit_once(['\t', '\x0C', '\r', ' ']) {
+                        let last = last.trim_ascii().strip_prefix('@').unwrap_or(last);
+                        if last == "/tmp/.X11-unix/X0" {
+                            command.env("DISPLAY", ":0");
+                            break;
+                        }
+                    }
+                }
             }
         }
 
-        #[cfg(target_os = "linux")] {
+        #[cfg(target_os = "linux")]
+        {
             if self.configuration.linux_wrapper.map(|w| w.use_discrete_gpu).unwrap_or(true) {
                 command.env("DRI_PRIME", "1");
             }
-            if self.configuration.linux_wrapper.map(|w| w.disable_gl_threaded_optimizations).unwrap_or(false) {
+            if self
+                .configuration
+                .linux_wrapper
+                .map(|w| w.disable_gl_threaded_optimizations)
+                .unwrap_or(false)
+            {
                 command.env("__GL_THREADED_OPTIMIZATIONS", "0");
             }
         }
 
         command.current_dir(&self.game_dir);
-        command.stdin(Stdio::piped());
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
+        command.stdin(command::PandoraStdioWriteMode::Pipe);
+        if read_game_output {
+            command.stdout(command::PandoraStdioReadMode::Pipe);
+            command.stderr(command::PandoraStdioReadMode::Pipe);
+        } else {
+            command.stdout(command::PandoraStdioReadMode::Null);
+            command.stderr(command::PandoraStdioReadMode::Null);
+        }
 
-        self.classpath.push(self.launch_wrapper_path.as_os_str().to_os_string());
+        #[cfg(windows)]
+        command.force_feedback(true);
+
+        self.classpath.push(self.launch_wrapper_path.to_path_buf());
+
+        // Force stdout/stderr to use UTF-8
+        command.arg("-Dstdout.encoding=UTF-8");
+        command.arg("-Dsun.stdout.encoding=UTF-8");
+        command.arg("-Dstderr.encoding=UTF-8");
+        command.arg("-Dsun.stderr.encoding=UTF-8");
 
         if let Some(arguments) = &version_info.arguments {
             self.process_arguments(&arguments.jvm, &mut |arg| {
-                command.arg(arg);
+                command.arg(arg.to_os_string());
             });
         } else {
             let mut java_library_path = OsString::new();
@@ -2142,25 +2387,84 @@ impl LaunchContext {
         }
 
         if let Some(log_configuration) = &self.log_configuration {
-            command.arg(log_configuration);
+            command.arg(log_configuration.to_os_string());
         }
 
-        if let Some(memory) = &self.configuration.memory && memory.enabled {
+        if let Some(memory) = &self.configuration.memory
+            && memory.enabled
+        {
             command.arg(format!("-Xms{}m", memory.min));
             command.arg(format!("-Xmx{}m", memory.max.max(memory.min).max(128)));
         }
 
-        if let Some(jvm_flags) = &self.configuration.jvm_flags && jvm_flags.enabled {
+        if let Some(jvm_flags) = &self.configuration.jvm_flags
+            && jvm_flags.enabled
+        {
             if let Ok(split) = shell_words::split(&jvm_flags.flags) {
-                command.args(split);
+                for arg in split {
+                    command.arg(arg.to_string());
+                }
             } else {
-                command.args(jvm_flags.flags.split_whitespace());
+                for arg in jvm_flags.flags.split_whitespace() {
+                    command.arg(arg.to_string());
+                }
             }
         }
 
         command.arg("com.moulberry.pandora.LaunchWrapper");
 
-        let mut child = command.spawn()?;
+        if let Some(path) = std::env::var_os("PATH") {
+            let new_paths = std::env::split_paths(&path).chain([self.natives_dir.clone()]);
+            if let Ok(new_path_arg) = std::env::join_paths(new_paths) {
+                command.env("PATH", new_path_arg);
+            }
+        }
+
+        let mut child = if self.configuration.sandbox {
+            #[cfg(target_os = "linux")]
+            if !command::is_command_available("bwrap") {
+                return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "missing 'bwrap' command for sandbox"));
+            } else if !command::is_command_available("xdg-dbus-proxy") {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "missing 'xdg-dbus-proxy' command for sandbox",
+                ));
+            }
+
+            let mut allow_read = vec![
+                self.libraries_dir.clone(),
+                self.log_configs_dir.clone(),
+                self.launch_wrapper_path.clone(),
+                self.assets_root.clone(),
+            ];
+
+            allow_read.push(java_path_parent_parent.into());
+
+            command
+                .spawn_sandboxed(PandoraSandbox {
+                    allow_read,
+                    allow_write: vec![
+                        self.game_dir.clone(),
+                        self.natives_dir.clone().into(),
+                        self.synced_dir.clone(),
+                    ],
+                    is_jvm: true,
+                    grant_network_access: true,
+                    #[cfg(target_os = "linux")]
+                    sandbox_dir: self.sandbox_dir.clone(),
+                    #[cfg(windows)]
+                    name: Arc::from(OsStr::new("PandoraInstanceSandbox")),
+                    #[cfg(windows)]
+                    description: Arc::from(OsStr::new("Sandbox for Minecraft instances run by Pandora Launcher")),
+                    #[cfg(windows)]
+                    self_elevate_for_acl_arg: Some(PandoraArg::from(OsStr::new("--internal-set-traverse-acls"))),
+                    #[cfg(windows)]
+                    grant_winsta_writeattributes: true,
+                })
+                .await?
+        } else {
+            command.spawn().await?
+        };
 
         let mut stdin = child.stdin.take().expect("stdin present");
 
@@ -2248,12 +2552,12 @@ impl LaunchContext {
             } else if dollar_last && character == '{' {
                 let remaining = &argument[i..];
                 if let Some(end) = remaining.find('}') {
-                    let to_expand = &argument[i+1..i+end];
+                    let to_expand = &argument[i + 1..i + end];
                     if let Some(to_expand) = ArgumentExpansionKey::from_str(to_expand) {
                         let expanded = self.resolve_expansion(to_expand);
-                        builder.push(&argument[copied_to_builder..i-1]);
+                        builder.push(&argument[copied_to_builder..i - 1]);
                         builder.push(expanded);
-                        copied_to_builder = i+end+1;
+                        copied_to_builder = i + end + 1;
                     } else {
                         panic!("Unsupported argument: {:?}", to_expand);
                     }
@@ -2273,35 +2577,44 @@ impl LaunchContext {
         match key {
             ArgumentExpansionKey::NativesDirectory => self.natives_dir.as_os_str().into(),
             ArgumentExpansionKey::LibrariesDirectory => self.libraries_dir.as_os_str().into(),
-            ArgumentExpansionKey::ClasspathSeparator => if cfg!(unix) {
-                OsStr::new(":").into()
-            } else if cfg!(windows) {
-                OsStr::new(";").into()
-            } else {
-                panic!("Unsupported platform")
+            ArgumentExpansionKey::ClasspathSeparator => {
+                if cfg!(unix) {
+                    OsStr::new(":").into()
+                } else if cfg!(windows) {
+                    OsStr::new(";").into()
+                } else {
+                    panic!("Unsupported platform")
+                }
             },
             ArgumentExpansionKey::LauncherName => OsStr::new("PandoraLauncher").into(),
             ArgumentExpansionKey::LauncherVersion => OsStr::new("1.0.0").into(),
             ArgumentExpansionKey::Classpath => std::env::join_paths(&self.classpath).unwrap().into(),
             ArgumentExpansionKey::AuthPlayerName => OsStr::new(&*self.login_info.username).into(),
-            ArgumentExpansionKey::VersionName => OsStr::new("1.21.10").into(),
+            ArgumentExpansionKey::VersionName => OsStr::new(&*self.configuration.minecraft_version).into(),
             ArgumentExpansionKey::GameDirectory => self.game_dir.as_os_str().into(),
             ArgumentExpansionKey::AssetsRoot => self.assets_root.as_os_str().into(),
             ArgumentExpansionKey::AssetsIndexName => OsStr::new(&self.assets_index_name).into(),
             ArgumentExpansionKey::AuthUuid => OsString::from(self.login_info.uuid.as_hyphenated().to_string()).into(),
-            ArgumentExpansionKey::AuthAccessToken => OsStr::new(if let Some(access_token) = &self.login_info.access_token {
-                access_token.secret()
-            } else {
-                "offline"
-            }).into(),
+            ArgumentExpansionKey::AuthAccessToken => {
+                OsStr::new(if let Some(access_token) = &self.login_info.access_token {
+                    access_token.secret()
+                } else {
+                    "offline"
+                })
+                .into()
+            },
             ArgumentExpansionKey::Clientid => OsStr::new("").into(), // These are just used for telemetry
             ArgumentExpansionKey::AuthXuid => OsStr::new("").into(), // These are just used for telemetry
             ArgumentExpansionKey::VersionType => OsStr::new("release").into(),
             ArgumentExpansionKey::QuickPlayPath => OsStr::new("quickPlay/log.json").into(),
             ArgumentExpansionKey::UserProperties => OsStr::new("{}").into(),
             ArgumentExpansionKey::UserType => OsStr::new("msa").into(),
-            ArgumentExpansionKey::ResolutionWidth => OsString::from(format!("{}", self.rule_context.custom_resolution.unwrap().0)).into(),
-            ArgumentExpansionKey::ResolutionHeight => OsString::from(format!("{}", self.rule_context.custom_resolution.unwrap().1)).into(),
+            ArgumentExpansionKey::ResolutionWidth => {
+                OsString::from(format!("{}", self.rule_context.custom_resolution.unwrap().0)).into()
+            },
+            ArgumentExpansionKey::ResolutionHeight => {
+                OsString::from(format!("{}", self.rule_context.custom_resolution.unwrap().1)).into()
+            },
             ArgumentExpansionKey::QuickPlaySingleplayer => {
                 if let Some(QuickPlayLaunch::Singleplayer(target)) = &self.rule_context.quick_play {
                     target.into()
@@ -2350,11 +2663,11 @@ fn expand_forge_argument<'a>(argument: &'a str, map: &FxHashMap<String, OsString
         if character == '{' {
             let remaining = &argument[i..];
             if let Some(end) = remaining.find('}') {
-                let to_expand = &argument[i+1..i+end];
+                let to_expand = &argument[i + 1..i + end];
                 if let Some(expanded) = map.get(to_expand) {
                     builder.push(&argument[copied_to_builder..i]);
                     builder.push(expanded);
-                    copied_to_builder = i+end+1;
+                    copied_to_builder = i + end + 1;
                 } else {
                     panic!("Unsupported argument: {:?}", to_expand);
                 }

@@ -1,0 +1,126 @@
+[package]
+name = "hickory-resolver"
+
+# A short blurb about the package. This is not rendered in any format when
+# uploaded to crates.io (aka this is not markdown)
+description = """
+Hickory DNS is a safe and secure DNS library. This Resolver library uses the Client library to perform all DNS queries. The Resolver is intended to be a high-level library for any DNS record resolution. See Resolver for supported resolution types. The Client can be used for other queries.
+"""
+
+# These URLs point to more information about the repository
+documentation = "https://docs.rs/hickory-resolver"
+
+# This points to a file in the repository (relative to this Cargo.toml). The
+# contents of this file are stored and indexed in the registry.
+readme = "README.md"
+
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license.workspace = true
+
+[features]
+default = ["system-config", "tokio"]
+backtrace = ["dep:backtrace", "hickory-proto/backtrace"]
+
+tls-aws-lc-rs = ["hickory-proto/tls-aws-lc-rs", "__tls"]
+https-aws-lc-rs = ["hickory-proto/https-aws-lc-rs", "__https"]
+quic-aws-lc-rs = ["hickory-proto/quic-aws-lc-rs", "__quic", "quinn/rustls-aws-lc-rs"]
+h3-aws-lc-rs = ["hickory-proto/h3-aws-lc-rs", "__h3"]
+
+tls-ring = ["hickory-proto/tls-ring", "__tls"]
+https-ring = ["hickory-proto/https-ring", "__https"]
+quic-ring = ["hickory-proto/quic-ring", "__quic", "quinn/rustls-ring"]
+h3-ring = ["hickory-proto/h3-ring", "__h3"]
+
+__tls = ["dep:rustls", "dep:tokio-rustls", "tokio"]
+__https = ["__tls"]
+__quic = ["dep:quinn", "__tls"]
+__h3 = ["__quic"]
+
+webpki-roots = ["dep:webpki-roots", "hickory-proto/webpki-roots"]
+rustls-platform-verifier = ["hickory-proto/rustls-platform-verifier"]
+
+dnssec-aws-lc-rs = ["hickory-proto/dnssec-aws-lc-rs", "__dnssec"]
+dnssec-ring = ["hickory-proto/dnssec-ring", "__dnssec"]
+__dnssec = []
+
+serde = ["dep:serde", "hickory-proto/serde"]
+system-config = ["dep:ipconfig", "dep:resolv-conf"]
+
+tokio = ["dep:tokio", "tokio/rt", "hickory-proto/tokio"]
+
+[lib]
+name = "hickory_resolver"
+path = "src/lib.rs"
+
+[dependencies]
+backtrace = { workspace = true, optional = true }
+cfg-if.workspace = true
+futures-util = { workspace = true, default-features = false, features = [
+    "std",
+] }
+moka = { workspace = true, features = ["sync"] }
+once_cell.workspace = true
+parking_lot.workspace = true
+quinn = { workspace = true, optional = true, features = [
+    "log",
+    "runtime-tokio",
+] }
+rand.workspace = true
+resolv-conf = { workspace = true, optional = true, features = ["system"] }
+rustls = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive", "rc"], optional = true }
+smallvec.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+hickory-proto.workspace = true
+webpki-roots = { workspace = true, optional = true }
+
+[target.'cfg(windows)'.dependencies]
+ipconfig = { workspace = true, optional = true }
+
+[dev-dependencies]
+futures-executor = { workspace = true, default-features = false, features = ["std"] }
+serde_json = { workspace = true }
+test-support.workspace = true
+tokio = { workspace = true, features = ["macros", "test-util"] }
+toml.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "std"] }
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "x86_64-unknown-linux-gnu"
+targets = ["x86_64-apple-darwin", "x86_64-pc-windows-msvc"]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[[example]]
+name = "custom_provider"
+required-features = ["tokio"]
+
+[[example]]
+name = "flush_cache"
+required-features = ["tokio", "system-config"]
+
+[[example]]
+name = "global_resolver"
+required-features = ["tokio", "system-config"]
+
+[[example]]
+name = "multithreaded_runtime"
+required-features = ["tokio", "system-config"]
+
+[lints]
+workspace = true
+
+[package.metadata.cargo-all-features]
+skip_optional_dependencies = true
+max_combination_size = 2
+denylist = ["__tls", "__https", "__quic", "__h3", "__dnssec"]

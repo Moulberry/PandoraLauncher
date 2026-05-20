@@ -1,0 +1,59 @@
+[package]
+name = "junction"
+version = "1.4.2" # Also update `html_root_url` in lib.rs
+authors = ["Lzu Tao <taolzu@gmail.com>"]
+categories = ["api-bindings", "os::windows-apis"]
+edition = "2021"
+rust-version = "1.71"
+exclude = [
+    "/.github",
+    "/HOW-TO-RELEASE.md",
+]
+keywords = ["junction", "symlink"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/tesuji/junction"
+description = "library for working with NTFS junctions"
+
+[features]
+default = ["unstable_admin"]
+# # Unstable flag
+#
+# Flag for trying out new rust language features
+nightly = []
+# # Unstable flag
+#
+# Enable the SE_BACKUP_NAME and SE_RESTORE_NAME access privileges.
+# They are needed to open system directory junctions (such as
+# "C:\Documents and Settings") to read. For more info, please read
+# <https://en.wikipedia.org/wiki/NTFS_reparse_point#Directory_junctions>.
+#
+# Why is this flag unstable?
+#
+# Maybe it would be better to save and restore the old privileges
+# after setting SE_RESTORE_NAME. A user with SE_RESTORE_NAME privilege
+# could easily overwrite almost any file on the system.
+unstable_admin = []
+
+[package.metadata.docs.rs]
+targets = ["x86_64-pc-windows-msvc"]
+
+[target.'cfg(windows)'.dependencies.scopeguard]
+version = "1"
+default-features = false
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = ">=0.59, <=0.61"
+default-features = false
+features = [
+    "Win32_System_Ioctl",
+    "Win32_System_SystemServices",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Threading",
+]
+
+[dev-dependencies]
+tempfile = "3.21.0"

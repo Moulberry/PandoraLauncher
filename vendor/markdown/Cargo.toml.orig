@@ -1,0 +1,47 @@
+[[bench]]
+harness = false
+name = "bench"
+path = "benches/bench.rs"
+
+[dependencies]
+log = { optional = true, version = "0.4" }
+serde = { features = ["derive"], optional = true, version = "1" }
+unicode-id = { features = ["no_std"], version = "0.3" }
+
+[dev-dependencies]
+criterion = "0.5"
+env_logger = "0.11"
+pretty_assertions = { workspace = true }
+serde_json = { version = "1" }
+swc_core = { version = "22", features = [
+  "common",
+  "ecma_ast",
+  "ecma_parser",
+  "ecma_visit",
+] }
+
+[features]
+default = []
+json = ["serde"]
+log = ["dep:log"]
+serde = ["dep:serde"]
+
+[package]
+authors = ["Titus Wormer <tituswormer@gmail.com>"]
+categories = ["compilers", "encoding", "parser-implementations", "parsing", "text-processing"]
+description = "CommonMark compliant markdown parser in Rust with ASTs and extensions"
+edition = "2018"
+homepage = "https://github.com/wooorm/markdown-rs"
+include = ["src/", "license"]
+keywords = ["commonmark", "markdown", "parse", "render", "tokenize"]
+license = "MIT"
+name = "markdown"
+repository = "https://github.com/wooorm/markdown-rs"
+rust-version = "1.56"
+version = "1.0.0"
+
+[workspace]
+members = ["generate", "mdast_util_to_markdown"]
+
+[workspace.dependencies]
+pretty_assertions = "1"

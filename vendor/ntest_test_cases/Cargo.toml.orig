@@ -1,0 +1,24 @@
+[package]
+name = "ntest_test_cases"
+version = "0.9.5"
+authors = [ "Armin Becher <armin.becher@gmail.com>",]
+edition = "2018"
+description = "Test cases for ntest framework."
+keywords = [ "test", "tests", "unit", "testing", "test-cases",]
+categories = [ "development-tools", "development-tools::testing",]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/becheran/ntest"
+documentation = "https://docs.rs/ntest"
+
+[lib]
+name = "ntest_test_cases"
+proc-macro = true
+
+[dependencies]
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[dependencies.syn]
+version = "1.0"
+features = [ "full",]

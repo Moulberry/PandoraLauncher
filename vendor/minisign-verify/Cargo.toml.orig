@@ -1,0 +1,17 @@
+[package]
+name = "minisign-verify"
+version = "0.2.4"
+authors = ["Frank Denis <github@pureftpd.org>"]
+description = "A small, zero-dependencies crate to verify Minisign signatures."
+readme = "README.md"
+keywords = ["minisign", "ed25519", "signatures", "crypto"]
+license = "MIT"
+homepage = "https://github.com/jedisct1/rust-minisign-verify"
+repository = "https://github.com/jedisct1/rust-minisign-verify"
+categories = ["cryptography"]
+edition = "2018"
+
+[profile.release]
+lto = true
+panic = "abort"
+opt-level = 3

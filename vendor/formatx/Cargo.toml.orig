@@ -1,0 +1,17 @@
+[package]
+authors = ["clitic <clitic21@gmail.com>"]
+categories = ["rust-patterns", "template-engine"]
+description = "A macro for formatting non literal strings at runtime"
+documentation = "https://docs.rs/formatx"
+edition = "2021"
+exclude = [".github"]
+keywords = ["string", "runtime", "format", "template"]
+license = "MIT OR Apache-2.0"
+name = "formatx"
+readme = "README.md"
+repository = "https://github.com/clitic/formatx"
+version = "0.2.4"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

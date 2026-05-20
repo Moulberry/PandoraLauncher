@@ -1,0 +1,39 @@
+sudo: false
+language: rust
+rust:
+  - 1.31.0  # Oldest supported
+  - stable
+  - beta
+  - nightly
+matrix:
+  include:
+  - env: RUSTFMT
+    rust: 1.31.0  # `stable`: Locking down for consistent behavior
+    install:
+    - rustup component add rustfmt-preview
+    script:
+    - cargo fmt -- --check
+  - env: RUSTFLAGS="-D warnings"
+    rust: 1.31.0  # `stable`: Locking down for consistent behavior
+    script:
+    - cargo check --tests
+  - env: CLIPPY
+    rust: 1.41.0
+    install:
+      - rustup component add clippy
+    script:
+      - cargo clippy --all-features -- -D clippy::all
+  allow_failures:
+    - rust: nightly
+  fast_finish: true
+
+install:
+- rustc -Vv
+- cargo -V
+
+script:
+- rm -rf target/debug/deps/*globwalk*  # Avoid rustdoc problems
+- cargo test --verbose
+
+cache:
+  cargo: true

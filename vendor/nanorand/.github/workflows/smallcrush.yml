@@ -1,0 +1,37 @@
+name: "Run SmallCrush"
+on:
+  push:
+    paths:
+      - '**/*.rs'
+      - '**/*.h'
+      - '**/*.c'
+      - '.github/workflows/*.yml'
+  pull_request:
+    paths:
+      - '**/*.rs'
+      - '**/*.h'
+      - '**/*.c'
+      - '.github/workflows/*.yml'
+jobs:
+    smallcrush:
+        name: "Run SmallCrush"
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v2
+            - name: Install TestU01 and Clang
+              run: sudo apt-get update && sudo apt-get install -y libtestu01-0-dev libtestu01-0-dev-common libtestu01-0 llvm-10 clang-10
+            - name: "Install stable Rust toolchain"
+              uses: actions-rs/toolchain@v1
+              with:
+                  override: true
+                  profile: minimal
+                  toolchain: "stable"
+            - name: Build nanorand-abi
+              uses: actions-rs/cargo@v1
+              with:
+                  args: "--release --package nanorand-abi"
+                  command: build
+            - name: Build nanorand SmallCrush example
+              run: clang -O3 -pipe -I$GITHUB_WORKSPACE/nanorand-abi nanorand-abi/examples/smallcrush.c target/release/libnanorand_abi.so -o nanorand-smallcrush -ltestu01 -ltestu01probdist -ltestu01mylib -lm
+            - name: Run nanorand SmallCrush
+              run: ./nanorand-smallcrush

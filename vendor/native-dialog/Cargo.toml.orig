@@ -1,0 +1,107 @@
+[package]
+name = "native-dialog"
+version = "0.9.6"
+authors = ["balthild <ibalthild@gmail.com>"]
+edition = "2024"
+description = "A library to display dialogs. Supports GNU/Linux, BSD Unix, macOS and Windows."
+license = "MIT"
+documentation = "https://docs.rs/native-dialog"
+repository = "https://github.com/balthild/native-dialog-rs"
+rust-version = "1.85"
+
+[dependencies]
+dirs = "6.0.0"
+formatx = "0.2.3"
+raw-window-handle = "0.6.2"
+thiserror = "2.0.12"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+wfd = "0.1.7"
+winapi = { version = "0.3.9", features = ["winuser"] }
+
+[target.'cfg(all(unix, not(target_os = "macos"), not(target_os = "ios"), not(target_os = "android")))'.dependencies]
+ascii = "1.1.0"
+async-process = { version = "2.5.0", optional = true }
+versions = "7.0.0"
+which = "7.0.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6.2"
+dispatch2 = "0.3.0"
+futures-lite = { version = "2.6.0", optional = true }
+futures-channel = { version = "0.3.31", optional = true }
+objc2 = "0.6.3"
+# Disable default features to keep compile-times low.
+# `objc2-app-kit` in particular is very large.
+# When iterating, you can temporarily add `default` to
+# the features here to make the entire crates available.
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "NSArray",
+    "NSEnumerator",
+    "NSGeometry",
+    "NSObjCRuntime",
+    "NSString",
+    "NSThread",
+    "NSURL",
+] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "NSAlert",
+    "NSApplication",
+    "NSAttributedString",
+    "NSButton",
+    "NSColor",
+    "NSControl",
+    "NSFont",
+    "NSGradient",
+    "NSGraphicsContext",
+    "NSImage",
+    "NSImageRep",
+    "NSLayoutConstraint",
+    "NSOpenPanel",
+    "NSPanel",
+    "NSPopUpButton",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSSavePanel",
+    "NSShadow",
+    "NSStackView",
+    "NSStringDrawing",
+    "NSTextField",
+    "NSView",
+    "NSWindow",
+] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CFCGTypes",
+] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CGContext",
+    "CGColor",
+    "CGImage",
+] }
+
+[features]
+async = ["dep:futures-lite", "dep:futures-channel", "dep:async-process"]
+windows_dpi_awareness = []
+windows_visual_styles = [
+    "winapi/sysinfoapi",
+    "winapi/winbase",
+    "winapi/handleapi",
+    "winapi/libloaderapi",
+]
+
+[workspace]
+members = [
+    "examples/windows_manifest",
+    "examples/windows_features",
+    "examples/gallery",
+    "examples/async_modal",
+    "examples/mac_threads",
+]

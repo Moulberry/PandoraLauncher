@@ -235,6 +235,10 @@ pub enum ContentType {
 }
 
 impl ContentType {
+    pub fn is_modpack(&self) -> bool {
+        matches!(self, Self::ModrinthModpack { .. } | Self::CurseforgeModpack { .. })
+    }
+
     pub fn modpack_files(&self) -> Option<&Arc<[ModpackFile]>> {
         match self {
             ContentType::ModrinthModpack { files, .. } => Some(files),

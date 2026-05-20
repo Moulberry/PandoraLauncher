@@ -15,6 +15,7 @@ use parking_lot::Mutex;
 use reqwest::StatusCode;
 use rustc_hash::FxHashSet;
 use schema::{
+    auxiliary::AuxiliaryContentMeta,
     content::{ContentInstallReason, ContentSource},
     curseforge::{
         CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest,
@@ -298,6 +299,9 @@ impl BackendState {
 
                 let _ = std::fs::create_dir_all(target_path.parent().unwrap());
 
+                // Check if this is a reinstall (file already exists)
+                let is_reinstall = target_path.exists();
+
                 match crate::hard_link_or_copy(&install.from, &target_path) {
                     Ok(()) => {
                         if let Some(replace) = install.replace {
@@ -306,6 +310,9 @@ impl BackendState {
                             if replace_path != target_path.as_path() {
                                 let _ = std::fs::remove_file(&replace);
                             }
+                        } else if is_reinstall && install.mod_summary.extra.is_modpack() {
+                            // Reinstall case: clear aux file to restore deleted mods
+                            self.clear_aux_for_modpack_reinstall(&install.mod_summary, &target_path);
                         }
                     },
                     Err(err) => {
@@ -951,6 +958,62 @@ impl BackendState {
 
         if old_aux_path != new_aux_path {
             _ = std::fs::rename(&old_aux_path, &new_aux_path);
+        }
+
+        // Clear disabled_children when reinstalling a modpack to restore deleted mods
+        if new_summary.extra.is_modpack() {
+            if let Ok(aux_data) = crate::read_json::<AuxiliaryContentMeta>(&new_aux_path) {
+                let mut aux = aux_data;
+                // Clear all disabled_children to restore any deleted mods
+                if !aux.disabled_children.deleted_filenames.is_empty()
+                    || !aux.disabled_children.disabled_ids.is_empty()
+                    || !aux.disabled_children.disabled_names.is_empty()
+                    || !aux.disabled_children.disabled_filenames.is_empty()
+                    || !aux.disabled_children.enabled_ids.is_empty()
+                    || !aux.disabled_children.enabled_names.is_empty()
+                    || !aux.disabled_children.enabled_filenames.is_empty()
+                {
+                    aux.disabled_children = Default::default();
+                    if let Ok(bytes) = serde_json::to_vec(&aux) {
+                        _ = crate::write_safe(&new_aux_path, &bytes);
+                    }
+                }
+            }
+        }
+    }
+
+    fn clear_aux_for_modpack_reinstall(&self, mod_summary: &Arc<ContentSummary>, target_path: &Path) {
+        // Only handle modpacks
+        if !mod_summary.extra.is_modpack() {
+            return;
+        }
+
+        let Some(aux_path) = crate::pandora_aux_path(&mod_summary.id, &mod_summary.name, target_path) else {
+            return;
+        };
+
+        if !aux_path.exists() {
+            return;
+        }
+
+        // Read and clear disabled_children
+        if let Ok(aux_data) = crate::read_json::<AuxiliaryContentMeta>(&aux_path) {
+            let mut aux = aux_data;
+            // Clear all disabled_children to restore any deleted mods
+            if !aux.disabled_children.deleted_filenames.is_empty()
+                || !aux.disabled_children.disabled_ids.is_empty()
+                || !aux.disabled_children.disabled_names.is_empty()
+                || !aux.disabled_children.disabled_filenames.is_empty()
+                || !aux.disabled_children.enabled_ids.is_empty()
+                || !aux.disabled_children.enabled_names.is_empty()
+                || !aux.disabled_children.enabled_filenames.is_empty()
+            {
+                log::info!("Clearing disabled_children for modpack reinstall at {:?}", target_path);
+                aux.disabled_children = Default::default();
+                if let Ok(bytes) = serde_json::to_vec(&aux) {
+                    _ = crate::write_safe(&aux_path, &bytes);
+                }
+            }
         }
     }
 

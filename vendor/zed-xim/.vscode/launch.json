@@ -1,0 +1,111 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'xim'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=xim"
+                ],
+                "filter": {
+                    "name": "xim",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'xlib_client'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=xlib_client",
+                    "--all-features",
+                    "--package=xim"
+                ],
+                "filter": {
+                    "name": "xlib_client",
+                    "kind": "example"
+                }
+            },
+            "env": {
+                "XMODIFIERS": "@im=fcitx"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'x11rb_client'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=x11rb_client",
+                    "--all-features",
+                    "--package=xim"
+                ],
+                "filter": {
+                    "name": "x11rb_client",
+                    "kind": "example"
+                }
+            },
+            "env": {
+                "RUST_LOG": "trace"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug example 'x11rb_server'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=x11rb_server",
+                    "--all-features",
+                    "--package=xim"
+                ],
+                "filter": {
+                    "name": "x11rb_server",
+                    "kind": "example"
+                }
+            },
+            "env": {
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'xim-parser'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=xim-parser"
+                ],
+                "filter": {
+                    "name": "xim-parser",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

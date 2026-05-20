@@ -1,0 +1,25 @@
+[package]
+name = "zed-sum-tree"
+version = "0.2.0"
+edition.workspace = true
+publish = true
+license = "Apache-2.0"
+description = "A sum tree data structure, a concurrency-friendly B-tree"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/sum_tree.rs"
+doctest = false
+
+[dependencies]
+arrayvec = "0.7.1"
+rayon.workspace = true
+log.workspace = true
+workspace-hack.workspace = true
+
+[dev-dependencies]
+ctor.workspace = true
+rand.workspace = true
+zlog.workspace = true

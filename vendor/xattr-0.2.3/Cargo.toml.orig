@@ -1,0 +1,26 @@
+[package]
+name = "xattr"
+version = "0.2.3"
+authors = ["Steven Allen <steven@stebalien.com>"]
+description = "unix extended filesystem attributes"
+
+documentation = "https://docs.rs/xattr"
+repository = "https://github.com/Stebalien/xattr"
+keywords = ["xattr", "filesystem", "unix"]
+license = "MIT/Apache-2.0"
+
+[features]
+default = ["unsupported"]
+# Adds a dummy implementation for unsupported platforms. This is useful when
+# developing platform-independent code that doesn't absolutely need xattr
+# support.
+#
+# You can disable this feature if you want compilation to fail on unsupported
+# platforms. This would make sense if you absolutely need xattr support.
+unsupported = []
+
+[dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

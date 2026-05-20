@@ -5,6 +5,7 @@ permissions:
   issues: write
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*"

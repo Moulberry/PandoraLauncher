@@ -6,6 +6,11 @@ permissions:
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v3.0.3)'
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -58,7 +63,7 @@ jobs:
           PANDORA_UPDATE_PUBKEY: ${{ secrets.SIGNER_PUBLIC_KEY }}
           GITHUB_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
           PANDORA_DISTRIBUTION: official
-        run: ${{ matrix.platform.buildscript }} ${{ github.ref_name }}
+        run: ${{ matrix.platform.buildscript }} ${{ github.event.inputs.version || github.ref_name }}
         shell: bash
 
       - name: Upload artifacts
@@ -91,7 +96,7 @@ jobs:
       - name: Upload update manifests
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
           files: |
             ./artifacts/**/update_macos.json
             ./artifacts/**/update_linux.json

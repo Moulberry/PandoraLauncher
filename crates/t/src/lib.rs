@@ -3,13 +3,13 @@
 static LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 pub fn set_lang(name: &str) {
-	let id = match name {
-		"en" => 0,
-		"de" => 1,
-		"hu" => 2,
-		_ => panic!("Unknown language: {name}"),
-	};
-	LANG.store(id, std::sync::atomic::Ordering::Relaxed);
+    let id = match name {
+        "en" => 0,
+        "de" => 1,
+        "hu" => 2,
+        _ => panic!("Unknown language: {name}"),
+    };
+    LANG.store(id, std::sync::atomic::Ordering::Relaxed);
 }
 
 pub mod account {
@@ -559,9 +559,13 @@ pub mod instance {
             }
             pub fn always_latest() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                    1 => "Installiert immer die neuste Version. Deaktivieren um ältere Versionen installieren zu können",
+                    1 => {
+                        "Installiert immer die neuste Version. Deaktivieren um ältere Versionen installieren zu können"
+                    },
                     2 => "Mindíg a legújabb telepítése. Szedd ki a pipát, hogy régebbi verziót tudj telepíteni",
-                    _ => "Always install the latest version. Untick to be able to choose older versions of content to install",
+                    _ => {
+                        "Always install the latest version. Untick to be able to choose older versions of content to install"
+                    },
                 }
             }
             pub mod datapack {
@@ -584,8 +588,12 @@ pub mod instance {
                     }
                     pub fn message() -> &'static str {
                         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                            1 => "Keine Welten gefunden. Eine Standardwelt erstellen um das Datenpaket zu installieren?",
-                            2 => "Nem található világ. Létrehozzon egy alapértelmezett világot az adatcsomag telepítéséhez?",
+                            1 => {
+                                "Keine Welten gefunden. Eine Standardwelt erstellen um das Datenpaket zu installieren?"
+                            },
+                            2 => {
+                                "Nem található világ. Létrehozzon egy alapértelmezett világot az adatcsomag telepítéséhez?"
+                            },
                             _ => "No worlds found. Create a default world to install the datapack?",
                         }
                     }
@@ -1113,9 +1121,27 @@ pub mod instance {
                 }
                 pub fn label(short: bool) -> &'static str {
                     match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                        1 => if short { "Aktualisierungs Prüfung" } else { "Nach Aktualisieren suchen" },
-                        2 => if short { "Frissítés keresése" } else { "Frissítések keresése" },
-                        _ => if short { "Update Check" } else { "Check for updates" },
+                        1 => {
+                            if short {
+                                "Aktualisierungs Prüfung"
+                            } else {
+                                "Nach Aktualisieren suchen"
+                            }
+                        },
+                        2 => {
+                            if short {
+                                "Frissítés keresése"
+                            } else {
+                                "Frissítések keresése"
+                            }
+                        },
+                        _ => {
+                            if short {
+                                "Update Check"
+                            } else {
+                                "Check for updates"
+                            }
+                        },
                     }
                 }
                 pub fn last_up_to_date() -> &'static str {
@@ -1307,9 +1333,15 @@ pub mod instance {
         }
         pub fn warning(name: &str) -> String {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => format!("Dadurch will die Instanz „{name}“ sowie die zugehörigen Spielstände, Ressourcenpakete, Mods, Konfigurationsdateien und weitere Elemente endgültig gelöscht. Diese Dateien können nicht wiederhergestellt werden."),
-                2 => format!("Ez örökre törölni fogja a(z) '{name}' példányt és a hozzá tartozó mentéseket, forráscsomagokat, konfigurációs fájlokat és másokat. Ezek a fájlok nem lesznek visszaszerezhetőek"),
-                _ => format!("This will permanently delete the '{name}' instance and associated saves, resourcepacks, mods, configuration files, and more. These files will not be recoverable"),
+                1 => format!(
+                    "Dadurch will die Instanz „{name}“ sowie die zugehörigen Spielstände, Ressourcenpakete, Mods, Konfigurationsdateien und weitere Elemente endgültig gelöscht. Diese Dateien können nicht wiederhergestellt werden."
+                ),
+                2 => format!(
+                    "Ez örökre törölni fogja a(z) '{name}' példányt és a hozzá tartozó mentéseket, forráscsomagokat, konfigurációs fájlokat és másokat. Ezek a fájlok nem lesznek visszaszerezhetőek"
+                ),
+                _ => format!(
+                    "This will permanently delete the '{name}' instance and associated saves, resourcepacks, mods, configuration files, and more. These files will not be recoverable"
+                ),
             }
         }
     }
@@ -1939,9 +1971,15 @@ pub mod instance {
         }
         pub fn already_exists(num: usize, name: &str) -> String {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => format!("{num} Instanzen enthalten einen „{name}“ Ordner. Bitte erstelle eine sicherheits Kopie und lösche den Ordner um zu synchronisieren"),
-                2 => format!("{num} példány már tartalmazza a(z) '{name}' mappát. Kérlek csinálj biztonsági mentést a mappákról, majd töröld őket, hogy bekapcsolhasd a szinkronizálást"),
-                _ => format!("{num} instance(s) already contain a '{name}' folder. Please safely backup and remove the folders to enable syncing"),
+                1 => format!(
+                    "{num} Instanzen enthalten einen „{name}“ Ordner. Bitte erstelle eine sicherheits Kopie und lösche den Ordner um zu synchronisieren"
+                ),
+                2 => format!(
+                    "{num} példány már tartalmazza a(z) '{name}' mappát. Kérlek csinálj biztonsági mentést a mappákról, majd töröld őket, hogy bekapcsolhasd a szinkronizálást"
+                ),
+                _ => format!(
+                    "{num} instance(s) already contain a '{name}' folder. Please safely backup and remove the folders to enable syncing"
+                ),
             }
         }
         pub fn custom() -> &'static str {
@@ -1953,7 +1991,9 @@ pub mod instance {
         }
         pub fn description() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Diese Optionen ermöglichen die Synchronisierung verschiedener Dateien/Ordner über verschiedene Instanzen hinweg",
+                1 => {
+                    "Diese Optionen ermöglichen die Synchronisierung verschiedener Dateien/Ordner über verschiedene Instanzen hinweg"
+                },
                 2 => "Ezek az opciók megengedik a különböző fájlok/mappák szinkronizálását a példányok között",
                 _ => "These options allow for syncing various files/folders across instances",
             }
@@ -3056,9 +3096,27 @@ pub mod modrinth {
         }
         pub fn worldgen(short: bool) -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => if short { "Weltgenerierung" } else { "Weltgenerierung" },
-                2 => if short { "Generálás" } else { "Világgenerálás" },
-                _ => if short { "Worldgen" } else { "World Generation" },
+                1 => {
+                    if short {
+                        "Weltgenerierung"
+                    } else {
+                        "Weltgenerierung"
+                    }
+                },
+                2 => {
+                    if short {
+                        "Generálás"
+                    } else {
+                        "Világgenerálás"
+                    }
+                },
+                _ => {
+                    if short {
+                        "Worldgen"
+                    } else {
+                        "World Generation"
+                    }
+                },
             }
         }
     }

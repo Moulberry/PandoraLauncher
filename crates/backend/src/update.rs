@@ -41,33 +41,48 @@ pub async fn check_for_updates(http_client: reqwest::Client, send: FrontendHandl
 
     let current_version = schema::forge::VersionFragment::string_to_parts(version);
 
-    let url = format!("{repository_url}/releases/latest/download/update_manifest_{}.json", std::env::consts::OS);
-    let response = http_client.get(url).send().await;
+    let manifest_names = [
+        format!("update_{}.json", std::env::consts::OS),
+        format!("update_manifest_{}.json", std::env::consts::OS),
+    ];
+    let mut last_status = None;
+    let mut manifest_bytes = None;
 
-    let response = match response {
-        Ok(response) => response,
-        Err(err) => {
-            log::error!("Error while requesting update manifest: {}", err);
-            send.send_error("Unable to fetch Pandora update manifest, see logs for more details");
-            return;
-        },
-    };
+    for manifest_name in manifest_names {
+        let url = format!("{repository_url}/releases/latest/download/{manifest_name}");
+        let response = http_client.get(url).send().await;
 
-    if response.status() != StatusCode::OK {
-        send.send_error(format!(
-            "Unable to fetch Pandora update manifest, non-200 status code: {}",
-            response.status()
-        ));
-        return;
+        let response = match response {
+            Ok(response) => response,
+            Err(err) => {
+                log::error!("Error while requesting update manifest: {}", err);
+                send.send_error("Unable to fetch Pandora update manifest, see logs for more details");
+                return;
+            },
+        };
+
+        if response.status() != StatusCode::OK {
+            last_status = Some(response.status());
+            continue;
+        }
+
+        manifest_bytes = match response.bytes().await {
+            Ok(manifest_bytes) => Some(manifest_bytes),
+            Err(err) => {
+                log::error!("Error while downloading update manifest: {}", err);
+                send.send_error("Unable to download Pandora update manifest, see logs for more details");
+                return;
+            },
+        };
+        break;
     }
 
-    let manifest_bytes = match response.bytes().await {
-        Ok(manifest_bytes) => manifest_bytes,
-        Err(err) => {
-            log::error!("Error while downloading update manifest: {}", err);
-            send.send_error("Unable to download Pandora update manifest, see logs for more details");
-            return;
-        },
+    let Some(manifest_bytes) = manifest_bytes else {
+        send.send_error(format!(
+            "Unable to fetch Pandora update manifest, non-200 status code: {}",
+            last_status.unwrap_or(StatusCode::NOT_FOUND)
+        ));
+        return;
     };
 
     let manifest = match serde_json::from_slice::<UpdateManifest>(&manifest_bytes) {

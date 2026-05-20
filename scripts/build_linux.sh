@@ -56,6 +56,7 @@ if [[ -n "$CARGO_PACKAGER_SIGN_PRIVATE_KEY" ]]; then
         }
     }
 }" > dist/update_linux.json
+    cp dist/update_linux.json dist/update_manifest_linux.json
 
     rm dist/*.sig
 fi

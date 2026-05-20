@@ -1,0 +1,81 @@
+[package]
+name = "ropey"
+version = "2.0.0-beta.1"
+edition = "2021"
+rust-version = "1.65"
+authors = ["Nathan Vegdahl <cessen@cessen.com>"]
+description = "A fast and robust text rope for Rust"
+documentation = "https://docs.rs/ropey"
+repository = "https://github.com/cessen/ropey"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+keywords = ["rope", "text", "edit", "buffer"]
+categories = ["text-processing", "data-structures"]
+exclude = ["/design/*", "/fuzz", "/.github/*"]
+
+# Build with all APIs enabled on docs.rs.
+[package.metadata.docs.rs]
+features = [
+  "metric_chars",
+  "metric_utf16",
+  "metric_lines_lf",
+  "metric_lines_lf_cr",
+  "metric_lines_unicode",
+]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = ["metric_lines_lf_cr", "simd"]
+metric_chars = []
+metric_utf16 = []
+metric_lines_lf = []
+metric_lines_lf_cr = []
+metric_lines_unicode = []
+simd = ["str_indices/simd"]
+
+# DO NOT USE THIS FEATURE.  It is for internal debugging and testing purposes
+# only, and makes Ropey much slower and more memory hungry.  It is also not
+# part of the stable public API, and may be removed or changed in non-breaking
+# releases.
+__dev__small_chunks = []
+
+[dependencies]
+str_indices = { version = "0.4", default-features = false }
+
+[dev-dependencies]
+rand = "0.8"
+proptest = "~1.6"
+criterion = { version = "0.3", features = ["html_reports"] }
+fnv = "1"
+fxhash = "0.2"
+
+# This is a transitive dependency of criterion--we don't use it directly. We
+# lock it to this exact version because newer versions don't work on our MSRV,
+# and thus CI fails if it's on a newer version.
+unicode-width = "=0.1.13"
+
+#-----------------------------------------
+
+[[bench]]
+name = "create"
+harness = false
+
+[[bench]]
+name = "insert"
+harness = false
+
+[[bench]]
+name = "remove"
+harness = false
+
+[[bench]]
+name = "queries"
+harness = false
+
+[[bench]]
+name = "iterators"
+harness = false
+
+[[bench]]
+name = "hash"
+harness = false

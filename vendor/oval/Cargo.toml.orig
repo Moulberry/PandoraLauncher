@@ -1,0 +1,23 @@
+[package]
+name = "oval"
+version = "2.0.0"
+authors = ["Geoffroy Couprie <geo.couprie@gmail.com>", "Amos Wenger <amoswenger@gmail.com>"]
+description = "A stream abstraction designed for use with nom, winnow, etc."
+license = "MIT"
+repository = "https://github.com/fasterthanlime/oval"
+readme = "README.md"
+
+include = [
+  "LICENSE",
+  "README.md",
+  ".gitignore",
+  ".travis.yml",
+  "Cargo.toml",
+  "src/*.rs",
+]
+
+[dependencies]
+
+[dependencies.bytes]
+version = "1.0.0"
+optional = true

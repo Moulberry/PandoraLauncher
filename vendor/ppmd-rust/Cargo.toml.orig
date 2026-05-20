@@ -1,0 +1,19 @@
+[package]
+name = "ppmd-rust"
+description = "PPMd compression / decompression"
+homepage = "https://github.com/hasenbanck/ppmd-rust"
+repository = "https://github.com/hasenbanck/ppmd-rust"
+edition = "2021"
+rust-version = "1.82"
+version = "1.4.0"
+keywords = ["ppmd"]
+license = "CC0-1.0 OR MIT-0"
+exclude = ["tests/fixtures"]
+
+[features]
+default = []
+# Tagged offsets to validate the function of the algorithm. Used in CI for testing and when running miri.
+# Break backward compatibility with existing PPMd data, since it limits the maximal allowed memory to 512 MiB.
+unstable-tagged-offsets = []
+
+[dependencies]

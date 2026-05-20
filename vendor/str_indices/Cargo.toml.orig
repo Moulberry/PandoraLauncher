@@ -1,0 +1,33 @@
+[package]
+name = "str_indices"
+version = "0.4.4"
+edition = "2021"
+authors = ["Nathan Vegdahl <cessen@cessen.com>"]
+description = "Count and convert between indexing schemes on string slices."
+documentation = "https://docs.rs/str_indices"
+repository = "https://github.com/cessen/str_indices"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+keywords = ["text", "string", "nostd"]
+categories = ["text-processing"]
+
+exclude = ["tests/", "benches/text/", ".github/"]
+
+[features]
+default = ["simd"]
+simd = [] # Enable explicit SIMD optimizations on supported platforms.
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1.0"
+criterion = { version = "0.3", features = ["html_reports"] }
+
+[profile.release]
+lto = "thin"
+
+#-----------------------------------------
+
+[[bench]]
+name = "all"
+harness = false

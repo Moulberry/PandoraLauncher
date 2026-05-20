@@ -1,0 +1,72 @@
+[package]
+name = "sqlite-wasm-rs"
+links = "wsqlite3"
+version = "0.5.2"
+authors = ["Spxg <unsafe@outlook.es>"]
+repository = "https://github.com/Spxg/sqlite-wasm-rs"
+description = "`wasm32-unknown-unknown` bindings to the libsqlite3 library."
+categories = ["development-tools::ffi", "wasm", "database"]
+keywords = ["sqlite", "sqlite-wasm", "wasm", "webassembly", "javascript"]
+readme.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+include.workspace = true
+
+[dependencies]
+wasm-bindgen = { version = "0.2.104", default-features = false }
+js-sys = { version = "0.3.81", default-features = false }
+rsqlite-vfs = { version = "0.1.0" }
+
+[features]
+# SQLite3MultipleCiphers
+# <https://github.com/utelle/SQLite3MultipleCiphers>
+# <https://utelle.github.io/SQLite3MultipleCiphers>
+sqlite3mc = []
+
+[build-dependencies]
+cc = "1.2.27"
+bindgen = { version = "0.72", optional = true }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.54"
+
+[package.metadata.docs.rs]
+targets = ["wasm32-unknown-unknown"]
+
+[workspace]
+resolver = "2"
+members = [
+  "tests",
+  "crates/rsqlite-vfs",
+  "crates/sqlite-wasm-libc",
+  "crates/sqlite-wasm-vfs",
+  "extensions/sqlite-vec",
+  "examples/implement-a-vfs",
+  "examples/nodejs",
+  "examples/use-prebuild-lib",
+]
+
+[workspace.package]
+readme = "README.md"
+edition = "2021"
+license = "MIT"
+rust-version = "1.82.0"
+include = [
+    'src/**/*.rs',
+    'build.rs',
+    'sqlite3/**/*.c',
+    'sqlite3/**/*.h',
+    'sqlite3mc/**/*.c',
+    'sqlite3mc/**/*.h',
+    'shim/**/*.h',
+    'shim/**/*.c',
+    'Cargo.toml',
+    '/README.md',
+    'LICENSE',
+]
+
+[patch.crates-io]
+rsqlite-vfs = { path = "./crates/rsqlite-vfs" }
+sqlite-wasm-rs = { path = "./" }
+sqlite-wasm-vfs = { path = "./crates/sqlite-wasm-vfs" }

@@ -1,0 +1,37 @@
+[package]
+name = "fluent-uri"
+version = "0.1.4"
+authors = ["Scallop Ye <yescallop@gmail.com>"]
+edition = "2021"
+description = "A generic URI parser that strictly adheres to IETF RFC 3986."
+documentation = "https://docs.rs/fluent-uri"
+repository = "https://github.com/yescallop/fluent-uri-rs"
+license = "MIT"
+keywords = ["parser", "uri", "rfc3986"]
+categories = ["encoding", "parser-implementations"]
+
+[dependencies]
+bitflags = "1.3.2"
+
+[features]
+default = ["std"]
+ipv_future = []
+rfc6874bis = []
+unstable = []
+std = []
+
+[package.metadata.docs.rs]
+features = ["ipv_future", "rfc6874bis", "std"]
+
+# Commented out to reduce compile time.
+
+# [[bench]]
+# name = "bench"
+# harness = false
+# required-features = ["unstable"]
+
+# [dev-dependencies]
+# criterion = "0.3"
+# url = "2.2.2"
+# uriparse = "0.6.4"
+# iri-string = "0.6.0"

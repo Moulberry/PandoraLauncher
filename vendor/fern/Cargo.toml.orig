@@ -1,0 +1,85 @@
+[package]
+name = "fern"
+# Remember to update html_root_url in src/lib.rs with each version.
+version = "0.7.1"
+authors = ["David Ross <daboross@daboross.net>"]
+description = "Simple, efficient logging"
+edition = "2018"
+# when updating this, also update toolchain in .github/workflows/rust.yml
+rust-version = "1.60"
+
+documentation = "https://docs.rs/fern/"
+repository = "https://github.com/daboross/fern"
+readme = "README.md"
+
+license = "MIT"
+keywords = ["log", "logging", "logger"]
+categories = ["development-tools::debugging"]
+
+include = ["Cargo.toml", "src/**/*", "tests/**/*", "examples/**/*", "LICENSE", "README.md", "CONTRIBUTING.md", "CHANGELOG.md"]
+
+[dependencies]
+log = { version = "0.4", features = ["std"] }
+colored = { version = "2.1.0", optional = true }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"], optional = true }
+
+[target."cfg(not(windows))".dependencies]
+syslog3 = { version = "3", package = "syslog", optional = true }
+syslog4 = { version = "4", package = "syslog", optional = true }
+syslog6 = { version = "6", package = "syslog", optional = true }
+syslog7 = { version = "7", package = "syslog", optional = true }
+reopen1 = { version = "~1", package = "reopen", features = ["signals"], optional = true }
+reopen03 = { version = "^0.3", package = "reopen", optional = true }
+libc = { version = "0.2.58", optional = true }
+
+[features]
+syslog-3 = ["syslog3"]
+syslog-4 = ["syslog4"]
+syslog-6 = ["syslog6"]
+syslog-7 = ["syslog7"]
+reopen-03 = ["reopen03", "libc"]
+reopen-1 = ["reopen1", "libc"]
+meta-logging-in-format = []
+date-based = ["chrono"]
+
+[dev-dependencies]
+tempfile = "3"
+clap = "2.22"
+humantime = "2.1.0"
+
+[[example]]
+name = "cmd-program"
+
+[[example]]
+name = "date-based-file-log"
+required-features = ["date-based"]
+
+[[example]]
+name = "colored"
+required-features = ["colored"]
+
+[[example]]
+name = "pretty-colored"
+required-features = ["colored"]
+
+[[example]]
+name = "syslog7"
+required-features = ["syslog-7"]
+
+[[example]]
+name = "syslog"
+required-features = ["syslog-6"]
+
+[[example]]
+name = "syslog4"
+required-features = ["syslog-4"]
+
+[[example]]
+name = "syslog3"
+required-features = ["syslog-3"]
+
+[[example]]
+name = "meta-logging"
+
+[package.metadata.docs.rs]
+all-features = true

@@ -1,0 +1,40 @@
+[package]
+name = "async-tar"
+version = "0.5.1"
+authors = ["dignifiedquire <me@dignifiequire.com>", "Alex Crichton <alex@alexcrichton.com>"]
+homepage = "https://github.com/dignifiedquire/async-tar"
+repository = "https://github.com/dignifiedquire/async-tar"
+documentation = "https://docs.rs/async-tar"
+license = "MIT/Apache-2.0"
+keywords = ["tar", "tarfile", "encoding"]
+readme = "README.md"
+edition = "2018"
+exclude = ["tests/archives/*"]
+resolver = "2"
+
+description = """
+A Rust implementation of an async TAR file reader and writer. This library does not
+currently handle compression, but it is abstract over all I/O readers and
+writers. Additionally, great lengths are taken to ensure that the entire
+contents are never required to be entirely resident in memory all at once.
+"""
+
+[dependencies]
+async-std = { version = "1.12.0", features = ["unstable"] }
+filetime = "0.2.8"
+pin-project = "1.0.8"
+
+[dev-dependencies]
+async-std = { version = "1.12.0", features = ["unstable", "attributes"] }
+static_assertions = "1.1.0"
+tempfile = "3"
+
+[target."cfg(unix)".dependencies]
+libc = "0.2"
+xattr = { version = "0.2", optional = true }
+
+[target.'cfg(target_os = "redox")'.dependencies]
+redox_syscall = "0.2"
+
+[features]
+default = [ "xattr" ]

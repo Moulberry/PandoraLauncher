@@ -1,0 +1,38 @@
+[package]
+name = "base62"
+version = "2.2.3"
+authors = [
+    "François Bernier <frankbernier@gmail.com>",
+    "Chai T. Rex <ChaiTRex@users.noreply.github.com>",
+]
+edition = "2021"
+description = "A Base62 encoding/decoding library"
+documentation = "https://docs.rs/base62/"
+homepage = "https://github.com/fbernier/base62"
+repository = "https://github.com/fbernier/base62"
+readme = "README.md"
+keywords = ["base62", "encoding", "decoding", "url", "shortener"]
+license = "MIT"
+exclude = [
+    ".github/*",
+]
+
+[features]
+default = ["alloc"]
+alloc = []
+std = ["alloc"]
+
+[dependencies]
+
+[dev-dependencies]
+criterion = { version = "0.7", default-features = false }
+quickcheck = "1"
+rand = "0.9"
+
+[[bench]]
+name = "base62"
+harness = false
+required-features = ["alloc"]
+
+[lib]
+bench = false

@@ -164,6 +164,8 @@ impl InstanceList {
                     .compact()
                     .icon(trash_icon)
                     .on_click(move |click: &ClickEvent, window, cx| {
+                        cx.stop_propagation();
+                        window.prevent_default();
                         if InterfaceConfig::get(cx).quick_delete_instance && click.modifiers().shift {
                             backend_handle.send(MessageToBackend::DeleteInstance { id });
                         } else {
@@ -190,7 +192,8 @@ impl InstanceList {
                                 .id(("rename", index))
                                 .group(name_hover_group)
                                 .cursor_pointer()
-                                .w_full()
+                                .w_48()
+                                .max_w_full()
                                 .pl_5()
                                 .on_click(move |_, window, cx| {
                                     modals::rename_instance::open_rename_instance(
@@ -359,6 +362,8 @@ impl TableDelegate for InstanceList {
                         .items_center()
                         .child(Button::new(("remove", row_ix)).danger().small().compact().icon(trash_icon).on_click(
                             move |click: &ClickEvent, window, cx| {
+                                cx.stop_propagation();
+                                window.prevent_default();
                                 if InterfaceConfig::get(cx).quick_delete_instance && click.modifiers().shift {
                                     backend_handle.send(MessageToBackend::DeleteInstance { id });
                                 } else {

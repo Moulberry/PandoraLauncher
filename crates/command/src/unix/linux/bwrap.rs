@@ -76,6 +76,7 @@ static ALLOWED_ENV_VARS: Lazy<FxHashSet<&'static OsStr>> = Lazy::new(|| {
         "USER",
         "USERNAME",
         "DISPLAY",
+        "XAUTHORITY",
         "WAYLAND_DISPLAY",
         "PULSE_SERVER"
     ].iter().map(OsStr::new).collect()

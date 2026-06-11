@@ -170,6 +170,9 @@ impl BackendState {
                     crate::export::export_instance(backend, id, format, options, output, modal_action).await;
                 });
             },
+            MessageToBackend::DuplicateInstance { id } => {
+                self.duplicate_instance(id).await;
+            },
             MessageToBackend::RenameInstance { id, name } => {
                 self.rename_instance(id, &name).await;
             },

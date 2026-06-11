@@ -1259,6 +1259,20 @@ impl Render for InstanceSettingsSubpage {
                         }
                     }),
             )
+            .child(
+                Button::new("duplicate")
+                    .label(t::instance::duplicate_instance())
+                    .icon(PandoraIcon::Copy)
+                    .overflow_x_hidden()
+                    .on_click({
+                        let backend_handle = self.backend_handle.clone();
+                        let instance = self.instance.clone();
+                        move |_: &ClickEvent, _window, cx| {
+                            let id = instance.read(cx).id;
+                            backend_handle.send(MessageToBackend::DuplicateInstance { id });
+                        }
+                    }),
+            )
             .child(Button::new("delete").label(t::instance::delete()).overflow_x_hidden().danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();

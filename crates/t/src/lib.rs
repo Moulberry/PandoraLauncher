@@ -404,6 +404,7 @@ pub mod instance {
             "create_shortcut" => Some(create_shortcut()),
             "current_session" => Some(current_session()),
             "delete" => Some(delete()),
+            "duplicate_instance" => Some(duplicate_instance()),
             "game_version" => Some(game_version()),
             "glfw_lib" => Some(glfw_lib()),
             "instance_name" => Some(instance_name()),
@@ -1311,6 +1312,13 @@ pub mod instance {
                 2 => format!("Ez örökre törölni fogja a(z) '{name}' példányt és a hozzá tartozó mentéseket, forráscsomagokat, konfigurációs fájlokat és másokat. Ezek a fájlok nem lesznek visszaszerezhetőek"),
                 _ => format!("This will permanently delete the '{name}' instance and associated saves, resourcepacks, mods, configuration files, and more. These files will not be recoverable"),
             }
+        }
+    }
+    pub fn duplicate_instance() -> &'static str {
+        match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+            1 => "Diese Instanz duplizieren",
+            2 => "Példány másolása",
+            _ => "Duplicate this instance",
         }
     }
     pub mod export {

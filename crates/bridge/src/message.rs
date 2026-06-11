@@ -96,6 +96,9 @@ pub enum MessageToBackend {
         output: PathBuf,
         modal_action: ModalAction,
     },
+    DuplicateInstance {
+        id: InstanceID,
+    },
     RenameInstance {
         id: InstanceID,
         name: Ustr,

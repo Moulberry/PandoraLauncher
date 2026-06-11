@@ -741,6 +741,10 @@ hu = "Leállítás"
 en = "Kill Instance"
 de = "Stope Instanz"
 hu = "Példány leállítása"
+[instance.duplicate_instance]
+en = "Duplicate this instance"
+de = "Diese Instanz duplizieren"
+hu = "Példány másolása"
 [instance.delete]
 en = "Delete this instance"
 de = "Lösche diese Instanz"

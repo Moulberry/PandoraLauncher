@@ -191,6 +191,7 @@ pub struct ModpackFile {
     pub summary: Option<Arc<ContentSummary>>,
     pub default_disabled: bool,
     pub disabled_third_party_downloads: bool,
+    pub project_id: Option<Arc<str>>,
 }
 
 impl ModpackFile {

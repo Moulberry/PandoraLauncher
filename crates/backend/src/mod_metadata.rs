@@ -686,6 +686,7 @@ impl ModMetadataManager {
                 default_disabled,
                 summary: Some(summary),
                 disabled_third_party_downloads: false,
+                project_id: None,
             });
         }
 
@@ -737,6 +738,12 @@ impl ModMetadataManager {
                 }
             };
 
+            let project_id = first_download
+                .strip_prefix("https://cdn.modrinth.com/data/")
+                .and_then(|p| p.split('/').next())
+                .filter(|s| !s.is_empty())
+                .map(Arc::from);
+
             Some(ModpackFile {
                 source: ModpackFileSource::DownloadUrl {
                     url: first_download.clone(),
@@ -747,6 +754,7 @@ impl ModMetadataManager {
                 summary,
                 default_disabled,
                 disabled_third_party_downloads: false,
+                project_id,
             })
         });
 
@@ -855,6 +863,7 @@ impl ModMetadataManager {
                 default_disabled,
                 summary: Some(summary),
                 disabled_third_party_downloads: false,
+                project_id: None,
             });
         }
 
@@ -917,6 +926,7 @@ impl ModMetadataManager {
                 summary,
                 default_disabled,
                 disabled_third_party_downloads: cached_info.disabled_third_party_downloads,
+                project_id: None,
             })
         });
 

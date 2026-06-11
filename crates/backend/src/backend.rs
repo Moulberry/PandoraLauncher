@@ -1195,16 +1195,27 @@ impl BackendState {
             };
 
         let mut content_install_files = Vec::new();
+        let mut content_sources_to_set: Vec<([u8; 20], ContentSource)> = Vec::new();
+
+        let modrinth_source_for_url = |url: &str| -> Option<ContentSource> {
+            let path = url.strip_prefix("https://cdn.modrinth.com/data/")?;
+            let project_id = path.split('/').next().filter(|s| !s.is_empty())?;
+            Some(ContentSource::ModrinthProject { project_id: project_id.into() })
+        };
 
         for file in files.iter() {
-            if let Some(summary) = &file.summary
-                && summary.hash == file.hash
-            {
+            if file.summary.as_ref().is_some_and(|s| s.hash == file.hash) {
+                if let ModpackFileSource::DownloadUrl { url, .. } = &file.source {
+                    if let Some(source) = modrinth_source_for_url(url) {
+                        content_sources_to_set.push((file.hash, source));
+                    }
+                }
                 continue;
             }
 
             match &file.source {
                 ModpackFileSource::DownloadUrl { url, size } => {
+                    let content_source = modrinth_source_for_url(url).unwrap_or_else(|| fallback_source.clone());
                     content_install_files.push(ContentInstallFile {
                         replace_old: None,
                         path: ContentInstallPath::ModpackFilePath(file.path.clone()),
@@ -1213,7 +1224,7 @@ impl BackendState {
                             sha1: file.hash,
                             size: *size,
                         },
-                        content_source: fallback_source.clone(),
+                        content_source,
                         reason: ContentInstallReason::Modpack,
                     });
                 },
@@ -1226,6 +1237,10 @@ impl BackendState {
                 },
                 ModpackFileSource::Builtin { .. } => {},
             }
+        }
+
+        if !content_sources_to_set.is_empty() {
+            self.mod_metadata_manager.set_content_sources(content_sources_to_set.into_iter());
         }
 
         if !curseforge_file_ids.is_empty() {
@@ -1396,6 +1411,53 @@ impl BackendState {
         crate::write_safe(&info_path, serde_json::to_string(&instance_info).unwrap().as_bytes()).unwrap();
 
         Some(instance_dir.clone())
+    }
+
+    pub async fn duplicate_instance(self: &Arc<Self>, id: InstanceID) {
+        let (old_name, old_path) = {
+            let guard = self.instance_state.read();
+            let Some(instance) = guard.instances.get(id) else {
+                self.send.send_error("Unable to duplicate instance, unknown id".to_string());
+                return;
+            };
+            (instance.name.to_string(), instance.root_path.clone())
+        };
+
+        let sanitized = sanitize_filename::sanitize_with_options(
+            &old_name,
+            sanitize_filename::Options { windows: true, ..Default::default() },
+        );
+
+        let mut new_name = format!("{}-1", sanitized);
+        {
+            let guard = self.instance_state.read();
+            for i in 1..=99 {
+                let candidate = if i == 1 {
+                    format!("{}-1", sanitized)
+                } else {
+                    format!("{}-{}", sanitized, i)
+                };
+                if !guard.instances.iter().any(|inst| inst.name == candidate) {
+                    new_name = candidate;
+                    break;
+                }
+            }
+        }
+
+        let new_path = self.directories.instances_dir.join(&new_name);
+        if let Err(err) = std::fs::create_dir_all(&new_path) {
+            self.send.send_error(format!("Unable to create duplicate instance folder: {}", err));
+            return;
+        }
+
+        if let Err(err) = crate::copy_content_recursive(&old_path, &new_path, false, &|_, _| {}) {
+            self.send.send_error(format!("Failed to copy instance: {}", err));
+            let _ = std::fs::remove_dir_all(&new_path);
+            return;
+        }
+
+        self.send.send(MessageToFrontend::Refresh);
+        self.send.send_info(format!("Duplicated instance as \"{}\"", new_name));
     }
 
     pub async fn rename_instance(self: &Arc<Self>, id: InstanceID, name: &str) {

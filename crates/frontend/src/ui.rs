@@ -1,7 +1,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use bridge::{instance::InstanceID, message::MessageToBackend};
-use gpui::{prelude::*, *};
+use gpui::{prelude::*, Half, *};
 use gpui_component::{
     ActiveTheme as _, Disableable, Icon, InteractiveElementExt, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, scroll::ScrollableElement, tooltip::Tooltip, v_flex
 };
@@ -16,6 +16,42 @@ use crate::{
         DataEntities, account::AccountExt, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
     }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{curseforge_page::CurseforgeSearchPage, import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, page::Page, skins_page::SkinsPage, syncing_page::SyncingPage}, png_render_cache,
 };
+
+#[derive(Clone)]
+struct AccountDragInfo {
+    index: usize,
+    name: SharedString,
+}
+
+struct AccountDragPreview {
+    name: SharedString,
+    position: Point<Pixels>,
+}
+
+impl Render for AccountDragPreview {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let size = size(px(180.0), px(44.0));
+
+        div()
+            .pl(self.position.x - size.width.half())
+            .pt(self.position.y - size.height.half())
+            .child(
+                h_flex()
+                    .w(size.width)
+                    .h(size.height)
+                    .px_3()
+                    .gap_2()
+                    .rounded(cx.theme().radius)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().popover)
+                    .text_color(cx.theme().popover_foreground)
+                    .shadow_lg()
+                    .child(PandoraIcon::GripVertical)
+                    .child(ShrinkingText::new(self.name.clone())),
+            )
+    }
+}
 
 pub struct LauncherUI {
     data: DataEntities,
@@ -535,78 +571,150 @@ impl Render for LauncherUI {
                             let account_name = account.username(InterfaceConfig::get(cx).hide_usernames);
 
                             let selected = Some(account.uuid) == selected_account;
+                            let group_name: SharedString = format!("account-row-{account_index}").into();
+                            let uuid = account.uuid;
+                            let drag_info = AccountDragInfo {
+                                index: account_index,
+                                name: account_name.clone(),
+                            };
+                            let row_bg = if selected {
+                                cx.theme().info.opacity(0.15)
+                            } else {
+                                cx.theme().input_background()
+                            };
+                            let row_border = if selected {
+                                cx.theme().info
+                            } else {
+                                cx.theme().border.opacity(0.55)
+                            };
 
                             h_flex()
-                                .gap_2()
+                                .id(("account-row", account_index))
+                                .group(group_name.clone())
                                 .w_full()
-                                .child(Button::new(account_name.clone())
-                                    .min_w_0()
-                                    .flex_1()
-                                    .when(selected, |this| {
-                                        this.info()
+                                .h(px(56.0))
+                                .px_3()
+                                .gap_3()
+                                .rounded(cx.theme().radius)
+                                .border_1()
+                                .border_color(row_border)
+                                .bg(row_bg)
+                                .text_size(rems(0.9375))
+                                .line_height(rems(1.0))
+                                .cursor_move()
+                                .hover(|style| {
+                                    style
+                                        .bg(cx.theme().secondary_hover)
+                                        .border_color(cx.theme().info.opacity(0.75))
+                                })
+                                .on_drag(drag_info, |info: &AccountDragInfo, position, _, cx| {
+                                    cx.new(|_| AccountDragPreview {
+                                        name: info.name.clone(),
+                                        position,
                                     })
-                                    .h_10()
-                                    .child(head.size_8().min_w_8().min_h_8())
-                                    .child(div().pt_0p5().line_clamp(2).line_height(rems(1.0)).child(account_name.clone()))
-                                    .when(!selected, |this| {
-                                        this.on_click({
-                                            let backend_handle = backend_handle.clone();
-                                            let uuid = account.uuid;
-                                            move |_, _, _| {
-                                                backend_handle.send(MessageToBackend::SelectAccount { uuid });
-                                            }
-                                        })
-                                    }))
-                                .child(v_flex()
-                                    .gap_1()
-                                    .child(Button::new(("account-up", account_index))
-                                        .compact()
-                                        .h_5()
-                                        .w_8()
-                                        .icon(PandoraIcon::ArrowUp)
-                                        .disabled(account_index == 0)
-                                        .on_click({
-                                            let backend_handle = backend_handle.clone();
-                                            move |_, _, _| {
-                                                if account_index == 0 {
-                                                    return;
-                                                }
-                                                backend_handle.send(MessageToBackend::ReorderAccounts {
-                                                    from_index: account_index,
-                                                    to_index: account_index - 1,
-                                                });
-                                            }
-                                        }))
-                                    .child(Button::new(("account-down", account_index))
-                                        .compact()
-                                        .h_5()
-                                        .w_8()
-                                        .icon(PandoraIcon::ArrowDown)
-                                        .disabled(account_index + 1 >= accounts_len)
-                                        .on_click({
-                                            let backend_handle = backend_handle.clone();
-                                            move |_, _, _| {
-                                                if account_index + 1 >= accounts_len {
-                                                    return;
-                                                }
-                                                backend_handle.send(MessageToBackend::ReorderAccounts {
-                                                    from_index: account_index,
-                                                    to_index: account_index + 1,
-                                                });
-                                            }
-                                        })))
-                                .child(Button::new(("account-delete", account_index))
-                                    .icon(PandoraIcon::Trash2)
-                                    .h_10()
-                                    .w_10()
-                                    .danger()
-                                    .on_click({
-                                        let backend_handle = backend_handle.clone();
-                                        let uuid = account.uuid;
-                                        move |_, _, _| {
-                                            backend_handle.send(MessageToBackend::DeleteAccount { uuid });
+                                })
+                                .on_drop({
+                                    let backend_handle = backend_handle.clone();
+                                    move |drag: &AccountDragInfo, _, _| {
+                                        if drag.index != account_index {
+                                            backend_handle.send(MessageToBackend::ReorderAccounts {
+                                                from_index: drag.index,
+                                                to_index: account_index,
+                                            });
                                         }
-                                    }))
+                                    }
+                                })
+                                .when(!selected, |this| {
+                                    this.on_click({
+                                        let backend_handle = backend_handle.clone();
+                                        move |_, _, _| {
+                                            backend_handle.send(MessageToBackend::SelectAccount { uuid });
+                                        }
+                                    })
+                                })
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .size_6()
+                                        .min_w_6()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .opacity(0.65)
+                                        .group_hover(group_name.clone(), |style| {
+                                            style.opacity(1.0).text_color(cx.theme().foreground)
+                                        })
+                                        .child(PandoraIcon::GripVertical),
+                                )
+                                .child(head.size_8().min_w_8().min_h_8())
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .flex_1()
+                                        .font_weight(if selected { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+                                        .text_color(if selected { cx.theme().info } else { cx.theme().foreground })
+                                        .child(ShrinkingText::new(account_name.clone())),
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap_1()
+                                        .invisible()
+                                        .group_hover(group_name.clone(), |style| style.visible())
+                                        .child(Button::new(("account-up", account_index))
+                                            .ghost()
+                                            .compact()
+                                            .h_8()
+                                            .w_8()
+                                            .icon(PandoraIcon::ArrowUp)
+                                            .disabled(account_index == 0)
+                                            .on_click({
+                                                let backend_handle = backend_handle.clone();
+                                                move |_, _, cx| {
+                                                    cx.stop_propagation();
+                                                    if account_index == 0 {
+                                                        return;
+                                                    }
+                                                    backend_handle.send(MessageToBackend::ReorderAccounts {
+                                                        from_index: account_index,
+                                                        to_index: account_index - 1,
+                                                    });
+                                                }
+                                            }))
+                                        .child(Button::new(("account-down", account_index))
+                                            .ghost()
+                                            .compact()
+                                            .h_8()
+                                            .w_8()
+                                            .icon(PandoraIcon::ArrowDown)
+                                            .disabled(account_index + 1 >= accounts_len)
+                                            .on_click({
+                                                let backend_handle = backend_handle.clone();
+                                                move |_, _, cx| {
+                                                    cx.stop_propagation();
+                                                    if account_index + 1 >= accounts_len {
+                                                        return;
+                                                    }
+                                                    backend_handle.send(MessageToBackend::ReorderAccounts {
+                                                        from_index: account_index,
+                                                        to_index: account_index + 1,
+                                                    });
+                                                }
+                                            }))
+                                        .child(Button::new(("account-delete", account_index))
+                                            .ghost()
+                                            .compact()
+                                            .icon(PandoraIcon::Trash2)
+                                            .h_8()
+                                            .w_8()
+                                            .danger()
+                                            .on_click({
+                                                let backend_handle = backend_handle.clone();
+                                                move |_, _, cx| {
+                                                    cx.stop_propagation();
+                                                    backend_handle.send(MessageToBackend::DeleteAccount { uuid });
+                                                }
+                                            })),
+                                )
 
                         });
 

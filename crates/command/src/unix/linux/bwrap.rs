@@ -62,6 +62,9 @@ const SYSTEM_FILES_RO: &[&str] = &[
     "/sys/class/hwmon",
     "/sys/class/thermal",
     "/sys/class/drm",
+    "/nix/store",
+    "/run/opengl-driver",
+    "/run/opengl-driver-32",
 ];
 
 static ALLOWED_ENV_VARS: Lazy<FxHashSet<&'static OsStr>> = Lazy::new(|| {
@@ -77,7 +80,8 @@ static ALLOWED_ENV_VARS: Lazy<FxHashSet<&'static OsStr>> = Lazy::new(|| {
         "USERNAME",
         "DISPLAY",
         "WAYLAND_DISPLAY",
-        "PULSE_SERVER"
+        "PULSE_SERVER",
+        "LD_LIBRARY_PATH",
     ].iter().map(OsStr::new).collect()
 });
 

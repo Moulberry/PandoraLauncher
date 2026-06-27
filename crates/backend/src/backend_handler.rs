@@ -1394,9 +1394,11 @@ impl BackendState {
                     }
                 });
             },
-            MessageToBackend::ReorderAccounts { from_index, to_index } => {
+            MessageToBackend::ReorderAccounts { from_index, delta } => {
                 let mut account_info = self.account_info.write();
                 account_info.modify(|account_info| {
+                    let to_index = (from_index as isize + delta) as usize;
+
                     if from_index >= account_info.accounts.len() || to_index >= account_info.accounts.len() || from_index == to_index {
                         return;
                     }

@@ -251,7 +251,7 @@ pub enum MessageToBackend {
     },
     ReorderAccounts {
         from_index: usize,
-        to_index: usize,
+        delta: isize,
     },
     SetOpenGameOutputAfterLaunching {
         value: bool,

@@ -1731,6 +1731,10 @@ en = "${count: usize}/${total: usize} instances are unable to be synced!"
 de = "${count: usize}/${total: usize} Instanzen konnten nicht synchronisiert werden!"
 hu = "${count: usize}/${total: usize} példány nem szinkronizálható!"
 sv = "${count: usize}/${total: usize} instanser kan ej synkas!"
+[instance.sync.unable_instances_tooltip]
+en = "Unable to sync for these instances:"
+de = "Kann für diese Instanzen nicht synchronisiert werden:"
+hu = "Ezeknél a példányoknál nem szinkronizálható:"
 [instance.sync.files]
 en = "Files"
 de = "Dateien"

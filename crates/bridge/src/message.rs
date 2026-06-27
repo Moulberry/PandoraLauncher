@@ -394,6 +394,7 @@ pub struct SyncTargetState {
     pub is_file: bool,
     pub sync_count: usize,
     pub cannot_sync_count: usize,
+    pub cannot_sync_instances: Vec<Arc<str>>,
 }
 
 #[derive(Debug)]

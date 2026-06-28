@@ -332,3 +332,15 @@ pub(crate) fn open_folder(path: &Path, window: &mut Window, cx: &mut App) {
         window.push_notification(notification.autohide(false), cx);
     }
 }
+
+pub fn format_downloads(downloads: u64) -> SharedString {
+    if downloads >= 1_000_000_000 {
+        t::instance::content::downloads::b((downloads / 10_000_000) as f64 / 100.0)
+    } else if downloads >= 1_000_000 {
+        t::instance::content::downloads::m((downloads / 10_000) as f64 / 100.0)
+    } else if downloads >= 10_000 {
+        t::instance::content::downloads::k((downloads / 10) as f64 / 100.0)
+    } else {
+        t::instance::content::downloads::n(downloads)
+    }.into()
+}

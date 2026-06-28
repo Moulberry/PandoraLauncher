@@ -14,7 +14,7 @@ use ustr::Ustr;
 use crate::{
     component::error_alert::ErrorAlert, entity::{
         DataEntities, instance::ContentStates, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page,
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, format_downloads
 };
 
 pub struct CurseforgeSearchPage {
@@ -919,18 +919,6 @@ impl Render for CurseforgeSearchPage {
 
         h_flex().flex_1().min_h_0().size_full().child(parameters).child(content)
     }
-}
-
-pub fn format_downloads(downloads: u64) -> SharedString {
-    if downloads >= 1_000_000_000 {
-        t::instance::content::downloads::b((downloads / 10_000_000) as f64 / 100.0)
-    } else if downloads >= 1_000_000 {
-        t::instance::content::downloads::m((downloads / 10_000) as f64 / 100.0)
-    } else if downloads >= 10_000 {
-        t::instance::content::downloads::k((downloads / 10) as f64 / 100.0)
-    } else {
-        t::instance::content::downloads::n(downloads)
-    }.into()
 }
 
 const FILTER_MOD_CATEGORIES: &[(&'static str, u32)] = &[

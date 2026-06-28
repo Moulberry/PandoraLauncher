@@ -52,8 +52,6 @@ fn inner(dir: &Path) -> Result<(), Box<dyn Error>> {
         locales.nodes[*root].write(&locales, 0, &mut content);
     }
 
-    // maybe we could instead write it to OUT_DIR and use include! in lib.rs
-    // this would have the benefit of not polluting git history
     let lib = dir.join("src").join("lib.rs");
     std::fs::write(&lib, content.as_bytes())?;
     Ok(())

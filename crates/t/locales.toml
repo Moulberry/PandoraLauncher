@@ -776,7 +776,6 @@ sv = "Namn"
 en = "UUID"
 de = "UUID"
 hu = "UUID"
-# do people know this?
 sv = "UUID"
 [account.uuid_random]
 en = "Random"
@@ -1448,11 +1447,13 @@ de = "${num: f64}Mrd. Downloads"
 hu = "${num: f64}Mrd letöltés"
 sv = "${num: f64}md Nedladdningar"
 [instance.content.downloads.m]
+# Million
 en = "${num: f64}M Downloads"
 de = "${num: f64}Mil. Downloads"
 hu = "${num: f64}M letöltés"
 sv = "${num: f64}mn Nedladdningar"
 [instance.content.downloads.k]
+# Thousand
 en = "${num: f64}K Downloads"
 de = "${num: f64}Tsd. Downloads"
 hu = "${num: f64}E letöltés"
@@ -1548,7 +1549,6 @@ de = "Invalieder/Gefährlicher Dateinname"
 hu = "Érvénytelen/veszélyes fájlnév"
 sv = "Ogilgit/farligt filnamn"
 [instance.content.install.missing_sha1_hash]
-#WARN: I do not think users know what sha1 is 
 en = "Missing sha1 hash"
 de = "Fehlender sha1 Hash"
 hu = "Hiányzik az sha1 hash"
@@ -1929,7 +1929,6 @@ de = "Schließe alle anderen Fenster when das Hauptfenster geschlossen ist"
 hu = "Minden másik ablak bezárása a fő ablak bezárásakor"
 sv = "Stäng alla andra fönster när huvudfönstret stängs"
 [settings.windows.use_os_titlebar]
-# Does this work on windows/macos?
 en = "Use OS titlebar (requires restart)"
 hu = "Oprendszer címsáv használata (újraindítás szükséges)"
 sv = "Använd operativsystemets titlebar (kräver omstart)"

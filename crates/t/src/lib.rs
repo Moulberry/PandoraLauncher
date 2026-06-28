@@ -236,7 +236,7 @@ pub mod common {
     pub fn max() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
             1 => "Maximum",
-            2 => "Maximum",
+            2 => "Max.",
             3 => "Max",
             _ => "Max",
         }
@@ -244,7 +244,7 @@ pub mod common {
     pub fn min() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
             1 => "Minimum",
-            2 => "Minimum",
+            2 => "Min.",
             3 => "Minst",
             _ => "Min",
         }
@@ -813,6 +813,7 @@ pub mod instance {
             }
             pub fn select_shaders() -> &'static str {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    2 => "Válassz egy telepíteni kívánt shadert",
                     3 => "Välj shaders att installera",
                     _ => "Select shaders to install",
                 }
@@ -3838,6 +3839,7 @@ pub mod settings {
         }
         pub fn use_os_titlebar() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                2 => "Oprendszer címsáv használata (újraindítás szükséges)",
                 3 => "Använd operativsystemets titlebar (kräver omstart)",
                 _ => "Use OS titlebar (requires restart)",
             }

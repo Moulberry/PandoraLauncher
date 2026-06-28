@@ -8,7 +8,7 @@ use schema::backend_config::SyncTargets;
 
 use crate::{directories::LauncherDirectories, BackendStateInstances};
 
-pub fn apply_to_instance(sync_targets: &SyncTargets, directories: &LauncherDirectories, dot_minecraft: Arc<Path>) {
+pub fn apply_to_instance(sync_targets: &SyncTargets, directories: &LauncherDirectories, dot_minecraft: Arc<Path>, instances: &mut BackendStateInstances) {
     _ = std::fs::create_dir_all(&dot_minecraft);
 
     let mut dir_iterator = walkdir::WalkDir::new(&dot_minecraft).into_iter();
@@ -68,11 +68,11 @@ pub fn apply_to_instance(sync_targets: &SyncTargets, directories: &LauncherDirec
         if &**file_target == "options.txt" {
             let fallback = &directories.synced_dir.join("fallback_options.txt");
             let target = dot_minecraft.join("options.txt");
-            let combined = create_combined_options_txt(fallback, &target, directories);
+            let combined = create_combined_options_txt(fallback, &target, instances);
             _ = crate::write_safe(&fallback, combined.as_bytes());
             _ = crate::write_safe(&target, combined.as_bytes());
         } else if let Some(path) = SafePath::new(file_target) {
-            if let Some(latest) = find_latest(&path, directories) {
+            if let Some(latest) = find_latest(&path, instances) {
                 let target = path.to_path(&dot_minecraft);
                 if latest != target {
                     if let Some(parent) = target.parent() {
@@ -105,18 +105,16 @@ pub fn apply_to_instance(sync_targets: &SyncTargets, directories: &LauncherDirec
     }
 }
 
-fn find_latest(filename: &SafePath, directories: &LauncherDirectories) -> Option<PathBuf> {
+fn find_latest(filename: &SafePath, instances: &mut BackendStateInstances) -> Option<PathBuf> {
     let mut latest_time = SystemTime::UNIX_EPOCH;
     let mut latest_path = None;
 
-    let read_dir = std::fs::read_dir(&directories.instances_dir).ok()?;
-
-    for entry in read_dir {
-        let Ok(entry) = entry else {
+    for instance in instances.instances.iter_mut() {
+        if instance.configuration.get().disable_file_syncing {
             continue;
-        };
+        }
 
-        let path = filename.to_path(&entry.path().join(".minecraft"));
+        let path = filename.to_path(&instance.dot_minecraft_path);
 
         if let Ok(metadata) = std::fs::metadata(&path) {
             let mut time = SystemTime::UNIX_EPOCH;
@@ -138,22 +136,17 @@ fn find_latest(filename: &SafePath, directories: &LauncherDirectories) -> Option
     latest_path
 }
 
-fn create_combined_options_txt(fallback: &Path, current: &Path, directories: &LauncherDirectories) -> String {
+fn create_combined_options_txt(fallback: &Path, current: &Path, instances: &mut BackendStateInstances) -> String {
     let mut values = read_options_txt(fallback);
-
-    let Ok(read_dir) = std::fs::read_dir(&directories.instances_dir) else {
-        return create_options_txt(values);
-    };
 
     let mut paths = Vec::new();
 
-    for entry in read_dir {
-        let Ok(entry) = entry else {
+    for instance in instances.instances.iter_mut() {
+        if instance.configuration.get().disable_file_syncing {
             continue;
-        };
+        }
 
-        let mut path = entry.path();
-        path.push(".minecraft");
+        let mut path = instance.dot_minecraft_path.to_path_buf();
         path.push("options.txt");
 
         let mut time = SystemTime::UNIX_EPOCH;

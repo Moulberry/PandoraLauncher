@@ -704,16 +704,18 @@ impl BackendState {
     }
 
     pub fn apply_syncing_to_instance(&self, id: InstanceID) {
-        let (disable, path) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+        let mut instances = self.instance_state.write();
+
+        let (disable, path) = if let Some(instance) = instances.instances.get_mut(id) {
             (instance.configuration.get().disable_file_syncing, instance.dot_minecraft_path.clone())
         } else {
             return;
         };
 
         if disable {
-            crate::syncing::apply_to_instance(&SyncTargets::default(), &self.directories, path);
+            crate::syncing::apply_to_instance(&SyncTargets::default(), &self.directories, path, &mut instances);
         } else {
-            crate::syncing::apply_to_instance(&self.config.write().get().sync_targets, &self.directories, path);
+            crate::syncing::apply_to_instance(&self.config.write().get().sync_targets, &self.directories, path, &mut instances);
         }
     }
 

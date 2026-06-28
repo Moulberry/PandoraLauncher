@@ -281,67 +281,69 @@ impl Launcher {
                 Ok((self.meta.fetch(&MinecraftVersionMetadataItem(version)).await?, AddVanillaJar::Yes))
             },
             Loader::Fabric => {
-                let fabric_loader_version = async move {
-                    if let Some(preferred_version) = instance_info.preferred_loader_version {
-                        Ok(preferred_version)
-                    } else {
-                        let manifest = self.meta.fetch(&FabricLoaderManifestMetadataItem).map_err(LaunchError::from).await?;
-
-                        let mut latest_loader_version = manifest.0.iter().find(|v| v.stable);
-                        if latest_loader_version.is_none() {
-                            latest_loader_version = manifest.0.first();
-                        }
-                        if let Some(latest_loader_version) = latest_loader_version {
-                            Ok(latest_loader_version.version)
-                        } else {
-                            Err(LaunchError::CantFindLoader { loader: Loader::Fabric, minecraft: instance_info.minecraft_version.as_str() })
-                        }
-                    }
-                };
-
                 launch_tracker.add_total(4);
                 launch_tracker.notify();
 
-                let launch_tracker2 = launch_tracker.clone();
-                let meta2 = Arc::clone(&self.meta);
-                let minecraft_version = instance_info.minecraft_version;
-                let fabric_launch = fabric_loader_version.and_then(async move |loader_version| {
-                    launch_tracker2.add_count(1);
-                    launch_tracker2.notify();
+                let fabric_launch = {
+                    let launch_tracker = launch_tracker.clone();
+                    let meta = Arc::clone(&self.meta);
+                    let minecraft_version = instance_info.minecraft_version;
 
-                    let value = meta2.fetch(&FabricLaunchMetadataItem {
-                        minecraft_version,
-                        loader_version,
-                    }).await?;
+                    async move {
+                        let loader_version = if let Some(preferred_version) = instance_info.preferred_loader_version {
+                            Ok(preferred_version)
+                        } else {
+                            let manifest = self.meta.fetch(&FabricLoaderManifestMetadataItem).map_err(LaunchError::from).await?;
 
-                    launch_tracker2.add_count(1);
-                    launch_tracker2.notify();
+                            let mut latest_loader_version = manifest.0.iter().find(|v| v.stable);
+                            if latest_loader_version.is_none() {
+                                latest_loader_version = manifest.0.first();
+                            }
+                            if let Some(latest_loader_version) = latest_loader_version {
+                                Ok(latest_loader_version.version)
+                            } else {
+                                Err(LaunchError::CantFindLoader { loader: Loader::Fabric, minecraft: instance_info.minecraft_version.as_str() })
+                            }
+                        }?;
 
-                    Ok(value)
-                });
+                        launch_tracker.add_count(1);
+                        launch_tracker.notify();
 
-                let launch_tracker3 = launch_tracker.clone();
-                let meta3 = Arc::clone(&self.meta);
-                let instance_version = instance_info.minecraft_version;
+                        let value = meta.fetch(&FabricLaunchMetadataItem {
+                            minecraft_version,
+                            loader_version,
+                        }).await?;
 
-                let version_manifest_future = async move {
-                    self.meta.fetch(&MinecraftVersionManifestMetadataItem).await.map_err(LaunchError::from)
+                        launch_tracker.add_count(1);
+                        launch_tracker.notify();
+
+                        Ok(value)
+                    }
                 };
-                let version_future = version_manifest_future.and_then(async move |versions| {
-                    launch_tracker3.add_count(1);
-                    launch_tracker3.notify();
 
-                    let Some(version) = versions.versions.iter().find(|v| v.id == instance_version) else {
-                        return Err(LaunchError::CantFindVersion(instance_version.as_str()));
-                    };
+                let version_future = {
+                    let launch_tracker = launch_tracker.clone();
+                    let meta = Arc::clone(&self.meta);
+                    let minecraft_version = instance_info.minecraft_version;
 
-                    let value = meta3.fetch(&MinecraftVersionMetadataItem(version)).await?;
+                    async move {
+                        let versions = meta.fetch(&MinecraftVersionManifestMetadataItem).await.map_err(LaunchError::from)?;
 
-                    launch_tracker3.add_count(1);
-                    launch_tracker3.notify();
+                        launch_tracker.add_count(1);
+                        launch_tracker.notify();
 
-                    Ok(value)
-                });
+                        let Some(version) = versions.versions.iter().find(|v| v.id == minecraft_version) else {
+                            return Err(LaunchError::CantFindVersion(minecraft_version.as_str()));
+                        };
+
+                        let value = meta.fetch(&MinecraftVersionMetadataItem(version)).await?;
+
+                        launch_tracker.add_count(1);
+                        launch_tracker.notify();
+
+                        Ok(value)
+                    }
+                };
 
                 let (version, fabric_launch): (Arc<MinecraftVersion>, Arc<FabricLaunch>) =
                     futures::future::try_join(version_future, fabric_launch).await?;

@@ -324,9 +324,10 @@ impl Launcher {
                 let meta3 = Arc::clone(&self.meta);
                 let instance_version = instance_info.minecraft_version;
 
-                let version_future = self.meta.fetch(&MinecraftVersionManifestMetadataItem)
-                    .map_err(LaunchError::from)
-                    .and_then(async move |versions| {
+                let version_manifest_future = async move {
+                    self.meta.fetch(&MinecraftVersionManifestMetadataItem).await.map_err(LaunchError::from)
+                };
+                let version_future = version_manifest_future.and_then(async move |versions| {
                     launch_tracker3.add_count(1);
                     launch_tracker3.notify();
 

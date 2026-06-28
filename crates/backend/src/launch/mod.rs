@@ -2199,6 +2199,12 @@ impl LaunchContext {
         command.arg("-Dstderr.encoding=UTF-8");
         command.arg("-Dsun.stderr.encoding=UTF-8");
 
+        // This is only needed for 1.18.2 and below, but lets just add it for all versions
+        if self.configuration.loader == Loader::Forge {
+            command.arg("--add-exports");
+            command.arg("cpw.mods.bootstraplauncher/cpw.mods.bootstraplauncher=ALL-UNNAMED");
+        }
+
         if let Some(arguments) = &version_info.arguments {
             self.process_arguments(&arguments.jvm, &mut |arg| {
                 command.arg(arg.to_os_string());

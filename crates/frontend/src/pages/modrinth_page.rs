@@ -493,7 +493,7 @@ impl ModrinthSearchPage {
                     .map(SharedString::new)
                     .unwrap_or(t::instance::content::no_description().into());
 
-                let author_line = div().text_color(cx.theme().muted_foreground).text_sm().pb_px().child(author);
+                let author_line = div().text_color(theme.muted_foreground).text_sm().pb_px().child(author);
 
                 let client_side = hit.client_side.unwrap_or(ModrinthSideRequirement::Unknown);
                 let server_side = hit.server_side.unwrap_or(ModrinthSideRequirement::Unknown);
@@ -512,12 +512,12 @@ impl ModrinthSearchPage {
                         let icon = Icon::empty().path(icon);
                         let translated_category = t::modrinth::category::get(category, false)
                             .unwrap_or("missing_translation");
-                        Some(h_flex().gap_0p5().child(icon).child(translated_category))
+                        Some(h_flex().gap_1().child(icon).child(translated_category))
                     })
                 });
 
                 let downloads = h_flex()
-                    .gap_0p5()
+                    .gap_1()
                     .child(PandoraIcon::Download)
                     .child(format_downloads(hit.downloads));
 
@@ -626,6 +626,8 @@ impl ModrinthSearchPage {
                             .child(
                                 h_flex()
                                     .text_decoration_0()
+                                    .text_sm()
+                                    .text_color(theme.muted_foreground)
                                     .gap_2p5()
                                     .children(std::iter::once(environment).chain(categories)),
                             ),

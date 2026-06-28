@@ -276,8 +276,6 @@ impl Launcher {
                 Ok((self.meta.fetch(&MinecraftVersionMetadataItem(version)).await?, AddVanillaJar::Yes))
             },
             Loader::Fabric => {
-                let versions = self.meta.fetch(&MinecraftVersionManifestMetadataItem).map_err(LaunchError::from);
-
                 let fabric_loader_version = async move {
                     if let Some(preferred_version) = instance_info.preferred_loader_version {
                         Ok(preferred_version)
@@ -316,6 +314,8 @@ impl Launcher {
                 let launch_tracker3 = launch_tracker.clone();
                 let meta3 = Arc::clone(&self.meta);
                 let instance_version = instance_info.minecraft_version;
+
+                let versions = self.meta.fetch(&MinecraftVersionManifestMetadataItem).map_err(LaunchError::from);
                 let version = versions.and_then(async move |versions| {
                     launch_tracker3.add_count(1);
                     launch_tracker3.notify();

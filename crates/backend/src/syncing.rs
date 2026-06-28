@@ -217,33 +217,36 @@ fn read_options_txt(path: &Path) -> FxHashMap<String, String> {
 }
 
 pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateInstances, directories: &LauncherDirectories) -> std::io::Result<SyncState> {
-    let mut dot_minecraft_paths = Vec::new();
+    let mut syncable_instances: Vec<(Arc<str>, Arc<Path>)> = Vec::new();
 
     for instance in instances.instances.iter_mut() {
         if !instance.configuration.get().disable_file_syncing {
-            dot_minecraft_paths.push(instance.dot_minecraft_path.clone());
+            syncable_instances.push((instance.name.as_str().into(), instance.dot_minecraft_path.clone()));
         }
     }
 
-    let total = dot_minecraft_paths.len();
+    let total = syncable_instances.len();
     let mut entries = BTreeMap::default();
 
     for file_target in sync_targets.files.iter() {
         if let Some(safe_file_target) = SafePath::new(file_target) {
-            let mut cannot_sync_count = 0;
+            let mut cannot_sync_instances = Vec::new();
 
-            for dot_minecraft in &dot_minecraft_paths {
+            for (instance_name, dot_minecraft) in &syncable_instances {
                 let target = safe_file_target.to_path(dot_minecraft);
                 if target.is_dir() {
-                    cannot_sync_count += 1;
+                    cannot_sync_instances.push(instance_name.clone());
                 }
             }
+            cannot_sync_instances.sort_by_key(|name| name.to_ascii_lowercase());
+            let cannot_sync_count = cannot_sync_instances.len();
 
             entries.insert(file_target.clone(), SyncTargetState {
                 enabled: true,
                 is_file: true,
                 sync_count: total.saturating_sub(cannot_sync_count),
                 cannot_sync_count,
+                cannot_sync_instances,
             });
         } else {
             entries.insert(file_target.clone(), SyncTargetState {
@@ -251,6 +254,7 @@ pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateIn
                 is_file: true,
                 sync_count: 0,
                 cannot_sync_count: total,
+                cannot_sync_instances: syncable_instances.iter().map(|(name, _)| name.clone()).collect(),
             });
         }
     }
@@ -272,6 +276,7 @@ pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateIn
                 is_file: false,
                 sync_count: 0,
                 cannot_sync_count: total,
+                cannot_sync_instances: syncable_instances.iter().map(|(name, _)| name.clone()).collect(),
             });
             continue;
         };
@@ -279,23 +284,26 @@ pub fn get_sync_state(sync_targets: &SyncTargets, instances: &mut BackendStateIn
         let target_dir = safe_path.to_path(&directories.synced_dir);
 
         let mut sync_count = 0;
-        let mut cannot_sync_count = 0;
+        let mut cannot_sync_instances = Vec::new();
 
-        for dot_minecraft in &dot_minecraft_paths {
+        for (instance_name, dot_minecraft) in &syncable_instances {
             let path = safe_path.to_path(dot_minecraft);
 
             if linking::is_targeting(&target_dir, &path) {
                 sync_count += 1;
             } else if path.exists() && !is_empty_dir(&path) {
-                cannot_sync_count += 1;
+                cannot_sync_instances.push(instance_name.clone());
             }
         }
+        cannot_sync_instances.sort_by_key(|name| name.to_ascii_lowercase());
+        let cannot_sync_count = cannot_sync_instances.len();
 
         entries.insert(folder_target.clone(), SyncTargetState {
             enabled,
             is_file: false,
             sync_count,
             cannot_sync_count,
+            cannot_sync_instances,
         });
     }
 

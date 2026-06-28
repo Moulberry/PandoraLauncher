@@ -1,15 +1,13 @@
 use std::{collections::VecDeque, sync::Arc};
 
-use bridge::{instance::InstanceID, message::MessageToBackend};
+use bridge::instance::InstanceID;
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, InteractiveElementExt, WindowExt, button::{Button, ButtonVariants}, h_flex, input::{Input, InputState}, notification::{Notification, NotificationType}, scroll::ScrollableElement, tooltip::Tooltip, v_flex
+    ActiveTheme as _, Icon, InteractiveElementExt, WindowExt, h_flex, notification::{Notification, NotificationType}, scroll::ScrollableElement, tooltip::Tooltip, v_flex
 };
-use rand::Rng;
 use rustc_hash::FxHashMap;
 use schema::pandora_update::UpdatePrompt;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{
     component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath, resize_panel::{ResizePanel, ResizePanelState}, shrinking_text::ShrinkingText, title_bar::TitleBar}, entity::{
@@ -504,139 +502,15 @@ impl Render for LauncherUI {
             .child(account_head.size_8().min_w_8().min_h_8())
             .child(ShrinkingText::new(account_name))
             .on_click({
-                let accounts = self.data.accounts.clone();
-                let backend_handle = self.data.backend_handle.clone();
+                let data = self.data.clone();
                 move |_, window, cx| {
-                    if accounts.read(cx).accounts.is_empty() {
-                        crate::root::start_new_account_login(&backend_handle, window, cx);
+                    if data.accounts.read(cx).accounts.is_empty() {
+                        crate::root::start_new_account_login(&data.backend_handle, window, cx);
                         return;
                     }
 
-                    let accounts = accounts.clone();
-                    let backend_handle = backend_handle.clone();
-                    window.open_sheet_at(gpui_component::Placement::Left, cx, move |sheet, _, cx| {
-                        let hide_skins = InterfaceConfig::get(cx).hide_skins;
-
-                        let (accounts, selected_account) = {
-                            let accounts = accounts.read(cx);
-                            (accounts.accounts.clone(), accounts.selected_account_uuid)
-                        };
-
-                        let items = accounts.iter().map(|account| {
-                            let head = if hide_skins {
-                                gpui::img(ImageSource::Resource(Resource::Embedded("images/hidden_head.png".into())))
-                            } else if let Some(head) = &account.head {
-                                let resize = png_render_cache::ImageTransformation::Resize { width: 32, height: 32 };
-                                png_render_cache::render_with_transform(head.clone(), resize, cx)
-                            } else {
-                                gpui::img(ImageSource::Resource(Resource::Embedded("images/default_head.png".into())))
-                            };
-                            let account_name = account.username(InterfaceConfig::get(cx).hide_usernames);
-
-                            let selected = Some(account.uuid) == selected_account;
-
-                            h_flex()
-                                .gap_2()
-                                .w_full()
-                                .child(Button::new(account_name.clone())
-                                    .min_w_0()
-                                    .flex_1()
-                                    .when(selected, |this| {
-                                        this.info()
-                                    })
-                                    .h_10()
-                                    .child(head.size_8().min_w_8().min_h_8())
-                                    .child(div().pt_0p5().line_clamp(2).line_height(rems(1.0)).child(account_name.clone()))
-                                    .when(!selected, |this| {
-                                        this.on_click({
-                                            let backend_handle = backend_handle.clone();
-                                            let uuid = account.uuid;
-                                            move |_, _, _| {
-                                                backend_handle.send(MessageToBackend::SelectAccount { uuid });
-                                            }
-                                        })
-                                    }))
-                                .child(Button::new((account_name.clone(), 1))
-                                    .icon(PandoraIcon::Trash2)
-                                    .h_10()
-                                    .w_10()
-                                    .danger()
-                                    .on_click({
-                                        let backend_handle = backend_handle.clone();
-                                        let uuid = account.uuid;
-                                        move |_, _, _| {
-                                            backend_handle.send(MessageToBackend::DeleteAccount { uuid });
-                                        }
-                                    }))
-
-                        });
-
-                        sheet
-                            .when(cfg!(target_os = "macos"), |this| this.pt_5())
-                            .title(t::account::title())
-                            .child(v_flex()
-                                .gap_2()
-                                .child(Button::new("add-account").h_10().success().icon(PandoraIcon::Plus).label(t::account::add::label()).on_click({
-                                    let backend_handle = backend_handle.clone();
-                                    move |_, window, cx| {
-                                        crate::root::start_new_account_login(&backend_handle, window, cx);
-                                    }
-                                }))
-                                .child(Button::new("add-offline").h_10().success().icon(PandoraIcon::Plus).label(t::account::add::offline()).on_click({
-                                    let backend_handle = backend_handle.clone();
-                                    move |_, window, cx| {
-                                        let name_input = cx.new(|cx| {
-                                            InputState::new(window, cx)
-                                        });
-                                        let uuid_input = cx.new(|cx| {
-                                            InputState::new(window, cx).placeholder(t::account::uuid_random())
-                                        });
-                                        let backend_handle = backend_handle.clone();
-                                        window.open_dialog(cx, move |dialog, _, cx| {
-                                            let username = name_input.read(cx).value();
-                                            let valid_name = username.len() >= 1 && username.len() <= 16 &&
-                                                username.as_bytes().iter().all(|c| *c > 32 && *c < 127);
-                                            let uuid = uuid_input.read(cx).value();
-                                            let valid_uuid = uuid.is_empty() || Uuid::try_parse(&uuid).is_ok();
-
-                                            let valid = valid_name && valid_uuid;
-
-                                            let backend_handle = backend_handle.clone();
-                                            let mut add_button = Button::new("add").label(t::account::add::submit()).disabled(!valid).on_click(move |_, window, cx| {
-                                                window.close_all_dialogs(cx);
-
-                                                let uuid = if let Ok(uuid) = Uuid::try_parse(&uuid) {
-                                                   uuid
-                                                } else {
-                                                    let uuid: u128 = rand::thread_rng().r#gen();
-                                                    let uuid = (uuid & !0xF0000000000000000000) | 0x30000000000000000000; // set version to 3
-                                                    Uuid::from_u128(uuid)
-                                                };
-
-                                                backend_handle.send(MessageToBackend::AddOfflineAccount {
-                                                    name: username.clone().into(),
-                                                    uuid
-                                                });
-                                            });
-
-                                            if valid {
-                                                add_button = add_button.success();
-                                            }
-
-                                            dialog.title(t::account::add::offline())
-                                                .child(v_flex()
-                                                    .gap_2()
-                                                    .child(crate::labelled(t::account::name(), Input::new(&name_input)))
-                                                    .child(crate::labelled(t::account::uuid(), Input::new(&uuid_input)))
-                                                    .child(add_button)
-                                                )
-                                        });
-                                    }
-                                }))
-                                .children(items)
-                            )
-
-                    });
+                    let build = crate::modals::accounts::build_accounts_sheet(&data, window, cx);
+                    window.open_sheet_at(gpui_component::Placement::Left, cx, build);
                 }
             });
 

@@ -248,13 +248,13 @@ pub async fn import_from_atlauncher(backend: &BackendState, import_job: ImportFr
     };
     let launcher_config = serde_json::from_slice::<AtLauncherConfig>(&launcher_config_bytes).expect("Failed to parse to json");
 
-    import_accounts_from_atlauncher(backend, &import_job, &launcher_config, &modal_action).await;
-    import_instances_from_atlauncher(backend, &import_job, &launcher_config, &modal_action);
+    let accounts = import_accounts_from_atlauncher(backend, &import_job, &launcher_config, &modal_action).await;
+    import_instances_from_atlauncher(backend, &import_job, &launcher_config, &modal_action, &accounts);
 }
 
-async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &ImportFromOtherLauncherJob, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
+async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &ImportFromOtherLauncherJob, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) -> Option<Vec<AtLauncherAccount>> {
     if !import_job.import_accounts {
-        return;
+        return None;
     }
 
     let tracker = ProgressTracker::new("Reading accounts.json".into(), backend.send.clone());
@@ -263,18 +263,18 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &Im
 
     let accounts_path = import_job.root.join("configs/accounts.json");
     let Ok(accounts_bytes) = std::fs::read(&accounts_path) else {
-        return;
+        return None;
     };
 
     let Ok(accounts_json) = serde_json::from_slice::<Vec<AtLauncherAccount>>(&accounts_bytes) else {
-        return;
+        return None;
     };
 
     let secret_storage = match backend.secret_storage.get_or_init(PlatformSecretStorage::new).await {
         Ok(secret_storage) => secret_storage,
         Err(error) => {
             log::error!("Error initializing secret storage: {error}");
-            return;
+            return None;
         }
     };
 
@@ -304,7 +304,7 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &Im
     tracker.set_total(num_accounts);
     tracker.notify();
 
-    for account in accounts_json {
+    for account in &accounts_json {
         let mut credentials = AccountCredentials::default();
          let mut non_default_creds = false;
           let now = chrono::Utc::now();
@@ -312,14 +312,14 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &Im
            if let Ok(expiry) = DateTime::from_str(&account.access_token_expires_at) && expiry < now {
                non_default_creds = true;
              credentials.access_token = Some(TokenWithExpiry {
-                  token: account.access_token.into(),
+                  token: account.access_token.clone().into(),
                 expiry,
               });
         }
         if let Ok(expiry) = DateTime::from_str(&account.xsts_auth.not_after) && expiry < now {
             non_default_creds = true;
             credentials.xsts = Some(XstsToken {
-                token: account.xsts_auth.token.into(),
+                token: account.xsts_auth.token.clone().into(),
                 expiry,
                 userhash: account.xsts_auth.display_claims.xui[0].uhs.clone().into(),
             });
@@ -336,6 +336,7 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &Im
     tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Normal);
     tracker.notify();
 
+    Some(accounts_json)
 }
 
 struct AtLauncherInstanceToImport {
@@ -344,7 +345,7 @@ struct AtLauncherInstanceToImport {
     folder: Arc<Path>,
 }
 
-fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConfig) -> anyhow::Result<InstanceConfiguration> {
+fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConfig, accounts: &Option<Vec<AtLauncherAccount>>) -> anyhow::Result<InstanceConfiguration> {
     // let instance_cfg_bytes = std::fs::read(config_path)?;
     // let instance_cfg = serde_json::from_slice::<AtLauncherInstance>(&instance_cfg_bytes)?;
     let instance_cfg_bytes = std::fs::read(config_path).expect("Failed to read from fs");
@@ -372,12 +373,18 @@ fn try_load_from_atlauncher(config_path: &Path, launcher_config: &AtLauncherConf
     }
 
     configuration.preferred_loader_version = instance_cfg.launcher.loader_version.map(|loader_version| loader_version.raw_version.into());
-    configuration.preferred_account = instance_cfg.launcher.account;
+    if let Some(accounts) = accounts {
+        configuration.preferred_account = instance_cfg.launcher.account
+            .map(|username| accounts.iter()
+                .find(|account| account.username == username)
+                .map(|account| account.uuid))
+            .flatten();
+    }
 
     Ok(configuration)
 }
 
-fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportFromOtherLauncherJob, launcher_config: &AtLauncherConfig, modal_action: &ModalAction) {
+fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportFromOtherLauncherJob, launcher_config: &AtLauncherConfig, modal_action: &ModalAction, accounts: &Option<Vec<AtLauncherAccount>>) {
     if import_job.paths.is_empty() {
         return;
     }
@@ -424,7 +431,7 @@ fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportF
         modal_action.trackers.push(tracker.clone());
         tracker.notify();
 
-        let Ok(configuration) = try_load_from_atlauncher(&to_import.config_path, launcher_config) else {
+        let Ok(configuration) = try_load_from_atlauncher(&to_import.config_path, launcher_config, accounts) else {
             tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
             log::error!("Failed to load config path from atlauncher for {:?}", to_import.folder.file_name().unwrap());
             tracker.notify();

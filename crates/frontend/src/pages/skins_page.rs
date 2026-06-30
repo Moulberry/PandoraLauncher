@@ -193,7 +193,6 @@ impl Render for SkinsPage {
         let mut library = v_flex()
             .flex_1()
             .min_w_0()
-            .overflow_hidden()
             .w_full()
             .text_xl()
             .content_start()

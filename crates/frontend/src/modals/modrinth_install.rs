@@ -451,7 +451,7 @@ impl InstallDialog {
 
                     let mut hash = [0u8; 20];
                     let Ok(_) = hex::decode_to_slice(&*install_file.hashes.sha1, &mut hash) else {
-                        let warning = format!("File {} has invalid sha1: {}", install_file.filename, install_file.hashes.sha1);
+                        let warning = t::instance::content::install::file_invalid_sha1(&install_file.filename, &install_file.hashes.sha1);
                         window.push_notification((NotificationType::Error, SharedString::new(warning)), cx);
                         return;
                     };

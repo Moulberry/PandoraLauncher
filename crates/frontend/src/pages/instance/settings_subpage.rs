@@ -1048,7 +1048,7 @@ impl Render for InstanceSettingsSubpage {
                             files: false,
                             directories: true,
                             multiple: false,
-                            prompt: Some("Select empty directory".into()),
+                            prompt: Some(t::instance::select_empty_directory().into()),
                         });
                         let backend_handle = backend_handle.clone();
                         cx.spawn(async move |_| {

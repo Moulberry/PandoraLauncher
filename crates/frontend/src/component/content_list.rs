@@ -457,9 +457,9 @@ impl ContentListDelegate {
             .when_some(desc2, |div, desc2| div.child(desc2.when(!visually_enabled, |this| this.line_through())));
 
         if child.disabled_third_party_downloads {
-            item_content = item_content.child(ErrorAlert::new("Blocked".into(), "The mod author has blocked downloads from third-party launchers".into()).w(Length::Auto));
+            item_content = item_content.child(ErrorAlert::new(t::instance::content::blocked().into(), t::instance::content::install::no_third_party_downloads().into()).w(Length::Auto));
         } else if child.is_missing {
-            item_content = item_content.child(Button::new("download").label("Download").success().on_click({
+            item_content = item_content.child(Button::new("download").label(t::instance::content::download()).success().on_click({
                 let backend_handle = self.backend_handle.clone();
                 let id = self.id;
                 let content_id = child.parent;
@@ -472,8 +472,8 @@ impl ContentListDelegate {
                         modal_action: modal_action.clone()
                     });
 
-                    crate::modals::generic::show_modal(window, cx, "Downloading children".into(),
-                        "Error downloading children".into(), modal_action);
+                    crate::modals::generic::show_modal(window, cx, t::instance::content::downloading_children().into(),
+                        t::instance::content::error_downloading_children().into(), modal_action);
                 }
             }));
         }
@@ -499,7 +499,7 @@ impl ContentListDelegate {
                 Some(files)
             } else if let ContentType::CurseforgeModpack { unknown_files, files, .. } = &extra {
                 for unknown_file in unknown_files.iter() {
-                    let filename: Arc<str> = format!("File ID: {}", unknown_file.file_id).into();
+                    let filename: Arc<str> = t::instance::content::file_id(unknown_file.file_id).into();
 
                     let lowercase_filename: Arc<str> = filename.to_ascii_lowercase().into();
                     let lowercase_search_keys = Arc::new([lowercase_filename]);

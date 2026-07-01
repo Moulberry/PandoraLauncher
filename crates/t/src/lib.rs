@@ -156,7 +156,6 @@ pub mod common {
             "no_override" => Some(no_override()),
             "ok" => Some(ok()),
             "or_upper" => Some(or_upper()),
-            "report_bug" => Some(report_bug()),
             "reset" => Some(reset()),
             "search" => Some(search()),
             "unknown" => Some(unknown()),
@@ -321,12 +320,6 @@ pub mod common {
             3 => "ИЛИ",
             4 => "ELLER",
             _ => "OR",
-        }
-    }
-    pub fn report_bug() -> &'static str {
-        match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-            3 => "Сообщить об ошибке",
-            _ => "Report a bug",
         }
     }
     pub fn reset() -> &'static str {
@@ -676,6 +669,7 @@ pub mod instance {
             "play" => Some(play()),
             "quickplay" => Some(quickplay()),
             "recent" => Some(recent()),
+            "select_empty_directory" => Some(select_empty_directory()),
             "select_glfw_lib" => Some(select_glfw_lib()),
             "select_icon" => Some(select_icon()),
             "select_jvm_binary" => Some(select_jvm_binary()),
@@ -697,10 +691,51 @@ pub mod instance {
         }
     }
     #[rustfmt::skip]
+    pub mod already_running {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "body" => Some(body()),
+                "body2" => Some(body2()),
+                "start_anyway" => Some(start_anyway()),
+                "title" => Some(title()),
+                _ => None,
+            }
+        }
+        pub fn body() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Повторный запуск может привести к неполадкам или повреждению сохранённых миров.",
+                _ => "Starting it again may cause malfunction or corrupt your saved worlds.",
+            }
+        }
+        pub fn body2() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Мы не несём ответственности за возможные проблемы из-за нескольких запущенных копий игры. Продолжить?",
+                _ => "We cannot take responsibility for any issues if you choose to start another game. Would you like to continue anyway?",
+            }
+        }
+        pub fn start_anyway() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Всё равно запустить",
+                _ => "Start anyway",
+            }
+        }
+        pub fn title() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Экземпляр уже запущен",
+                _ => "Instance already running",
+            }
+        }
+    }
+    #[rustfmt::skip]
     pub mod content {
         pub fn get(key: &str) -> Option<&'static str> {
             match key {
+                "blocked" => Some(blocked()),
                 "categories" => Some(categories()),
+                "download" => Some(download()),
+                "downloading_children" => Some(downloading_children()),
+                "enabled_first" => Some(enabled_first()),
+                "error_downloading_children" => Some(error_downloading_children()),
                 "error_loading" => Some(error_loading()),
                 "filename_prefix" => Some(filename_prefix()),
                 "modpacks" => Some(modpacks()),
@@ -712,9 +747,16 @@ pub mod instance {
                 "resourcepacks" => Some(resourcepacks()),
                 "shaders" => Some(shaders()),
                 "sort" => Some(sort()),
+                "sort_prefix" => Some(sort_prefix()),
                 "title" => Some(title()),
                 "unnamed" => Some(unnamed()),
                 _ => None,
+            }
+        }
+        pub fn blocked() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Заблокировано",
+                _ => "Blocked",
             }
         }
         pub fn by(name: &str) -> String {
@@ -733,6 +775,18 @@ pub mod instance {
                 3 => "Категории",
                 4 => "Kategorier",
                 _ => "Categories",
+            }
+        }
+        pub fn download() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Скачать",
+                _ => "Download",
+            }
+        }
+        pub fn downloading_children() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Загрузка дочернего контента",
+                _ => "Downloading children",
             }
         }
         #[rustfmt::skip]
@@ -774,6 +828,18 @@ pub mod instance {
                 }
             }
         }
+        pub fn enabled_first() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Сначала включённые",
+                _ => "Enabled first",
+            }
+        }
+        pub fn error_downloading_children() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Ошибка загрузки дочернего контента",
+                _ => "Error downloading children",
+            }
+        }
         pub fn error_loading() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Fehler beim Laden vom Projekt",
@@ -781,6 +847,12 @@ pub mod instance {
                 3 => "Ошибка загрузки проекта",
                 4 => "Fel vid laddning av projekt",
                 _ => "Error loading project",
+            }
+        }
+        pub fn file_id(file_id: u32) -> String {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => format!("ID файла: {file_id}"),
+                _ => format!("File ID: {file_id}"),
             }
         }
         pub fn filename_prefix() -> &'static str {
@@ -806,6 +878,7 @@ pub mod instance {
                     "invalid_filename" => Some(invalid_filename()),
                     "label" => Some(label()),
                     "latest" => Some(latest()),
+                    "loading_files" => Some(loading_files()),
                     "missing_sha1_hash" => Some(missing_sha1_hash()),
                     "no_matching_versions" => Some(no_matching_versions()),
                     "no_mod_version_selected" => Some(no_mod_version_selected()),
@@ -845,6 +918,18 @@ pub mod instance {
                     3 => "Ошибка установки контента",
                     4 => "Fel vid installation av innehåll",
                     _ => "Error installing content",
+                }
+            }
+            pub fn error_loading_files(err: &str) -> String {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    3 => format!("Ошибка загрузки файлов: {err}"),
+                    _ => format!("Error loading files: {err}"),
+                }
+            }
+            pub fn file_invalid_sha1(filename: &str, sha1: &str) -> String {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    3 => format!("Файл {filename} имеет неверный SHA1: {sha1}"),
+                    _ => format!("File {filename} has invalid sha1: {sha1}"),
                 }
             }
             pub fn from_curseforge() -> &'static str {
@@ -917,6 +1002,12 @@ pub mod instance {
                     3 => "Установить последнюю версию",
                     4 => "Installerar nyaste",
                     _ => "Install Latest",
+                }
+            }
+            pub fn loading_files() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    3 => "Загрузка файлов...",
+                    _ => "Loading files...",
                 }
             }
             pub fn missing_sha1_hash() -> &'static str {
@@ -1337,6 +1428,55 @@ pub mod instance {
                 3 => "Сортировка",
                 4 => "Sortera efter",
                 _ => "Sort by",
+            }
+        }
+        #[rustfmt::skip]
+        pub mod sort_key {
+            pub fn get(key: &str) -> Option<&'static str> {
+                match key {
+                    "filename" => Some(filename()),
+                    "filesize" => Some(filesize()),
+                    "mod_id" => Some(mod_id()),
+                    "modified_time" => Some(modified_time()),
+                    "name" => Some(name()),
+                    _ => None,
+                }
+            }
+            pub fn filename() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    3 => "Имя файла",
+                    _ => "Filename",
+                }
+            }
+            pub fn filesize() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    3 => "Размер файла",
+                    _ => "Filesize",
+                }
+            }
+            pub fn mod_id() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    3 => "ID мода",
+                    _ => "Mod Id",
+                }
+            }
+            pub fn modified_time() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    3 => "Дата изменения",
+                    _ => "Modified Time",
+                }
+            }
+            pub fn name() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    3 => "Название",
+                    _ => "Name",
+                }
+            }
+        }
+        pub fn sort_prefix() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Сортировка: ",
+                _ => "Sort: ",
             }
         }
         #[rustfmt::skip]
@@ -2346,6 +2486,28 @@ pub mod instance {
             _ => "Quickplay",
         }
     }
+    #[rustfmt::skip]
+    pub mod quickplay {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "pinging" => Some(pinging()),
+                "unable_to_get_status" => Some(unable_to_get_status()),
+                _ => None,
+            }
+        }
+        pub fn pinging() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Соединение...",
+                _ => "Pinging...",
+            }
+        }
+        pub fn unable_to_get_status() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Не удалось получить статус сервера",
+                _ => "Unable to get server status",
+            }
+        }
+    }
     pub fn recent() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
             1 => "Letzte Instanzen",
@@ -2403,6 +2565,12 @@ pub mod instance {
                     _ => "Sandbox the instance, preventing access to files and systems it shouldn't have access to",
                 }
             }
+        }
+    }
+    pub fn select_empty_directory() -> &'static str {
+        match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+            3 => "Выберите пустую папку",
+            _ => "Select empty directory",
         }
     }
     pub fn select_glfw_lib() -> &'static str {
@@ -4474,6 +4642,7 @@ pub mod skins {
             "download" => Some(download()),
             "no_offline" => Some(no_offline()),
             "open_folder" => Some(open_folder()),
+            "select_account" => Some(select_account()),
             "select_skin" => Some(select_skin()),
             "title" => Some(title()),
             _ => None,
@@ -4568,6 +4737,39 @@ pub mod skins {
             _ => "Open folder",
         }
     }
+    #[rustfmt::skip]
+    pub mod player_model {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "animation" => Some(animation()),
+                _ => None,
+            }
+        }
+        pub fn animation() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Анимация",
+                _ => "Animation",
+            }
+        }
+        pub fn pitch(value: i32) -> String {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => format!("Наклон: {value}°"),
+                _ => format!("Pitch: {value}°"),
+            }
+        }
+        pub fn yaw(value: i32) -> String {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => format!("Поворот: {value}°"),
+                _ => format!("Yaw: {value}°"),
+            }
+        }
+    }
+    pub fn select_account() -> &'static str {
+        match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+            3 => "Выберите учётную запись для просмотра/изменения скинов",
+            _ => "Select an account to view/edit skins",
+        }
+    }
     pub fn select_skin() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
             1 => "Wähle einen Skin aus",
@@ -4631,6 +4833,7 @@ pub mod system {
             "backend_shutdown" => Some(backend_shutdown()),
             "game_output" => Some(game_output()),
             "metadata_error" => Some(metadata_error()),
+            "report_bug" => Some(report_bug()),
             _ => None,
         }
     }
@@ -4661,14 +4864,27 @@ pub mod system {
             _ => "Wrong metadata type! Pandora bug!",
         }
     }
+    pub fn report_bug() -> &'static str {
+        match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+            3 => "Сообщить об ошибке",
+            _ => "Report a bug",
+        }
+    }
     #[rustfmt::skip]
     pub mod update {
         pub fn get(key: &str) -> Option<&'static str> {
             match key {
+                "available" => Some(available()),
                 "install_error" => Some(install_error()),
                 "later" => Some(later()),
                 "title" => Some(title()),
                 _ => None,
+            }
+        }
+        pub fn available() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Доступно обновление",
+                _ => "Update Available",
             }
         }
         pub fn current(ver: &str) -> String {

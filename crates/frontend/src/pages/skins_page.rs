@@ -410,7 +410,7 @@ impl Render for SkinsPage {
                 }
             }
         } else {
-            controls = "Select an account to view/edit skins".into_any_element();
+            controls = t::skins::select_account().into_any_element();
         }
 
         let skin_library = self.data.use_skin_library(cx).cloned();

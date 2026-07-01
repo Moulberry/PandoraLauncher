@@ -367,7 +367,7 @@ impl ListDelegate for ServersListDelegate {
                     this.child(div().text_color(color).child(format!("{}ms", millis)))
                 })
                 .when(summary.status.is_none() && summary.pinging, |this| {
-                    this.child("Pinging...")
+                    this.child(t::instance::quickplay::pinging())
                 })
             )
             .when_some(summary.status.as_ref(), |this, status| {
@@ -384,7 +384,7 @@ impl ListDelegate for ServersListDelegate {
                     .whitespace_nowrap()
                     .text_color(theme.danger)
                     .h(rems(2.0))
-                    .child("Unable to get server status"))
+                    .child(t::instance::quickplay::unable_to_get_status()))
             });
 
         let id = self.id;

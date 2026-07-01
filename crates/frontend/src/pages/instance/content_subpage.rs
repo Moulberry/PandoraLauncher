@@ -312,9 +312,9 @@ impl Render for InstanceContentSubpage {
             .block_mouse_except_scroll()
             .gap_3()
             .items_center()
-            .child(div().child(Select::new(&self.sort_dropdown).small().title_prefix("Sort: ")))
+            .child(div().child(Select::new(&self.sort_dropdown).small().title_prefix(t::instance::content::sort_prefix())))
             .child(h_flex().gap_1()
-                .child(div().text_sm().child("Enabled first"))
+                .child(div().text_sm().child(t::instance::content::enabled_first()))
                 .child(Switch::new("enabled_first")
                     .checked(self.content_type.sort_enabled_first(InterfaceConfig::get(cx)))
                     .on_click(cx.listener(|this, checked, _, cx| {

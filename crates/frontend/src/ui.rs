@@ -543,7 +543,7 @@ impl Render for LauncherUI {
             })
             .child(PandoraIcon::Bug)
             .tooltip(move |window, cx| {
-                Tooltip::new(t::common::report_bug()).build(window, cx)
+                Tooltip::new(t::system::report_bug()).build(window, cx)
             })
             .on_click({
                 move |_, window, cx| {

@@ -819,9 +819,6 @@ de = "MiB"
 hu = "MiB"
 sv = "MiB"
 ru = "МиБ"
-[common.report_bug]
-en = "Report a bug"
-ru = "Сообщить об ошибке"
 
 [file_system.open_folder.error]
 en = "Unable to open folder: ${err: std::io::Error}"
@@ -854,7 +851,13 @@ de = "Minecraft-Spielausgabe"
 hu = "Minecraft játéknapló"
 sv = "Minecraft Log utmatning"
 ru = "Логи Minecraft"
+[system.report_bug]
+en = "Report a bug"
+ru = "Сообщить об ошибке"
 
+[system.update.available]
+en = "Update Available"
+ru = "Доступно обновление"
 [system.update.title]
 en = "Update Pandora?"
 de = "Pandora aktualisieren?"
@@ -1025,6 +1028,12 @@ de = "Schnellspiel"
 hu = "Gyorsjáték"
 sv = "snabbspel"
 ru = "Быстрый запуск"
+[instance.quickplay.pinging]
+en = "Pinging..."
+ru = "Соединение..."
+[instance.quickplay.unable_to_get_status]
+en = "Unable to get server status"
+ru = "Не удалось получить статус сервера"
 [instance.worlds]
 en = "Worlds"
 de = "Welten"
@@ -1915,6 +1924,12 @@ de = "Der Mod-Autor hat das Herunterladen von Drittanbietern blockiert"
 hu = "A mod készítője letiltotta a harmadik féltől származó indítókon keresztüli letöltéseket"
 sv = "Modförfattaren har blockerat nedladdningar från tredjeparts launchers"
 ru = "Автор мода заблокировал загрузку из сторонних лаунчеров"
+[instance.content.install.loading_files]
+en = "Loading files..."
+ru = "Загрузка файлов..."
+[instance.content.install.error_loading_files]
+en = "Error loading files: ${err: &str}"
+ru = "Ошибка загрузки файлов: ${err: &str}"
 [instance.content.install.select_mods]
 en = "Select mods to install"
 de = "Wähle zu installierende Mods aus"
@@ -2088,6 +2103,63 @@ de = "Manuell installiert – kann nicht automatisch aktualisiert werden"
 hu = "Telepítés egyedileg - nem lehet autómatikusan frissíteni"
 sv = "Installera manuellt - kan inte automatiskt uppdatera"
 ru = "Установлено вручную - автоматическое обновление невозможно"
+
+[instance.content.sort_key.name]
+en = "Name"
+ru = "Название"
+[instance.content.sort_key.mod_id]
+en = "Mod Id"
+ru = "ID мода"
+[instance.content.sort_key.filename]
+en = "Filename"
+ru = "Имя файла"
+[instance.content.sort_key.modified_time]
+en = "Modified Time"
+ru = "Дата изменения"
+[instance.content.sort_key.filesize]
+en = "Filesize"
+ru = "Размер файла"
+
+[instance.content.blocked]
+en = "Blocked"
+ru = "Заблокировано"
+[instance.content.download]
+en = "Download"
+ru = "Скачать"
+[instance.content.downloading_children]
+en = "Downloading children"
+ru = "Загрузка дочернего контента"
+[instance.content.error_downloading_children]
+en = "Error downloading children"
+ru = "Ошибка загрузки дочернего контента"
+[instance.content.file_id]
+en = "File ID: ${file_id: u32}"
+ru = "ID файла: ${file_id: u32}"
+[instance.content.sort_prefix]
+en = "Sort: "
+ru = "Сортировка: "
+[instance.content.enabled_first]
+en = "Enabled first"
+ru = "Сначала включённые"
+[instance.content.install.file_invalid_sha1]
+en = "File ${filename: &str} has invalid sha1: ${sha1: &str}"
+ru = "Файл ${filename: &str} имеет неверный SHA1: ${sha1: &str}"
+[instance.select_empty_directory]
+en = "Select empty directory"
+ru = "Выберите пустую папку"
+
+[instance.already_running.title]
+en = "Instance already running"
+ru = "Экземпляр уже запущен"
+[instance.already_running.body]
+en = "Starting it again may cause malfunction or corrupt your saved worlds."
+ru = "Повторный запуск может привести к неполадкам или повреждению сохранённых миров."
+[instance.already_running.body2]
+en = "We cannot take responsibility for any issues if you choose to start another game. Would you like to continue anyway?"
+ru = "Мы не несём ответственности за возможные проблемы из-за нескольких запущенных копий игры. Продолжить?"
+[instance.already_running.start_anyway]
+en = "Start anyway"
+ru = "Всё равно запустить"
 
 [instance.sync.label]
 en = "Syncing"
@@ -2487,6 +2559,18 @@ de = "Skins können nicht auf Offline-Konten angewant werden"
 hu = "Nem alkalmazhatóak kinézetek offline fiókokra"
 sv = "Skins kan inte tillämpas på offline-konton"
 ru = "Скины нельзя применить к автономным учётным записям"
+[skins.select_account]
+en = "Select an account to view/edit skins"
+ru = "Выберите учётную запись для просмотра/изменения скинов"
+[skins.player_model.yaw]
+en = "Yaw: ${value: i32}°"
+ru = "Поворот: ${value: i32}°"
+[skins.player_model.pitch]
+en = "Pitch: ${value: i32}°"
+ru = "Наклон: ${value: i32}°"
+[skins.player_model.animation]
+en = "Animation"
+ru = "Анимация"
 [skins.add_from_file]
 en = "Add from file"
 de = "Füge aus Datei hinzu"

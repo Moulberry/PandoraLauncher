@@ -90,11 +90,11 @@ pub enum InstanceContentSortKey {
 impl InstanceContentSortKey {
     pub fn name(self) -> SharedString {
         match self {
-            InstanceContentSortKey::Name => "Name".into(),
-            InstanceContentSortKey::ModId => "Mod Id".into(),
-            InstanceContentSortKey::Filename => "Filename".into(),
-            InstanceContentSortKey::ModifiedTime => "Modified Time".into(),
-            InstanceContentSortKey::FileSize => "Filesize".into(),
+            InstanceContentSortKey::Name => t::instance::content::sort_key::name().into(),
+            InstanceContentSortKey::ModId => t::instance::content::sort_key::mod_id().into(),
+            InstanceContentSortKey::Filename => t::instance::content::sort_key::filename().into(),
+            InstanceContentSortKey::ModifiedTime => t::instance::content::sort_key::modified_time().into(),
+            InstanceContentSortKey::FileSize => t::instance::content::sort_key::filesize().into(),
         }
     }
 

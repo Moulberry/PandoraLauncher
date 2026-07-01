@@ -387,7 +387,7 @@ impl InstallDialog {
 
                     let mut hash = [0u8; 20];
                     let Ok(_) = hex::decode_to_slice(&*sha1, &mut hash) else {
-                        let warning = format!("File {} has invalid sha1: {}", selected_file.file_name, sha1);
+                        let warning = t::instance::content::install::file_invalid_sha1(&selected_file.file_name, &sha1);
                         window.push_notification((NotificationType::Error, SharedString::new(warning)), cx);
                         return;
                     };
@@ -620,7 +620,7 @@ impl InstallDialog {
 
             match result {
                 FrontendMetadataResult::Loading => {
-                    return SharedString::new_static("Loading files...").into_any_element();
+                    return t::instance::content::install::loading_files().into_any_element();
                 },
                 FrontendMetadataResult::Loaded(result) => {
                     let mod_versions: Vec<ModVersionItem> = result.data.iter().map(|file| {
@@ -665,7 +665,7 @@ impl InstallDialog {
                     }));
                 },
                 FrontendMetadataResult::Error(shared_string) => {
-                    return SharedString::new(format!("Error loading files: {}", shared_string)).into_any_element();
+                    return t::instance::content::install::error_loading_files(&shared_string).into_any_element();
                 },
             }
         }

@@ -17,6 +17,19 @@ use schema::backend_config::{BackendConfig, ProxyConfig, ProxyProtocol};
 
 use crate::{entity::DataEntities, icon::PandoraIcon, interface_config::InterfaceConfig};
 
+#[derive(Clone)]
+struct LangCode(String);
+
+impl gpui_component::select::SelectItem for LangCode {
+    type Value = String;
+    fn title(&self) -> gpui::SharedString {
+        t::code_to_name(&self.0).into()
+    }
+    fn value(&self) -> &Self::Value {
+        &self.0
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum SettingsTab {
     #[default]
@@ -26,6 +39,7 @@ enum SettingsTab {
 
 struct Settings {
     selected_tab: SettingsTab,
+    language_select: Entity<SelectState<Vec<LangCode>>>,
     theme_folder: Arc<Path>,
     theme_select: Entity<SelectState<SearchableVec<SharedString>>>,
     backend_handle: BackendHandle,
@@ -46,6 +60,18 @@ struct Settings {
 pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
     let theme_folder = data.theme_folder.clone();
     let settings = cx.new(|cx| {
+        let language_select = cx.new(|cx| {
+            let lang = InterfaceConfig::get(cx).language.clone();
+            let language_codes: Vec<LangCode> = std::iter::once(LangCode("system".to_string()))
+                .chain(t::languages().iter().map(|(code, _)| LangCode(code.to_string())))
+                .collect();
+            let mut state = SelectState::new(language_codes, None, window, cx);
+            state.set_selected_value(&lang, window, cx);
+            state
+        });
+
+        cx.subscribe(&language_select, Settings::on_language_changed).detach();
+
         let theme_select_delegate = SearchableVec::new(ThemeRegistry::global(cx).sorted_themes()
             .iter().map(|cfg| cfg.name.clone()).collect::<Vec<_>>());
 
@@ -87,6 +113,7 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
 
         let mut settings = Settings {
             selected_tab: SettingsTab::Interface,
+            language_select,
             theme_folder,
             theme_select,
             backend_handle: data.backend_handle.clone(),
@@ -269,6 +296,21 @@ impl Settings {
         self.proxy_password_changed = false;
     }
 
+    fn on_language_changed(
+        &mut self,
+        _state: Entity<SelectState<Vec<LangCode>>>,
+        event: &SelectEvent<Vec<LangCode>>,
+        cx: &mut Context<Self>,
+    ) {
+        let SelectEvent::Confirm(_) = event;
+        let Some(code) = self.language_select.read(cx).selected_value().cloned() else {
+            return;
+        };
+        InterfaceConfig::get_mut(cx).language = code.clone();
+        t::set_lang(&code);
+        cx.notify();
+    }
+
     fn render_interface_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let interface_config = InterfaceConfig::get(cx);
 
@@ -276,6 +318,10 @@ impl Settings {
             .px_4()
             .py_3()
             .gap_3()
+            .child(crate::labelled(
+                t::settings::language::title(),
+                Select::new(&self.language_select)
+            ))
             .child(crate::labelled(
                 t::settings::theme::title(),
                 Select::new(&self.theme_select)

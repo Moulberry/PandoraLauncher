@@ -34,7 +34,19 @@ fn inner(dir: &Path) -> Result<(), Box<dyn Error>> {
 
     content.push_str("static LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);\n\n");
 
+    content.push_str("pub fn detect_system_language() -> Option<String> {\n");
+    content.push_str("\tlet lang = sys_locale::get_locale()?;\n");
+    content.push_str("\tlang.get(..2).map(|s| s.to_string())\n");
+    content.push_str("}\n\n");
+
     content.push_str("pub fn set_lang(name: &str) {\n");
+    content.push_str("\tlet system_lang: Option<String>;\n");
+    content.push_str("\tlet name = if name == \"system\" {\n");
+    content.push_str("\t\tsystem_lang = detect_system_language();\n");
+    content.push_str("\t\tsystem_lang.as_deref().unwrap_or(\"en\")\n");
+    content.push_str("\t} else {\n");
+    content.push_str("\t\tname\n");
+    content.push_str("\t};\n");
     content.push_str("\tlet id = match name {\n");
     for (lang_str, lang_id) in &locales.languages {
         content.push_str("\t\t\"");
@@ -46,6 +58,24 @@ fn inner(dir: &Path) -> Result<(), Box<dyn Error>> {
     content.push_str("\t\t_ => panic!(\"Unknown language: {name}\"),\n");
     content.push_str("\t};\n");
     content.push_str("\tLANG.store(id, std::sync::atomic::Ordering::Relaxed);\n");
+    content.push_str("}\n\n");
+
+    content.push_str("pub fn languages() -> &'static [(&'static str, &'static str)] {\n");
+    content.push_str("\t&[\n");
+    for (code, name) in &locales.language_names {
+        content.push_str(&format!("\t\t({:?}, {:?}),\n", code, name));
+    }
+    content.push_str("\t]\n");
+    content.push_str("}\n\n");
+
+    content.push_str("pub fn code_to_name(code: &str) -> &'static str {\n");
+    content.push_str("\tmatch code {\n");
+    content.push_str("\t\t\"system\" => settings::language::system(),\n");
+    for (code, name) in &locales.language_names {
+        content.push_str(&format!("\t\t{:?} => {:?},\n", code, name));
+    }
+    content.push_str("\t\t_ => \"English\",\n");
+    content.push_str("\t}\n");
     content.push_str("}\n\n");
 
     for root in &locales.roots {
@@ -230,17 +260,28 @@ struct Locales {
     roots: Vec<usize>,
     nodes: Vec<LocaleNode>,
     languages: IndexMap<String, u8>,
+    language_names: IndexMap<String, String>,
 }
 
 impl Locales {
     fn new(data: toml::Value) -> Result<Self, Box<dyn Error>> {
         let mut locales = Self::default();
 
-        let toml::Value::Table(root) = data else {
+        let toml::Value::Table(mut root) = data else {
             return Err(format!("Root is not a table: {data:?}").into());
         };
 
         locales.languages.insert("en".to_string(), 0);
+
+        if let Some(toml::Value::Table(mut language)) = root.remove("language") {
+            if let Some(toml::Value::Table(names)) = language.remove("name") {
+                for (code, value) in names {
+                    if let toml::Value::String(name) = value {
+                        locales.language_names.insert(code, name);
+                    }
+                }
+            }
+        }
 
         for (key, value) in root {
             let vals = locales.create(value)?;

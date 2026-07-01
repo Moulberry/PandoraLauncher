@@ -91,6 +91,8 @@ pub fn start(
         gpui_component::init(cx);
         InterfaceConfig::init(cx, launcher_dir.join("interface.json").into());
 
+        t::set_lang(&InterfaceConfig::get(cx).language);
+
         gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
 
         let theme_folder = launcher_dir.join("themes");

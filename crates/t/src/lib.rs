@@ -2,7 +2,19 @@
 
 static LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
+pub fn detect_system_language() -> Option<String> {
+	let lang = sys_locale::get_locale()?;
+	lang.get(..2).map(|s| s.to_string())
+}
+
 pub fn set_lang(name: &str) {
+	let system_lang: Option<String>;
+	let name = if name == "system" {
+		system_lang = detect_system_language();
+		system_lang.as_deref().unwrap_or("en")
+	} else {
+		name
+	};
 	let id = match name {
 		"en" => 0,
 		"de" => 1,
@@ -11,6 +23,26 @@ pub fn set_lang(name: &str) {
 		_ => panic!("Unknown language: {name}"),
 	};
 	LANG.store(id, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn languages() -> &'static [(&'static str, &'static str)] {
+	&[
+		("de", "Deutsch"),
+		("en", "English"),
+		("hu", "Magyar"),
+		("sv", "Svenska"),
+	]
+}
+
+pub fn code_to_name(code: &str) -> &'static str {
+	match code {
+		"system" => settings::language::system(),
+		"de" => "Deutsch",
+		"en" => "English",
+		"hu" => "Magyar",
+		"sv" => "Svenska",
+		_ => "English",
+	}
 }
 
 #[rustfmt::skip]
@@ -3622,6 +3654,26 @@ pub mod settings {
             2 => "Felület",
             3 => "Gränsnitt",
             _ => "Interface",
+        }
+    }
+    #[rustfmt::skip]
+    pub mod language {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "system" => Some(system()),
+                "title" => Some(title()),
+                _ => None,
+            }
+        }
+        pub fn system() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "System language",
+            }
+        }
+        pub fn title() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Language",
+            }
         }
     }
     pub fn network() -> &'static str {

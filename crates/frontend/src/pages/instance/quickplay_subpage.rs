@@ -8,7 +8,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Colorize, Disableable, IndexPath, Sizable, Theme, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, v_flex
+    ActiveTheme as _, Colorize, Disableable, IndexPath, Sizable, Theme, button::{Button, ButtonVariants}, h_flex, list::{List, ListDelegate, ListItem, ListState}, v_flex
 };
 
 use crate::{
@@ -129,7 +129,7 @@ impl Render for InstanceQuickplaySubpage {
         let current_session = if playtime.current_session_secs > 0 {
             format_playtime(playtime.current_session_secs)
         } else {
-            "Not running".into()
+            t::instance::current_session::not_running().into()
         };
 
         v_flex()
@@ -162,7 +162,7 @@ impl Render for InstanceQuickplaySubpage {
                                 .border_1()
                                 .rounded(theme.radius)
                                 .border_color(theme.border)
-                                .child(self.world_list.clone()),
+                                .child(List::new(&self.world_list).search_placeholder(t::common::search())),
                         ),
                     )
                     .child(
@@ -173,7 +173,7 @@ impl Render for InstanceQuickplaySubpage {
                                 .border_1()
                                 .rounded(theme.radius)
                                 .border_color(theme.border)
-                                .child(self.server_list.clone()),
+                                .child(List::new(&self.server_list).search_placeholder(t::common::search())),
                         ),
                     ),
             )
@@ -199,11 +199,11 @@ fn format_playtime(total_secs: u64) -> SharedString {
     let seconds = total_secs % 60;
 
     if hours > 0 {
-        format!("{hours}h {minutes}m").into()
+        format!("{hours}{} {minutes}{}", t::time::h(), t::time::m()).into()
     } else if minutes > 0 {
-        format!("{minutes}m {seconds}s").into()
+        format!("{minutes}{} {seconds}{}", t::time::m(), t::time::s()).into()
     } else {
-        format!("{seconds}s").into()
+        format!("{seconds}{}", t::time::s()).into()
     }
 }
 

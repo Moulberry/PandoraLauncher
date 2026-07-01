@@ -111,7 +111,7 @@ impl CurseforgeSearchPage {
                 CurseforgeClassId::Modpack => t::instance::content::search::modpack(),
                 CurseforgeClassId::Resourcepack => t::instance::content::search::resourcepack(),
                 CurseforgeClassId::Shader => t::instance::content::search::shader(),
-                _ => t::instance::content::search::file(),
+                _ => t::common::search(),
             };
             InputState::new(window, cx).placeholder(placeholder).clean_on_escape()
         });
@@ -252,7 +252,7 @@ impl CurseforgeSearchPage {
                 CurseforgeClassId::Modpack => t::instance::content::search::modpack(),
                 CurseforgeClassId::Resourcepack => t::instance::content::search::resourcepack(),
                 CurseforgeClassId::Shader => t::instance::content::search::shader(),
-                _ => t::instance::content::search::file(),
+                _ => t::common::search(),
             };
             state.set_placeholder(placeholder, window, cx)
         });

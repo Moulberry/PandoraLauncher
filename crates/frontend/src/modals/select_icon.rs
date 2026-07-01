@@ -41,7 +41,7 @@ pub fn open_select_icon(
         let content = v_flex()
             .size_full()
             .gap_2()
-            .child(Button::new("custom").success().label(t::common::custom()).icon(PandoraIcon::File).on_click({
+            .child(Button::new("custom_icon").success().label(t::common::custom_icon()).icon(PandoraIcon::File).on_click({
                 let selected = selected.clone();
                 let select_file_task = select_file_task.clone();
                 move |_, window, cx| {

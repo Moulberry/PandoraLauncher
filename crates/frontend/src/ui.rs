@@ -74,7 +74,7 @@ impl PageType {
                     t::curseforge::name().into()
                 }
             },
-            PageType::Import => "Import".into(),
+            PageType::Import => t::import::label().into(),
             PageType::Syncing => t::instance::sync::label().into(),
             PageType::ModrinthProject { project_title, .. } => project_title.clone(),
             PageType::InstancePage { name } => {
@@ -432,8 +432,8 @@ impl Render for LauncherUI {
                     launcher.switch_page(PageType::Curseforge { installing_for: None }, &[], window, cx);
                 })));
 
-        let files_group = MenuGroup::new("Files")
-            .child(MenuGroupItem::new("Import")
+        let files_group = MenuGroup::new(t::instance::sync::files())
+            .child(MenuGroupItem::new(t::import::label())
                 .active(page_type == PageType::Import)
                 .on_click(cx.listener(|launcher, _, window, cx| {
                     launcher.switch_page(PageType::Import, &[], window, cx);
@@ -543,7 +543,7 @@ impl Render for LauncherUI {
             })
             .child(PandoraIcon::Bug)
             .tooltip(move |window, cx| {
-                Tooltip::new("Report a bug").build(window, cx)
+                Tooltip::new(t::common::report_bug()).build(window, cx)
             })
             .on_click({
                 move |_, window, cx| {

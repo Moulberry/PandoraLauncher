@@ -88,7 +88,7 @@ impl InstanceSettingsSubpage {
         let instance_id = entry.id;
         let instance_name = entry.name.clone();
         let loader = entry.configuration.loader;
-        let preferred_loader_version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+        let preferred_loader_version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or(t::common::latest());
         let account = entry.configuration.preferred_account;
         let disable_file_syncing = entry.configuration.disable_file_syncing;
         let sandbox = entry.configuration.sandbox;
@@ -177,7 +177,7 @@ impl InstanceSettingsSubpage {
                 None
             };
             if page.loader_version_select_state.read(cx).selected_index(cx).is_none() {
-                let version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+                let version = entry.configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or(t::common::latest());
                 page.loader_version_select_state.update(cx, |select_state, cx| {
                     select_state.set_selected_value(&version, window, cx);
                 });
@@ -325,27 +325,27 @@ impl InstanceSettingsSubpage {
             },
             Loader::Fabric => {
                 self.update_loader_versions_for_loader(MetadataRequest::FabricLoaderManifest, |manifest: &FabricLoaderManifest| {
-                    std::iter::once("Latest")
+                    std::iter::once(t::common::latest())
                         .chain(manifest.0.iter().map(|s| s.version.as_str()))
                         .collect()
                 }, window, cx)
             },
             Loader::Forge => {
                 self.update_loader_versions_for_loader(MetadataRequest::ForgeMavenManifest, |manifest: &ForgeMavenManifest| {
-                    std::iter::once("Latest")
+                    std::iter::once(t::common::latest())
                         .chain(manifest.0.iter().map(|s| s.as_str()))
                         .collect()
                 }, window, cx)
             },
             Loader::NeoForge => {
                 self.update_loader_versions_for_loader(MetadataRequest::NeoforgeMavenManifest, |manifest: &NeoforgeMavenManifest| {
-                    std::iter::once("Latest")
+                    std::iter::once(t::common::latest())
                         .chain(manifest.0.iter().map(|s| s.as_str()))
                         .collect()
                 }, window, cx)
             },
         };
-        let preferred_loader_version = self.instance.read(cx).configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+        let preferred_loader_version = self.instance.read(cx).configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or(t::common::latest());
         self.loader_version_select_state.update(cx, move |select_state, cx| {
             select_state.set_items(SearchableVec::new(loader_versions), window, cx);
             select_state.set_selected_value(&preferred_loader_version, window, cx);
@@ -379,7 +379,7 @@ impl InstanceSettingsSubpage {
                 vec![]
             };
             page.loader_versions_state = result.as_typeless();
-            let preferred_loader_version = page.instance.read(cx).configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or("Latest");
+            let preferred_loader_version = page.instance.read(cx).configuration.preferred_loader_version.map(|s| s.as_str()).unwrap_or(t::common::latest());
             page.loader_version_select_state.update(cx, move |select_state, cx| {
                 select_state.set_items(SearchableVec::new(versions), window, cx);
                 select_state.set_selected_value(&preferred_loader_version, window, cx);
@@ -497,7 +497,7 @@ impl InstanceSettingsSubpage {
     ) {
         let SelectEvent::Confirm(value) = event;
 
-        let value = if value == &Some("Latest") {
+        let value = if value == &Some(t::common::latest()) {
             None
         } else {
             value.clone()
@@ -771,14 +771,21 @@ impl Render for InstanceSettingsSubpage {
                 version_content = version_content.child(Skeleton::new().w_full().min_h_8().max_h_8().rounded_md());
             },
             TypelessFrontendMetadataResult::Loaded => {
-                version_content = version_content.child(Select::new(&self.version_select_state).w_full());
+                version_content = version_content.child(
+                    Select::new(&self.version_select_state).search_placeholder(t::common::search()).w_full()
+                );
             },
             TypelessFrontendMetadataResult::Error(ref error) => {
                 version_content = version_content.child(format!("{}: {}", t::instance::versions_loading::error(), error))
             },
         }
 
-        version_content = version_content.child(Select::new(&self.loader_select_state).title_prefix(format!("{}: ", t::instance::modloader())).w_full());
+        version_content = version_content.child(
+            Select::new(&self.loader_select_state)
+                .title_prefix(format!("{}: ", t::instance::modloader()))
+                .search_placeholder(t::common::search())
+                .w_full()
+        );
 
         if self.loader != Loader::Vanilla {
             match self.loader_versions_state {
@@ -786,12 +793,14 @@ impl Render for InstanceSettingsSubpage {
                     version_content = version_content.child(Skeleton::new().w_full().min_h_8().max_h_8().rounded_md())
                 },
                 TypelessFrontendMetadataResult::Loaded => {
-                    version_content = version_content.child(Select::new(&self.loader_version_select_state).title_prefix(match self.loader {
-                        Loader::Fabric => format!("{}: ", t::instance::loader_version(t::modrinth::category::fabric())),
-                        Loader::Forge => format!("{}: ", t::instance::loader_version(t::modrinth::category::forge())),
-                        Loader::NeoForge => format!("{}: ", t::instance::loader_version(t::modrinth::category::neoforge())),
-                        Loader::Vanilla => format!("{}: ", t::instance::loader_version(t::instance::loader())),
-                    }).w_full())
+                    version_content = version_content.child(
+                        Select::new(&self.loader_version_select_state).search_placeholder(t::common::search()).title_prefix(match self.loader {
+                            Loader::Fabric => format!("{}: ", t::instance::loader_version(t::modrinth::category::fabric())),
+                            Loader::Forge => format!("{}: ", t::instance::loader_version(t::modrinth::category::forge())),
+                            Loader::NeoForge => format!("{}: ", t::instance::loader_version(t::modrinth::category::neoforge())),
+                            Loader::Vanilla => format!("{}: ", t::instance::loader_version(t::instance::loader())),
+                        }).w_full()
+                    )
                 },
                 TypelessFrontendMetadataResult::Error(ref error) => {
                     version_content = version_content.child(format!("{}: {}", t::instance::versions_loading::possible_loader_error(), error))
@@ -808,7 +817,7 @@ impl Render for InstanceSettingsSubpage {
                 t::account::override_account(),
                 h_flex()
                 .gap_2()
-                .child(Select::new(&self.account_items).placeholder("No override").cleanable(true))
+                .child(Select::new(&self.account_items).placeholder(t::common::no_override()).search_placeholder(t::common::search()).cleanable(true))
             ))
             .child(crate::labelled(
                 t::instance::sync::label(),
@@ -826,9 +835,9 @@ impl Render for InstanceSettingsSubpage {
                     .label(t::instance::security::sandbox())
                     .disabled(!self.sandbox && !self.sandbox_available)
                     .tooltip(if self.sandbox_available {
-                        "Sandbox the instance, preventing access to files and systems it shouldn't have access to"
+                        t::instance::security::sandbox::tooltip()
                     } else {
-                        "Cannot sandbox: missing bwrap and xdg-dbus-proxy commands"
+                        t::instance::security::sandbox::not_available()
                     })
                     .checked(self.sandbox)
                     .on_click(cx.listener(|page, value, _, _| {
@@ -860,8 +869,8 @@ impl Render for InstanceSettingsSubpage {
                     .child(v_flex()
                         .w_full()
                         .gap_1()
-                        .child(NumberInput::new(&self.memory_min_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
-                        .child(NumberInput::new(&self.memory_max_input_state).small().suffix("MiB").disabled(!memory_override_enabled))
+                        .child(NumberInput::new(&self.memory_min_input_state).small().suffix(t::common::size::mib()).disabled(!memory_override_enabled))
+                        .child(NumberInput::new(&self.memory_max_input_state).small().suffix(t::common::size::mib()).disabled(!memory_override_enabled))
                     )
                     .child(v_flex()
                         .gap_1()
@@ -1027,7 +1036,7 @@ impl Render for InstanceSettingsSubpage {
             .gap_4()
             .size_full()
             .child(crate::labelled(
-                "Instance Folder (click to relocate)",
+                t::instance::folder(),
                 self.instance_root_label.button("relocate").on_click({
                     let instance = self.instance.clone();
                     let backend_handle = self.backend_handle.clone();

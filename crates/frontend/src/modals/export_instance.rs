@@ -228,7 +228,7 @@ impl ExportInstanceModalState {
                     })))
                 .child(NumberInput::new(&self.curseforge_recommended_ram_input)
                     .small()
-                    .suffix("MiB")
+                    .suffix(t::common::size::mib())
                     .disabled(!self.curseforge_recommended_ram_enabled))
             );
 

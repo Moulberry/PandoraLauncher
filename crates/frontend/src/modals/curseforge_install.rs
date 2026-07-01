@@ -449,7 +449,9 @@ impl InstallDialog {
                             .w_full()
                             .gap_0p5()
                             .child(
-                                Select::new(instances).placeholder(t::instance::none_selected()).title_prefix(format!("{}: ", t::instance::label())),
+                                Select::new(instances).placeholder(t::instance::none_selected())
+                                    .title_prefix(format!("{}: ", t::instance::label()))
+                                    .search_placeholder(t::common::search()),
                             )
                             .when(self.unsupported_instances > 0, |content| {
                                 content.child(t::instance::incompatible(self.unsupported_instances))
@@ -519,6 +521,7 @@ impl InstallDialog {
         Select::new(select_state)
             .disabled(self.fixed_minecraft_version.is_some())
             .title_prefix(format!("{}: ", t::instance::game_version()))
+            .search_placeholder(t::common::search())
             .into_any_element()
     }
 
@@ -667,7 +670,10 @@ impl InstallDialog {
             }
         }
 
-        Select::new(self.mod_version_select_state.as_ref().unwrap()).title_prefix(t::instance::content::filename_prefix()).into_any_element()
+        Select::new(self.mod_version_select_state.as_ref().unwrap())
+            .title_prefix(t::instance::content::filename_prefix())
+            .search_placeholder(t::common::search())
+            .into_any_element()
     }
 }
 

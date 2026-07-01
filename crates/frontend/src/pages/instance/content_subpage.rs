@@ -5,7 +5,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, h_flex, input::SelectAll, list::ListState, notification::{Notification, NotificationType}, select::{Select, SelectEvent, SelectState}, switch::Switch, v_flex
+    ActiveTheme as _, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, h_flex, input::SelectAll, list::{List, ListState}, notification::{Notification, NotificationType}, select::{Select, SelectEvent, SelectState}, switch::Switch, v_flex
 };
 use schema::{content::{ContentInstallReason, ContentSource}, curseforge::CurseforgeClassId, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
@@ -358,7 +358,7 @@ impl Render for InstanceContentSubpage {
                 .border_1()
                 .rounded(theme.radius)
                 .border_color(theme.border)
-                .child(self.content_list.clone())
+                .child(List::new(&self.content_list).search_placeholder(t::common::search()))
                 .child(filter_bar_controls)
                 .on_click({
                     let content_list = self.content_list.clone();

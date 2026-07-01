@@ -260,7 +260,7 @@ impl ModrinthSearchPage {
                 ModrinthProjectType::Modpack => t::instance::content::search::modpack(),
                 ModrinthProjectType::Resourcepack => t::instance::content::search::resourcepack(),
                 ModrinthProjectType::Shader => t::instance::content::search::shader(),
-                ModrinthProjectType::Other => t::instance::content::search::file(),
+                ModrinthProjectType::Other => t::common::search(),
             };
             state.set_placeholder(placeholder, window, cx)
         });

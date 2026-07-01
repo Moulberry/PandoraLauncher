@@ -129,7 +129,7 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
     move |sheet, _, cx| {
         sheet
             .title(t::settings::title())
-            .size(px(420.))
+            .size(px(500.))
             .p_0()
             .when(cfg!(target_os = "macos"), |this| this.pt_5())
             .child(v_flex()
@@ -278,7 +278,7 @@ impl Settings {
             .gap_3()
             .child(crate::labelled(
                 t::settings::theme::title(),
-                Select::new(&self.theme_select)
+                Select::new(&self.theme_select).search_placeholder(t::common::search())
             ))
             .child(Button::new("open-theme-folder").info().icon(PandoraIcon::FolderOpen).label(t::settings::theme::open_folder()).on_click({
                 let theme_folder = self.theme_folder.clone();

@@ -225,11 +225,14 @@ impl CreateInstanceModalState {
             version_dropdown = Select::new(&self.minecraft_version_dropdown)
                 .w_full()
                 .disabled(true)
-                .placeholder(t::instance::versions_loading::game_versions());
+                .placeholder(t::instance::versions_loading::game_versions())
+                .search_placeholder(t::common::search());
             show_snapshots_button = Skeleton::new().w_full().min_h_4().max_h_4().rounded_md().into_any_element();
             loader_button_group = Skeleton::new().w_full().min_h_8().max_h_8().rounded_md().into_any_element();
         } else {
-            version_dropdown = Select::new(&self.minecraft_version_dropdown).title_prefix(format!("{}: ", t::instance::mc_version()));
+            version_dropdown = Select::new(&self.minecraft_version_dropdown)
+                .title_prefix(format!("{}: ", t::instance::mc_version()))
+                .search_placeholder(t::common::search());
             show_snapshots_button = Checkbox::new("show_snapshots")
                 .checked(InterfaceConfig::get(cx).show_snapshots_in_create_instance)
                 .label(t::instance::show_snapshots())

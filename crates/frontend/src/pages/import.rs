@@ -100,7 +100,7 @@ impl Render for ImportPage {
                 .children({
                     OtherLauncher::iter().map(|launcher| {
                         Button::new(launcher.name())
-                             .label(format!("Import from {}", launcher.name()))
+                             .label(t::import::from(launcher.name()))
                              .w_full()
                              .on_click(cx.listener(move |page, _, _, cx| {
                                  page.import_from = Some(launcher);
@@ -120,14 +120,14 @@ impl Render for ImportPage {
                      })
                 })
                 .child(Button::new("mrpack")
-                    .label("Import Modrinth Pack (.mrpack)")
+                    .label(t::import::from::modrinth())
                     .w_full()
                     .on_click(cx.listener(|page, _, window, cx| {
                         let receiver = cx.prompt_for_paths(PathPromptOptions {
                             files: true,
                             directories: false,
                             multiple: false,
-                            prompt: Some("Select Modrinth Pack".into())
+                            prompt: Some(t::import::from::modrinth::select().into())
                         });
                         let page_entity = cx.entity();
                         page._open_file_task = window.spawn(cx, async move |cx| {
@@ -153,7 +153,7 @@ impl Render for ImportPage {
             );
 
         if let Some(import_from) = self.import_from {
-            let label = format!("Import From {}", import_from.name());
+            let label = t::import::from::label(import_from.name());
 
             let mut import_box = v_flex()
                 .w_full()
@@ -168,7 +168,7 @@ impl Render for ImportPage {
                     files: false,
                     directories: true,
                     multiple: false,
-                    prompt: Some("Select launcher folder".into()),
+                    prompt: Some(t::import::pick_folder().into()),
                 });
                 cx.spawn(async move |page, cx| {
                     let Ok(Ok(Some(mut paths))) = receiver.await else {
@@ -191,7 +191,7 @@ impl Render for ImportPage {
                     .child(path.button("select-folder").on_click(pick_folder));
             } else {
                 import_box = import_box
-                    .child(Button::new("select-folder").success().label("Select Folder").on_click(pick_folder));
+                    .child(Button::new("select-folder").success().label(t::import::select_folder::label()).on_click(pick_folder));
             }
 
             if let Some(import_job) = &self.import_job {
@@ -199,17 +199,17 @@ impl Render for ImportPage {
                     .gap_2()
                     .text_color(cx.theme().success_foreground)
                     .child(PandoraIcon::Check)
-                    .child("Detected launcher files")
+                    .child(t::import::detected_files())
                 );
                 if import_job.import_accounts {
-                    import_box = import_box.child(Checkbox::new("accounts").label("Import Accounts")
+                    import_box = import_box.child(Checkbox::new("accounts").label(t::import::import_accounts())
                         .checked(self.import_accounts)
                         .on_click(cx.listener(|page, checked, _, _| {
                             page.import_accounts = *checked;
                         }))
                     );
                 }
-                import_box = import_box.child(Checkbox::new("instances").label("Import Instances")
+                import_box = import_box.child(Checkbox::new("instances").label(t::import::import_instances())
                     .checked(self.import_instances)
                     .on_click(cx.listener(|page, checked, _, _| {
                     page.import_instances = *checked;
@@ -233,7 +233,7 @@ impl Render for ImportPage {
                                             .line_height(rems(1.0))
                                             .text_color(cx.theme().warning_foreground)
                                             .child(PandoraIcon::TriangleAlert)
-                                            .child("Already exists")
+                                            .child(t::import::already_exists())
                                         ).into_any_element()
                                 } else {
                                     Checkbox::new(index)
@@ -286,7 +286,7 @@ impl Render for ImportPage {
                         });
 
                         let title = SharedString::new(label.clone());
-                        crate::modals::generic::show_modal(window, cx, title, "Error importing".into(), modal_action);
+                        crate::modals::generic::show_modal(window, cx, title, t::import::error_importing().into(), modal_action);
                     }))
                 );
             } else if self._get_import_job_task.is_ready() {
@@ -294,13 +294,13 @@ impl Render for ImportPage {
                     .gap_2()
                     .text_color(cx.theme().danger_foreground)
                     .child(PandoraIcon::TriangleAlert)
-                    .child("Unable to detect launcher files")
+                    .child(t::import::no_detected_files())
                 );
             } else {
                 import_box = import_box.child(h_flex()
                     .gap_2()
                     .child(Spinner::new())
-                    .child("Loading launcher data...")
+                    .child(t::import::loading_launcher_data())
                 );
             }
 

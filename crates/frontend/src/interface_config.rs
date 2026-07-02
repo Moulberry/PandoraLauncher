@@ -18,8 +18,8 @@ impl gpui::Global for InterfaceConfigHolder {}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InterfaceConfig {
-    #[serde(default = "default_language", deserialize_with = "schema::try_deserialize")]
-    pub language: String,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub language: t::Language,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub active_theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -127,10 +127,6 @@ impl InstanceContentSortKey {
     }
 }
 
-fn default_language() -> String {
-    "system".to_string()
-}
-
 fn default_modrinth_project_type() -> ModrinthProjectType {
     ModrinthProjectType::Mod
 }
@@ -142,7 +138,7 @@ fn default_curseforge_class_id() -> CurseforgeClassId {
 impl Default for InterfaceConfig {
     fn default() -> Self {
         Self {
-            language: default_language(),
+            language: Default::default(),
             active_theme: Default::default(),
             main_window_bounds: Default::default(),
             sidebar_width: Default::default(),

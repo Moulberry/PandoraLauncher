@@ -7665,6 +7665,7 @@ name = "t"
 version = "5.2.2"
 dependencies = [
  "indexmap 2.13.0",
+ "serde",
  "sys-locale",
  "toml 0.9.12+spec-1.1.0",
 ]

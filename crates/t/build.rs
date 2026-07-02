@@ -34,20 +34,41 @@ fn inner(dir: &Path) -> Result<(), Box<dyn Error>> {
 
     content.push_str("static LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);\n\n");
 
+    content.push_str("#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]\n");
+    content.push_str("#[serde(from = \"String\", into = \"String\")]\n");
+    content.push_str("pub enum Language {\n");
+    content.push_str("\t#[default]\n");
+    content.push_str("\tSystem,\n");
+    content.push_str("\tCode(String),\n");
+    content.push_str("}\n\n");
+    content.push_str("impl From<String> for Language {\n");
+    content.push_str("\tfn from(s: String) -> Self {\n");
+    content.push_str("\t\tmatch s.as_str() {\n");
+    content.push_str("\t\t\t\"system\" => Language::System,\n");
+    content.push_str("\t\t\t_ => Language::Code(s),\n");
+    content.push_str("\t\t}\n");
+    content.push_str("\t}\n");
+    content.push_str("}\n\n");
+    content.push_str("impl From<Language> for String {\n");
+    content.push_str("\tfn from(lang: Language) -> Self {\n");
+    content.push_str("\t\tmatch lang {\n");
+    content.push_str("\t\t\tLanguage::System => String::from(\"system\"),\n");
+    content.push_str("\t\t\tLanguage::Code(code) => code,\n");
+    content.push_str("\t\t}\n");
+    content.push_str("\t}\n");
+    content.push_str("}\n\n");
+
     content.push_str("pub fn detect_system_language() -> Option<String> {\n");
     content.push_str("\tlet lang = sys_locale::get_locale()?;\n");
     content.push_str("\tlang.get(..2).map(|s| s.to_string())\n");
     content.push_str("}\n\n");
 
-    content.push_str("pub fn set_lang(name: &str) {\n");
-    content.push_str("\tlet system_lang: Option<String>;\n");
-    content.push_str("\tlet name = if name == \"system\" {\n");
-    content.push_str("\t\tsystem_lang = detect_system_language();\n");
-    content.push_str("\t\tsystem_lang.as_deref().unwrap_or(\"en\")\n");
-    content.push_str("\t} else {\n");
-    content.push_str("\t\tname\n");
+    content.push_str("pub fn set_lang(lang: &Language) {\n");
+    content.push_str("\tlet code = match lang {\n");
+    content.push_str("\t\tLanguage::System => detect_system_language().unwrap_or_else(|| \"en\".to_string()),\n");
+    content.push_str("\t\tLanguage::Code(code) => code.clone(),\n");
     content.push_str("\t};\n");
-    content.push_str("\tlet id = match name {\n");
+    content.push_str("\tlet id = match code.as_str() {\n");
     for (lang_str, lang_id) in &locales.languages {
         content.push_str("\t\t\"");
         content.push_str(&lang_str);
@@ -55,7 +76,7 @@ fn inner(dir: &Path) -> Result<(), Box<dyn Error>> {
         content.push_str(&format!("{}", lang_id));
         content.push_str(",\n");
     }
-    content.push_str("\t\t_ => panic!(\"Unknown language: {name}\"),\n");
+    content.push_str("\t\t_ => panic!(\"Unknown language: {code}\"),\n");
     content.push_str("\t};\n");
     content.push_str("\tLANG.store(id, std::sync::atomic::Ordering::Relaxed);\n");
     content.push_str("}\n\n");
@@ -66,16 +87,6 @@ fn inner(dir: &Path) -> Result<(), Box<dyn Error>> {
         content.push_str(&format!("\t\t({:?}, {:?}),\n", code, name));
     }
     content.push_str("\t]\n");
-    content.push_str("}\n\n");
-
-    content.push_str("pub fn code_to_name(code: &str) -> &'static str {\n");
-    content.push_str("\tmatch code {\n");
-    content.push_str("\t\t\"system\" => settings::language::system(),\n");
-    for (code, name) in &locales.language_names {
-        content.push_str(&format!("\t\t{:?} => {:?},\n", code, name));
-    }
-    content.push_str("\t\t_ => \"English\",\n");
-    content.push_str("\t}\n");
     content.push_str("}\n\n");
 
     for root in &locales.roots {

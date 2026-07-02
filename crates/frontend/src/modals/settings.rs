@@ -3,6 +3,7 @@ use std::{path::Path, sync::Arc};
 use bridge::{handle::BackendHandle, message::{BackendConfigWithPassword, MessageToBackend}};
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
+    IndexPath,
     button::{Button, ButtonVariants},
     checkbox::Checkbox,
     h_flex,
@@ -15,20 +16,12 @@ use gpui_component::{
 };
 use schema::backend_config::{BackendConfig, ProxyConfig, ProxyProtocol};
 
-use crate::{entity::DataEntities, icon::PandoraIcon, interface_config::InterfaceConfig};
-
-#[derive(Clone)]
-struct LangCode(String);
-
-impl gpui_component::select::SelectItem for LangCode {
-    type Value = String;
-    fn title(&self) -> gpui::SharedString {
-        t::code_to_name(&self.0).into()
-    }
-    fn value(&self) -> &Self::Value {
-        &self.0
-    }
-}
+use crate::{
+    component::named_dropdown::{NamedDropdown, NamedDropdownItem},
+    entity::DataEntities,
+    icon::PandoraIcon,
+    interface_config::InterfaceConfig,
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 enum SettingsTab {
@@ -39,7 +32,7 @@ enum SettingsTab {
 
 struct Settings {
     selected_tab: SettingsTab,
-    language_select: Entity<SelectState<Vec<LangCode>>>,
+    language_select: Entity<SelectState<NamedDropdown<t::Language>>>,
     theme_folder: Arc<Path>,
     theme_select: Entity<SelectState<SearchableVec<SharedString>>>,
     backend_handle: BackendHandle,
@@ -62,12 +55,18 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
     let settings = cx.new(|cx| {
         let language_select = cx.new(|cx| {
             let lang = InterfaceConfig::get(cx).language.clone();
-            let language_codes: Vec<LangCode> = std::iter::once(LangCode("system".to_string()))
-                .chain(t::languages().iter().map(|(code, _)| LangCode(code.to_string())))
-                .collect();
-            let mut state = SelectState::new(language_codes, None, window, cx);
-            state.set_selected_value(&lang, window, cx);
-            state
+            let lang_options: Vec<NamedDropdownItem<t::Language>> = std::iter::once(NamedDropdownItem {
+                name: t::settings::language::system().into(),
+                item: t::Language::System,
+            }).chain(t::languages().iter().map(|&(code, name)| NamedDropdownItem {
+                name: name.into(),
+                item: t::Language::Code(code.to_string()),
+            }))
+            .collect();
+            let selected = lang_options.iter()
+                .position(|item| item.item == lang)
+                .map(IndexPath::new);
+            SelectState::new(NamedDropdown::new(lang_options), selected, window, cx)
         });
 
         cx.subscribe(&language_select, Settings::on_language_changed).detach();
@@ -298,16 +297,17 @@ impl Settings {
 
     fn on_language_changed(
         &mut self,
-        _state: Entity<SelectState<Vec<LangCode>>>,
-        event: &SelectEvent<Vec<LangCode>>,
+        _state: Entity<SelectState<NamedDropdown<t::Language>>>,
+        event: &SelectEvent<NamedDropdown<t::Language>>,
         cx: &mut Context<Self>,
     ) {
         let SelectEvent::Confirm(_) = event;
-        let Some(code) = self.language_select.read(cx).selected_value().cloned() else {
+        let Some(lang_item) = self.language_select.read(cx).selected_value().cloned() else {
             return;
         };
-        InterfaceConfig::get_mut(cx).language = code.clone();
-        t::set_lang(&code);
+        let lang = lang_item.item;
+        t::set_lang(&lang);
+        InterfaceConfig::get_mut(cx).language = lang;
         cx.notify();
     }
 

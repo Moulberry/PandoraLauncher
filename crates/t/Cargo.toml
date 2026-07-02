@@ -6,6 +6,7 @@ build = "build.rs"
 
 [dependencies]
 sys-locale.workspace = true
+serde.workspace = true
 
 [build-dependencies]
 toml.workspace = true

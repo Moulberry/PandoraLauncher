@@ -2,25 +2,48 @@
 
 static LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum Language {
+	#[default]
+	System,
+	Code(String),
+}
+
+impl From<String> for Language {
+	fn from(s: String) -> Self {
+		match s.as_str() {
+			"system" => Language::System,
+			_ => Language::Code(s),
+		}
+	}
+}
+
+impl From<Language> for String {
+	fn from(lang: Language) -> Self {
+		match lang {
+			Language::System => String::from("system"),
+			Language::Code(code) => code,
+		}
+	}
+}
+
 pub fn detect_system_language() -> Option<String> {
 	let lang = sys_locale::get_locale()?;
 	lang.get(..2).map(|s| s.to_string())
 }
 
-pub fn set_lang(name: &str) {
-	let system_lang: Option<String>;
-	let name = if name == "system" {
-		system_lang = detect_system_language();
-		system_lang.as_deref().unwrap_or("en")
-	} else {
-		name
+pub fn set_lang(lang: &Language) {
+	let code = match lang {
+		Language::System => detect_system_language().unwrap_or_else(|| "en".to_string()),
+		Language::Code(code) => code.clone(),
 	};
-	let id = match name {
+	let id = match code.as_str() {
 		"en" => 0,
 		"de" => 1,
 		"hu" => 2,
 		"sv" => 3,
-		_ => panic!("Unknown language: {name}"),
+		_ => panic!("Unknown language: {code}"),
 	};
 	LANG.store(id, std::sync::atomic::Ordering::Relaxed);
 }
@@ -32,17 +55,6 @@ pub fn languages() -> &'static [(&'static str, &'static str)] {
 		("hu", "Magyar"),
 		("sv", "Svenska"),
 	]
-}
-
-pub fn code_to_name(code: &str) -> &'static str {
-	match code {
-		"system" => settings::language::system(),
-		"de" => "Deutsch",
-		"en" => "English",
-		"hu" => "Magyar",
-		"sv" => "Svenska",
-		_ => "English",
-	}
 }
 
 #[rustfmt::skip]

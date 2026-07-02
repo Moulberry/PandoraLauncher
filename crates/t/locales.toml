@@ -1,3 +1,9 @@
+[language.name]
+en = "English"
+de = "Deutsch"
+hu = "Magyar"
+sv = "Svenska"
+
 [modrinth.name]
 en = "Modrinth"
 de = "Modrinth"
@@ -1901,6 +1907,10 @@ en = "Network"
 de = "Netzwerk"
 hu = "Hálózat"
 sv = "Nätvärk"
+[settings.language.title]
+en = "Language"
+[settings.language.system]
+en = "System language"
 [settings.theme.title]
 en = "Theme"
 de = "Farbschema"

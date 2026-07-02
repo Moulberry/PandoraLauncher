@@ -2,15 +2,59 @@
 
 static LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
-pub fn set_lang(name: &str) {
-	let id = match name {
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum Language {
+	#[default]
+	System,
+	Code(String),
+}
+
+impl From<String> for Language {
+	fn from(s: String) -> Self {
+		match s.as_str() {
+			"system" => Language::System,
+			_ => Language::Code(s),
+		}
+	}
+}
+
+impl From<Language> for String {
+	fn from(lang: Language) -> Self {
+		match lang {
+			Language::System => String::from("system"),
+			Language::Code(code) => code,
+		}
+	}
+}
+
+pub fn detect_system_language() -> Option<String> {
+	let lang = sys_locale::get_locale()?;
+	lang.get(..2).map(|s| s.to_string())
+}
+
+pub fn set_lang(lang: &Language) {
+	let code = match lang {
+		Language::System => detect_system_language().unwrap_or_else(|| "en".to_string()),
+		Language::Code(code) => code.clone(),
+	};
+	let id = match code.as_str() {
 		"en" => 0,
 		"de" => 1,
 		"hu" => 2,
 		"sv" => 3,
-		_ => panic!("Unknown language: {name}"),
+		_ => panic!("Unknown language: {code}"),
 	};
 	LANG.store(id, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn languages() -> &'static [(&'static str, &'static str)] {
+	&[
+		("de", "Deutsch"),
+		("en", "English"),
+		("hu", "Magyar"),
+		("sv", "Svenska"),
+	]
 }
 
 #[rustfmt::skip]
@@ -3622,6 +3666,26 @@ pub mod settings {
             2 => "Felület",
             3 => "Gränsnitt",
             _ => "Interface",
+        }
+    }
+    #[rustfmt::skip]
+    pub mod language {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "system" => Some(system()),
+                "title" => Some(title()),
+                _ => None,
+            }
+        }
+        pub fn system() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "System language",
+            }
+        }
+        pub fn title() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Language",
+            }
         }
     }
     pub fn network() -> &'static str {

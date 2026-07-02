@@ -96,6 +96,7 @@ memchr = "2.7.6"
 toml = "0.9.11"
 clap = { version = "4.5.54", features = ["derive"] }
 open = "5.2.0"
+sys-locale = "0.3.2"
 native-dialog = "0.9.4"
 fern = { version = "0.7.1", features = ["colored"] }
 mslnk = "0.1.8"

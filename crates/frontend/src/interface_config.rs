@@ -19,6 +19,8 @@ impl gpui::Global for InterfaceConfigHolder {}
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub language: t::Language,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub active_theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_window_bounds: WindowBounds,
@@ -136,6 +138,7 @@ fn default_curseforge_class_id() -> CurseforgeClassId {
 impl Default for InterfaceConfig {
     fn default() -> Self {
         Self {
+            language: Default::default(),
             active_theme: Default::default(),
             main_window_bounds: Default::default(),
             sidebar_width: Default::default(),

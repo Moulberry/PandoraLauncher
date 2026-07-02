@@ -54,7 +54,6 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
     let theme_folder = data.theme_folder.clone();
     let settings = cx.new(|cx| {
         let language_select = cx.new(|cx| {
-            let lang = InterfaceConfig::get(cx).language.clone();
             let lang_options: Vec<NamedDropdownItem<t::Language>> = std::iter::once(NamedDropdownItem {
                 name: t::settings::language::system().into(),
                 item: t::Language::System,
@@ -63,8 +62,9 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
                 item: t::Language::Code(code.to_string()),
             }))
             .collect();
+            let lang = &InterfaceConfig::get(cx).language;
             let selected = lang_options.iter()
-                .position(|item| item.item == lang)
+                .position(|item| item.item == *lang)
                 .map(IndexPath::new);
             SelectState::new(NamedDropdown::new(lang_options), selected, window, cx)
         });

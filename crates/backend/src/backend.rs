@@ -20,7 +20,8 @@ use bridge::{
     handle::{BackendHandle, BackendReceiver, FrontendHandle},
     install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath},
     instance::{
-        ContentFolder, ContentType, InstanceContentSummary, InstanceID, ModpackFile, ModpackFilePath, ModpackFileSource,
+        ContentFolder, ContentSummary, ContentType, InstanceContentSummary, InstanceID, ModpackFile, ModpackFilePath,
+        ModpackFileSource,
     },
     message::{EmbeddedOrRaw, MessageToFrontend},
     modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType},
@@ -761,22 +762,24 @@ impl BackendState {
         }
     }
 
-    pub async fn prelaunch(self: &Arc<Self>, id: InstanceID, modal_action: &ModalAction) -> std::io::Result<()> {
+    pub async fn prelaunch(self: &Arc<Self>, id: InstanceID, modal_action: &ModalAction) {
         self.apply_syncing_to_instance(id);
         self.prelaunch_setup_mods(id, modal_action).await
     }
 
     pub fn apply_syncing_to_instance(&self, id: InstanceID) {
-        let (disable, path) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+        let mut instances = self.instance_state.write();
+
+        let (disable, path) = if let Some(instance) = instances.instances.get_mut(id) {
             (instance.configuration.get().disable_file_syncing, instance.dot_minecraft_path.clone())
         } else {
             return;
         };
 
         if disable {
-            crate::syncing::apply_to_instance(&SyncTargets::default(), &self.directories, path);
+            crate::syncing::apply_to_instance(&SyncTargets::default(), &self.directories, path, &mut instances);
         } else {
-            crate::syncing::apply_to_instance(&self.config.write().get().sync_targets, &self.directories, path);
+            crate::syncing::apply_to_instance(&self.config.write().get().sync_targets, &self.directories, path, &mut instances);
         }
     }
 
@@ -821,11 +824,11 @@ impl BackendState {
         self: &Arc<Self>,
         id: InstanceID,
         modal_action: &ModalAction,
-    ) -> std::io::Result<()> {
+    ) {
         let (loader, minecraft_version, root_dir, dot_minecraft_dir, mods_dir) =
             if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                 if !instance.processes.is_empty() {
-                    return Ok(());
+                    return;
                 }
 
                 let configuration = instance.configuration.get();
@@ -837,15 +840,15 @@ impl BackendState {
                     instance.content_state[ContentFolder::Mods].path.clone(),
                 )
             } else {
-                return Ok(());
+                return;
             };
 
         if !mods_dir.is_dir() {
-            return Ok(());
+            return;
         }
 
         let Some(mods) = Instance::load_content(self.clone(), id, ContentFolder::Mods).await else {
-            return Ok(());
+            return;
         };
 
         let mut mod_copies = Vec::new();
@@ -888,17 +891,11 @@ impl BackendState {
         };
 
         let original_mods_dir = root_dir.join("original_mods");
-        std::fs::rename(&mods_dir, &original_mods_dir)?;
-        if let Err(err) = self.prelaunch_create_mods_dir(mod_copies, &mods_dir, modal_action) {
-            _ = std::fs::remove_dir_all(&mods_dir);
-            _ = std::fs::rename(&original_mods_dir, &mods_dir);
-
-            if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
-                instance.set_frozen_mods_folder(true);
-            }
-
-            return Err(err);
+        if let Err(err) = std::fs::rename(&mods_dir, &original_mods_dir) {
+            log::error!("Unable to move mods dir ({:?}) to {:?}:\n{:?}", &mods_dir, &original_mods_dir, err);
+            return;
         }
+        self.prelaunch_create_mods_dir(mod_copies, &mods_dir, modal_action);
 
         // Copy sinytra connector cache
         if !sandbox {
@@ -909,8 +906,6 @@ impl BackendState {
                 _ = crate::copy_content_recursive(&original_connector, &connector, false, &|_, _| {});
             }
         }
-
-        Ok(())
     }
 
     async fn prelaunch_collect_mods_and_apply_modpack(
@@ -958,6 +953,9 @@ impl BackendState {
                     let Ok(rel_path) = path.strip_prefix(&mod_dir) else {
                         continue;
                     };
+                    let Some(rel_path) = SafePath::from_std_path(rel_path) else {
+                        continue;
+                    };
 
                     let extension = path.extension().and_then(OsStr::to_str);
                     let content_library_path = crate::create_content_library_path(
@@ -968,14 +966,14 @@ impl BackendState {
 
                     if content_library_path.exists() {
                         mod_copies.push(PrelaunchModCopy {
-                            path: rel_path.to_path_buf(),
+                            path: rel_path,
                             source: PrelaunchModCopySource::FromContentLibrary {
                                 hash: summary.content_summary.hash,
                             },
                         });
                     } else if let Ok(file) = std::fs::read(&path) {
                         mod_copies.push(PrelaunchModCopy {
-                            path: rel_path.to_path_buf(),
+                            path: rel_path,
                             source: PrelaunchModCopySource::FromBytes { bytes: file.into() },
                         });
                     }
@@ -1060,14 +1058,17 @@ impl BackendState {
 
                 for file in modpack_install.files {
                     let Some(rel_path) = file.path() else {
+                        log::warn!("Skipping mod {:?} because path cannot be determined", file.path);
                         continue;
                     };
 
                     if let ModpackFileSource::Builtin { bytes } = file.source {
                         if let Some(filename) = rel_path.strip_prefix("mods") {
                             mod_copies.push(PrelaunchModCopy {
-                                path: filename.to_path(Path::new("")),
-                                source: PrelaunchModCopySource::FromBytes { bytes: bytes.clone() },
+                                path: filename,
+                                source: PrelaunchModCopySource::FromBytes {
+                                    bytes: bytes.clone(),
+                                },
                             });
                         } else {
                             let dest_path = rel_path.to_path(&dot_minecraft_dir);
@@ -1087,8 +1088,10 @@ impl BackendState {
                     } else {
                         if let Some(filename) = rel_path.strip_prefix("mods") {
                             mod_copies.push(PrelaunchModCopy {
-                                path: filename.to_path(Path::new("")),
-                                source: PrelaunchModCopySource::FromContentLibrary { hash: file.hash },
+                                path: filename,
+                                source: PrelaunchModCopySource::FromContentLibrary {
+                                    hash: file.hash,
+                                },
                             });
                         } else {
                             let dest_path = rel_path.to_path(&dot_minecraft_dir);
@@ -1137,7 +1140,7 @@ impl BackendState {
         mod_copies: Vec<PrelaunchModCopy>,
         mods_dir: &Path,
         modal_action: &ModalAction,
-    ) -> std::io::Result<()> {
+    ) {
         let tracker = ProgressTracker::new("Copying immutable mods directory".into(), self.send.clone());
         modal_action.trackers.push(tracker.clone());
 
@@ -1147,18 +1150,25 @@ impl BackendState {
         let content_library_dir = &self.directories.content_library_dir.clone();
 
         for mod_copy in mod_copies {
-            let target_path = mods_dir.join(&mod_copy.path);
+            let target_path = mod_copy.path.to_path(mods_dir);
             if let Some(parent) = target_path.parent() {
                 _ = std::fs::create_dir_all(parent);
             }
             match mod_copy.source {
                 PrelaunchModCopySource::FromContentLibrary { hash } => {
-                    let extension = mod_copy.path.extension().and_then(OsStr::to_str);
+                    let extension = mod_copy.path.extension();
                     let path = crate::create_content_library_path(&content_library_dir, hash, extension);
-                    std::fs::copy(path, target_path)?;
+
+                    if !path.exists() {
+                        log::error!("Unable to copy from content library because path doesn't exist: {:?}", path);
+                    } else if let Err(err) = std::fs::copy(&path, &target_path) {
+                        log::error!("Error copying mod from {:?} to {:?}:\n{:?}", path, target_path, err);
+                    }
                 },
                 PrelaunchModCopySource::FromBytes { bytes } => {
-                    std::fs::write(target_path, &bytes)?;
+                    if let Err(err) = std::fs::write(&target_path, &bytes) {
+                        log::error!("Error writing mod to {:?}:\n{:?}", target_path, err);
+                    }
                 },
             }
             tracker.add_count(1);
@@ -1166,7 +1176,6 @@ impl BackendState {
         }
 
         tracker.set_finished(ProgressTrackerFinishType::Normal);
-        Ok(())
     }
 
     pub async fn download_modpack_children(
@@ -1698,7 +1707,7 @@ pub enum LoginError {
 }
 
 struct PrelaunchModCopy {
-    path: PathBuf,
+    path: SafePath,
     source: PrelaunchModCopySource,
 }
 

@@ -30,14 +30,15 @@ pub fn import_instances_from_modrinth(
         return Ok(());
     }
 
+    let app_db = import_job.root.join("app.db");
+    if !app_db.exists() {
+        modal_action.set_error_message("Unable to find app.db in selected directory".into());
+        return Ok(());
+    }
+
     let all_tracker = ProgressTracker::new("Importing instances".into(), backend.send.clone());
     modal_action.trackers.push(all_tracker.clone());
     all_tracker.notify();
-
-    let app_db = import_job.root.join("app.db");
-    if !app_db.exists() {
-        return Ok(());
-    }
 
     let conn = rusqlite::Connection::open(app_db)?;
 
@@ -165,20 +166,49 @@ pub fn read_profiles_from_modrinth_db(modrinth: &Path) -> rusqlite::Result<Optio
 
     let conn = rusqlite::Connection::open(app_db)?;
 
+    let custom_dir = conn.query_one("SELECT custom_dir FROM settings", [], |row| {
+        row.get::<_, String>(0)
+    }).ok();
+
+    let mut profile_dir_main = modrinth.join("profiles");
+    let mut profile_dir_fallback = None;
+
+    if let Some(custom_dir) = custom_dir {
+        let custom_dir_path = Path::new(&custom_dir);
+
+        if custom_dir_path != modrinth {
+            log::info!("Changing import root to {:?} because of custom_dir", custom_dir_path);
+
+            profile_dir_fallback = Some(profile_dir_main);
+            profile_dir_main = custom_dir_path.join("profiles");
+        }
+    }
+
     let mut stmt = conn.prepare("SELECT path FROM profiles")?;
     let mut query = stmt.query([])?;
 
     let mut paths = Vec::new();
 
-    let profiles = modrinth.join("profiles");
     while let Ok(Some(row)) = query.next() {
         let path: String = row.get(0)?;
-        let profile = profiles.join(path);
+
+        // Check main directory
+        let profile = profile_dir_main.join(&path);
         if profile.is_dir() {
             paths.push(profile.into());
-        } else {
-            log::warn!("Modrinth profile folder {:?} doesn't exist", profile);
+            continue;
         }
+
+        // Check fallback directory (if not present in custom_dir)
+        if let Some(fallback) = &profile_dir_fallback {
+            let profile = fallback.join(&path);
+            if profile.is_dir() {
+                paths.push(profile.into());
+                continue;
+            }
+        }
+
+        log::warn!("Modrinth profile folder {:?} doesn't exist", profile);
     }
 
     Ok(Some(paths))

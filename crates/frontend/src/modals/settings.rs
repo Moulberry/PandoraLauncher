@@ -328,48 +328,69 @@ impl Settings {
             ));
 
         if let Some(backend_config) = &self.backend_config {
-            div = div.child(crate::labelled(
-                t::settings::windows::title(),
-                v_flex()
-                    .gap_2()
-                    .child(
-                        Checkbox::new("hide-on-launch")
-                            .label(t::settings::windows::hide_main_window())
-                            .checked(interface_config.hide_main_window_on_launch)
-                            .on_click(|value, _, cx| {
-                                InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
-                            }),
-                    )
-                    .child(
-                        Checkbox::new("open-game-output")
-                            .label(t::settings::windows::open_game_output())
-                            .checked(!backend_config.dont_open_game_output_when_launching)
-                            .on_click(cx.listener({
-                                let backend_handle = self.backend_handle.clone();
-                                move |settings, value, window, cx| {
-                                    backend_handle
-                                        .send(MessageToBackend::SetOpenGameOutputAfterLaunching { value: *value });
-                                    settings.update_backend_configuration(window, cx);
-                                }
-                            })),
-                    )
-                    .child(
-                        Checkbox::new("quit-on-main-close")
-                            .label(t::settings::windows::close_all_when_main_closed())
-                            .checked(interface_config.quit_on_main_closed)
-                            .on_click(|value, _, cx| {
-                                InterfaceConfig::get_mut(cx).quit_on_main_closed = *value;
-                            }),
-                    )
-                    .child(
-                        Checkbox::new("use-os-titlebar")
-                            .label(t::settings::windows::use_os_titlebar())
-                            .checked(interface_config.use_os_titlebar)
-                            .on_click(|value, _, cx| {
-                                InterfaceConfig::get_mut(cx).use_os_titlebar = *value;
-                            }),
-                    ),
-            ))
+            div = div
+                .child(crate::labelled(
+                    t::settings::windows::title(),
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            Checkbox::new("hide-on-launch")
+                                .label(t::settings::windows::hide_main_window())
+                                .checked(interface_config.hide_main_window_on_launch)
+                                .on_click(|value, _, cx| {
+                                    InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
+                                }),
+                        )
+                        .child(
+                            Checkbox::new("open-game-output")
+                                .label(t::settings::windows::open_game_output())
+                                .checked(!backend_config.dont_open_game_output_when_launching)
+                                .on_click(cx.listener({
+                                    let backend_handle = self.backend_handle.clone();
+                                    move |settings, value, window, cx| {
+                                        backend_handle.send(MessageToBackend::SetOpenGameOutputAfterLaunching {
+                                            value: *value,
+                                        });
+                                        settings.update_backend_configuration(window, cx);
+                                    }
+                                })),
+                        )
+                        .child(
+                            Checkbox::new("quit-on-main-close")
+                                .label(t::settings::windows::close_all_when_main_closed())
+                                .checked(interface_config.quit_on_main_closed)
+                                .on_click(|value, _, cx| {
+                                    InterfaceConfig::get_mut(cx).quit_on_main_closed = *value;
+                                }),
+                        )
+                        .child(
+                            Checkbox::new("use-os-titlebar")
+                                .label(t::settings::windows::use_os_titlebar())
+                                .checked(interface_config.use_os_titlebar)
+                                .on_click(|value, _, cx| {
+                                    InterfaceConfig::get_mut(cx).use_os_titlebar = *value;
+                                }),
+                        ),
+                ))
+                .child(crate::labelled(
+                    t::settings::modification::title(),
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            Checkbox::new("allow-modify-while-running")
+                                .label(t::settings::modification::allow_modify_while_running())
+                                .checked(backend_config.allow_modify_while_running)
+                                .on_click(cx.listener({
+                                    let backend_handle = self.backend_handle.clone();
+                                    move |settings, value, window, cx| {
+                                        backend_handle.send(MessageToBackend::SetAllowModifyWhileRunning {
+                                            value: *value,
+                                        });
+                                        settings.update_backend_configuration(window, cx);
+                                    }
+                                })),
+                        ),
+                ));
         } else {
             div = div.child(Spinner::new().large());
         }

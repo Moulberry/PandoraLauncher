@@ -292,7 +292,10 @@ impl BackendState {
 
                 let target_path = dot_minecraft_dir.join(&install_path);
 
-                if instance_running && target_path.starts_with(&mods_dir) {
+                if instance_running
+                    && target_path.starts_with(&mods_dir)
+                    && !self.config.write().get().allow_modify_while_running
+                {
                     cannot_modify_while_running = true;
                     continue;
                 }

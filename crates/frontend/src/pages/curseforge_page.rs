@@ -51,6 +51,7 @@ use crate::{
     icon::PandoraIcon,
     interface_config::InterfaceConfig,
     pages::page::Page,
+    format_downloads,
 };
 
 fn show_vanilla_change_to_fabric_modal(
@@ -566,6 +567,7 @@ impl CurseforgeSearchPage {
 
                 let name = SharedString::new(hit.name.clone());
                 let description = SharedString::new(hit.summary.clone());
+                let tag_separator = SharedString::new("•");
 
                 let author_line = div().text_color(muted_foreground).text_sm().pb_px().child(author);
 
@@ -578,11 +580,11 @@ impl CurseforgeSearchPage {
                     Some(SharedString::new(category.name.clone()).into_any_element())
                 });
                 let categories = itertools::Itertools::intersperse_with(categories, || {
-                    div().flex_shrink_0().w_px().h_1_2().bg(muted_foreground).into_any_element()
+                    div().flex_shrink_0().child(tag_separator.clone()).into_any_element()
                 });
 
                 let downloads = h_flex()
-                    .gap_0p5()
+                    .gap_1()
                     .child(PandoraIcon::Download)
                     .child(format_downloads(hit.download_count));
 
@@ -860,9 +862,30 @@ impl CurseforgeSearchPage {
                             .flex_grow()
                             .gap_1()
                             .overflow_hidden()
-                            .child(h_flex().gap_1().items_end().line_clamp(1).text_lg().child(name).child(author_line))
-                            .child(div().flex_auto().line_height(px(20.0)).line_clamp(2).child(description))
-                            .child(h_flex().gap_2p5().child(PandoraIcon::Tags).children(categories)),
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .items_end()
+                                    .line_clamp(1)
+                                    .text_lg()
+                                    .child(name)
+                                    .child(author_line),
+                            )
+                            .child(
+                                div()
+                                    .flex_auto()
+                                    .line_height(px(20.0))
+                                    .line_clamp(2)
+                                    .child(description),
+                            )
+                            .child(
+                                h_flex()
+                                    .text_sm()
+                                    .text_color(muted_foreground)
+                                    .gap_1()
+                                    .child(PandoraIcon::Tags)
+                                    .children(categories),
+                            ),
                     )
                     .child(v_flex().items_end().child(downloads).child(action_button));
 
@@ -1201,18 +1224,6 @@ impl Render for CurseforgeSearchPage {
     }
 }
 
-pub fn format_downloads(downloads: u64) -> SharedString {
-    if downloads >= 1_000_000_000 {
-        t::instance::content::downloads::b((downloads / 10_000_000) as f64 / 100.0)
-    } else if downloads >= 1_000_000 {
-        t::instance::content::downloads::m((downloads / 10_000) as f64 / 100.0)
-    } else if downloads >= 10_000 {
-        t::instance::content::downloads::k((downloads / 10) as f64 / 100.0)
-    } else {
-        t::instance::content::downloads::n(downloads)
-    }
-    .into()
-}
 
 const FILTER_MOD_CATEGORIES: &[(&'static str, u32)] = &[
     ("Addons", 426),

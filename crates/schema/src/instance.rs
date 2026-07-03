@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use ustr::Ustr;
 use uuid::Uuid;
 
-use crate::loader::Loader;
+use crate::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest, VersionFragment}, loader::Loader};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct InstanceConfiguration {
@@ -94,6 +94,84 @@ impl InstanceConfiguration {
             show_shader_tab: false,
             sandbox: false,
         }
+    }
+}
+
+impl InstanceConfiguration {
+    pub fn determine_fabric_loader_version(&self, manifest: &FabricLoaderManifest) -> Option<Ustr> {
+        if let Some(preferred_version) = self.preferred_loader_version {
+            return Some(preferred_version);
+        }
+
+        let mut latest_loader_version = manifest.0.iter().find(|v| v.stable);
+        if latest_loader_version.is_none() {
+            latest_loader_version = manifest.0.first();
+        }
+        Some(latest_loader_version?.version)
+    }
+
+    pub fn determine_neoforge_loader_version(&self, manifest: &NeoforgeMavenManifest) -> Option<Ustr> {
+        if let Some(preferred_loader_version) = self.preferred_loader_version {
+            return Some(preferred_loader_version);
+        }
+
+        let mut minecraft_version_parts = VersionFragment::string_to_parts(self.minecraft_version.as_str());
+
+        // 1.21.5 -> 21.5
+        // 25w14craftmine -> 0.25w14craftmine
+        // 1.21 -> 21.0
+        // 26.1 -> 26.1.0
+        if minecraft_version_parts[0] == VersionFragment::String("25w14craftmine".into()) {
+            minecraft_version_parts.insert(0, VersionFragment::Number(0))
+        } else {
+            if minecraft_version_parts.len() < 3 {
+                minecraft_version_parts.push(VersionFragment::Number(0))
+            }
+            if minecraft_version_parts[0] == VersionFragment::Number(1) {
+                minecraft_version_parts.remove(0);
+            }
+        }
+
+        let mut latest_loader_version = None;
+        let mut latest_loader_version_parts = Vec::new();
+        for version in manifest.0.iter() {
+            let parts = VersionFragment::string_to_parts(version);
+
+            if parts.starts_with(&minecraft_version_parts) {
+                if parts > latest_loader_version_parts {
+                    latest_loader_version_parts = parts;
+                    latest_loader_version = Some(version.clone());
+                }
+            }
+        }
+
+        latest_loader_version
+    }
+
+    pub fn determine_forge_loader_version(&self, manifest: &ForgeMavenManifest) -> Option<Ustr> {
+        if let Some(preferred_loader_version) = self.preferred_loader_version {
+            return Some(preferred_loader_version);
+        }
+
+        let mut latest_loader_version = None;
+        let mut latest_loader_version_parts = Vec::new();
+
+        for loader_version in &manifest.0 {
+            let Some((loader_minecraft_version, _)) = loader_version.split_once('-') else {
+                continue;
+            };
+            if loader_minecraft_version != self.minecraft_version {
+                continue;
+            }
+
+            let parts = VersionFragment::string_to_parts(loader_version);
+            if parts > latest_loader_version_parts {
+                latest_loader_version_parts = parts;
+                latest_loader_version = Some(loader_version.clone());
+            }
+        }
+
+        latest_loader_version
     }
 }
 

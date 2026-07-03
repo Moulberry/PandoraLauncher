@@ -401,7 +401,10 @@ impl BackendState {
                             continue;
                         }
 
-                        if folder == ContentFolder::Mods && !instance.processes.is_empty() {
+                        if folder == ContentFolder::Mods
+                            && !instance.processes.is_empty()
+                            && !self.config.write().get().allow_modify_while_running
+                        {
                             cannot_modify_while_running = true;
                             continue;
                         }
@@ -440,7 +443,10 @@ impl BackendState {
                         return;
                     };
 
-                    if folder == ContentFolder::Mods && !instance.processes.is_empty() {
+                    if folder == ContentFolder::Mods
+                        && !instance.processes.is_empty()
+                        && !self.config.write().get().allow_modify_while_running
+                    {
                         self.send.send_warning("Cannot modify mods folder while instance is running");
                         return;
                     }
@@ -626,7 +632,10 @@ impl BackendState {
                         continue;
                     };
 
-                    if folder == ContentFolder::Mods && !instance.processes.is_empty() {
+                    if folder == ContentFolder::Mods
+                        && !instance.processes.is_empty()
+                        && !self.config.write().get().allow_modify_while_running
+                    {
                         cannot_modify_while_running = true;
                         continue;
                     }
@@ -1534,15 +1543,32 @@ impl BackendState {
                 let mut account_info = self.account_info.write();
 
                 account_info.modify(|account_info| {
-                    account_info.accounts.remove(&uuid);
+                    account_info.accounts.shift_remove(&uuid);
                     if account_info.selected_account == Some(uuid) {
                         account_info.selected_account = None;
                     }
                 });
             },
+            MessageToBackend::ReorderAccounts { from_index, delta } => {
+                let mut account_info = self.account_info.write();
+                account_info.modify(|account_info| {
+                    let to_index = (from_index as isize + delta) as usize;
+
+                    if from_index >= account_info.accounts.len() || to_index >= account_info.accounts.len() || from_index == to_index {
+                        return;
+                    }
+
+                    account_info.accounts.move_index(from_index, to_index);
+                });
+            },
             MessageToBackend::SetOpenGameOutputAfterLaunching { value } => {
                 self.config.write().modify(|config| {
                     config.dont_open_game_output_when_launching = !value;
+                });
+            },
+            MessageToBackend::SetAllowModifyWhileRunning { value } => {
+                self.config.write().modify(|config| {
+                    config.allow_modify_while_running = value;
                 });
             },
             MessageToBackend::SetProxyConfiguration { config, password } => {
@@ -2161,8 +2187,8 @@ impl BackendState {
             return;
         };
 
-        let prelaunch_result = tokio::select! {
-            result = self.prelaunch(id, &modal_action) => result,
+        tokio::select! {
+            _ = self.prelaunch(id, &modal_action) => {},
             _ = modal_action.request_cancel.cancelled() => {
                 self.send.send(MessageToFrontend::CloseModal);
                 return;
@@ -2170,12 +2196,6 @@ impl BackendState {
         };
 
         if modal_action.error.read().is_some() {
-            self.send.send(MessageToFrontend::Refresh);
-            return;
-        }
-        if let Err(err) = prelaunch_result {
-            modal_action.set_error_message(format!("Unable to run prelaunch: {}", err).into());
-            log::error!("Unable to run prelaunch: {err:?}");
             self.send.send(MessageToFrontend::Refresh);
             return;
         }

@@ -3,7 +3,7 @@ use std::{error::Error, path::Path};
 use indexmap::IndexMap;
 
 fn main() {
-    println!("cargo:rerun-if-changed=./locales.yml");
+    println!("cargo:rerun-if-changed=./locales.toml");
     println!("cargo:rerun-if-changed=build.rs");
 
     let dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -72,6 +72,8 @@ impl LocaleNode {
                 children,
                 static_translation_children,
             } => {
+                content.push_str(&INDENTATION[..indentation * 4]);
+                content.push_str("#[rustfmt::skip]\n");
                 content.push_str(&INDENTATION[..indentation * 4]);
                 content.push_str("pub mod ");
                 content.push_str(&self.name);
@@ -311,8 +313,8 @@ impl Locales {
                                         if existing.0 == name {
                                             if existing.1 != ty {
                                                 return Err(format!(
-                                                    "Multiple arguments with different types: {}",
-                                                    existing.0
+                                                    "Multiple arguments with different types: {} in {}",
+                                                    existing.0, value
                                                 )
                                                 .into());
                                             }

@@ -269,7 +269,14 @@ pub enum MessageToBackend {
     DeleteAccount {
         uuid: Uuid,
     },
+    ReorderAccounts {
+        from_index: usize,
+        delta: isize,
+    },
     SetOpenGameOutputAfterLaunching {
+        value: bool,
+    },
+    SetAllowModifyWhileRunning {
         value: bool,
     },
     SetProxyConfiguration {
@@ -414,6 +421,7 @@ pub struct SyncTargetState {
     pub is_file: bool,
     pub sync_count: usize,
     pub cannot_sync_count: usize,
+    pub cannot_sync_instances: Vec<Arc<str>>,
 }
 
 #[derive(Debug)]

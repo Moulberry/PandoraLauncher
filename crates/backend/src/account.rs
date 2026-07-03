@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use auth::models::MinecraftAccessToken;
 use bridge::{account::Account, message::MessageToFrontend};
-use rustc_hash::FxHashMap;
+use indexmap::IndexMap;
 use schema::{minecraft_profile::MinecraftProfileResponse, unique_bytes::UniqueBytes};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -15,22 +15,24 @@ pub struct MinecraftLoginInfo {
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BackendAccountInfo {
-    pub accounts: FxHashMap<Uuid, BackendAccount>,
+    pub accounts: IndexMap<Uuid, BackendAccount>,
     pub selected_account: Option<Uuid>,
 }
 
 impl BackendAccountInfo {
     pub fn create_update_message(&self) -> MessageToFrontend {
         let mut accounts = Vec::with_capacity(self.accounts.len());
-        for (uuid, account) in &self.accounts {
+        for uuid in self.accounts.keys().copied() {
+            let Some(account) = self.accounts.get(&uuid) else {
+                continue;
+            };
             accounts.push(Account {
-                uuid: *uuid,
+                uuid,
                 username: account.username.clone(),
                 offline: account.offline,
                 head: account.head.clone(),
             });
         }
-        accounts.sort_by(|a, b| lexical_sort::natural_lexical_cmp(&a.username, &b.username));
         MessageToFrontend::AccountsUpdated {
             accounts: accounts.into(),
             selected_account: self.selected_account,

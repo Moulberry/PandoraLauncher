@@ -621,6 +621,7 @@ impl ModrinthSearchPage {
                                     .flex_auto()
                                     .line_height(px(20.0))
                                     .line_clamp(2)
+                                    .text_ellipsis()
                                     .child(description),
                             )
                             .child(

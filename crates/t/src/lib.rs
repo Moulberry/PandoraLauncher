@@ -510,7 +510,6 @@ pub mod instance {
                 "no_description" => Some(no_description()),
                 "no_gallery" => Some(no_gallery()),
                 "open_page" => Some(open_page()),
-                "requesting_from_modrinth_error" => Some(requesting_from_modrinth_error()),
                 "resourcepacks" => Some(resourcepacks()),
                 "shaders" => Some(shaders()),
                 "sort" => Some(sort()),
@@ -1006,12 +1005,12 @@ pub mod instance {
                 _ => "Open Page",
             }
         }
-        pub fn requesting_from_modrinth_error() -> &'static str {
+        pub fn requesting_from_error(service: &str) -> String {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Fehler beim Abrufen von Modrinth",
-                2 => "Hiba a Modrinth lekérése közben",
-                3 => "Fel vid hämtning från Modrinth",
-                _ => "Error requesting from Modrinth",
+                1 => format!("Fehler beim Abrufen von {service}"),
+                2 => format!("Hiba a {service} lekérése közben"),
+                3 => format!("Fel vid hämtning från {service}"),
+                _ => format!("Error requesting from {service}"),
             }
         }
         pub fn resourcepacks() -> &'static str {

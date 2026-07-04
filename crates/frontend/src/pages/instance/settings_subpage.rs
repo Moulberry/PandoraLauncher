@@ -11,6 +11,9 @@ use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenMan
 use strum::IntoEnumIterator;
 use uuid::Uuid;
 
+#[cfg(target_os = "linux")]
+use schema::instance::InstanceLinuxWrapperConfiguration;
+
 use crate::{
 	component::{horizontal_sections::HorizontalSections, named_dropdown::{NamedDropdown, NamedDropdownItem}, path_label::PathLabel},
 	entity::{DataEntities, account::{AccountEntries, AccountExt}, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState, TypelessFrontendMetadataResult}},

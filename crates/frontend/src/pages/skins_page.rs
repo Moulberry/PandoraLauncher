@@ -691,10 +691,10 @@ impl Render for SkinsPage {
         h_flex().p_4()
             .gap_4()
             .child(v_flex()
-                    .gap_2()
-                    .h_full()
-                    .child(controls)
-                    .child(self.player_model_widget.clone()))
+                .gap_2()
+                .h_full()
+                .child(controls)
+                .child(self.player_model_widget.clone()))
             .child(library
                 .overflow_y_scrollbar()
                 .drag_over(|style, _: &ExternalPaths, _, cx| {

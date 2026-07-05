@@ -183,6 +183,7 @@ impl Render for PlayerModelWidget {
             .h_full()
             .child(v_flex()
                 .size_full()
+                .items_center()
                 .id("player_model_widget")
                 .child(PlayerModel::new(&self.player_model_state))
                 .cursor_grab()

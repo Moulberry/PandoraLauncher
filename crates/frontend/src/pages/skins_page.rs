@@ -676,7 +676,18 @@ impl Render for SkinsPage {
                     .h_full()
                     .child(controls)
                     .child(self.player_model_widget.clone()))
-            .child(library.overflow_y_scrollbar())
+            .child(library
+                .overflow_y_scrollbar()
+                .drag_over(|style, _: &ExternalPaths, _, cx| {
+                    style.bg(cx.theme().accent.opacity(0.5))
+                })
+                .on_drop(cx.listener(|page, paths: &ExternalPaths, _window, _cx| {
+                    for path in paths.paths() {
+                        page.data.backend_handle.send(MessageToBackend::AddToSkinLibrary {
+                            source: UrlOrFile::File { path: path.clone() }
+                        });
+                    }
+                })))
             .overflow_hidden()
     }
 }

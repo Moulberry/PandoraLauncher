@@ -627,6 +627,10 @@ impl Render for SkinsPage {
                     .mb_4()
                     .text_base()
                     .p(padding)
+                    .size(px(144.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .when_else(selected, |this| {
                         this.bg(list_active)
                             .border_1()

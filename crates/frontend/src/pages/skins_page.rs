@@ -327,6 +327,7 @@ impl Render for SkinsPage {
                         library = library
                             .child(h_flex()
                                 .id("toggle-capes")
+                                .mb_4()
                                 .child(t::skins::capes())
                                 .child(PandoraIcon::ChevronLeft)
                                 .on_click(|_, _, cx| {
@@ -401,6 +402,7 @@ impl Render for SkinsPage {
                         library = library
                             .child(h_flex()
                                 .id("toggle-capes")
+                                .mb_1()
                                 .child(t::skins::capes())
                                 .child(PandoraIcon::ChevronDown)
                                 .on_click(|_, _, cx| {
@@ -429,8 +431,8 @@ impl Render for SkinsPage {
             .child(h_flex()
                 .flex_wrap()
                 .gap_x_3()
-                .gap_y_1()
-                .mb_1()
+                .gap_y_2()
+                .mb_2()
                 .child(h_flex().max_h_6().child(t::skins::title()))
                 .child(Button::new("add-file")
                     .label(t::skins::add_from_file())
@@ -691,7 +693,7 @@ impl Render for SkinsPage {
         h_flex().p_4()
             .gap_4()
             .child(v_flex()
-                .gap_2()
+                .gap_4()
                 .h_full()
                 .child(controls)
                 .child(self.player_model_widget.clone()))

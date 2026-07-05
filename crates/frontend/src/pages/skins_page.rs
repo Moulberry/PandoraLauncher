@@ -624,7 +624,6 @@ impl Render for SkinsPage {
                 Some(div()
                     .id(("select-skin", i))
                     .rounded(radius)
-                    .mb_4()
                     .text_base()
                     .p(padding)
                     .size(px(144.0))

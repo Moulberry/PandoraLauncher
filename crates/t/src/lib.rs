@@ -3976,6 +3976,26 @@ pub mod skins {
         }
     }
     #[rustfmt::skip]
+    pub mod sort {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "newest_first" => Some(newest_first()),
+                "oldest_first" => Some(oldest_first()),
+                _ => None,
+            }
+        }
+        pub fn newest_first() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Newest first",
+            }
+        }
+        pub fn oldest_first() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Oldest first",
+            }
+        }
+    }
+    #[rustfmt::skip]
     pub mod switch_view {
         pub fn get(key: &str) -> Option<&'static str> {
             match key {

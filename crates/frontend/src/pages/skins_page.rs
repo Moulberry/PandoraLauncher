@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::{
     component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, skin_thumbnail_cache::SkinThumbnailCache, skin_renderer::determine_skin_variant,
 };
+use itertools::Either;
 
 pub struct SkinsPage {
     account_skins: FxHashMap<Uuid, AccountSkinResult>,
@@ -414,7 +415,14 @@ impl Render for SkinsPage {
         }
 
         let skin_library = self.data.use_skin_library(cx).cloned();
-        let skin_library_iter = skin_library.iter().map(|l| l.skins.iter()).flatten();
+        let sort_descending = InterfaceConfig::get(cx).skin_list_sort_desc;
+        let skin_library_iter = skin_library.iter().flat_map(|l| {
+            if sort_descending {
+                Either::Left(l.skins.iter().rev())
+            } else {
+                Either::Right(l.skins.iter())
+            }
+        });
         let skins = active_skin.iter().chain(skin_library_iter).enumerate();
 
         library = library
@@ -546,6 +554,14 @@ impl Render for SkinsPage {
                             crate::open_folder(&folder, window, cx);
                         })
                     }))
+                .child(Button::new("toggle-sort")
+                    .icon(if InterfaceConfig::get(cx).skin_list_sort_desc { PandoraIcon::SortDescending } else { PandoraIcon::SortAscending })
+                    .label(if InterfaceConfig::get(cx).skin_list_sort_desc { t::skins::sort::newest_first() } else { t::skins::sort::oldest_first() })
+                    .small()
+                    .compact()
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        InterfaceConfig::get_mut(cx).skin_list_sort_desc ^= true;
+                    })))
                 .child(Button::new("toggle-3d")
                     .icon(if InterfaceConfig::get(cx).skin_list_show_3d { PandoraIcon::Image } else { PandoraIcon::Box })
                     .label(if InterfaceConfig::get(cx).skin_list_show_3d { t::skins::switch_view::texture() } else { t::skins::switch_view::model() })

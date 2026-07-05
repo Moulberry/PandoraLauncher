@@ -2092,6 +2092,10 @@ en = "Open folder"
 de = "Öffne Ordner"
 hu = "Mappa megnyitása"
 sv = "Öppna folder"
+[skins.sort.oldest_first]
+en = "Oldest first"
+[skins.sort.newest_first]
+en = "Newest first"
 [skins.switch_view.texture]
 en = "Switch to texture"
 de = "Wechsle zu Textur"

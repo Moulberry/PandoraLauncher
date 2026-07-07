@@ -592,6 +592,11 @@ impl Launcher {
         // Extract files in maven/ into libraries, used in 1.16 and below
         for entry in installer_zip.entries() {
             if let Some(path) = entry.name.strip_prefix("maven/") {
+                // dir entries (e.g. "maven/.../1.20.1-47.4.20/") would otherwise
+                // get write_safe'd as a 0-byte file, blocking the real jar's parent dir (ENOTDIR)
+                if matches!(entry.kind(), rc_zip_sync::rc_zip::EntryKind::Directory) {
+                    continue;
+                }
                 let Some(safe) = SafePath::new(path) else {
                     continue;
                 };
@@ -1800,6 +1805,10 @@ async fn do_libraries_load(
             return Err(LoadLibrariesError::IllegalLibraryPath(artifact.path));
         }
 
+        // Forge/NeoForge ship some libraries with no absolute url (bundled into the installer's maven/ dir instead);
+        // reqwest can't build a request from "" or a relative url, so treat it as "must already be on disk" rather than trying to fetch it.
+        let has_downloadable_url = artifact.url.starts_with("http://") || artifact.url.starts_with("https://");
+
         let artifact_path = libraries_dir.join(artifact.path.as_str());
         let Some(artifact_path_parent) = artifact_path.parent() else {
             return Err(LoadLibrariesError::IllegalLibraryPath(artifact.path));
@@ -1814,7 +1823,10 @@ async fn do_libraries_load(
         let disk_semaphore = &disk_semaphore;
 
         let task = async move {
-            let valid_hash_on_disk = if let Some(expected_hash) = expected_hash {
+            // no-url artifacts (forge/neoforge processor output, e.g. the split
+            // client.jar) are built locally and won't match a published sha1 — existence is
+            // all we can verify since there's no source to redownload from on mismatch.
+            let valid_hash_on_disk = if let Some(expected_hash) = expected_hash && has_downloadable_url {
                 let artifact_path = artifact_path.clone();
                 let permit = disk_semaphore.acquire().await.unwrap();
                 let result = tokio::task::spawn_blocking(move || {
@@ -1830,6 +1842,10 @@ async fn do_libraries_load(
                 libraries_tracker.add_count(tracker_size as usize);
                 libraries_tracker.notify();
                 return Ok((artifact.path, artifact_path));
+            }
+
+            if !has_downloadable_url {
+                return Err(LoadLibrariesError::IllegalLibraryPath(artifact.path));
             }
 
             let was_downloading = started_downloading.swap(true, std::sync::atomic::Ordering::Relaxed);

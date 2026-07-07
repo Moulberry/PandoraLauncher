@@ -485,7 +485,7 @@ fn ends_with_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
         return false;
     }
     let start = haystack.len() - needle.len();
-    haystack[start..].eq_ignore_ascii_case(needle)
+    haystack.as_bytes()[start..].eq_ignore_ascii_case(needle.as_bytes())
 }
 
 async fn resolve_modrinth_files(

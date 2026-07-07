@@ -29,6 +29,7 @@ struct ExportInstanceModalState {
     include_saves: bool,
     include_mods: bool,
     include_resourcepacks: bool,
+    include_shaders: bool,
     include_configs: bool,
     include_logs: bool,
     include_cache: bool,
@@ -83,6 +84,7 @@ impl ExportInstanceModalState {
             include_saves: true,
             include_mods: true,
             include_resourcepacks: true,
+            include_shaders: true,
             include_configs: true,
             include_logs: false,
             include_cache: false,
@@ -154,6 +156,7 @@ impl ExportInstanceModalState {
             include_saves: self.include_saves,
             include_mods: self.include_mods,
             include_resourcepacks: self.include_resourcepacks,
+            include_shaders: self.include_shaders,
             include_configs: self.include_configs,
             include_logs: self.include_logs,
             include_cache: self.include_cache,
@@ -189,6 +192,10 @@ impl ExportInstanceModalState {
                 .checked(self.include_resourcepacks)
                 .label(t::instance::export::include_resourcepacks())
                 .on_click(cx.listener(|this, value, _, cx| { this.include_resourcepacks = *value; cx.notify(); })))
+            .child(Checkbox::new("include_shaders")
+                .checked(self.include_shaders)
+                .label(t::instance::export::include_shaders())
+                .on_click(cx.listener(|this, value, _, cx| { this.include_shaders = *value; cx.notify(); })))
             .child(Checkbox::new("include_configs")
                 .checked(self.include_configs)
                 .label(t::instance::export::include_configs())

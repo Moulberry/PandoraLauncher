@@ -1424,6 +1424,7 @@ pub mod instance {
                 "include_mods" => Some(include_mods()),
                 "include_resourcepacks" => Some(include_resourcepacks()),
                 "include_saves" => Some(include_saves()),
+                "include_shaders" => Some(include_shaders()),
                 "include_synced" => Some(include_synced()),
                 "modrinth_options" => Some(modrinth_options()),
                 "name" => Some(name()),
@@ -1558,6 +1559,11 @@ pub mod instance {
                 2 => "Mentések belefoglalása",
                 3 => "Inkludera världar",
                 _ => "Include saves",
+            }
+        }
+        pub fn include_shaders() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Include shaders",
             }
         }
         pub fn include_synced() -> &'static str {

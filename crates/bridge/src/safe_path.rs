@@ -28,7 +28,8 @@ impl SafePath {
     }
 
     pub fn from_std_path(path: &Path) -> Option<SafePath> {
-        Self::from_relative_path(RelativePath::from_path(path).ok()?)
+        let normalized = path.to_str()?.replace('\\', "/");
+        Self::from_relative_path(RelativePath::new(&normalized))
     }
 
     pub fn new(path: &str) -> Option<SafePath> {

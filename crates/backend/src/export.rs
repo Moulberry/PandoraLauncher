@@ -450,7 +450,7 @@ fn should_skip(rel: &SafePath, rel_to_dot_minecraft: Option<&SafePath>, options:
 
     match name {
         "logs" | "crash-reports" => !options.include_logs,
-        ".cache" | "downloads" => !options.include_cache,
+        ".cache" | "downloads" | ".fabric" => !options.include_cache,
         "saves" => !options.include_saves,
         "mods" => !options.include_mods,
         "resourcepacks" => !options.include_resourcepacks,

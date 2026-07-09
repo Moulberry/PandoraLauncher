@@ -1418,6 +1418,7 @@ pub mod instance {
                 "author" => Some(author()),
                 "curseforge_options" => Some(curseforge_options()),
                 "error" => Some(error()),
+                "include_backups" => Some(include_backups()),
                 "include_cache" => Some(include_cache()),
                 "include_configs" => Some(include_configs()),
                 "include_logs" => Some(include_logs()),
@@ -1511,6 +1512,11 @@ pub mod instance {
                     3 => "Instans Zip-fil",
                     _ => "Instance Zip",
                 }
+            }
+        }
+        pub fn include_backups() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                _ => "Include backups",
             }
         }
         pub fn include_cache() -> &'static str {

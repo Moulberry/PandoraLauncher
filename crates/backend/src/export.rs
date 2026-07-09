@@ -456,6 +456,7 @@ fn should_skip(rel: &SafePath, rel_to_dot_minecraft: Option<&SafePath>, options:
         "resourcepacks" => !options.include_resourcepacks,
         "shaderpacks" => !options.include_shaders,
         "config" => !options.include_configs,
+        "backups" => !options.include_backups,
         _ => false,
     }
 }

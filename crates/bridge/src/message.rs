@@ -53,6 +53,7 @@ pub struct ExportOptions {
     pub include_resourcepacks: bool,
     pub include_shaders: bool,
     pub include_configs: bool,
+    pub include_backups: bool,
     pub include_logs: bool,
     pub include_cache: bool,
     pub include_synced: bool,

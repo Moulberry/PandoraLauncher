@@ -37,7 +37,8 @@ impl SafePath {
         if trimmed.is_empty() {
             return None;
         }
-        Self::from_relative_path(RelativePath::new(trimmed))
+        let normalized = trimmed.replace('\\', "/");
+        Self::from_relative_path(RelativePath::new(&normalized))
     }
 
     pub fn join(&self, other: &SafePath) -> SafePath {

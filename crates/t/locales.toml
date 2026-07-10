@@ -1084,11 +1084,17 @@ en = "Include resourcepacks"
 de = "Ressourcenpakete (resourcepacks) einbeziehen"
 hu = "forráscsomagok belefoglalása"
 sv = "Inkludera resurspacket"
+[instance.export.include_shaders]
+en = "Include shaders"
 [instance.export.include_configs]
 en = "Include configs"
 de = "Konfigurationsdateien (configs) einbeziehen"
 hu = "Konfigurációk belefoglalása"
 sv = "Inkludera konfigurationsfiler"
+[instance.export.include_screenshots]
+en = "Include screenshots"
+[instance.export.include_backups]
+en = "Include backups"
 [instance.export.include_logs]
 en = "Include logs/crash reports"
 de = "logs/Absturzberichte einbeziehen"

@@ -107,8 +107,6 @@ impl Render for Accounts {
             (accounts.accounts.clone(), accounts.selected_account_uuid)
         };
 
-        let accounts_len = accounts.len();
-
         let start_y = window.mouse_position().y.as_f32();
 
         if let Some(animate_move) = &self.animate_move {

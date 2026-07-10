@@ -6,7 +6,7 @@ use bridge::{
 use parking_lot::Mutex;
 use reqwest::StatusCode;
 use rustc_hash::FxHashSet;
-use schema::{content::{ContentInstallReason, ContentSource}, curseforge::{CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, modrinth::{ModrinthDependencyType, ModrinthLoader, ModrinthProjectVersionsRequest}};
+use schema::{content::{ContentInstallReason, ContentSource}, curseforge::{CURSEFORGE_API_KEY, CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, modrinth::{ModrinthDependencyType, ModrinthLoader, ModrinthProjectVersionsRequest}};
 use serde::Serialize;
 use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
@@ -1035,10 +1035,17 @@ impl BackendState {
             return Ok((path, sha1, summary));
         }
 
-        let response = self.redirecting_http_client.get(&**url)
-            .header("modrinth-download-meta", serde_json::to_string(&download_meta).unwrap_or_default())
-            .send()
-            .await?;
+
+        let mut builder = self.redirecting_http_client.get(&**url)
+            .header("modrinth-download-meta", serde_json::to_string(&download_meta).unwrap_or_default());
+
+        if let Ok(url) = url::Url::parse(&**url) {
+            if let Some(host) = url.host_str() && host.ends_with("forgecdn.net") {
+                builder = builder.header("x-api-key", CURSEFORGE_API_KEY);
+            }
+        }
+
+        let response = builder.send().await?;
 
         if response.status() != StatusCode::OK {
             return Err(ContentInstallError::NotOK(response.status()));

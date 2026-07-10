@@ -255,6 +255,9 @@ impl BackendState {
                     Ok(()) => {
                         if let Some(replace) = install.replace {
                             self.replace_aux_path(&replace, &install.mod_summary, &target_path);
+                            if matches!(install.mod_summary.extra, ContentType::ShaderPack) {
+                                Self::replace_shaderpack_settings_path(&replace, &target_path);
+                            }
                             let replace_path: &Path = &replace;
                             if replace_path != target_path.as_path() {
                                 let _ = std::fs::remove_file(&replace);
@@ -864,6 +867,25 @@ impl BackendState {
 
         if old_aux_path != new_aux_path {
             _ = std::fs::rename(&old_aux_path, &new_aux_path);
+        }
+    }
+
+    fn replace_shaderpack_settings_path(old_path: &Path, new_path: &Path) {
+        let old_txt = {
+            let mut p = old_path.to_path_buf();
+            p.add_extension("txt");
+            p
+        };
+        let new_txt = {
+            let mut p = new_path.to_path_buf();
+            p.add_extension("txt");
+            p
+        };
+
+        if old_txt != new_txt && old_txt.exists() && !new_txt.exists() {
+            if let Err(err) = std::fs::rename(&old_txt, &new_txt) {
+                log::error!("Failed to rename shaderpack settings file from {:?} to {:?}: {err}", old_txt, new_txt);
+            }
         }
     }
 

@@ -134,7 +134,7 @@ pub(crate) fn pandora_aux_path_for_content(content: &InstanceContentSummary) -> 
 }
 
 pub(crate) fn create_content_library_path(content_library_dir: &Path, expected_hash: [u8; 20], extension: Option<&str>) -> PathBuf {
-    Self::create_content_library_path_osstrext(content_library_dir, expected_hash, extension.map(OsStr::new))
+    create_content_library_path_osstrext(content_library_dir, expected_hash, extension.map(OsStr::new))
 }
 
 pub(crate) fn create_content_library_path_osstrext(content_library_dir: &Path, expected_hash: [u8; 20], extension: Option<&OsStr>) -> PathBuf {

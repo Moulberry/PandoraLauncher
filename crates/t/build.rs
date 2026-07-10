@@ -76,7 +76,7 @@ fn inner(dir: &Path) -> Result<(), Box<dyn Error>> {
         content.push_str(&format!("{}", lang_id));
         content.push_str(",\n");
     }
-    content.push_str("\t\t_ => panic!(\"Unknown language: {code}\"),\n");
+    content.push_str("\t\t_ => 0,\n");
     content.push_str("\t};\n");
     content.push_str("\tLANG.store(id, std::sync::atomic::Ordering::Relaxed);\n");
     content.push_str("}\n\n");

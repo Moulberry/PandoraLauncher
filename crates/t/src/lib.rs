@@ -43,7 +43,7 @@ pub fn set_lang(lang: &Language) {
 		"de" => 1,
 		"hu" => 2,
 		"sv" => 3,
-		_ => panic!("Unknown language: {code}"),
+		_ => 0,
 	};
 	LANG.store(id, std::sync::atomic::Ordering::Relaxed);
 }

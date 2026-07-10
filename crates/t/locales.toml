@@ -1388,11 +1388,11 @@ en = "Search..."
 de = "Suche..."
 hu = "Keresés..."
 sv = "Sök..."
-[instance.content.requesting_from_modrinth_error]
-en = "Error requesting from Modrinth"
-de = "Fehler beim Abrufen von Modrinth"
-hu = "Hiba a Modrinth lekérése közben"
-sv = "Fel vid hämtning från Modrinth"
+[instance.content.requesting_from_error]
+en = "Error requesting from ${service: &str}"
+de = "Fehler beim Abrufen von ${service: &str}"
+hu = "Hiba a ${service: &str} lekérése közben"
+sv = "Fel vid hämtning från ${service: &str}"
 [instance.content.unnamed]
 en = "Unnamed"
 de = "Unbenannt"

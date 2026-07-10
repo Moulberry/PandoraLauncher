@@ -957,7 +957,7 @@ sv = "Namn"
 [instance.name_placeholder]
 en = "<instance name>"
 de = "<Instanz Name>"
-hu = "<példány neve"
+hu = "<példány neve>"
 sv = "<instansens namn>"
 [instance.version]
 en = "Version"
@@ -1017,7 +1017,7 @@ sv = "Ogiltigt namn"
 [instance.export.action]
 en = "Export"
 de = "Exportieren"
-hu = "Export"
+hu = "Exportálás"
 sv = "Exportera"
 [instance.export.title]
 en = "Export Instance"
@@ -1086,6 +1086,7 @@ hu = "forráscsomagok belefoglalása"
 sv = "Inkludera resurspacket"
 [instance.export.include_shaders]
 en = "Include shaders"
+hu = "Shaderek belefoglalása"
 [instance.export.include_configs]
 en = "Include configs"
 de = "Konfigurationsdateien (configs) einbeziehen"
@@ -1093,8 +1094,10 @@ hu = "Konfigurációk belefoglalása"
 sv = "Inkludera konfigurationsfiler"
 [instance.export.include_screenshots]
 en = "Include screenshots"
+hu = "Képernyőképek belefoglalása"
 [instance.export.include_backups]
 en = "Include backups"
+hu = "Biztonsági mentések belefoglalása"
 [instance.export.include_logs]
 en = "Include logs/crash reports"
 de = "logs/Absturzberichte einbeziehen"
@@ -1473,7 +1476,7 @@ sv = "Kategorier"
 [instance.content.sort]
 en = "Sort by"
 de = "Sortieren nach"
-hu = "Rendszerezés"
+hu = "Sorrend"
 sv = "Sortera efter"
 [instance.content.downloads.b]
 # Billion
@@ -1741,7 +1744,7 @@ sv = "Installera manuellt - kan inte automatiskt uppdatera"
 [instance.sync.label]
 en = "Syncing"
 de = "Synchronisierung"
-hu = "Stinkronizál"
+hu = "Szinkronizálás"
 sv = "Synkar"
 [instance.sync.description]
 en = "These options allow for syncing various files/folders across instances"
@@ -1915,8 +1918,10 @@ hu = "Hálózat"
 sv = "Nätvärk"
 [settings.language.title]
 en = "Language"
+hu = "Nyelv"
 [settings.language.system]
 en = "System language"
+hu = "Rendszer nyelv"
 [settings.theme.title]
 en = "Theme"
 de = "Farbschema"
@@ -2110,8 +2115,10 @@ hu = "Mappa megnyitása"
 sv = "Öppna folder"
 [skins.sort.oldest_first]
 en = "Oldest first"
+hu = "Régi először"
 [skins.sort.newest_first]
 en = "Newest first"
+hu = "Új először"
 [skins.switch_view.texture]
 en = "Switch to texture"
 de = "Wechsle zu Textur"

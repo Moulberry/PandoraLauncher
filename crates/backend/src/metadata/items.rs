@@ -6,9 +6,7 @@ use reqwest::RequestBuilder;
 use schema::{
     assets_index::AssetsIndex,
     curseforge::{
-        CURSEFORGE_SEARCH_URL, CurseforgeFingerprintRequest, CurseforgeFingerprintResponse,
-        CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult,
-        CurseforgeSearchRequest, CurseforgeSearchResult, MINECRAFT_GAME_ID
+        CURSEFORGE_API_KEY, CURSEFORGE_SEARCH_URL, CurseforgeFingerprintRequest, CurseforgeFingerprintResponse, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult, MINECRAFT_GAME_ID
     },
     fabric_launch::FabricLaunch,
     fabric_loader_manifest::{FABRIC_LOADER_MANIFEST_URL, FabricLoaderManifest},
@@ -592,7 +590,7 @@ impl<'a> MetadataItem for CurseforgeSearchMetadataItem<'a> {
             .query(self.0)
             .query(&[("gameId", MINECRAFT_GAME_ID)])
             .query(&[("sortOrder", "desc")])
-            .header("x-api-key", "$2a$10$YXf6dyJfJZM4zeChdr.RDOvWN.L48AN0dQShQO8/cVc5ho1wA8ZbS")
+            .header("x-api-key", CURSEFORGE_API_KEY)
     }
 
     fn expires(&self) -> bool {
@@ -617,7 +615,7 @@ impl<'a> MetadataItem for CurseforgeFingerprintMetadataItem<'a> {
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
         client.post("https://api.curseforge.com/v1/fingerprints")
             .json(self.0)
-            .header("x-api-key", "$2a$10$YXf6dyJfJZM4zeChdr.RDOvWN.L48AN0dQShQO8/cVc5ho1wA8ZbS")
+            .header("x-api-key", CURSEFORGE_API_KEY)
     }
 
     fn expires(&self) -> bool {
@@ -642,7 +640,7 @@ impl<'a> MetadataItem for CurseforgeGetModFilesMetadataItem<'a> {
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
         let mut req = client.get(format!("https://api.curseforge.com/v1/mods/{}/files", self.0.mod_id))
             .query(&[("gameId", MINECRAFT_GAME_ID)])
-            .header("x-api-key", "$2a$10$YXf6dyJfJZM4zeChdr.RDOvWN.L48AN0dQShQO8/cVc5ho1wA8ZbS");
+            .header("x-api-key", CURSEFORGE_API_KEY);
 
         if let Some(mod_loader_type) = self.0.mod_loader_type {
             req = req.query(&[("modLoaderType", mod_loader_type)]);
@@ -679,7 +677,7 @@ impl<'a> MetadataItem for CurseforgeGetFilesMetadataItem<'a> {
     fn request(&self, client: &reqwest::Client) -> RequestBuilder {
         client.post("https://api.curseforge.com/v1/mods/files")
             .json(self.0)
-            .header("x-api-key", "$2a$10$YXf6dyJfJZM4zeChdr.RDOvWN.L48AN0dQShQO8/cVc5ho1wA8ZbS")
+            .header("x-api-key", CURSEFORGE_API_KEY)
     }
 
     fn expires(&self) -> bool {

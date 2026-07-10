@@ -10,7 +10,7 @@ use auth::{
     serve_redirect::{self, ProcessAuthorizationError},
 };
 use bridge::{
-    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentFolder, ContentSummary, ContentType, InstanceContentSummary, InstanceID, ModpackFile, ModpackFilePath, ModpackFileSource}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, quit::QuitCoordinator, safe_path::SafePath
+    handle::{BackendHandle, BackendReceiver, FrontendHandle}, install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath}, instance::{ContentFolder, ContentType, InstanceContentSummary, InstanceID, ModpackFile, ModpackFilePath, ModpackFileSource}, message::{EmbeddedOrRaw, MessageToFrontend}, modal_action::{ModalAction, ModalActionVisitUrl, ProgressTracker, ProgressTrackerFinishType}, quit::QuitCoordinator, safe_path::SafePath
 };
 use image::ImageFormat;
 use indexmap::IndexSet;
@@ -857,21 +857,18 @@ impl BackendState {
                     let Ok(rel_path) = path.strip_prefix(&mod_dir) else {
                         continue;
                     };
-                    let Some(rel_path) = SafePath::from_std_path(rel_path) else {
-                        continue;
-                    };
 
                     let extension = path.extension().and_then(OsStr::to_str);
                     let content_library_path = crate::create_content_library_path(&content_library_dir, summary.content_summary.hash, extension);
 
                     if content_library_path.exists() {
                         mod_copies.push(PrelaunchModCopy {
-                            path: rel_path,
+                            path: rel_path.to_path_buf(),
                             source: PrelaunchModCopySource::FromContentLibrary { hash: summary.content_summary.hash },
                         });
                     } else if let Ok(file) = std::fs::read(&path) {
                         mod_copies.push(PrelaunchModCopy {
-                            path: rel_path,
+                            path: rel_path.to_path_buf(),
                             source: PrelaunchModCopySource::FromBytes { bytes: file.into() },
                         });
                     }
@@ -954,7 +951,7 @@ impl BackendState {
                     if let ModpackFileSource::Builtin { bytes } = file.source {
                         if let Some(filename) = rel_path.strip_prefix("mods") {
                             mod_copies.push(PrelaunchModCopy {
-                                path: filename,
+                                path: filename.to_path(Path::new(".")),
                                 source: PrelaunchModCopySource::FromBytes {
                                     bytes: bytes.clone()
                                 }
@@ -975,7 +972,7 @@ impl BackendState {
                     } else {
                         if let Some(filename) = rel_path.strip_prefix("mods") {
                             mod_copies.push(PrelaunchModCopy {
-                                path: filename,
+                                path: filename.to_path(Path::new(".")),
                                 source: PrelaunchModCopySource::FromContentLibrary {
                                     hash: file.hash
                                 }
@@ -1024,14 +1021,14 @@ impl BackendState {
         let content_library_dir = &self.directories.content_library_dir.clone();
 
         for mod_copy in mod_copies {
-            let target_path = mod_copy.path.to_path(mods_dir);
+            let target_path = mods_dir.join(&mod_copy.path);
             if let Some(parent) = target_path.parent() {
                 _ = std::fs::create_dir_all(parent);
             }
             match mod_copy.source {
                 PrelaunchModCopySource::FromContentLibrary { hash } => {
                     let extension = mod_copy.path.extension();
-                    let path = crate::create_content_library_path(&content_library_dir, hash, extension);
+                    let path = crate::create_content_library_path_osstrext(&content_library_dir, hash, extension);
 
                     if !path.exists() {
                         log::error!("Unable to copy from content library because path doesn't exist: {:?}", path);
@@ -1457,7 +1454,7 @@ pub enum LoginError {
 }
 
 struct PrelaunchModCopy {
-    path: SafePath,
+    path: PathBuf,
     source: PrelaunchModCopySource
 }
 

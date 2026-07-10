@@ -1,3 +1,10 @@
+[language.name]
+en = "English"
+de = "Deutsch"
+hu = "Magyar"
+sv = "Svenska"
+ru = "Русский"
+
 [modrinth.name]
 en = "Modrinth"
 de = "Modrinth"
@@ -776,7 +783,7 @@ sv = "Ikon"
 ru = "Значок"
 [common.custom_icon]
 en = "Custom icon"
-ru = "Пользовательский значок"
+ru = "Свой значок"
 [common.apply_changes]
 en = "Apply Changes"
 de = "Änderungen übernehmen"
@@ -1309,43 +1316,52 @@ en = "Include saves"
 de = "Welten (saves) einbeziehen"
 hu = "Mentések belefoglalása"
 sv = "Inkludera världar"
-ru = "Включить миры"
+ru = "Добавить миры"
 [instance.export.include_mods]
 en = "Include mods"
 de = "Mods (mods) einbeziehen"
 hu = "Modok belefoglalása"
 sv = "Inkludera mods"
-ru = "Включить моды"
+ru = "Добавить моды"
 [instance.export.include_resourcepacks]
 en = "Include resourcepacks"
 de = "Ressourcenpakete (resourcepacks) einbeziehen"
 hu = "forráscsomagok belefoglalása"
 sv = "Inkludera resurspacket"
-ru = "Включить ресурспаки"
+ru = "Добавить ресурспаки"
+[instance.export.include_shaders]
+en = "Include shaders"
+ru = "Добавить шейдеры"
 [instance.export.include_configs]
 en = "Include configs"
 de = "Konfigurationsdateien (configs) einbeziehen"
 hu = "Konfigurációk belefoglalása"
 sv = "Inkludera konfigurationsfiler"
-ru = "Включить конфиги"
+ru = "Добавить конфиги"
+[instance.export.include_screenshots]
+en = "Include screenshots"
+ru = "Добавить скриншоты"
+[instance.export.include_backups]
+en = "Include backups"
+ru = "Добавить резервные копии"
 [instance.export.include_logs]
 en = "Include logs/crash reports"
 de = "logs/Absturzberichte einbeziehen"
 hu = "Naplófájlok/összeomlási jelentések belefoglalása"
 sv = "Inkludera loggar/krashrapporteringar"
-ru = "Включить логи/отчёты об ошибках"
+ru = "Добавить логи/отчёты об ошибках"
 [instance.export.include_cache]
 en = "Include cache files"
 de = "Cache-Dateien einbeziehen"
 hu = "Gyorsítótár fájlok belefoglalása"
 sv = "Inkludera Cache filer"
-ru = "Включить временные файлы (кэш)"
+ru = "Добавить временные файлы (кэш)"
 [instance.export.include_synced]
 en = "Include synced folders"
 de = "Synchronisierte Verzeichnisse einbeziehen"
 hu = "Szinkronizált mappák belefoglalása"
 sv = "Inkludera synkade foldrar"
-ru = "Включить синхронизированные папки"
+ru = "Добавить синхронизированные папки"
 [instance.export.name]
 en = "Name"
 de = "Name"
@@ -2225,7 +2241,7 @@ en = "Custom"
 de = "Benutzerdefiniert"
 hu = "Egyedi"
 sv = "Användardefinierat"
-ru = "Пользовательские элементы"
+ru = "Другое"
 [instance.sync.sync_name_file]
 en = "Sync ${name: &str} file"
 de = "Synchronisiere ${name: &str}"
@@ -2371,6 +2387,12 @@ de = "Netzwerk"
 hu = "Hálózat"
 sv = "Nätvärk"
 ru = "Сеть"
+[settings.language.title]
+en = "Language"
+ru = "Язык"
+[settings.language.system]
+en = "System language"
+ru = "Как в системе"
 [settings.theme.title]
 en = "Theme"
 de = "Farbschema"
@@ -2612,6 +2634,12 @@ de = "Öffne Ordner"
 hu = "Mappa megnyitása"
 sv = "Öppna folder"
 ru = "Открыть папку"
+[skins.sort.oldest_first]
+en = "Oldest first"
+ru = "Сначала старые"
+[skins.sort.newest_first]
+en = "Newest first"
+ru = "Сначала новые"
 [skins.switch_view.texture]
 en = "Switch to texture"
 de = "Wechsle zu Textur"

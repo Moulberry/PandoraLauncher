@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 build = "build.rs"
 
+[dependencies]
+sys-locale.workspace = true
+serde.workspace = true
+
 [build-dependencies]
 toml.workspace = true
 indexmap.workspace = true

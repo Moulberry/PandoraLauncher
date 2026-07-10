@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::{
     component::{player_model_widget::PlayerModelWidget, shrinking_text::ShrinkingText}, data_asset_loader::DataAssetLoader, entity::{DataEntities, account::AccountExt}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, png_render_cache::ImageTransformation, skin_thumbnail_cache::SkinThumbnailCache, skin_renderer::determine_skin_variant,
 };
+use itertools::Either;
 
 pub struct SkinsPage {
     account_skins: FxHashMap<Uuid, AccountSkinResult>,
@@ -193,7 +194,6 @@ impl Render for SkinsPage {
         let mut library = v_flex()
             .flex_1()
             .min_w_0()
-            .overflow_hidden()
             .w_full()
             .text_xl()
             .content_start()
@@ -326,6 +326,7 @@ impl Render for SkinsPage {
                         library = library
                             .child(h_flex()
                                 .id("toggle-capes")
+                                .mb_4()
                                 .child(t::skins::capes())
                                 .child(PandoraIcon::ChevronLeft)
                                 .on_click(|_, _, cx| {
@@ -400,6 +401,7 @@ impl Render for SkinsPage {
                         library = library
                             .child(h_flex()
                                 .id("toggle-capes")
+                                .mb_1()
                                 .child(t::skins::capes())
                                 .child(PandoraIcon::ChevronDown)
                                 .on_click(|_, _, cx| {
@@ -414,15 +416,22 @@ impl Render for SkinsPage {
         }
 
         let skin_library = self.data.use_skin_library(cx).cloned();
-        let skin_library_iter = skin_library.iter().map(|l| l.skins.iter()).flatten();
+        let sort_descending = InterfaceConfig::get(cx).skin_list_sort_desc;
+        let skin_library_iter = skin_library.iter().flat_map(|l| {
+            if sort_descending {
+                Either::Left(l.skins.iter().rev())
+            } else {
+                Either::Right(l.skins.iter())
+            }
+        });
         let skins = active_skin.iter().chain(skin_library_iter).enumerate();
 
         library = library
             .child(h_flex()
                 .flex_wrap()
                 .gap_x_3()
-                .gap_y_1()
-                .mb_1()
+                .gap_y_2()
+                .mb_2()
                 .child(h_flex().max_h_6().child(t::skins::title()))
                 .child(Button::new("add-file")
                     .label(t::skins::add_from_file())
@@ -546,6 +555,14 @@ impl Render for SkinsPage {
                             crate::open_folder(&folder, window, cx);
                         })
                     }))
+                .child(Button::new("toggle-sort")
+                    .icon(if InterfaceConfig::get(cx).skin_list_sort_desc { PandoraIcon::SortDescending } else { PandoraIcon::SortAscending })
+                    .label(if InterfaceConfig::get(cx).skin_list_sort_desc { t::skins::sort::newest_first() } else { t::skins::sort::oldest_first() })
+                    .small()
+                    .compact()
+                    .on_click(cx.listener(|_, _, _, cx| {
+                        InterfaceConfig::get_mut(cx).skin_list_sort_desc ^= true;
+                    })))
                 .child(Button::new("toggle-3d")
                     .icon(if InterfaceConfig::get(cx).skin_list_show_3d { PandoraIcon::Image } else { PandoraIcon::Box })
                     .label(if InterfaceConfig::get(cx).skin_list_show_3d { t::skins::switch_view::texture() } else { t::skins::switch_view::model() })
@@ -608,9 +625,12 @@ impl Render for SkinsPage {
                 Some(div()
                     .id(("select-skin", i))
                     .rounded(radius)
-                    .mb_4()
                     .text_base()
                     .p(padding)
+                    .size(px(144.0))
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .when_else(selected, |this| {
                         this.bg(list_active)
                             .border_1()
@@ -672,11 +692,22 @@ impl Render for SkinsPage {
         h_flex().p_4()
             .gap_4()
             .child(v_flex()
-                    .gap_2()
-                    .h_full()
-                    .child(controls)
-                    .child(self.player_model_widget.clone()))
-            .child(library.overflow_y_scrollbar())
+                .gap_4()
+                .h_full()
+                .child(controls)
+                .child(self.player_model_widget.clone()))
+            .child(library
+                .overflow_y_scrollbar()
+                .drag_over(|style, _: &ExternalPaths, _, cx| {
+                    style.bg(cx.theme().accent.opacity(0.5))
+                })
+                .on_drop(cx.listener(|page, paths: &ExternalPaths, _window, _cx| {
+                    for path in paths.paths() {
+                        page.data.backend_handle.send(MessageToBackend::AddToSkinLibrary {
+                            source: UrlOrFile::File { path: path.clone() }
+                        });
+                    }
+                })))
             .overflow_hidden()
     }
 }

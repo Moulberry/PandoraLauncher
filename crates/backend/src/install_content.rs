@@ -6,7 +6,7 @@ use bridge::{
 use parking_lot::Mutex;
 use reqwest::StatusCode;
 use rustc_hash::FxHashSet;
-use schema::{content::{ContentInstallReason, ContentSource}, curseforge::{CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, modrinth::{ModrinthDependencyType, ModrinthLoader, ModrinthProjectVersionsRequest}};
+use schema::{content::{ContentInstallReason, ContentSource}, curseforge::{CURSEFORGE_API_KEY, CURSEFORGE_RELATION_TYPE_REQUIRED_DEPENDENCY, CachedCurseforgeFileInfo, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeModLoaderType}, loader::Loader, modrinth::{ModrinthDependencyType, ModrinthLoader, ModrinthProjectVersionsRequest}};
 use serde::Serialize;
 use sha1::{Digest, Sha1};
 use strum::IntoEnumIterator;
@@ -255,6 +255,9 @@ impl BackendState {
                     Ok(()) => {
                         if let Some(replace) = install.replace {
                             self.replace_aux_path(&replace, &install.mod_summary, &target_path);
+                            if matches!(install.mod_summary.extra, ContentType::ShaderPack) {
+                                Self::replace_shaderpack_settings_path(&replace, &target_path);
+                            }
                             let replace_path: &Path = &replace;
                             if replace_path != target_path.as_path() {
                                 let _ = std::fs::remove_file(&replace);
@@ -867,6 +870,25 @@ impl BackendState {
         }
     }
 
+    fn replace_shaderpack_settings_path(old_path: &Path, new_path: &Path) {
+        let old_txt = {
+            let mut p = old_path.to_path_buf();
+            p.add_extension("txt");
+            p
+        };
+        let new_txt = {
+            let mut p = new_path.to_path_buf();
+            p.add_extension("txt");
+            p
+        };
+
+        if old_txt != new_txt && old_txt.exists() && !new_txt.exists() {
+            if let Err(err) = std::fs::rename(&old_txt, &new_txt) {
+                log::error!("Failed to rename shaderpack settings file from {:?} to {:?}: {err}", old_txt, new_txt);
+            }
+        }
+    }
+
     async fn download_file_into_library(&self, modal_action: &ModalAction, name: FilenameAndExtension, url: &Arc<str>, sha1: [u8; 20], size: usize, download_meta: ModrinthDownloadMeta) -> Result<(PathBuf, [u8; 20], Arc<ContentSummary>), ContentInstallError> {
         let mut result = self.download_file_into_library_inner(modal_action, name, url, sha1, size, download_meta.clone()).await?;
 
@@ -1013,10 +1035,17 @@ impl BackendState {
             return Ok((path, sha1, summary));
         }
 
-        let response = self.redirecting_http_client.get(&**url)
-            .header("modrinth-download-meta", serde_json::to_string(&download_meta).unwrap_or_default())
-            .send()
-            .await?;
+
+        let mut builder = self.redirecting_http_client.get(&**url)
+            .header("modrinth-download-meta", serde_json::to_string(&download_meta).unwrap_or_default());
+
+        if let Ok(url) = url::Url::parse(&**url) {
+            if let Some(host) = url.host_str() && host.ends_with("forgecdn.net") {
+                builder = builder.header("x-api-key", CURSEFORGE_API_KEY);
+            }
+        }
+
+        let response = builder.send().await?;
 
         if response.status() != StatusCode::OK {
             return Err(ContentInstallError::NotOK(response.status()));

@@ -2,16 +2,61 @@
 
 static LANG: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
-pub fn set_lang(name: &str) {
-	let id = match name {
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum Language {
+	#[default]
+	System,
+	Code(String),
+}
+
+impl From<String> for Language {
+	fn from(s: String) -> Self {
+		match s.as_str() {
+			"system" => Language::System,
+			_ => Language::Code(s),
+		}
+	}
+}
+
+impl From<Language> for String {
+	fn from(lang: Language) -> Self {
+		match lang {
+			Language::System => String::from("system"),
+			Language::Code(code) => code,
+		}
+	}
+}
+
+pub fn detect_system_language() -> Option<String> {
+	let lang = sys_locale::get_locale()?;
+	lang.get(..2).map(|s| s.to_string())
+}
+
+pub fn set_lang(lang: &Language) {
+	let code = match lang {
+		Language::System => detect_system_language().unwrap_or_else(|| "en".to_string()),
+		Language::Code(code) => code.clone(),
+	};
+	let id = match code.as_str() {
 		"en" => 0,
 		"de" => 1,
 		"hu" => 2,
 		"ru" => 3,
 		"sv" => 4,
-		_ => panic!("Unknown language: {name}"),
+		_ => panic!("Unknown language: {code}"),
 	};
 	LANG.store(id, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn languages() -> &'static [(&'static str, &'static str)] {
+	&[
+		("de", "Deutsch"),
+		("en", "English"),
+		("hu", "Magyar"),
+		("ru", "Русский"),
+		("sv", "Svenska"),
+	]
 }
 
 #[rustfmt::skip]
@@ -193,7 +238,7 @@ pub mod common {
     }
     pub fn custom_icon() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-            3 => "Пользовательский значок",
+            3 => "Свой значок",
             _ => "Custom icon",
         }
     }
@@ -1852,12 +1897,15 @@ pub mod instance {
                 "author" => Some(author()),
                 "curseforge_options" => Some(curseforge_options()),
                 "error" => Some(error()),
+                "include_backups" => Some(include_backups()),
                 "include_cache" => Some(include_cache()),
                 "include_configs" => Some(include_configs()),
                 "include_logs" => Some(include_logs()),
                 "include_mods" => Some(include_mods()),
                 "include_resourcepacks" => Some(include_resourcepacks()),
                 "include_saves" => Some(include_saves()),
+                "include_screenshots" => Some(include_screenshots()),
+                "include_shaders" => Some(include_shaders()),
                 "include_synced" => Some(include_synced()),
                 "modrinth_options" => Some(modrinth_options()),
                 "name" => Some(name()),
@@ -1954,11 +2002,17 @@ pub mod instance {
                 }
             }
         }
+        pub fn include_backups() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Добавить резервные копии",
+                _ => "Include backups",
+            }
+        }
         pub fn include_cache() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Cache-Dateien einbeziehen",
                 2 => "Gyorsítótár fájlok belefoglalása",
-                3 => "Включить временные файлы (кэш)",
+                3 => "Добавить временные файлы (кэш)",
                 4 => "Inkludera Cache filer",
                 _ => "Include cache files",
             }
@@ -1967,7 +2021,7 @@ pub mod instance {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Konfigurationsdateien (configs) einbeziehen",
                 2 => "Konfigurációk belefoglalása",
-                3 => "Включить конфиги",
+                3 => "Добавить конфиги",
                 4 => "Inkludera konfigurationsfiler",
                 _ => "Include configs",
             }
@@ -1976,7 +2030,7 @@ pub mod instance {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "logs/Absturzberichte einbeziehen",
                 2 => "Naplófájlok/összeomlási jelentések belefoglalása",
-                3 => "Включить логи/отчёты об ошибках",
+                3 => "Добавить логи/отчёты об ошибках",
                 4 => "Inkludera loggar/krashrapporteringar",
                 _ => "Include logs/crash reports",
             }
@@ -1985,7 +2039,7 @@ pub mod instance {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Mods (mods) einbeziehen",
                 2 => "Modok belefoglalása",
-                3 => "Включить моды",
+                3 => "Добавить моды",
                 4 => "Inkludera mods",
                 _ => "Include mods",
             }
@@ -1994,7 +2048,7 @@ pub mod instance {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Ressourcenpakete (resourcepacks) einbeziehen",
                 2 => "forráscsomagok belefoglalása",
-                3 => "Включить ресурспаки",
+                3 => "Добавить ресурспаки",
                 4 => "Inkludera resurspacket",
                 _ => "Include resourcepacks",
             }
@@ -2003,16 +2057,28 @@ pub mod instance {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Welten (saves) einbeziehen",
                 2 => "Mentések belefoglalása",
-                3 => "Включить миры",
+                3 => "Добавить миры",
                 4 => "Inkludera världar",
                 _ => "Include saves",
+            }
+        }
+        pub fn include_screenshots() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Добавить скриншоты",
+                _ => "Include screenshots",
+            }
+        }
+        pub fn include_shaders() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Добавить шейдеры",
+                _ => "Include shaders",
             }
         }
         pub fn include_synced() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Synchronisierte Verzeichnisse einbeziehen",
                 2 => "Szinkronizált mappák belefoglalása",
-                3 => "Включить синхронизированные папки",
+                3 => "Добавить синхронизированные папки",
                 4 => "Inkludera synkade foldrar",
                 _ => "Include synced folders",
             }
@@ -2724,7 +2790,7 @@ pub mod instance {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Benutzerdefiniert",
                 2 => "Egyedi",
-                3 => "Пользовательские элементы",
+                3 => "Другое",
                 4 => "Användardefinierat",
                 _ => "Custom",
             }
@@ -4359,6 +4425,28 @@ pub mod settings {
             _ => "Interface",
         }
     }
+    #[rustfmt::skip]
+    pub mod language {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "system" => Some(system()),
+                "title" => Some(title()),
+                _ => None,
+            }
+        }
+        pub fn system() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Как в системе",
+                _ => "System language",
+            }
+        }
+        pub fn title() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Язык",
+                _ => "Language",
+            }
+        }
+    }
     pub fn network() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
             1 => "Netzwerk",
@@ -4777,6 +4865,28 @@ pub mod skins {
             3 => "Выбрать скин",
             4 => "Välj ett skinn",
             _ => "Select Skin",
+        }
+    }
+    #[rustfmt::skip]
+    pub mod sort {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "newest_first" => Some(newest_first()),
+                "oldest_first" => Some(oldest_first()),
+                _ => None,
+            }
+        }
+        pub fn newest_first() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Сначала новые",
+                _ => "Newest first",
+            }
+        }
+        pub fn oldest_first() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Сначала старые",
+                _ => "Oldest first",
+            }
         }
     }
     #[rustfmt::skip]

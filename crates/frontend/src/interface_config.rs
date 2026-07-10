@@ -19,6 +19,8 @@ impl gpui::Global for InterfaceConfigHolder {}
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub language: t::Language,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub active_theme: SharedString,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub main_window_bounds: WindowBounds,
@@ -72,6 +74,8 @@ pub struct InterfaceConfig {
     pub instance_subpage: InstanceSubpageType,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub collapse_capes_in_skins_page: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub skin_list_sort_desc: bool,
     #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
     pub skin_list_show_3d: bool,
 }
@@ -136,6 +140,7 @@ fn default_curseforge_class_id() -> CurseforgeClassId {
 impl Default for InterfaceConfig {
     fn default() -> Self {
         Self {
+            language: Default::default(),
             active_theme: Default::default(),
             main_window_bounds: Default::default(),
             sidebar_width: Default::default(),
@@ -163,6 +168,7 @@ impl Default for InterfaceConfig {
             instances_view_mode: Default::default(),
             instance_subpage: Default::default(),
             collapse_capes_in_skins_page: false,
+            skin_list_sort_desc: false,
             skin_list_show_3d: true,
         }
     }

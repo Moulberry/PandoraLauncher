@@ -54,22 +54,15 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
     let theme_folder = data.theme_folder.clone();
     let settings = cx.new(|cx| {
         let language_select = cx.new(|cx| {
-            let lang_options: Vec<NamedDropdownItem<t::Language>> = std::iter::once(NamedDropdownItem {
-                name: t::settings::language::system().into(),
-                item: t::Language::System,
-            }).chain(t::languages().iter().map(|&(code, name)| NamedDropdownItem {
-                name: name.into(),
-                item: t::Language::Code(code.to_string()),
-            }))
-            .collect();
+            let lang_options = Settings::build_language_options();
             let lang = &InterfaceConfig::get(cx).language;
-            let selected = lang_options.iter()
+            let selected_index = lang_options.iter()
                 .position(|item| item.item == *lang)
                 .map(IndexPath::new);
-            SelectState::new(NamedDropdown::new(lang_options), selected, window, cx)
+            SelectState::new(NamedDropdown::new(lang_options), selected_index, window, cx)
         });
 
-        cx.subscribe(&language_select, Settings::on_language_changed).detach();
+        cx.subscribe_in(&language_select, window, Settings::on_language_changed).detach();
 
         let theme_select_delegate = SearchableVec::new(ThemeRegistry::global(cx).sorted_themes()
             .iter().map(|cfg| cfg.name.clone()).collect::<Vec<_>>());
@@ -295,10 +288,22 @@ impl Settings {
         self.proxy_password_changed = false;
     }
 
+    fn build_language_options() -> Vec<NamedDropdownItem<t::Language>> {
+        std::iter::once(NamedDropdownItem {
+            name: t::settings::language::system().into(),
+            item: t::Language::System,
+        }).chain(t::languages().iter().map(|&(code, name)| NamedDropdownItem {
+            name: name.into(),
+            item: t::Language::Code(code.to_string()),
+        }))
+        .collect()
+    }
+
     fn on_language_changed(
         &mut self,
-        _state: Entity<SelectState<NamedDropdown<t::Language>>>,
+        _state: &Entity<SelectState<NamedDropdown<t::Language>>>,
         event: &SelectEvent<NamedDropdown<t::Language>>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let SelectEvent::Confirm(_) = event;
@@ -307,7 +312,19 @@ impl Settings {
         };
         let lang = lang_item.item;
         t::set_lang(&lang);
+
+        let lang_options = Self::build_language_options();
+        let selected_index = lang_options.iter()
+            .position(|option| option.item == lang)
+            .map(IndexPath::new);
+
         InterfaceConfig::get_mut(cx).language = lang;
+
+        self.language_select.update(cx, |select, cx| {
+            select.set_items(NamedDropdown::new(lang_options), window, cx);
+            select.set_selected_index(selected_index, window, cx);
+        });
+
         cx.notify();
     }
 

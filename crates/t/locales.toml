@@ -762,7 +762,7 @@ sv = "<avaktivera>"
 ru = "<не задано>"
 [common.no_override]
 en = "No override"
-hu = "Nincs felülírás"
+hu = "Nincs fellüírás"
 ru = "По умолчанию"
 [common.cancel]
 en = "Cancel"

@@ -28,24 +28,40 @@ impl From<Language> for String {
 	}
 }
 
-pub fn detect_system_language() -> Option<String> {
-	let lang = sys_locale::get_locale()?;
-	lang.get(..2).map(|s| s.to_string())
+fn language_to_id(lang: &Language) -> u8 {
+    match lang {
+        Language::System => {
+            for locale in sys_locale::get_locales() {
+                let lower = locale.to_ascii_lowercase().replace('-', "_");
+                if let Some(id) = lang_code_to_id(&lower) {
+                    return id;
+                }
+                if let Some((first, _)) = lower.split_once('_') {
+                    if let Some(id) = lang_code_to_id(first) {
+                        return id;
+                    }
+                }
+            }
+            0
+        },
+        Language::Code(code) => {
+            lang_code_to_id(&code).unwrap_or(0)
+        },
+    }
 }
 
 pub fn set_lang(lang: &Language) {
-	let code = match lang {
-		Language::System => detect_system_language().unwrap_or_else(|| "en".to_string()),
-		Language::Code(code) => code.clone(),
-	};
-	let id = match code.as_str() {
-		"en" => 0,
-		"de" => 1,
-		"hu" => 2,
-		"sv" => 3,
-		_ => panic!("Unknown language: {code}"),
-	};
-	LANG.store(id, std::sync::atomic::Ordering::Relaxed);
+    LANG.store(language_to_id(lang), std::sync::atomic::Ordering::Relaxed);
+}
+
+fn lang_code_to_id(code: &str) -> Option<u8> {
+	match code {
+		"en" => Some(0),
+		"de" => Some(1),
+		"hu" => Some(2),
+		"sv" => Some(3),
+		_ => None,
+	}
 }
 
 pub fn languages() -> &'static [(&'static str, &'static str)] {

@@ -1498,7 +1498,7 @@ sv = "Sandlådeisolering"
 ru = "Песочница"
 [instance.security.sandbox.tooltip]
 en = "Sandbox the instance, preventing access to files and systems it shouldn't have access to"
-hu = "Izolálja a példányt, lekorlátozva a hozzáférését fájlokhoz és rendszerekhez amikhez nem kellene neki"
+hu = "Izolálja a példányt, lekorlátozva a hozzáférését fájlokhoz és rendszerekhez amikhez nem kellene neki hozzáférni"
 ru = "Изолировать экземпляр, ограничив доступ к файлам и системам, которые не требуются для его работы"
 [instance.security.sandbox.not_available]
 en = "Cannot sandbox: missing bwrap and xdg-dbus-proxy commands"

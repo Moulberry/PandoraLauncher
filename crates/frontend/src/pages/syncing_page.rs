@@ -163,9 +163,11 @@ impl Render for SyncingPage {
         let info = cx.theme().blue;
         let content = v_flex().size_full().p_3().gap_3()
             .child(t::instance::sync::description())
-            .child(Button::new("open").info().icon(PandoraIcon::FolderOpen).label(t::instance::sync::open_folder()).on_click(move |_, window, cx| {
-                crate::open_folder(&sync_folder, window, cx);
-            }).w_72())
+            .child(h_flex().w_full().child(
+                Button::new("open").info().icon(PandoraIcon::FolderOpen).label(t::instance::sync::open_folder()).on_click(move |_, window, cx| {
+                    crate::open_folder(&sync_folder, window, cx);
+                })).min_w_72()
+            )
             .child(div().border_b_1().border_color(cx.theme().border).text_lg().child(t::instance::sync::files()))
             .child(self.create_entry(sync_state, "options.txt".into(), true,  t::instance::sync::targets::options().into(), warning, info, cx))
             .child(self.create_entry(sync_state, "servers.dat".into(), true, t::instance::sync::targets::servers().into(), warning, info, cx))

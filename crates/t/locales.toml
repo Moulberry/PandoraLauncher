@@ -1176,7 +1176,7 @@ ru = "Название"
 [instance.name_placeholder]
 en = "<instance name>"
 de = "<Instanz Name>"
-hu = "<példány neve"
+hu = "<példány neve>"
 sv = "<instansens namn>"
 ru = "<название экземпляра>"
 [instance.version]
@@ -1248,7 +1248,7 @@ ru = "Недопустимое название"
 [instance.export.action]
 en = "Export"
 de = "Exportieren"
-hu = "Export"
+hu = "Exportálás"
 sv = "Exportera"
 ru = "Экспортировать"
 [instance.export.title]
@@ -1332,6 +1332,7 @@ ru = "Добавить ресурспаки"
 [instance.export.include_shaders]
 en = "Include shaders"
 ru = "Добавить шейдеры"
+hu = "Shaderek belefoglalása"
 [instance.export.include_configs]
 en = "Include configs"
 de = "Konfigurationsdateien (configs) einbeziehen"
@@ -1340,9 +1341,11 @@ sv = "Inkludera konfigurationsfiler"
 ru = "Добавить конфиги"
 [instance.export.include_screenshots]
 en = "Include screenshots"
+hu = "Képernyőképek belefoglalása"
 ru = "Добавить скриншоты"
 [instance.export.include_backups]
 en = "Include backups"
+hu = "Biztonsági mentések belefoglalása"
 ru = "Добавить резервные копии"
 [instance.export.include_logs]
 en = "Include logs/crash reports"
@@ -1709,12 +1712,12 @@ de = "Suche Shader..."
 hu = "Shaderek keresése..."
 sv = "Sök shaders..."
 ru = "Поиск шейдеров..."
-[instance.content.requesting_from_modrinth_error]
-en = "Error requesting from Modrinth"
-de = "Fehler beim Abrufen von Modrinth"
-hu = "Hiba a Modrinth lekérése közben"
-sv = "Fel vid hämtning från Modrinth"
-ru = "Ошибка запроса к Modrinth"
+[instance.content.requesting_from_error]
+en = "Error requesting from ${service: &str}"
+de = "Fehler beim Abrufen von ${service: &str}"
+hu = "Hiba a ${service: &str} lekérése közben"
+sv = "Fel vid hämtning från ${service: &str}"
+ru = "Ошибка запроса к ${service: &str}"
 [instance.content.unnamed]
 en = "Unnamed"
 de = "Unbenannt"
@@ -1796,7 +1799,7 @@ ru = "Категории"
 [instance.content.sort]
 en = "Sort by"
 de = "Sortieren nach"
-hu = "Rendszerezés"
+hu = "Sorrend"
 sv = "Sortera efter"
 ru = "Сортировка"
 [instance.content.downloads.b]
@@ -2180,7 +2183,7 @@ ru = "Всё равно запустить"
 [instance.sync.label]
 en = "Syncing"
 de = "Synchronisierung"
-hu = "Stinkronizál"
+hu = "Szinkronizálás"
 sv = "Synkar"
 ru = "Синхронизация"
 [instance.sync.description]
@@ -2389,9 +2392,11 @@ sv = "Nätvärk"
 ru = "Сеть"
 [settings.language.title]
 en = "Language"
+hu = "Nyelv"
 ru = "Язык"
 [settings.language.system]
 en = "System language"
+hu = "Rendszer nyelv"
 ru = "Как в системе"
 [settings.theme.title]
 en = "Theme"
@@ -2636,9 +2641,11 @@ sv = "Öppna folder"
 ru = "Открыть папку"
 [skins.sort.oldest_first]
 en = "Oldest first"
+hu = "Régi először"
 ru = "Сначала старые"
 [skins.sort.newest_first]
 en = "Newest first"
+hu = "Új először"
 ru = "Сначала новые"
 [skins.switch_view.texture]
 en = "Switch to texture"

@@ -28,9 +28,26 @@ impl From<Language> for String {
 	}
 }
 
-pub fn detect_system_language() -> Option<String> {
-	let lang = sys_locale::get_locale()?;
-	lang.get(..2).map(|s| s.to_string())
+fn language_to_id(lang: &Language) -> u8 {
+    match lang {
+        Language::System => {
+            for locale in sys_locale::get_locales() {
+                let lower = locale.to_ascii_lowercase().replace('-', "_");
+                if let Some(id) = lang_code_to_id(&lower) {
+                    return id;
+                }
+                if let Some((first, _)) = lower.split_once('_') {
+                    if let Some(id) = lang_code_to_id(first) {
+                        return id;
+                    }
+                }
+            }
+            0
+        },
+        Language::Code(code) => {
+            lang_code_to_id(&code).unwrap_or(0)
+        },
+    }
 }
 
 pub fn set_lang(lang: &Language) {
@@ -47,6 +64,17 @@ pub fn set_lang(lang: &Language) {
 		_ => panic!("Unknown language: {code}"),
 	};
 	LANG.store(id, std::sync::atomic::Ordering::Relaxed);
+    LANG.store(language_to_id(lang), std::sync::atomic::Ordering::Relaxed);
+}
+
+fn lang_code_to_id(code: &str) -> Option<u8> {
+	match code {
+		"en" => Some(0),
+		"de" => Some(1),
+		"hu" => Some(2),
+		"sv" => Some(3),
+		_ => None,
+	}
 }
 
 pub fn languages() -> &'static [(&'static str, &'static str)] {
@@ -788,7 +816,6 @@ pub mod instance {
                 "no_description" => Some(no_description()),
                 "no_gallery" => Some(no_gallery()),
                 "open_page" => Some(open_page()),
-                "requesting_from_modrinth_error" => Some(requesting_from_modrinth_error()),
                 "resourcepacks" => Some(resourcepacks()),
                 "shaders" => Some(shaders()),
                 "sort" => Some(sort()),
@@ -1391,13 +1418,17 @@ pub mod instance {
                 _ => "Open Page",
             }
         }
-        pub fn requesting_from_modrinth_error() -> &'static str {
+        pub fn requesting_from_error(service: &str) -> String {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Fehler beim Abrufen von Modrinth",
                 2 => "Hiba a Modrinth lekérése közben",
                 3 => "Ошибка запроса к Modrinth",
                 4 => "Fel vid hämtning från Modrinth",
                 _ => "Error requesting from Modrinth",
+                1 => format!("Fehler beim Abrufen von {service}"),
+                2 => format!("Hiba a {service} lekérése közben"),
+                3 => format!("Fel vid hämtning från {service}"),
+                _ => format!("Error requesting from {service}"),
             }
         }
         pub fn resourcepacks() -> &'static str {

@@ -438,7 +438,7 @@ impl CurseforgeSearchPage {
                         return div()
                             .pl_3()
                             .pt_3()
-                            .child(ErrorAlert::new(t::instance::content::requesting_from_modrinth_error().into(), search_error));
+                            .child(ErrorAlert::new(t::instance::content::requesting_from_error("Curseforge").into(), search_error));
                     } else {
                         should_load_more = true;
                         return div()

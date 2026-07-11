@@ -51,19 +51,6 @@ fn language_to_id(lang: &Language) -> u8 {
 }
 
 pub fn set_lang(lang: &Language) {
-	let code = match lang {
-		Language::System => detect_system_language().unwrap_or_else(|| "en".to_string()),
-		Language::Code(code) => code.clone(),
-	};
-	let id = match code.as_str() {
-		"en" => 0,
-		"de" => 1,
-		"hu" => 2,
-		"ru" => 3,
-		"sv" => 4,
-		_ => panic!("Unknown language: {code}"),
-	};
-	LANG.store(id, std::sync::atomic::Ordering::Relaxed);
     LANG.store(language_to_id(lang), std::sync::atomic::Ordering::Relaxed);
 }
 
@@ -72,7 +59,8 @@ fn lang_code_to_id(code: &str) -> Option<u8> {
 		"en" => Some(0),
 		"de" => Some(1),
 		"hu" => Some(2),
-		"sv" => Some(3),
+		"ru" => Some(3),
+		"sv" => Some(4),
 		_ => None,
 	}
 }
@@ -1420,14 +1408,10 @@ pub mod instance {
         }
         pub fn requesting_from_error(service: &str) -> String {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
-                1 => "Fehler beim Abrufen von Modrinth",
-                2 => "Hiba a Modrinth lekérése közben",
-                3 => "Ошибка запроса к Modrinth",
-                4 => "Fel vid hämtning från Modrinth",
-                _ => "Error requesting from Modrinth",
                 1 => format!("Fehler beim Abrufen von {service}"),
                 2 => format!("Hiba a {service} lekérése közben"),
-                3 => format!("Fel vid hämtning från {service}"),
+                3 => format!("Ошибка запроса к {service}"),
+                4 => format!("Fel vid hämtning från {service}"),
                 _ => format!("Error requesting from {service}"),
             }
         }
@@ -1500,7 +1484,7 @@ pub mod instance {
         pub fn sort() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Sortieren nach",
-                2 => "Rendszerezés",
+                2 => "Sorrend",
                 3 => "Сортировка",
                 4 => "Sortera efter",
                 _ => "Sort by",
@@ -1952,7 +1936,7 @@ pub mod instance {
         pub fn action() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Exportieren",
-                2 => "Export",
+                2 => "Exportálás",
                 3 => "Экспортировать",
                 4 => "Exportera",
                 _ => "Export",
@@ -2035,6 +2019,7 @@ pub mod instance {
         }
         pub fn include_backups() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                2 => "Biztonsági mentések belefoglalása",
                 3 => "Добавить резервные копии",
                 _ => "Include backups",
             }
@@ -2095,12 +2080,14 @@ pub mod instance {
         }
         pub fn include_screenshots() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                2 => "Képernyőképek belefoglalása",
                 3 => "Добавить скриншоты",
                 _ => "Include screenshots",
             }
         }
         pub fn include_shaders() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                2 => "Shaderek belefoglalása",
                 3 => "Добавить шейдеры",
                 _ => "Include shaders",
             }
@@ -2523,7 +2510,7 @@ pub mod instance {
     pub fn name_placeholder() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
             1 => "<Instanz Name>",
-            2 => "<példány neve",
+            2 => "<példány neve>",
             3 => "<название экземпляра>",
             4 => "<instansens namn>",
             _ => "<instance name>",
@@ -2874,7 +2861,7 @@ pub mod instance {
         pub fn label() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
                 1 => "Synchronisierung",
-                2 => "Stinkronizál",
+                2 => "Szinkronizálás",
                 3 => "Синхронизация",
                 4 => "Synkar",
                 _ => "Syncing",
@@ -4467,12 +4454,14 @@ pub mod settings {
         }
         pub fn system() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                2 => "Rendszer nyelv",
                 3 => "Как в системе",
                 _ => "System language",
             }
         }
         pub fn title() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                2 => "Nyelv",
                 3 => "Язык",
                 _ => "Language",
             }
@@ -4909,12 +4898,14 @@ pub mod skins {
         }
         pub fn newest_first() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                2 => "Új először",
                 3 => "Сначала новые",
                 _ => "Newest first",
             }
         }
         pub fn oldest_first() -> &'static str {
             match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                2 => "Régi először",
                 3 => "Сначала старые",
                 _ => "Oldest first",
             }

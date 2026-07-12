@@ -452,7 +452,7 @@ fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportF
             tracker.set_total(total as usize);
             tracker.set_count(copied as usize);
             tracker.notify();
-        });
+        }, &|| Ok(()));
 
         // remove old configuration, rename icon path.
         _ = std::fs::rename(&target_dot_minecraft.join("instance.png"), &to_import.pandora_path.join("icon.png"));

@@ -1247,6 +1247,21 @@ de = "Invalider Name"
 hu = "Érvénytelen név"
 sv = "Ogiltigt namn"
 ru = "Недопустимое название"
+[instance.duplicate.action]
+en = "Duplicate"
+ru = "Дублировать"
+[instance.duplicate.title]
+en = "Duplicate Instance"
+ru = "Дублирование экземпляра"
+[instance.duplicate.copy_of]
+en = "Copy of ${name: &str}"
+ru = "Копия ${name: &str}"
+[instance.duplicate.progress]
+en = "Duplicating instance"
+ru = "Создание дубликата экземпляра"
+[instance.duplicate.error]
+en = "Error duplicating instance"
+ru = "Не удалось создать дубликат экземпляра"
 [instance.export.action]
 en = "Export"
 de = "Exportieren"

@@ -474,14 +474,14 @@ fn import_instances_from_multimc(backend: &BackendState, import_job: &ImportFrom
                 tracker.set_total(total as usize);
                 tracker.set_count(copied as usize);
                 tracker.notify();
-            });
+            }, &|| Ok(()));
         } else if mmc_dot_minecraft.exists() {
             _ = std::fs::create_dir_all(&target_dot_minecraft);
             _ = crate::copy_content_recursive(&mmc_dot_minecraft, &target_dot_minecraft, false, &|copied, total| {
                 tracker.set_total(total as usize);
                 tracker.set_count(copied as usize);
                 tracker.notify();
-            });
+            }, &|| Ok(()));
         }
 
         // Copy icon

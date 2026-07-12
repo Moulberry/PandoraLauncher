@@ -76,6 +76,11 @@ pub enum MessageToBackend {
     DeleteInstance {
         id: InstanceID,
     },
+    DuplicateInstance {
+        id: InstanceID,
+        name: Ustr,
+        modal_action: ModalAction,
+    },
     ExportInstance {
         id: InstanceID,
         format: ExportFormat,

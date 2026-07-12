@@ -741,7 +741,7 @@ impl BackendState {
             if connector.exists() {
                 let original_connector = original_mods_dir.join(".connector");
                 _ = std::fs::create_dir_all(&original_connector);
-                _ = crate::copy_content_recursive(&connector, &original_connector, false, &|_, _| {});
+                _ = crate::copy_content_recursive(&connector, &original_connector, false, &|_, _| {}, &|| Ok(()));
             }
         }
 
@@ -817,7 +817,7 @@ impl BackendState {
             if original_connector.exists() {
                 let connector = mods_dir.join(".connector");
                 _ = std::fs::create_dir_all(&connector);
-                _ = crate::copy_content_recursive(&original_connector, &connector, false, &|_, _| {});
+                _ = crate::copy_content_recursive(&original_connector, &connector, false, &|_, _| {}, &|| Ok(()));
             }
         }
     }

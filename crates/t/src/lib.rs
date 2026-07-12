@@ -1905,6 +1905,48 @@ pub mod instance {
         }
     }
     #[rustfmt::skip]
+    pub mod duplicate {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "action" => Some(action()),
+                "error" => Some(error()),
+                "progress" => Some(progress()),
+                "title" => Some(title()),
+                _ => None,
+            }
+        }
+        pub fn action() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Дублировать",
+                _ => "Duplicate",
+            }
+        }
+        pub fn copy_of(name: &str) -> String {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => format!("Копия {name}"),
+                _ => format!("Copy of {name}"),
+            }
+        }
+        pub fn error() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Не удалось создать дубликат экземпляра",
+                _ => "Error duplicating instance",
+            }
+        }
+        pub fn progress() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Создание дубликата экземпляра",
+                _ => "Duplicating instance",
+            }
+        }
+        pub fn title() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                3 => "Дублирование экземпляра",
+                _ => "Duplicate Instance",
+            }
+        }
+    }
+    #[rustfmt::skip]
     pub mod export {
         pub fn get(key: &str) -> Option<&'static str> {
             match key {

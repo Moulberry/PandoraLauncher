@@ -102,7 +102,7 @@ pub fn import_instances_from_modrinth(backend: &BackendState, import_job: Import
             tracker.set_total(total as usize);
             tracker.set_count(copied as usize);
             tracker.notify();
-        });
+        }, &|| Ok(()));
 
         // Copy icon
         if let Some(icon_path) = to_import.icon_path {

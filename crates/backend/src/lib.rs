@@ -1,7 +1,7 @@
 #![deny(unused_must_use)]
 
 mod backend;
-use std::{ffi::{OsStr, OsString}, io::{Error, ErrorKind, Write}, path::{Path, PathBuf}, sync::Arc};
+use std::{borrow::Cow, ffi::{OsStr, OsString}, io::{Error, ErrorKind, Write}, path::{Path, PathBuf}, sync::Arc};
 
 pub use backend::*;
 use bridge::instance::InstanceContentSummary;
@@ -47,6 +47,33 @@ pub(crate) fn is_single_component_path(path: &Path) -> bool {
     }
 
     components.count() == 1
+}
+
+pub fn unique_name<'a>(parent: &Path, original_name: &'a str, is_dir: bool) -> Cow<'a, str> {
+    let candidate = Path::new(original_name);
+    if !parent.join(candidate).exists() {
+        return Cow::Borrowed(original_name);
+    }
+
+    if is_dir {
+        for i in 1..=i32::MAX {
+            let numbered = format!("{original_name} ({i})");
+            if !parent.join(&numbered).exists() {
+                return Cow::Owned(numbered);
+            }
+        }
+    } else {
+        let stem = candidate.file_stem().unwrap_or_default().to_string_lossy();
+        let ext = candidate.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+        for i in 1..=i32::MAX {
+            let numbered = format!("{stem} ({i}){ext}");
+            if !parent.join(&numbered).exists() {
+                return Cow::Owned(numbered);
+            }
+        }
+    }
+
+    panic!("Unable to find a unique name for '{original_name}' after {} retries", i32::MAX)
 }
 
 pub(crate) fn check_sha1_hash(path: &Path, expected_hash: [u8; 20]) -> std::io::Result<bool> {

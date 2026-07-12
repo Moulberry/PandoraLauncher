@@ -13,7 +13,7 @@ use ustr::Ustr;
 use uuid::Uuid;
 
 use crate::{
-    BackendState, CachedMinecraftProfile, FolderChanges, LoginError, account::BackendAccount, arcfactory::ArcStrFactory, instance::Instance, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, CurseforgeGetModFilesMetadataItem, CurseforgeSearchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::{ContentUpdateAction, ContentUpdateKey}, skin_manager::SkinManager
+    BackendState, CachedMinecraftProfile, FolderChanges, LoginError, account::BackendAccount, arcfactory::ArcStrFactory, instance::Instance, launch::{ArgumentExpansionKey, LaunchError}, log_reader, metadata::{items::{AssetsIndexMetadataItem, CurseforgeGetModFilesMetadataItem, CurseforgeSearchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, ModrinthProjectMetadataItem, ModrinthProjectVersionsMetadataItem, ModrinthSearchMetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem, VersionUpdateParameters, VersionV3LoaderFields, VersionV3UpdateParameters}, manager::MetaLoadError}, mod_metadata::{ContentUpdateAction, ContentUpdateKey}, skin_manager::SkinManager, unique_name
 };
 
 impl BackendState {
@@ -1781,19 +1781,8 @@ impl BackendState {
                 }
 
                 let filename = sanitize_filename::sanitize_with_options(filename, sanitize_filename::Options { windows: true, ..Default::default() });
-
-                let mut path = self.directories.skin_library_dir.join(&filename);
-
-                if path.exists() {
-                    for i in 1..32 {
-                        let new_filename = format!("{filename} ({i})");
-                        let new_path = self.directories.skin_library_dir.join(&new_filename);
-                        if !new_path.exists() {
-                            path = new_path;
-                            break;
-                        }
-                    }
-                }
+                let filename = unique_name(&self.directories.skin_library_dir, &filename, false);
+                let path = self.directories.skin_library_dir.join(&*filename);
 
                 if let Err(err) = crate::write_safe(&path, &bytes) {
                     log::error!("Error while saving skin: {:?}", err);
@@ -1927,18 +1916,8 @@ impl BackendState {
                 }
 
                 let filename = sanitize_filename::sanitize_with_options(filename, sanitize_filename::Options { windows: true, ..Default::default() });
-
-                let mut path = self.directories.skin_library_dir.join(&filename);
-                if path.exists() {
-                    for i in 1..32 {
-                        let new_filename = format!("{filename} ({i})");
-                        let new_path = self.directories.skin_library_dir.join(&new_filename);
-                        if !new_path.exists() {
-                            path = new_path;
-                            break;
-                        }
-                    }
-                }
+                let filename = unique_name(&self.directories.skin_library_dir, &filename, false);
+                let path = self.directories.skin_library_dir.join(&*filename);
 
                 if let Err(err) = crate::write_safe(&path, &bytes) {
                     log::error!("CopyPlayerSkin: failed to save skin: {:?}", err);

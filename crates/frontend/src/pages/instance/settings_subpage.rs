@@ -1072,7 +1072,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })
             ))
-            .child(Button::new("shortcut").label(t::instance::create_shortcut()).overflow_x_hidden().success().on_click({
+            .child(Button::new("shortcut").label(t::instance::create_shortcut()).icon(PandoraIcon::ExternalLink).overflow_x_hidden().success().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |_: &ClickEvent, _, cx| {
@@ -1113,7 +1113,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })
             )
-            .child(Button::new("delete").label(t::instance::delete()).overflow_x_hidden().danger().on_click({
+            .child(Button::new("delete").label(t::instance::delete()).icon(PandoraIcon::Trash2).overflow_x_hidden().danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |click: &ClickEvent, window, cx| {

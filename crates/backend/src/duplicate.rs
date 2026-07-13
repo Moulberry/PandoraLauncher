@@ -1,4 +1,4 @@
-use std::{io::{Error, ErrorKind, Read, Write}, sync::Arc};
+use std::{io::{Error, ErrorKind, Read, Write}, path::Path, sync::Arc};
 use sha1::Digest;
 
 use bridge::{
@@ -10,7 +10,7 @@ use bridge::{
 use crate::{BackendState, create_content_library_path, hard_link_or_copy, is_single_component_path_str, symlink_dir_or_file};
 use crate::export::{is_mod_file, is_resourcepack_file, is_shaderpack_file};
 
-fn is_content_file(rel: &std::path::Path) -> bool {
+fn is_content_file(rel: &Path) -> bool {
     let Ok(rel) = rel.strip_prefix(".minecraft") else {
         return false;
     };
@@ -20,7 +20,7 @@ fn is_content_file(rel: &std::path::Path) -> bool {
     is_mod_file(&rel) || is_resourcepack_file(&rel) || is_shaderpack_file(&rel)
 }
 
-fn content_library_extension(path: &std::path::Path) -> Option<&str> {
+fn content_library_extension(path: &Path) -> Option<&str> {
     let filename = path.file_name().and_then(|s| s.to_str())?;
     let base = if filename.ends_with(".disabled") {
         &filename[..filename.len() - ".disabled".len()]
@@ -31,7 +31,7 @@ fn content_library_extension(path: &std::path::Path) -> Option<&str> {
     Some(&base[dot + 1..])
 }
 
-fn hash_file(path: &std::path::Path, check_cancel: &dyn Fn() -> std::io::Result<()>) -> std::io::Result<[u8; 20]> {
+fn hash_file(path: &Path, check_cancel: &dyn Fn() -> std::io::Result<()>) -> std::io::Result<[u8; 20]> {
     let mut file = std::fs::File::open(path)?;
     let mut hasher = sha1::Sha1::default();
     let mut buf = vec![0_u8; 128 * 1024];
@@ -46,7 +46,7 @@ fn hash_file(path: &std::path::Path, check_cancel: &dyn Fn() -> std::io::Result<
     Ok(hasher.finalize().into())
 }
 
-fn copy_file(from: &std::path::Path, to: &std::path::Path, check_cancel: &dyn Fn() -> std::io::Result<()>) -> std::io::Result<u64> {
+fn copy_file(from: &Path, to: &Path, check_cancel: &dyn Fn() -> std::io::Result<()>) -> std::io::Result<u64> {
     let mut buf = vec![0_u8; 128 * 1024];
     let mut src = std::fs::File::open(from)?;
     let mut dst = std::fs::File::create(to)?;
@@ -63,9 +63,9 @@ fn copy_file(from: &std::path::Path, to: &std::path::Path, check_cancel: &dyn Fn
 }
 
 fn duplicate_with_content_library(
-    from: &std::path::Path,
-    to: &std::path::Path,
-    content_library_dir: &std::path::Path,
+    from: &Path,
+    to: &Path,
+    content_library_dir: &Path,
     progress: &dyn Fn(u64, u64),
     check_cancel: &dyn Fn() -> std::io::Result<()>,
 ) -> std::io::Result<()> {

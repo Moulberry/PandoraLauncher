@@ -152,7 +152,7 @@ pub fn import_instances_from_curseforge(backend: &BackendState, import_job: &Imp
             tracker.set_total(total as usize);
             tracker.set_count(copied as usize);
             tracker.notify();
-        }, &|| Ok(()));
+        });
 
         // remove old configuration, rename icon path.
         // if this errors we just fall back on default icon, it's fine.

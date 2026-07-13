@@ -1,7 +1,7 @@
 #![deny(unused_must_use)]
 
 mod backend;
-use std::{ffi::{OsStr, OsString}, io::{Error, ErrorKind, Read, Write}, path::{Path, PathBuf}, sync::Arc};
+use std::{ffi::{OsStr, OsString}, io::{Error, ErrorKind, Write}, path::{Path, PathBuf}, sync::Arc};
 
 pub use backend::*;
 use bridge::instance::InstanceContentSummary;
@@ -205,25 +205,7 @@ impl FolderChanges {
     }
 }
 
-pub fn copy_file_cancellable(from: &Path, to: &Path, progress: &dyn Fn(u64, u64), check_cancel: &dyn Fn() -> std::io::Result<()>) -> std::io::Result<u64> {
-    let mut buf = vec![0_u8; 128 * 1024];
-    let mut src = std::fs::File::open(from)?;
-    let mut dst = std::fs::File::create(to)?;
-    let mut total = 0_u64;
-    let file_len = src.metadata()?.len();
-    loop {
-        check_cancel()?;
-        let read = src.read(&mut buf)?;
-        if read == 0 {
-            return Ok(total);
-        }
-        dst.write_all(&buf[..read])?;
-        total += read as u64;
-        progress(total, file_len);
-    }
-}
-
-pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &dyn Fn(u64, u64), check_cancel: &dyn Fn() -> std::io::Result<()>) -> std::io::Result<()> {
+pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &dyn Fn(u64, u64)) -> std::io::Result<()> {
     let from = from.canonicalize()?;
     if !from.is_dir() {
         return Err(ErrorKind::NotADirectory.into());
@@ -247,10 +229,8 @@ pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &d
     directories_to_visit.push((from.to_path_buf(), 0));
 
     while let Some((directory, depth)) = directories_to_visit.pop() {
-        check_cancel()?;
         let read_dir = std::fs::read_dir(directory)?;
         for entry in read_dir {
-            check_cancel()?;
             let entry = entry?;
             let path = entry.path();
             let file_type = entry.file_type()?;
@@ -289,32 +269,27 @@ pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &d
             }
         }
     }
-    progress(0, total_bytes);
+    (progress)(0, total_bytes);
 
     for directory in directories {
-        check_cancel()?;
         _ = std::fs::create_dir(to.join(directory));
     }
     let mut copied_bytes = 0;
     for (relative, copy_from) in files {
-        check_cancel()?;
         let dest = to.join(relative);
-        match copy_file_cancellable(&copy_from, &dest, &|current, _| {
-            progress(copied_bytes + current, total_bytes)
-        }, check_cancel) {
+        match std::fs::copy(copy_from, dest) {
             Ok(bytes) => copied_bytes += bytes,
-            Err(err) => if strict || err.kind() == ErrorKind::Interrupted {
+            Err(err) => if strict {
                 return Err(err);
             },
         }
-        progress(copied_bytes, total_bytes);
+        (progress)(copied_bytes, total_bytes);
     }
     if strict && copied_bytes != total_bytes {
         return Err(Error::new(ErrorKind::Other,
             format!("Expected copy size did not match. Expected to copy {total_bytes} bytes, copied {copied_bytes} instead")));
     }
     for (relative, internal) in internal_symlinks {
-        check_cancel()?;
         let dest = to.join(relative);
         let target = to.join(internal);
         if let Err(err) = symlink_dir_or_file(&target, &dest) && strict {
@@ -322,7 +297,6 @@ pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &d
         }
     }
     for (relative, target) in external_symlinks {
-        check_cancel()?;
         let dest = to.join(relative);
         if let Err(err) = symlink_dir_or_file(&target, &dest) && strict {
             return Err(err);
@@ -330,7 +304,6 @@ pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &d
     }
     #[cfg(windows)]
     for (relative, internal) in internal_junctions {
-        check_cancel()?;
         let dest = to.join(relative);
         let target = to.join(internal);
         if let Err(err) = junction::create(&target, &dest) && strict {
@@ -339,7 +312,6 @@ pub fn copy_content_recursive(from: &Path, to: &Path, strict: bool, progress: &d
     }
     #[cfg(windows)]
     for (relative, target) in external_junctions {
-        check_cancel()?;
         let dest = to.join(relative);
         if let Err(err) = junction::create(&target, &dest) && strict {
             return Err(err);
@@ -403,7 +375,7 @@ pub fn rename_with_fallback_across_devices(from: &Path, to: &Path) -> std::io::R
                 _ = std::fs::remove_file(from);
             } else if from.is_dir() {
                 std::fs::create_dir(to)?;
-                if let Err(err) = copy_content_recursive(from, to, true, &|_, _| {}, &|| Ok(())) {
+                if let Err(err) = copy_content_recursive(from, to, true, &|_, _| {}) {
                     _ = std::fs::remove_dir_all(to);
                     return Err(err);
                 } else {

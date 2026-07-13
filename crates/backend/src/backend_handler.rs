@@ -92,6 +92,12 @@ impl BackendState {
                     }
                 }
             },
+            MessageToBackend::DuplicateInstance { id, name, modal_action } => {
+                let backend = self.clone();
+                tokio::task::spawn(async move {
+                    crate::duplicate::duplicate_instance(backend, id, &name, modal_action).await;
+                });
+            },
             MessageToBackend::ExportInstance { id, format, options, output, modal_action } => {
                 let backend = self.clone();
                 tokio::task::spawn(async move {

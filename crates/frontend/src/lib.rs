@@ -313,6 +313,19 @@ pub(crate) fn is_single_component_path(path: &str) -> bool {
     components.count() == 1
 }
 
+pub(crate) fn get_unique_instance_name(original_name: &str, existing_names: &[&str]) -> String {
+    if !existing_names.iter().any(|n| *n == original_name) {
+        return original_name.to_string();
+    }
+    for i in 1..100 {
+        let numbered = format!("{original_name} ({i})");
+        if !existing_names.iter().any(|n| *n == &numbered) {
+            return numbered;
+        }
+    }
+    String::new()
+}
+
 #[inline]
 pub(crate) fn labelled(label: impl Into<SharedString>, element: impl IntoElement) -> Div {
     gpui_component::v_flex().gap_0p5().child(div().text_sm().font_medium().child(label.into())).child(element)

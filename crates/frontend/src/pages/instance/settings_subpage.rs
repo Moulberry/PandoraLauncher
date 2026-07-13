@@ -1100,6 +1100,20 @@ impl Render for InstanceSettingsSubpage {
                     }).detach();
                 }
             }))
+            .child(Button::new("duplicate")
+                .label(t::instance::duplicate::action())
+                .icon(PandoraIcon::Copy)
+                .overflow_x_hidden()
+                .on_click({
+                    let instance = self.instance.clone();
+                    let instances = self.data.instances.clone();
+                    let backend_handle = self.backend_handle.clone();
+                    move |_: &ClickEvent, window, cx| {
+                        let instance = instance.read(cx);
+                        crate::modals::duplicate_instance::open_duplicate_instance(instance.id, instance.name.clone(), instances.clone(), backend_handle.clone(), window, cx);
+                    }
+                })
+            )
             .child(Button::new("export")
                 .label(t::instance::export::action())
                 .icon(PandoraIcon::Archive)

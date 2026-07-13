@@ -1,7 +1,7 @@
 #![deny(unused_must_use)]
 
 mod backend;
-use std::{ffi::{OsStr, OsString}, io::{Error, ErrorKind, Write}, path::{Path, PathBuf}, sync::Arc};
+use std::{borrow::Cow, ffi::{OsStr, OsString}, io::{Error, ErrorKind, Write}, path::{Path, PathBuf}, sync::Arc};
 
 pub use backend::*;
 use bridge::instance::InstanceContentSummary;
@@ -9,6 +9,7 @@ use rand::RngCore;
 use rustc_hash::FxHashSet;
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
+use uuid::Uuid;
 
 mod backend_filesystem;
 mod backend_handler;
@@ -47,6 +48,31 @@ pub(crate) fn is_single_component_path(path: &Path) -> bool {
     }
 
     components.count() == 1
+}
+
+pub fn unique_name<'a>(parent: &Path, original_name: &'a str, is_dir: bool) -> Cow<'a, str> {
+    if !parent.join(original_name).exists() {
+        return Cow::Borrowed(original_name);
+    }
+
+    let candidate = Path::new(original_name);
+    let (stem, ext) = if is_dir {
+        (Cow::Borrowed(original_name), String::new())
+    } else {
+        let stem = candidate.file_stem().unwrap_or_default().to_string_lossy();
+        let ext = candidate.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+        (stem, ext)
+    };
+
+    const MAX_RETRIES: u32 = 100;
+    for i in 1..MAX_RETRIES {
+        let numbered = format!("{stem} ({i}){ext}");
+        if !parent.join(&numbered).exists() {
+            return Cow::Owned(numbered);
+        }
+    }
+
+    Cow::Owned(format!("{stem} ({}){ext}", Uuid::new_v4()))
 }
 
 pub(crate) fn check_sha1_hash(path: &Path, expected_hash: [u8; 20]) -> std::io::Result<bool> {

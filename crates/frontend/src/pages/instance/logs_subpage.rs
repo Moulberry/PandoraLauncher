@@ -1,14 +1,29 @@
 use std::{path::Path, sync::Arc};
 
 use bridge::{
-    handle::BackendHandle, instance::InstanceID, message::{LogFiles, MessageToBackend}
+    handle::BackendHandle,
+    instance::InstanceID,
+    message::{LogFiles, MessageToBackend},
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    button::{Button, ButtonVariants}, h_flex, select::{Select, SelectEvent, SelectState}, spinner::Spinner, v_flex, ActiveTheme as _, Sizable
+    ActiveTheme as _, Sizable,
+    button::{Button, ButtonVariants},
+    h_flex,
+    select::{Select, SelectEvent, SelectState},
+    spinner::Spinner,
+    v_flex,
 };
 
-use crate::{component::{named_dropdown::{NamedDropdown, NamedDropdownItem}, readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls}}, entity::instance::InstanceEntry, icon::PandoraIcon, root};
+use crate::{
+    component::{
+        named_dropdown::{NamedDropdown, NamedDropdownItem},
+        readonly_text_field::{ReadonlyTextField, ReadonlyTextFieldWithControls},
+    },
+    entity::instance::InstanceEntry,
+    icon::PandoraIcon,
+    root,
+};
 
 pub struct InstanceLogsSubpage {
     instance: InstanceID,
@@ -64,81 +79,125 @@ impl InstanceLogsSubpage {
 
         let (send, recv) = tokio::sync::oneshot::channel();
         self._get_log_files_task = cx.spawn_in(window, async move |page, cx| {
-            let result: LogFiles = recv.await.unwrap_or_else(|_| LogFiles { paths: Vec::new(), total_gzipped_size: 0 });
+            let result: LogFiles = recv.await.unwrap_or_else(|_| LogFiles {
+                paths: Vec::new(),
+                total_gzipped_size: 0,
+            });
             let _ = page.update_in(cx, move |page, window, cx| {
                 if result.paths.is_empty() {
                     page.no_available_logs = true;
                 } else {
-                    let items = result.paths.into_iter().filter_map(|path| {
-                        Some(NamedDropdownItem {
-                            name: SharedString::new(Arc::from(path.file_name()?.to_string_lossy())),
-                            item: path,
+                    let items = result
+                        .paths
+                        .into_iter()
+                        .filter_map(|path| {
+                            Some(NamedDropdownItem {
+                                name: SharedString::new(Arc::from(path.file_name()?.to_string_lossy())),
+                                item: path,
+                            })
                         })
-                    }).collect();
+                        .collect();
 
                     let dropdown = NamedDropdown::create(items, window, cx);
 
-                    let _dropdown_change_subscrption = cx.subscribe_in(&dropdown, window, move |page, entity, _: &SelectEvent<NamedDropdown<Arc<Path>>>, window, cx| {
-                        let selected = entity.read(cx).selected_value().map(|item| item.item.clone());
+                    let _dropdown_change_subscrption = cx.subscribe_in(
+                        &dropdown,
+                        window,
+                        move |page, entity, _: &SelectEvent<NamedDropdown<Arc<Path>>>, window, cx| {
+                            let selected = entity.read(cx).selected_value().map(|item| item.item.clone());
 
-                        if selected == page.last_selected_path {
-                            return;
-                        }
-                        page.last_selected_path = selected.clone();
+                            if selected == page.last_selected_path {
+                                return;
+                            }
+                            page.last_selected_path = selected.clone();
 
-                        if let Some(selected) = selected {
-                            let (send, mut recv) = tokio::sync::mpsc::channel::<Arc<str>>(256);
+                            if let Some(selected) = selected {
+                                let (send, mut recv) = tokio::sync::mpsc::channel::<Arc<str>>(256);
 
-                            let text_field = cx.new(move |_| ReadonlyTextField::default());
+                                let text_field = cx.new(move |_| ReadonlyTextField::default());
 
-                            let text_field2 = text_field.clone();
-                            page._read_log_task = Some(cx.spawn(async move |_, cx| {
-                                while let Some(message) = recv.recv().await {
+                                let text_field2 = text_field.clone();
+                                page._read_log_task = Some(cx.spawn(async move |_, cx| {
+                                    while let Some(message) = recv.recv().await {
+                                        let _ = cx.update_entity(&text_field2, |text_field, _| {
+                                            text_field.add(message);
+                                        });
+                                    }
                                     let _ = cx.update_entity(&text_field2, |text_field, _| {
-                                        text_field.add(message);
+                                        text_field.shrink_to_fit();
                                     });
-                                }
-                                let _ = cx.update_entity(&text_field2, |text_field, _| {
-                                    text_field.shrink_to_fit();
+                                }));
+
+                                page.backend_handle.send(MessageToBackend::ReadLog {
+                                    path: selected.clone(),
+                                    send,
                                 });
-                            }));
 
-                            page.backend_handle.send(MessageToBackend::ReadLog {
-                                path: selected.clone(),
-                                send,
-                            });
+                                let backend_handle = page.backend_handle.clone();
+                                page.log_content = Some(cx.new(move |cx| {
+                                    ReadonlyTextFieldWithControls::new(
+                                        text_field,
+                                        Box::new(move |div| {
+                                            let backend_handle = backend_handle.clone();
+                                            let selected = selected.clone();
+                                            div.child(
+                                                Button::new("analyze-with-ollama")
+                                                    .info()
+                                                    .icon(PandoraIcon::WandSparkles)
+                                                    .label(t::instance::logs::analyze::label())
+                                                    .on_click({
+                                                        let backend_handle = backend_handle.clone();
+                                                        let selected = selected.clone();
+                                                        move |_, window, cx| {
+                                                            root::analyze_log_with_ollama(
+                                                                selected.clone(),
+                                                                t::instance::logs::analyze::response_language().into(),
+                                                                &backend_handle,
+                                                                window,
+                                                                cx,
+                                                            );
+                                                        }
+                                                    }),
+                                            )
+                                            .child(
+                                                Button::new("upload")
+                                                    .label(t::instance::logs::upload::label())
+                                                    .on_click(move |_, window, cx| {
+                                                        root::upload_log_file(
+                                                            selected.clone(),
+                                                            &backend_handle,
+                                                            window,
+                                                            cx,
+                                                        );
+                                                    }),
+                                            )
+                                        }),
+                                        window,
+                                        cx,
+                                    )
+                                }));
+                            } else {
+                                page._read_log_task = None;
+                                page.log_content = None;
+                            }
 
-                            let backend_handle = page.backend_handle.clone();
-                            page.log_content = Some(cx.new(move |cx| {
-                                ReadonlyTextFieldWithControls::new(text_field, Box::new(move |div| {
-                                    let backend_handle = backend_handle.clone();
-                                    let selected = selected.clone();
-                                    div.child(Button::new("upload").label(t::instance::logs::upload::label()).on_click(move |_, window, cx| {
-                                        root::upload_log_file(selected.clone(), &backend_handle, window, cx);
-                                    }))
-                                }), window, cx)
-                            }));
-                        } else {
-                            page._read_log_task = None;
-                            page.log_content = None;
-                        }
-
-                        cx.notify();
-                    });
+                            cx.notify();
+                        },
+                    );
 
                     page._dropdown_change_subscrption = Some(_dropdown_change_subscrption);
                     page.available_logs = Some(dropdown);
 
                     if result.total_gzipped_size > 0 {
                         let bytes = result.total_gzipped_size;
-                        let string = if bytes < 1000*10 {
+                        let string = if bytes < 1000 * 10 {
                             t::instance::logs::cleanup::bytes(bytes)
-                        } else if bytes < 1000*1000*10 {
-                            t::instance::logs::cleanup::kb(bytes/1000)
-                        } else if bytes < 1000*1000*1000*10 {
-                            t::instance::logs::cleanup::mb(bytes/1000/1000)
+                        } else if bytes < 1000 * 1000 * 10 {
+                            t::instance::logs::cleanup::kb(bytes / 1000)
+                        } else if bytes < 1000 * 1000 * 1000 * 10 {
+                            t::instance::logs::cleanup::mb(bytes / 1000 / 1000)
                         } else {
-                            t::instance::logs::cleanup::gb(bytes/1000/1000/1000)
+                            t::instance::logs::cleanup::gb(bytes / 1000 / 1000 / 1000)
                         };
                         page.clean_old_logs_text = Some(string.into());
                     }
@@ -158,47 +217,59 @@ impl Render for InstanceLogsSubpage {
     fn render(&mut self, _window: &mut gpui::Window, cx: &mut gpui::Context<Self>) -> impl gpui::IntoElement {
         let theme = cx.theme();
 
-        let mut header = h_flex()
-            .gap_3()
-            .mb_1()
-            .ml_1()
-            .child(div().text_lg().child(t::instance::logs::title()));
+        let mut header = h_flex().gap_3().mb_1().ml_1().child(div().text_lg().child(t::instance::logs::title()));
 
-        let mut content = div()
-            .size_full()
-            .border_1()
-            .rounded(theme.radius)
-            .border_color(theme.border);
+        let mut content = div().size_full().border_1().rounded(theme.radius).border_color(theme.border);
 
         if self.no_available_logs {
             content = content.child(h_flex().justify_center().size_full().text_lg().child(t::instance::logs::none()));
         } else {
             if let Some(available_logs) = self.available_logs.as_ref() {
-                header = header.child(Select::new(&available_logs).small().mt_0p5().placeholder(t::instance::logs::select_file()));
+                header = header.child(
+                    Select::new(&available_logs)
+                        .small()
+                        .mt_0p5()
+                        .placeholder(t::instance::logs::select_file()),
+                );
             } else {
-                content = content.child(h_flex().justify_center().size_full().text_lg().gap_3().child(t::instance::logs::loading()).child(Spinner::new()));
+                content = content.child(
+                    h_flex()
+                        .justify_center()
+                        .size_full()
+                        .text_lg()
+                        .gap_3()
+                        .child(t::instance::logs::loading())
+                        .child(Spinner::new()),
+                );
             }
 
             if let Some(log_content) = self.log_content.clone() {
                 content = content.child(log_content);
             } else if self.available_logs.is_some() {
-                content = content.child(h_flex().justify_center().size_full().text_lg()
-                    .gap_2()
-                    .child(PandoraIcon::ArrowUp)
-                    .child(t::instance::logs::select_file())
-                    .child(PandoraIcon::ArrowUp));
+                content = content.child(
+                    h_flex()
+                        .justify_center()
+                        .size_full()
+                        .text_lg()
+                        .gap_2()
+                        .child(PandoraIcon::ArrowUp)
+                        .child(t::instance::logs::select_file())
+                        .child(PandoraIcon::ArrowUp),
+                );
             }
         }
 
         if let Some(clean_old_logs_text) = self.clean_old_logs_text.clone() {
-            header = header.child(Button::new("cleanold").label(clean_old_logs_text).success().compact().small().on_click({
-                let backend_handle = self.backend_handle.clone();
-                let instance = self.instance.clone();
-                cx.listener(move |this, _, window, cx| {
-                    backend_handle.send(MessageToBackend::CleanupOldLogFiles { instance });
-                    this.get_log_files(window, cx);
-                })
-            }));
+            header = header.child(
+                Button::new("cleanold").label(clean_old_logs_text).success().compact().small().on_click({
+                    let backend_handle = self.backend_handle.clone();
+                    let instance = self.instance.clone();
+                    cx.listener(move |this, _, window, cx| {
+                        backend_handle.send(MessageToBackend::CleanupOldLogFiles { instance });
+                        this.get_log_files(window, cx);
+                    })
+                }),
+            );
         }
 
         v_flex().p_4().size_full().child(header).child(content)

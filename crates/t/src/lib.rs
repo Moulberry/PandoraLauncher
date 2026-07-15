@@ -2358,6 +2358,54 @@ pub mod instance {
             }
         }
         #[rustfmt::skip]
+        pub mod analyze {
+            pub fn get(key: &str) -> Option<&'static str> {
+                match key {
+                    "error" => Some(error()),
+                    "label" => Some(label()),
+                    "response_language" => Some(response_language()),
+                    "title" => Some(title()),
+                    _ => None,
+                }
+            }
+            pub fn error() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    1 => "Fehler bei der Protokollanalyse mit Ollama",
+                    2 => "Hiba a napló Ollama-elemzése közben",
+                    3 => "Ошибка анализа лога через Ollama",
+                    4 => "Fel vid analys av loggen med Ollama",
+                    _ => "Error analyzing the log with Ollama",
+                }
+            }
+            pub fn label() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    1 => "Mit KI analysieren",
+                    2 => "Elemzés MI-vel",
+                    3 => "Анализ с ИИ",
+                    4 => "Analysera med AI",
+                    _ => "Analyze with AI",
+                }
+            }
+            pub fn response_language() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    1 => "German",
+                    2 => "Hungarian",
+                    3 => "Russian",
+                    4 => "Swedish",
+                    _ => "English",
+                }
+            }
+            pub fn title() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    1 => "KI-Analyse der Absturzprotokolle",
+                    2 => "Összeomlási napló MI-elemzése",
+                    3 => "ИИ-анализ краш-лога",
+                    4 => "AI-analys av kraschlogg",
+                    _ => "AI crash-log analysis",
+                }
+            }
+        }
+        #[rustfmt::skip]
         pub mod cleanup {
             pub fn bytes(num: usize) -> String {
                 match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
@@ -4390,10 +4438,20 @@ pub mod modrinth {
 pub mod settings {
     pub fn get(key: &str) -> Option<&'static str> {
         match key {
+            "ai" => Some(ai()),
             "interface" => Some(interface()),
             "network" => Some(network()),
             "title" => Some(title()),
             _ => None,
+        }
+    }
+    pub fn ai() -> &'static str {
+        match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+            1 => "KI",
+            2 => "MI",
+            3 => "ИИ",
+            4 => "AI",
+            _ => "AI",
         }
     }
     #[rustfmt::skip]
@@ -4474,6 +4532,94 @@ pub mod settings {
             3 => "Сеть",
             4 => "Nätvärk",
             _ => "Network",
+        }
+    }
+    #[rustfmt::skip]
+    pub mod ollama {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "api_key" => Some(api_key()),
+                "api_key_missing" => Some(api_key_missing()),
+                "api_key_placeholder" => Some(api_key_placeholder()),
+                "api_key_saved" => Some(api_key_saved()),
+                "manage_api_keys" => Some(manage_api_keys()),
+                "model" => Some(model()),
+                "privacy_note" => Some(privacy_note()),
+                "title" => Some(title()),
+                _ => None,
+            }
+        }
+        pub fn api_key() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "API-Schlüssel",
+                2 => "API-kulcs",
+                3 => "API-ключ",
+                4 => "API-nyckel",
+                _ => "API key",
+            }
+        }
+        pub fn api_key_missing() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Kein API-Schlüssel gespeichert",
+                2 => "Nincs API-kulcs tárolva",
+                3 => "API-ключ не сохранён",
+                4 => "Ingen API-nyckel är sparad",
+                _ => "No API key is stored",
+            }
+        }
+        pub fn api_key_placeholder() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "API-Schlüssel einfügen",
+                2 => "API-kulcs beillesztése",
+                3 => "Вставьте API-ключ",
+                4 => "Klistra in en API-nyckel",
+                _ => "Paste an API key",
+            }
+        }
+        pub fn api_key_saved() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Ein API-Schlüssel ist sicher auf diesem Gerät gespeichert",
+                2 => "Egy API-kulcs biztonságosan tárolva van ezen az eszközön",
+                3 => "API-ключ безопасно сохранён на этом устройстве",
+                4 => "En API-nyckel lagras säkert på den här enheten",
+                _ => "An API key is stored securely on this device",
+            }
+        }
+        pub fn manage_api_keys() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Ollama-API-Schlüssel verwalten",
+                2 => "Ollama API-kulcsok kezelése",
+                3 => "Управление ключами Ollama",
+                4 => "Hantera Ollama API-nycklar",
+                _ => "Manage Ollama API keys",
+            }
+        }
+        pub fn model() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Modell",
+                2 => "Modell",
+                3 => "Модель",
+                4 => "Modell",
+                _ => "Model",
+            }
+        }
+        pub fn privacy_note() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Wenn du „Mit KI analysieren“ auswählst, wird das gewählte Protokoll soweit möglich bereinigt und an Ollama Cloud gesendet. Protokolle werden niemals automatisch gesendet.",
+                2 => "Az Elemzés MI-vel választásakor a kijelölt naplóból lehetőség szerint eltávolítjuk az érzékeny adatokat, majd elküldjük az Ollama Cloudnak. A naplók soha nem kerülnek automatikusan elküldésre.",
+                3 => "При запуске анализа выбранный лог по возможности очищается от чувствительных данных и отправляется в Ollama Cloud. Логи никогда не отправляются автоматически.",
+                4 => "När du väljer Analysera med AI rensas den valda loggen där det är möjligt och skickas till Ollama Cloud. Loggar skickas aldrig automatiskt.",
+                _ => "When you choose Analyze with AI, the selected log is redacted where possible and sent to Ollama Cloud. Logs are never sent automatically.",
+            }
+        }
+        pub fn title() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Ollama Cloud",
+                2 => "Ollama Cloud",
+                3 => "Ollama Cloud",
+                4 => "Ollama Cloud",
+                _ => "Ollama Cloud",
+            }
         }
     }
     #[rustfmt::skip]

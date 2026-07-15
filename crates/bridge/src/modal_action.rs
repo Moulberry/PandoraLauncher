@@ -43,6 +43,7 @@ pub struct ModalActionVisitUrl {
 pub struct ModalActionInner {
     pub finished_at: AtomicOptionInstant,
     pub error: RwLock<Option<Arc<str>>>,
+    pub result_text: RwLock<Option<Arc<str>>>,
     pub visit_url: RwLock<Option<ModalActionVisitUrl>>,
     pub trackers: ProgressTrackers,
     pub request_cancel: CancellationToken,
@@ -50,7 +51,9 @@ pub struct ModalActionInner {
 
 impl ModalActionInner {
     pub fn set_finished(&self) {
-        let _ = self.finished_at.compare_exchange(None, Some(Instant::now()), Ordering::SeqCst, Ordering::Relaxed);
+        let _ = self
+            .finished_at
+            .compare_exchange(None, Some(Instant::now()), Ordering::SeqCst, Ordering::Relaxed);
     }
 
     pub fn get_finished_at(&self) -> Option<Instant> {
@@ -59,6 +62,10 @@ impl ModalActionInner {
 
     pub fn set_error_message(&self, error: Arc<str>) {
         *self.error.write() = Some(error);
+    }
+
+    pub fn set_result_text(&self, result_text: Arc<str>) {
+        *self.result_text.write() = Some(result_text);
     }
 
     pub fn set_visit_url(&self, visit_url: ModalActionVisitUrl) {
@@ -83,6 +90,7 @@ impl std::fmt::Debug for ModalActionInner {
         f.debug_struct("ModalActionInner")
             .field("finished_at", &self.finished_at.load(Ordering::Relaxed))
             .field("error", &self.error)
+            .field("result_text", &self.result_text)
             .field("visit_url", &self.visit_url)
             .field("trackers", &self.trackers)
             .field("request_cancel", &self.request_cancel)
@@ -130,11 +138,7 @@ pub enum ProgressTrackerFinishType {
 
 impl ProgressTrackerFinishType {
     pub fn from_err(error: bool) -> Self {
-        if error {
-            Self::Error
-        } else {
-            Self::Normal
-        }
+        if error { Self::Error } else { Self::Normal }
     }
 }
 
@@ -185,15 +189,15 @@ impl ProgressTracker {
     }
 
     pub fn get(&self) -> (usize, usize) {
-        (
-            self.inner.count.load(Ordering::SeqCst),
-            self.inner.total.load(Ordering::SeqCst)
-        )
+        (self.inner.count.load(Ordering::SeqCst), self.inner.total.load(Ordering::SeqCst))
     }
 
     pub fn set_finished(&self, finish_type: ProgressTrackerFinishType) {
         self.inner.finish_type.store(finish_type, Ordering::SeqCst);
-        let _ = self.inner.finished_at.compare_exchange(None, Some(Instant::now()), Ordering::SeqCst, Ordering::Relaxed);
+        let _ =
+            self.inner
+                .finished_at
+                .compare_exchange(None, Some(Instant::now()), Ordering::SeqCst, Ordering::Relaxed);
     }
 
     pub fn get_finished_at(&self) -> Option<Instant> {

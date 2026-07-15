@@ -56,7 +56,10 @@ mod inner {
         keyring: oo7::Result<oo7::Keyring>,
     }
 
-    async fn read(storage: &PlatformSecretStorage, attributes: &[(&str, &str)]) -> Result<Option<oo7::Secret>, SecretStorageError> {
+    async fn read(
+        storage: &PlatformSecretStorage,
+        attributes: &[(&str, &str)],
+    ) -> Result<Option<oo7::Secret>, SecretStorageError> {
         let keyring = storage.keyring.as_ref()?;
         keyring.unlock().await?;
 
@@ -71,7 +74,12 @@ mod inner {
         }
     }
 
-    async fn write(storage: &PlatformSecretStorage, label: &str, attributes: &[(&str, &str)], value: &[u8]) -> Result<(), SecretStorageError> {
+    async fn write(
+        storage: &PlatformSecretStorage,
+        label: &str,
+        attributes: &[(&str, &str)],
+        value: &[u8],
+    ) -> Result<(), SecretStorageError> {
         let keyring = storage.keyring.as_ref()?;
         keyring.unlock().await?;
 
@@ -128,7 +136,9 @@ mod inner {
             let Some(secret) = read(self, attributes).await? else {
                 return Ok(None);
             };
-            Ok(Some(String::from_utf8(secret.to_vec()).map_err(|_| SecretStorageError::SerializationError)?))
+            Ok(Some(
+                String::from_utf8(secret.to_vec()).map_err(|_| SecretStorageError::SerializationError)?,
+            ))
         }
 
         pub async fn write_proxy_password(&self, password: &str) -> Result<(), SecretStorageError> {
@@ -138,6 +148,26 @@ mod inner {
 
         pub async fn delete_proxy_password(&self) -> Result<(), SecretStorageError> {
             let attributes = &[("service", "pandora-launcher"), ("type", "proxy-password")];
+            delete(self, attributes).await
+        }
+
+        pub async fn read_ollama_api_key(&self) -> Result<Option<String>, SecretStorageError> {
+            let attributes = &[("service", "pandora-launcher"), ("type", "ollama-api-key")];
+            let Some(secret) = read(self, attributes).await? else {
+                return Ok(None);
+            };
+            Ok(Some(
+                String::from_utf8(secret.to_vec()).map_err(|_| SecretStorageError::SerializationError)?,
+            ))
+        }
+
+        pub async fn write_ollama_api_key(&self, api_key: &str) -> Result<(), SecretStorageError> {
+            let attributes = &[("service", "pandora-launcher"), ("type", "ollama-api-key")];
+            write(self, "Pandora Ollama API Key", attributes, api_key.as_bytes()).await
+        }
+
+        pub async fn delete_ollama_api_key(&self) -> Result<(), SecretStorageError> {
+            let attributes = &[("service", "pandora-launcher"), ("type", "ollama-api-key")];
             delete(self, attributes).await
         }
     }
@@ -226,11 +256,7 @@ mod inner {
         let mut target_name: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
 
         unsafe {
-            let result = CredDeleteW(
-                windows::core::PWSTR::from_raw(target_name.as_mut_ptr()),
-                CRED_TYPE_GENERIC,
-                None,
-            );
+            let result = CredDeleteW(windows::core::PWSTR::from_raw(target_name.as_mut_ptr()), CRED_TYPE_GENERIC, None);
 
             if let Err(error) = result {
                 const ERROR_NOT_FOUND: windows::core::HRESULT =
@@ -257,7 +283,8 @@ mod inner {
 
             let uuid = uuid.as_hyphenated();
             account.msa_refresh = read_deserialize(&format!("PandoraLauncher_MsaRefresh_{}", uuid))?;
-            account.msa_refresh_force_client_id = read_deserialize(&format!("PandoraLauncher_MsaRefreshForceClientId_{}", uuid))?;
+            account.msa_refresh_force_client_id =
+                read_deserialize(&format!("PandoraLauncher_MsaRefreshForceClientId_{}", uuid))?;
             account.msa_access = read_deserialize(&format!("PandoraLauncher_MsaAccess_{}", uuid))?;
             account.xbl = read_deserialize(&format!("PandoraLauncher_Xbl_{}", uuid))?;
             account.xsts = read_deserialize(&format!("PandoraLauncher_Xsts_{}", uuid))?;
@@ -273,7 +300,10 @@ mod inner {
         ) -> Result<(), SecretStorageError> {
             let uuid = uuid.as_hyphenated();
             write_serialize(&format!("PandoraLauncher_MsaRefresh_{}", uuid), credentials.msa_refresh.as_ref())?;
-            write_serialize(&format!("PandoraLauncher_MsaRefreshForceClientId_{}", uuid), credentials.msa_refresh_force_client_id.as_ref())?;
+            write_serialize(
+                &format!("PandoraLauncher_MsaRefreshForceClientId_{}", uuid),
+                credentials.msa_refresh_force_client_id.as_ref(),
+            )?;
             write_serialize(&format!("PandoraLauncher_MsaAccess_{}", uuid), credentials.msa_access.as_ref())?;
             write_serialize(&format!("PandoraLauncher_Xbl_{}", uuid), credentials.xbl.as_ref())?;
             write_serialize(&format!("PandoraLauncher_Xsts_{}", uuid), credentials.xsts.as_ref())?;
@@ -291,7 +321,9 @@ mod inner {
                 delete(&format!("PandoraLauncher_Xbl_{}", uuid)),
                 delete(&format!("PandoraLauncher_Xsts_{}", uuid)),
                 delete(&format!("PandoraLauncher_AccessToken_{}", uuid)),
-            ].into_iter().collect::<Result<(), _>>()?;
+            ]
+            .into_iter()
+            .collect::<Result<(), _>>()?;
 
             Ok(())
         }
@@ -309,6 +341,21 @@ mod inner {
 
         pub async fn delete_proxy_password(&self) -> Result<(), SecretStorageError> {
             delete("PandoraLauncher_ProxyPassword")
+        }
+
+        pub async fn read_ollama_api_key(&self) -> Result<Option<String>, SecretStorageError> {
+            let Some(bytes) = read("PandoraLauncher_OllamaApiKey")? else {
+                return Ok(None);
+            };
+            Ok(Some(String::from_utf8(bytes).map_err(|_| SecretStorageError::SerializationError)?))
+        }
+
+        pub async fn write_ollama_api_key(&self, api_key: &str) -> Result<(), SecretStorageError> {
+            write("PandoraLauncher_OllamaApiKey", Some(api_key.as_bytes().to_vec()))
+        }
+
+        pub async fn delete_ollama_api_key(&self) -> Result<(), SecretStorageError> {
+            delete("PandoraLauncher_OllamaApiKey")
         }
     }
 }
@@ -332,12 +379,15 @@ mod inner {
             },
             Err(error) => {
                 return Err(error.into());
-            }
+            },
         };
         Ok(Some(data.to_owned()))
     }
 
-    fn read_deserialize<T: for<'a> serde::Deserialize<'a>>(storage: &PlatformSecretStorage, target: &str) -> Result<Option<T>, SecretStorageError> {
+    fn read_deserialize<T: for<'a> serde::Deserialize<'a>>(
+        storage: &PlatformSecretStorage,
+        target: &str,
+    ) -> Result<Option<T>, SecretStorageError> {
         let Some(bytes) = read(storage, target)? else {
             return Ok(None);
         };
@@ -349,7 +399,11 @@ mod inner {
         Ok(())
     }
 
-    fn write_serialize(storage: &PlatformSecretStorage, target: &str, data: &impl serde::Serialize) -> Result<(), SecretStorageError> {
+    fn write_serialize(
+        storage: &PlatformSecretStorage,
+        target: &str,
+        data: &impl serde::Serialize,
+    ) -> Result<(), SecretStorageError> {
         let bytes = serde_json::to_vec(data).map_err(|_| SecretStorageError::SerializationError)?;
         write(storage, target, &bytes)
     }
@@ -362,7 +416,7 @@ mod inner {
             },
             Err(error) => {
                 return Err(error.into());
-            }
+            },
         };
 
         item.delete();
@@ -372,7 +426,7 @@ mod inner {
     impl PlatformSecretStorage {
         pub async fn new() -> Result<Self, SecretStorageError> {
             Ok(Self {
-                keychain: SecKeychain::default_for_domain(SecPreferencesDomain::User)?
+                keychain: SecKeychain::default_for_domain(SecPreferencesDomain::User)?,
             })
         }
 
@@ -408,6 +462,21 @@ mod inner {
 
         pub async fn delete_proxy_password(&self) -> Result<(), SecretStorageError> {
             delete(self, "proxy-password")
+        }
+
+        pub async fn read_ollama_api_key(&self) -> Result<Option<String>, SecretStorageError> {
+            let Some(bytes) = read(self, "ollama-api-key")? else {
+                return Ok(None);
+            };
+            Ok(Some(String::from_utf8(bytes).map_err(|_| SecretStorageError::SerializationError)?))
+        }
+
+        pub async fn write_ollama_api_key(&self, api_key: &str) -> Result<(), SecretStorageError> {
+            write(self, "ollama-api-key", api_key.as_bytes())
+        }
+
+        pub async fn delete_ollama_api_key(&self) -> Result<(), SecretStorageError> {
+            delete(self, "ollama-api-key")
         }
     }
 }

@@ -189,9 +189,10 @@ impl Processor {
                     window_decorations: Some(WindowDecorations::Server),
                     ..Default::default()
                 };
-                _ = cx.open_window(options, |window, cx| {
+                let backend_handle = self.data.backend_handle.clone();
+                _ = cx.open_window(options, move |window, cx| {
                     let game_output = cx.new(|cx| GameOutput::new(receiver, cx));
-                    let game_output_root = cx.new(|cx| GameOutputRoot::new(game_output.clone(), window, cx));
+                    let game_output_root = cx.new(|cx| GameOutputRoot::new(game_output.clone(), backend_handle, window, cx));
                     window.activate_window();
                     cx.new(|cx| Root::new(game_output_root, window, cx))
                 });

@@ -8,6 +8,7 @@ use gpui_component::{
     checkbox::Checkbox,
     h_flex,
     input::{Input, InputEvent, InputState, NumberInput},
+    scroll::ScrollableElement,
     select::{SearchableVec, Select, SelectEvent, SelectState},
     sheet::Sheet,
     spinner::Spinner,
@@ -28,6 +29,7 @@ enum SettingsTab {
     #[default]
     Interface,
     Network,
+    Java,
 }
 
 struct Settings {
@@ -48,6 +50,11 @@ struct Settings {
     proxy_username_input: Entity<InputState>,
     proxy_password_input: Entity<InputState>,
     proxy_password_changed: bool,
+
+    // Java settings state
+    java_provider_select: Entity<SelectState<NamedDropdown<schema::java_manager::JavaProvider>>>,
+    java_versions: Option<Vec<schema::java_manager::JavaVariant>>,
+    fetch_java_versions_task: Option<Task<()>>,
 }
 
 pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
@@ -103,6 +110,15 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             state
         });
 
+        let java_provider_select = cx.new(|cx| {
+            let options = vec![
+                NamedDropdownItem { name: "Mojang".into(), item: schema::java_manager::JavaProvider::Mojang },
+                NamedDropdownItem { name: "Adoptium".into(), item: schema::java_manager::JavaProvider::Adoptium },
+                NamedDropdownItem { name: "Zulu".into(), item: schema::java_manager::JavaProvider::Zulu },
+            ];
+            SelectState::new(NamedDropdown::new(options), Some(IndexPath::new(0)), window, cx)
+        });
+
         let mut settings = Settings {
             selected_tab: SettingsTab::Interface,
             language_select,
@@ -120,6 +136,9 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             proxy_username_input,
             proxy_password_input,
             proxy_password_changed: false,
+            java_provider_select,
+            java_versions: None,
+            fetch_java_versions_task: None,
         };
 
         cx.subscribe(&settings.proxy_protocol_select, Settings::on_proxy_protocol_changed).detach();
@@ -127,8 +146,11 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
         cx.subscribe(&settings.proxy_port_input, Settings::on_proxy_input_changed).detach();
         cx.subscribe(&settings.proxy_username_input, Settings::on_proxy_input_changed).detach();
         cx.subscribe(&settings.proxy_password_input, Settings::on_proxy_password_changed).detach();
+        cx.subscribe_in(&settings.java_provider_select, window, Settings::on_java_provider_changed).detach();
 
         settings.update_backend_configuration(window, cx);
+        
+        settings.fetch_java_versions(window, cx);
 
         settings
     });
@@ -497,7 +519,143 @@ impl Settings {
                 .text_color(cx.theme().muted_foreground)
                 .child(t::settings::proxy::launcher_only_note()))
     }
+
+    fn render_java_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut list = v_flex().gap_4();
+
+        list = list.child(
+            v_flex().gap_1()
+                .child(div().text_sm().text_color(cx.theme().muted_foreground).child("Java Provider"))
+                .child(Select::new(&self.java_provider_select))
+        );
+
+        if self.fetch_java_versions_task.is_some() {
+            list = list.child(h_flex().gap_2().child(Spinner::new()).child("Fetching available versions..."));
+        } else if let Some(versions) = &self.java_versions {
+            if versions.is_empty() {
+                list = list.child(div().text_sm().text_color(cx.theme().muted_foreground).child("No versions found."));
+            } else {
+                for variant in versions {
+                    let variant_clone = variant.clone();
+                    list = list.child(
+                        h_flex().w_full().justify_between().items_center().p_2().border_1().border_color(cx.theme().border).rounded_md()
+                            .child(
+                                h_flex().gap_3().items_center()
+                                    .child(
+                                        match variant.provider {
+                                            schema::java_manager::JavaProvider::Mojang => crate::icon::PandoraIcon::Mojang,
+                                            schema::java_manager::JavaProvider::Adoptium => crate::icon::PandoraIcon::Adoptium,
+                                            schema::java_manager::JavaProvider::Zulu => crate::icon::PandoraIcon::Zulu,
+                                        }
+                                    )
+                                    .child(
+                                        v_flex().gap_0p5()
+                                            .child(div().font_weight(FontWeight::BOLD).child(format!("Java {}", variant.major_version)))
+                                            .child(div().text_xs().text_color(cx.theme().muted_foreground).child(format!("OS: {} | Arch: {}", variant.os, variant.architecture)))
+                                    )
+                            )
+                            .child(
+                                if variant.is_installed {
+                                    h_flex().gap_2().items_center()
+                                        .child(
+                                            Button::new(format!("uninstall_java_{}", variant.major_version))
+                                                .icon(crate::icon::PandoraIcon::Close)
+                                                .ghost()
+                                                .danger()
+                                                .on_click(cx.listener({
+                                                    let variant_clone = variant_clone.clone();
+                                                    move |settings, _, window, cx| {
+                                                        settings.uninstall_java(variant_clone.clone(), window, cx);
+                                                    }
+                                                }))
+                                        )
+                                        .child(div().text_sm().text_color(cx.theme().success).child("Installed"))
+                                } else {
+                                    div().child(Button::new(format!("install_java_{}", variant.major_version)).label("Install").on_click(cx.listener(move |settings, _, window, cx| {
+                                        settings.install_java(variant_clone.clone(), window, cx);
+                                    })))
+                                }
+                            )
+                    );
+                }
+            }
+        }
+
+        v_flex().p_4().size_full().overflow_y_scrollbar().child(list)
+    }
+
+    fn on_java_provider_changed(
+        &mut self,
+        _state: &Entity<SelectState<NamedDropdown<schema::java_manager::JavaProvider>>>,
+        event: &SelectEvent<NamedDropdown<schema::java_manager::JavaProvider>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let SelectEvent::Confirm(_) = event;
+        self.fetch_java_versions(window, cx);
+    }
+
+    fn fetch_java_versions(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.fetch_java_versions_task.is_some() {
+            return;
+        }
+
+        let Some(provider) = self.java_provider_select.read(cx).selected_value().cloned() else {
+            return;
+        };
+
+        let (send, recv) = tokio::sync::oneshot::channel();
+        self.backend_handle.send(MessageToBackend::FetchJavaVersions {
+            provider: provider.item,
+            result: send,
+        });
+
+        self.fetch_java_versions_task = Some(cx.spawn_in(window, async move |page, cx| {
+            let result = recv.await.unwrap_or_default();
+            let _ = page.update_in(cx, |settings, _, cx| {
+                settings.java_versions = Some(result);
+                settings.fetch_java_versions_task = None;
+                cx.notify();
+            });
+        }));
+    }
+
+    fn install_java(&mut self, variant: schema::java_manager::JavaVariant, window: &mut Window, cx: &mut Context<Self>) {
+        let modal_action = bridge::modal_action::ModalAction::default();
+        self.backend_handle.send(MessageToBackend::InstallJava {
+            variant,
+            modal_action: modal_action.clone(),
+        });
+        crate::modals::generic::show_modal(window, cx, "Installing Java".into(), "Error installing Java".into(), modal_action.clone());
+
+        let modal_action_clone = modal_action.clone();
+        cx.spawn_in(window, async move |page, cx| {
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_millis(200)).await;
+                if modal_action_clone.get_finished_at().is_some() || modal_action_clone.has_requested_cancel() {
+                    let _ = page.update_in(cx, |settings, window, cx| {
+                        settings.fetch_java_versions(window, cx);
+                    });
+                    break;
+                }
+            }
+        }).detach();
+    }
+
+    fn uninstall_java(&mut self, variant: schema::java_manager::JavaVariant, window: &mut Window, cx: &mut Context<Self>) {
+        let (send, recv) = tokio::sync::oneshot::channel();
+        self.backend_handle.send(MessageToBackend::UninstallJava { variant, result: send });
+        
+        cx.spawn_in(window, async move |page, cx| {
+            if let Ok(_) = recv.await {
+                let _ = page.update_in(cx, |settings, window, cx| {
+                    settings.fetch_java_versions(window, cx);
+                });
+            }
+        }).detach();
+    }
 }
+
 impl Render for Settings {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let selected_tab = self.selected_tab;
@@ -507,14 +665,17 @@ impl Render for Settings {
             .selected_index(match selected_tab {
                 SettingsTab::Interface => 0,
                 SettingsTab::Network => 1,
+                SettingsTab::Java => 2,
             })
             .underline()
             .child(Tab::new().label(t::settings::interface()))
             .child(Tab::new().label(t::settings::network()))
+            .child(Tab::new().label("Java"))
             .on_click(cx.listener(|settings, index, _window, cx| {
                 settings.selected_tab = match index {
                     0 => SettingsTab::Interface,
                     1 => SettingsTab::Network,
+                    2 => SettingsTab::Java,
                     _ => SettingsTab::Interface,
                 };
                 cx.notify();
@@ -523,6 +684,7 @@ impl Render for Settings {
         let content = match selected_tab {
             SettingsTab::Interface => self.render_interface_tab(window, cx).into_any_element(),
             SettingsTab::Network => self.render_network_tab(window, cx).into_any_element(),
+            SettingsTab::Java => self.render_java_tab(window, cx).into_any_element(),
         };
 
         v_flex()

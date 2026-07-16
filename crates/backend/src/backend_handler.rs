@@ -1220,6 +1220,56 @@ impl BackendState {
 
                 self.send.send_success(format!("Deleted {} files", deleted));
             },
+            MessageToBackend::UploadLog { log, result: sender } => {
+                let replaced = log_reader::replace(&log);
+
+                if replaced.trim_ascii().is_empty() {
+                    let _ = sender.send(Err("Log was empty".into()));
+                    return;
+                }
+
+                let result = self.http_client.post("https://api.mclo.gs/1/log").form(&[("content", &*replaced)]).send().await;
+
+                let resp = match result {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        let _ = sender.send(Err(format!("Error while uploading log: {e:?}")));
+                        return;
+                    },
+                };
+
+                let bytes = match resp.bytes().await {
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        let _ = sender.send(Err(format!("Error while reading mclo.gs response: {e:?}")));
+                        return;
+                    },
+                };
+
+                #[derive(serde::Deserialize)]
+                struct McLogsResponse {
+                    success: bool,
+                    url: Option<String>,
+                    error: Option<String>,
+                }
+
+                match serde_json::from_slice::<McLogsResponse>(&bytes) {
+                    Ok(response) => {
+                        if response.success {
+                            if let Some(url) = response.url {
+                                let _ = sender.send(Ok(url));
+                            } else {
+                                let _ = sender.send(Err("mclo.gs returned success but no URL".into()));
+                            }
+                        } else {
+                            let _ = sender.send(Err(response.error.unwrap_or_else(|| "Unknown mclo.gs error".into())));
+                        }
+                    },
+                    Err(e) => {
+                        let _ = sender.send(Err(format!("Error while parsing mclo.gs response: {e:?}")));
+                    },
+                }
+            },
             MessageToBackend::UploadLogFile { path, modal_action } => {
                 let file = match std::fs::File::open(path) {
                     Ok(file) => file,
@@ -1948,6 +1998,42 @@ impl BackendState {
             MessageToBackend::Login { account, modal_action } => {
                 self.login_flow(&modal_action, Some(account)).await;
                 modal_action.set_finished();
+            },
+            MessageToBackend::FetchJavaVersions { provider, result } => {
+                let http_client = self.redirecting_http_client.clone();
+                let runtime_base_dir = self.directories.runtime_base_dir.clone();
+                
+                tokio::spawn(async move {
+                    let fetch_result = crate::java_manager::fetch_versions(provider, &http_client, &runtime_base_dir).await;
+                    let _ = result.send(fetch_result.unwrap_or_default());
+                });
+            },
+            MessageToBackend::InstallJava { variant, modal_action } => {
+                let http_client = self.redirecting_http_client.clone();
+                let runtime_base_dir = self.directories.runtime_base_dir.clone();
+                
+                let tracker = bridge::modal_action::ProgressTracker::new(
+                    "Installing Java...".into(),
+                    self.send.clone(),
+                );
+                modal_action.trackers.push(tracker.clone());
+
+                tokio::spawn(async move {
+                    if let Err(e) = crate::java_manager::install_java(variant, &http_client, &runtime_base_dir, &tracker).await {
+                        modal_action.set_error_message(format!("Failed to install Java: {}", e).into());
+                        tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Error);
+                    } else {
+                        tracker.set_finished(bridge::modal_action::ProgressTrackerFinishType::Normal);
+                    }
+                    modal_action.set_finished();
+                });
+            },
+            MessageToBackend::UninstallJava { variant, result } => {
+                let runtime_base_dir = self.directories.runtime_base_dir.clone();
+                tokio::spawn(async move {
+                    let _ = crate::java_manager::uninstall_java(variant, &runtime_base_dir).await;
+                    let _ = result.send(());
+                });
             },
             MessageToBackend::Quit => {
                 self.should_quit.store(true, Ordering::Relaxed);

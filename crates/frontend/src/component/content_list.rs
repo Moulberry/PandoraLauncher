@@ -794,38 +794,41 @@ fn create_descriptions(name: Option<Arc<str>>, version: Arc<str>, authors: Arc<s
             let styled_text = super::create_styled_text(&*rich_description, grayscale);
 
             let description1 = v_flex()
-                .min_w_2_5()
+                .flex_1()
                 .gap_2()
                 .whitespace_nowrap()
-                .overflow_x_hidden()
+                .overflow_hidden()
                 .line_height(relative(1.0))
-                .child(SharedString::from(filename))
+                .child(div().overflow_hidden().text_ellipsis().child(SharedString::from(filename)))
                 .child(div().line_clamp(2).child(styled_text));
             return (description1, None);
         }
 
         let description1 = v_flex()
-            .min_w_1_5()
+            .flex_1()
             .whitespace_nowrap()
-            .overflow_x_hidden()
-            .child(SharedString::from(filename))
-            .child(SharedString::from(version));
+            .overflow_hidden()
+            .child(div().overflow_hidden().text_ellipsis().child(SharedString::from(filename)))
+            .child(div().overflow_hidden().text_ellipsis().child(SharedString::from(version)));
         return (description1, None);
     }
 
     let description1 = v_flex()
-        .min_w_1_5()
+        .flex_1()
         .whitespace_nowrap()
-        .overflow_x_hidden()
-        .child(SharedString::from(name.clone().unwrap_or(filename.clone())))
-        .child(SharedString::from(version));
+        .overflow_hidden()
+        .child(div().overflow_hidden().text_ellipsis().child(SharedString::from(name.clone().unwrap_or(filename.clone()))))
+        .child(div().overflow_hidden().text_ellipsis().child(SharedString::from(version)));
 
     let mut description2 = v_flex()
+        .flex_1()
+        .whitespace_nowrap()
+        .overflow_hidden()
         .text_color(secondary)
-        .child(SharedString::from(authors));
+        .child(div().overflow_hidden().text_ellipsis().child(SharedString::from(authors)));
 
     if name.is_some() {
-        description2 = description2.child(SharedString::from(filename));
+        description2 = description2.child(div().overflow_hidden().text_ellipsis().child(SharedString::from(filename)));
     }
 
     (description1, Some(description2))

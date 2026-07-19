@@ -11,6 +11,9 @@ Work in progress
 - Mod browser using Modrinth's API
 - Automatic redaction of sensitive information (i.e. access tokens) in logs
 - Unique approach to modpack management (https://youtu.be/cdRVqd7b2BQ)
+- Fully Customizable Colours
+- Logs get automaticly uploaded to mclo.gs
+- And More!
 
 ## FAQ
 
@@ -20,13 +23,13 @@ Please use GitHub issues.
 or you can do it in our discord:
 https://discord.gg/CngWzd4bKh
 
-### Why should I use Pandora over other launchers?
+### Why should I use Supernova over other launchers?
 
-At this point, you probably shouldn't since it doesn't have feature parity with other launchers.
+I don't know use whatever laucher you want but we have some nice feeatures
 
-### Will Pandora be monetized?
+### Will Supernova be monetized?
 
-Unlikely, for a few reasons:
+No, for a few reasons:
 - I believe that it is wrong for launchers to be monetized without distributing revenue back to mod creators that give the launcher value in the first place. Since I don't have the infrastructure to be able to redistribute revenue to mod creators, this is a big barrier.
 - Dealing with monetization takes a lot of (ongoing) work, probably more work than creating the launcher itself.
 - I personally dislike advertisements.

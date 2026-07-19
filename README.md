@@ -17,6 +17,8 @@ Work in progress
 ### Where can I suggest a feature/report a bug?
 
 Please use GitHub issues.
+or you can do it in our discord:
+https://discord.gg/CngWzd4bKh
 
 ### Why should I use Pandora over other launchers?
 

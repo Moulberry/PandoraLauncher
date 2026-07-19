@@ -1,6 +1,7 @@
-# Pandora Launcher
+# Supernova Launcher
 
 Work in progress
+## FILES ARE NOT YET UPDATED
 
 ## Features
 - Instance management

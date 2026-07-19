@@ -25,7 +25,7 @@ https://discord.gg/CngWzd4bKh
 
 ### Why should I use Supernova over other launchers?
 
-I don't know use whatever laucher you want but we have some nice feeatures
+I don't know use whatever laucher you want but we have some nice features
 
 ### Will Supernova be monetized?
 

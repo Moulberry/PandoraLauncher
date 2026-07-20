@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     io::{BufRead, Read},
+    path::Path,
     sync::{Arc, atomic::Ordering},
     time::{Duration, Instant, SystemTime},
 };
@@ -8,7 +9,7 @@ use std::{
 use auth::{credentials::AccountCredentials, models::MinecraftAccessToken, secret::PlatformSecretStorage};
 use bridge::{
     install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget},
-    instance::{ContentFolder, ContentSummary, ContentType, InstanceID},
+    instance::{ContentFolder, ContentSummary, ContentType, InstanceContentID, InstanceID},
     keep_alive::KeepAlive,
     message::{
         AccountCapesResult, AccountSkinResult, BackendConfigWithPassword, EmbeddedOrRaw, LogFiles, MessageToBackend,
@@ -19,6 +20,7 @@ use bridge::{
     serial::AtomicOptionSerial,
 };
 use futures::TryFutureExt;
+use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{
     auxiliary::AuxiliaryContentMeta,
     content::{ContentInstallReason, ContentSource},
@@ -394,6 +396,7 @@ impl BackendState {
                 };
 
                 let mut cannot_modify_while_running = false;
+                let mut frozen_toggles: FxHashMap<InstanceContentID, (bool, Arc<Path>)> = FxHashMap::default();
 
                 for mod_id in mod_ids {
                     if let Some((instance_mod, folder)) = instance.try_get_content(mod_id) {
@@ -409,15 +412,43 @@ impl BackendState {
                             continue;
                         }
 
-                        let mut new_path = instance_mod.path.to_path_buf();
-                        if instance_mod.enabled {
+                        let was_enabled = instance_mod.enabled;
+                        let live_path = instance_mod.path.clone();
+                        let mut new_path = live_path.to_path_buf();
+                        if was_enabled {
                             new_path.add_extension("disabled");
                         } else {
                             new_path.set_extension("");
                         };
 
-                        let _ = std::fs::rename(&instance_mod.path, new_path);
+                        // Mirror the toggle into the `original_mods/` backup so it survives the
+                        // restore performed when the instance stops.
+                        let backup_rename = (folder == ContentFolder::Mods)
+                            .then(|| instance.frozen_mods_backup_path(&live_path))
+                            .flatten()
+                            .map(|backup_old| {
+                                let mut backup_new = backup_old.clone();
+                                if was_enabled {
+                                    backup_new.add_extension("disabled");
+                                } else {
+                                    backup_new.set_extension("");
+                                }
+                                (backup_old, backup_new)
+                            });
+
+                        let _ = std::fs::rename(&live_path, &new_path);
+                        let new_path: Arc<Path> = Arc::from(new_path);
+                        if let Some((backup_old, backup_new)) = backup_rename {
+                            let _ = std::fs::rename(&backup_old, &backup_new);
+                            frozen_toggles.insert(mod_id, (enabled, new_path));
+                        }
                     }
+                }
+
+                // The frozen mods list isn't re-read from disk while running, so update the
+                // cached summaries directly to reflect the toggles in the UI.
+                if !frozen_toggles.is_empty() {
+                    instance.apply_frozen_mod_toggles(self, &frozen_toggles);
                 }
 
                 if cannot_modify_while_running {
@@ -449,6 +480,38 @@ impl BackendState {
                     {
                         self.send.send_warning("Cannot modify mods folder while instance is running");
                         return;
+                    }
+
+                    // While running, the aux file lives in the throwaway live mods folder and is
+                    // wiped on stop; mirror it into `original_mods/` so the change persists.
+                    let backup_aux_path = if folder == ContentFolder::Mods {
+                        instance.frozen_mods_backup_path(&aux_path)
+                    } else {
+                        None
+                    };
+
+                    // Deleting a modpack child must also remove its already-extracted file(s) from
+                    // disk — the resourcepacks/shaderpacks folders aren't rebuilt on launch the way
+                    // mods are, so otherwise a deleted resource pack/shader would linger.
+                    let mut extracted_removals: Vec<std::path::PathBuf> = Vec::new();
+                    if delete
+                        && let Some(files) = instance_mod.content_summary.extra.modpack_files()
+                    {
+                        for file in files.iter() {
+                            if file.path.as_str() != &*child_filename {
+                                continue;
+                            }
+                            let Some(relative) = file.path() else {
+                                continue;
+                            };
+                            let full = relative.to_path(&instance.dot_minecraft_path);
+                            if folder == ContentFolder::Mods
+                                && let Some(backup) = instance.frozen_mods_backup_path(&full)
+                            {
+                                extracted_removals.push(backup);
+                            }
+                            extracted_removals.push(full);
+                        }
                     }
 
                     let mut aux: AuxiliaryContentMeta = crate::read_json(&aux_path).unwrap_or_default();
@@ -518,7 +581,18 @@ impl BackendState {
                             log::error!("Unable to save aux meta: {err:?}");
                             self.send.send_error("Unable to save aux meta");
                         }
+                        if let Some(backup_aux_path) = &backup_aux_path {
+                            if let Err(err) = crate::write_safe(backup_aux_path, &bytes) {
+                                log::error!("Unable to save aux meta backup: {err:?}");
+                            }
+                        }
                     }
+
+                    for path in &extracted_removals {
+                        let _ = std::fs::remove_file(path);
+                    }
+
+                    self.send.send(MessageToFrontend::Refresh);
                 }
             },
             MessageToBackend::DownloadContentChildren {
@@ -562,11 +636,30 @@ impl BackendState {
             MessageToBackend::CreateInstanceFromFile { file, modal_action } => {
                 let summary = self.mod_metadata_manager.get_path(&file);
 
-                // right now only .mrpack importing is used
-                let ContentType::ModrinthModpack { dependencies, .. } = &summary.extra else {
-                    modal_action.set_error_message("Not a .mrpack file".into());
-                    modal_action.set_finished();
-                    return;
+                // Supports Modrinth (.mrpack) and CurseForge (exported .zip) modpacks.
+                let (minecraft_version, loader) = match &summary.extra {
+                    ContentType::ModrinthModpack { dependencies, .. } => {
+                        let mut minecraft_version = None;
+                        let mut loader = Loader::Vanilla;
+                        for (key, value) in dependencies {
+                            match &**key {
+                                "forge" => loader = Loader::Forge,
+                                "neoforge" => loader = Loader::NeoForge,
+                                "fabric-loader" => loader = Loader::Fabric,
+                                "minecraft" => minecraft_version = Some(value.clone()),
+                                _ => {},
+                            }
+                        }
+                        (minecraft_version, loader)
+                    },
+                    ContentType::CurseforgeModpack { minecraft, .. } => {
+                        (minecraft.version.clone(), minecraft.get_loader().unwrap_or(Loader::Vanilla))
+                    },
+                    _ => {
+                        modal_action.set_error_message("Not a supported modpack file (.mrpack or CurseForge .zip)".into());
+                        modal_action.set_finished();
+                        return;
+                    },
                 };
 
                 let Some(name) = summary.name.clone() else {
@@ -574,18 +667,6 @@ impl BackendState {
                     modal_action.set_finished();
                     return;
                 };
-
-                let mut minecraft_version = None;
-                let mut loader = Loader::Vanilla;
-                for (key, value) in dependencies {
-                    match &**key {
-                        "forge" => loader = Loader::Forge,
-                        "neoforge" => loader = Loader::NeoForge,
-                        "fabric-loader" => loader = Loader::Fabric,
-                        "minecraft" => minecraft_version = Some(value.clone()),
-                        _ => {},
-                    }
-                }
 
                 let Some(minecraft_version) = minecraft_version else {
                     modal_action.set_error_message("Unable to determine minecraft version from modpack".into());
@@ -625,6 +706,7 @@ impl BackendState {
                 };
 
                 let mut cannot_modify_while_running = false;
+                let mut frozen_removed: FxHashSet<InstanceContentID> = FxHashSet::default();
 
                 for mod_id in mod_ids {
                     let Some((instance_mod, folder)) = instance.try_get_content(mod_id) else {
@@ -640,11 +722,35 @@ impl BackendState {
                         continue;
                     }
 
-                    _ = std::fs::remove_file(&instance_mod.path);
+                    let live_path = instance_mod.path.clone();
+                    let aux_path = crate::pandora_aux_path_for_content(instance_mod);
+                    // While the instance is running the live mods folder is a throwaway copy
+                    // that gets restored from `original_mods/` on stop, so mirror the delete
+                    // into the backup folder to make it persist.
+                    let backup_path =
+                        (folder == ContentFolder::Mods).then(|| instance.frozen_mods_backup_path(&live_path)).flatten();
+                    let backup_aux_path = match (folder, &aux_path) {
+                        (ContentFolder::Mods, Some(aux_path)) => instance.frozen_mods_backup_path(aux_path),
+                        _ => None,
+                    };
 
-                    if let Some(aux_path) = crate::pandora_aux_path_for_content(&instance_mod) {
+                    _ = std::fs::remove_file(&live_path);
+                    if let Some(aux_path) = &aux_path {
                         _ = std::fs::remove_file(aux_path);
                     }
+                    if let Some(backup_path) = backup_path {
+                        _ = std::fs::remove_file(&backup_path);
+                        frozen_removed.insert(mod_id);
+                    }
+                    if let Some(backup_aux_path) = backup_aux_path {
+                        _ = std::fs::remove_file(&backup_aux_path);
+                    }
+                }
+
+                // The frozen mods list isn't re-read from disk while running, so update the
+                // cached summaries directly to reflect the deletions in the UI.
+                if !frozen_removed.is_empty() {
+                    instance.remove_frozen_mods_summaries(self, &frozen_removed);
                 }
 
                 if cannot_modify_while_running {

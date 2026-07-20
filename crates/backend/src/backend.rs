@@ -41,6 +41,7 @@ use schema::{
     instance::InstanceConfiguration,
     loader::Loader,
     minecraft_profile::MinecraftProfileResponse,
+    modrinth::ModrinthVersionsFromHashesRequest,
 };
 use strum::IntoEnumIterator;
 use tokio::sync::{OnceCell, Semaphore, mpsc::Receiver};
@@ -54,7 +55,10 @@ use crate::{
     instance::Instance,
     launch::Launcher,
     metadata::{
-        items::{CurseforgeGetFilesMetadataItem, MinecraftVersionManifestMetadataItem},
+        items::{
+            CurseforgeGetFilesMetadataItem, MinecraftVersionManifestMetadataItem,
+            ModrinthVersionsFromHashesMetadataItem,
+        },
         manager::MetadataManager,
     },
     mod_metadata::ModMetadataManager,
@@ -1205,6 +1209,9 @@ impl BackendState {
 
         let mut content_install_files = Vec::new();
         let mut content_sources_to_set: Vec<([u8; 20], ContentSource)> = Vec::new();
+        // CurseForge files whose author blocked third-party downloads. We try to recover them
+        // from Modrinth by matching their sha1 hash. Each entry is (sha1_hex, sha1_bytes, path).
+        let mut blocked_curseforge_files: Vec<(Arc<str>, [u8; 20], ContentInstallPath)> = Vec::new();
 
         let modrinth_source_for_url = |url: &str| -> Option<ContentSource> {
             let path = url.strip_prefix("https://cdn.modrinth.com/data/")?;
@@ -1239,6 +1246,12 @@ impl BackendState {
                 },
                 ModpackFileSource::DownloadCurseforge { file_id } => {
                     if file.disabled_third_party_downloads {
+                        // Already known to be blocked; recover from Modrinth by hash instead.
+                        blocked_curseforge_files.push((
+                            hex::encode(file.hash).into(),
+                            file.hash,
+                            ContentInstallPath::ModpackFilePath(file.path.clone()),
+                        ));
                         continue;
                     }
 
@@ -1310,7 +1323,62 @@ impl BackendState {
                             },
                             reason: ContentInstallReason::Modpack,
                         });
+                    } else {
+                        // Author blocked third-party downloads; try to recover from Modrinth by hash.
+                        blocked_curseforge_files.push((
+                            Arc::from(&**sha1),
+                            hash,
+                            ContentInstallPath::ModpackFilePath(ModpackFilePath::Filename(filename)),
+                        ));
                     }
+                }
+            }
+        }
+
+        // Recover blocked CurseForge files from Modrinth by matching sha1 hashes.
+        if !blocked_curseforge_files.is_empty() {
+            let tracker = ProgressTracker::new("Recovering blocked mods from Modrinth".into(), self.send.clone());
+            modal_action.trackers.push(tracker.clone());
+            tracker.set_total(1);
+            tracker.notify();
+
+            let hashes: Arc<[Arc<str>]> = blocked_curseforge_files.iter().map(|(hex, _, _)| hex.clone()).collect();
+            let result = self
+                .meta
+                .fetch(&ModrinthVersionsFromHashesMetadataItem(&ModrinthVersionsFromHashesRequest {
+                    hashes,
+                    algorithm: "sha1".into(),
+                }))
+                .await;
+
+            tracker.set_count(1);
+            tracker.set_finished(ProgressTrackerFinishType::from_err(result.is_err()));
+            tracker.notify();
+
+            if let Ok(response) = result {
+                for (sha1_hex, hash, path) in &blocked_curseforge_files {
+                    let Some(Some(version)) = response.0.get(sha1_hex) else {
+                        continue;
+                    };
+                    let Some(modrinth_file) =
+                        version.files.iter().find(|file| file.hashes.sha1.eq_ignore_ascii_case(sha1_hex))
+                    else {
+                        continue;
+                    };
+
+                    content_install_files.push(ContentInstallFile {
+                        replace_old: None,
+                        path: path.clone(),
+                        download: ContentDownload::Url {
+                            url: modrinth_file.url.clone(),
+                            sha1: *hash,
+                            size: modrinth_file.size,
+                        },
+                        content_source: ContentSource::ModrinthProject {
+                            project_id: version.project_id.clone(),
+                        },
+                        reason: ContentInstallReason::Modpack,
+                    });
                 }
             }
         }

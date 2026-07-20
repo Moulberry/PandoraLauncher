@@ -136,13 +136,13 @@ impl Render for ImportPage {
                                 }))
                         })
                     })
-                    .child(Button::new("mrpack").label("Import Modrinth Pack (.mrpack)").w_full().on_click(
+                    .child(Button::new("mrpack").label("Import from Exported File (.mrpack / .zip)").w_full().on_click(
                         cx.listener(|page, _, window, cx| {
                             let receiver = cx.prompt_for_paths(PathPromptOptions {
                                 files: true,
                                 directories: false,
                                 multiple: false,
-                                prompt: Some("Select Modrinth Pack".into()),
+                                prompt: Some("Select exported modpack (Modrinth .mrpack or CurseForge .zip)".into()),
                             });
                             let page_entity = cx.entity();
                             page._open_file_task = window.spawn(cx, async move |cx| {

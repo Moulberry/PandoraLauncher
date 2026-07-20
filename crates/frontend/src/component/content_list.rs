@@ -9,7 +9,8 @@ use std::{
 use bridge::{
     handle::BackendHandle,
     instance::{
-        ContentSummary, ContentType, InstanceContentID, InstanceContentSummary, InstanceID, UNKNOWN_CONTENT_SUMMARY,
+        ContentFolder, ContentSummary, ContentType, InstanceContentID, InstanceContentSummary, InstanceID,
+        UNKNOWN_CONTENT_SUMMARY,
     },
     message::MessageToBackend,
     modal_action::ModalAction,
@@ -82,6 +83,7 @@ enum SummaryOrChild {
 
 pub struct ContentListDelegate {
     id: InstanceID,
+    content_folder: ContentFolder,
     for_loader: Loader,
     for_version: Ustr,
     backend_handle: BackendHandle,
@@ -103,6 +105,7 @@ pub struct ContentListDelegate {
 impl ContentListDelegate {
     pub fn new(
         id: InstanceID,
+        content_folder: ContentFolder,
         backend_handle: BackendHandle,
         for_loader: Loader,
         for_version: Ustr,
@@ -111,6 +114,7 @@ impl ContentListDelegate {
     ) -> Self {
         Self {
             id,
+            content_folder,
             for_loader,
             for_version,
             backend_handle,
@@ -486,7 +490,10 @@ impl ContentListDelegate {
         let element_id = hasher.finish();
 
         let enabled = child.enabled;
-        let visually_enabled = enabled && child.parent_enabled && !child.disabled_third_party_downloads;
+        // A blocked third-party download only matters while the file is actually missing. Once it's
+        // present in the library (e.g. recovered from Modrinth), it's a normal, toggleable mod.
+        let blocked = child.disabled_third_party_downloads && child.is_missing;
+        let visually_enabled = enabled && child.parent_enabled && !blocked;
 
         let (desc1, desc2) = create_descriptions(
             summary.name.clone(),
@@ -503,9 +510,9 @@ impl ContentListDelegate {
             .pl_4()
             .child(
                 Switch::new(("toggle", element_id))
-                    .checked(enabled && !child.disabled_third_party_downloads)
+                    .checked(enabled && !blocked)
                     .when_else(
-                        child.is_missing || child.disabled_third_party_downloads,
+                        child.is_missing,
                         |this| this.disabled(true),
                         |this| {
                             this.on_click({
@@ -537,7 +544,7 @@ impl ContentListDelegate {
             .child(desc1.when(!visually_enabled, |this| this.line_through()))
             .when_some(desc2, |div, desc2| div.child(desc2.when(!visually_enabled, |this| this.line_through())));
 
-        if child.disabled_third_party_downloads {
+        if blocked {
             item_content = item_content.child(
                 ErrorAlert::new(
                     "Blocked".into(),
@@ -651,25 +658,29 @@ impl ContentListDelegate {
                 unknown_files, files, ..
             } = &extra
             {
-                for unknown_file in unknown_files.iter() {
-                    let filename: Arc<str> = format!("File ID: {}", unknown_file.file_id).into();
+                // Not-yet-downloaded files have an unknown destination folder, so only surface
+                // them under the Mods tab (where the modpack bundle itself lives).
+                if self.content_folder == ContentFolder::Mods {
+                    for unknown_file in unknown_files.iter() {
+                        let filename: Arc<str> = format!("File ID: {}", unknown_file.file_id).into();
 
-                    let lowercase_filename: Arc<str> = filename.to_ascii_lowercase().into();
-                    let lowercase_search_keys = Arc::new([lowercase_filename]);
+                        let lowercase_filename: Arc<str> = filename.to_ascii_lowercase().into();
+                        let lowercase_search_keys = Arc::new([lowercase_filename]);
 
-                    inner_children.push(ContentEntryChild {
-                        summary: UNKNOWN_CONTENT_SUMMARY.clone(),
-                        parent_filename_hash: modification.filename_hash,
-                        parent: modification.id,
-                        lowercase_search_keys,
-                        path: filename,
-                        filesize: 0,
-                        disabled_default: false,
-                        enabled: true,
-                        parent_enabled: modification.enabled,
-                        disabled_third_party_downloads: false,
-                        is_missing: true,
-                    });
+                        inner_children.push(ContentEntryChild {
+                            summary: UNKNOWN_CONTENT_SUMMARY.clone(),
+                            parent_filename_hash: modification.filename_hash,
+                            parent: modification.id,
+                            lowercase_search_keys,
+                            path: filename,
+                            filesize: 0,
+                            disabled_default: false,
+                            enabled: true,
+                            parent_enabled: modification.enabled,
+                            disabled_third_party_downloads: false,
+                            is_missing: true,
+                        });
+                    }
                 }
 
                 Some(files)
@@ -683,11 +694,20 @@ impl ContentListDelegate {
                         continue;
                     }
 
-                    if let Some(path) = file.path()
-                        && !path.starts_with("mods")
-                        && !path.starts_with("resourcepacks")
-                    {
-                        continue;
+                    // Only show a modpack's children under the tab matching their destination
+                    // folder (mods → Mods, resourcepacks → Resourcepacks, shaderpacks → Shaders).
+                    match file.path() {
+                        Some(path) => {
+                            if !path.starts_with(self.content_folder.folder_name()) {
+                                continue;
+                            }
+                        },
+                        None => {
+                            // Destination unknown (not downloaded yet) — only under Mods.
+                            if self.content_folder != ContentFolder::Mods {
+                                continue;
+                            }
+                        },
                     }
 
                     let summary = file.summary.clone();
@@ -738,6 +758,15 @@ impl ContentListDelegate {
                         is_missing,
                     });
                 }
+            }
+
+            // In a non-Mods tab, a modpack bundle (which lives in the mods folder) is only shown
+            // when it actually contributes files to this folder; otherwise it's just clutter.
+            if self.content_folder != ContentFolder::Mods
+                && modification.content_summary.extra.is_modpack()
+                && inner_children.is_empty()
+            {
+                continue;
             }
 
             items.push(Item {

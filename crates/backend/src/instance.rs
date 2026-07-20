@@ -2,7 +2,7 @@ use std::{
     collections::HashSet,
     hash::{DefaultHasher, Hash, Hasher},
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
@@ -21,7 +21,7 @@ use bridge::{
 };
 use command::PandoraProcess;
 use futures::FutureExt;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 use schema::{
     auxiliary::{AuxDisabledChildren, AuxiliaryContentMeta},
     instance::InstanceConfiguration,
@@ -1033,6 +1033,109 @@ impl Instance {
 
     pub fn set_frozen_mods_folder(&mut self, frozen_mods_folder: bool) {
         self.frozen_mods_folder = frozen_mods_folder;
+    }
+
+    /// While an instance is running the real mods folder is stashed at
+    /// `original_mods/` and the live `mods/` folder is a throwaway copy that is
+    /// wiped and replaced by `original_mods/` when the instance stops (see
+    /// [`BackendState::restore_mods_folder_if_stopped`]). Edits applied only to
+    /// the live folder are therefore lost on stop. This returns the backup
+    /// directory so edits can be mirrored there and survive the restore.
+    pub fn frozen_mods_backup_dir(&self) -> Option<PathBuf> {
+        if !self.frozen_mods_folder {
+            return None;
+        }
+        let dir = self.root_path.join("original_mods");
+        dir.is_dir().then_some(dir)
+    }
+
+    /// Maps a path inside the live mods folder to its counterpart inside the
+    /// `original_mods/` backup, when the mods folder is frozen.
+    pub fn frozen_mods_backup_path(&self, live_path: &Path) -> Option<PathBuf> {
+        let backup_dir = self.frozen_mods_backup_dir()?;
+        let mods_dir = &self.content_state[ContentFolder::Mods].path;
+        let relative = live_path.strip_prefix(mods_dir).ok()?;
+        Some(backup_dir.join(relative))
+    }
+
+    /// Replaces the cached mods summaries after in-place edits made while the
+    /// folder is frozen (instance running), bumping the generation, reassigning
+    /// content ids, and notifying the frontend. While frozen the live folder is
+    /// not re-read from disk, so edits must update the cache directly.
+    fn refresh_frozen_mods_summaries(
+        &mut self,
+        backend: &Arc<BackendState>,
+        mut summaries: Vec<InstanceContentSummary>,
+    ) {
+        self.content_generation = self.content_generation.wrapping_add(1);
+        let generation = self.content_generation;
+        for (index, summary) in summaries.iter_mut().enumerate() {
+            summary.id = InstanceContentID { index, generation };
+        }
+        let summaries: Arc<[InstanceContentSummary]> = summaries.into();
+        let state = &mut self.content_state[ContentFolder::Mods];
+        state.generation = generation;
+        state.summaries = Some(summaries.clone());
+        backend.send.send(MessageToFrontend::InstanceContentUpdated {
+            id: self.id,
+            content_folder: ContentFolder::Mods,
+            content: summaries,
+        });
+    }
+
+    /// Removes the given content ids from the cached mods summaries. Used after
+    /// mirroring deletions to the backup folder while the instance is running.
+    pub fn remove_frozen_mods_summaries(&mut self, backend: &Arc<BackendState>, removed: &FxHashSet<InstanceContentID>) {
+        let Some(summaries) = self.content_state[ContentFolder::Mods].summaries.as_ref() else {
+            return;
+        };
+        let remaining: Vec<InstanceContentSummary> =
+            summaries.iter().filter(|summary| !removed.contains(&summary.id)).cloned().collect();
+        self.refresh_frozen_mods_summaries(backend, remaining);
+    }
+
+    /// Applies enabled/path updates to the cached mods summaries after toggles
+    /// applied while the instance is running.
+    pub fn apply_frozen_mod_toggles(
+        &mut self,
+        backend: &Arc<BackendState>,
+        toggles: &FxHashMap<InstanceContentID, (bool, Arc<Path>)>,
+    ) {
+        let Some(summaries) = self.content_state[ContentFolder::Mods].summaries.as_ref() else {
+            return;
+        };
+        let mut summaries: Vec<InstanceContentSummary> = summaries.to_vec();
+        for summary in &mut summaries {
+            if let Some((enabled, new_path)) = toggles.get(&summary.id) {
+                summary.enabled = *enabled;
+                summary.path = new_path.clone();
+            }
+        }
+        self.refresh_frozen_mods_summaries(backend, summaries);
+    }
+
+    /// Rebuilds the cached mods summaries from the `original_mods/` backup (the persistent
+    /// logical set while the instance is running) and notifies the frontend. Used after
+    /// mirroring an install/edit into the backup so newly added mods show up live, since the
+    /// live mods folder isn't re-read from disk while frozen. Paths are remapped back onto the
+    /// live mods dir so later edits map to the backup correctly.
+    pub fn reload_frozen_mods_from_backup(&mut self, backend: &Arc<BackendState>) {
+        let Some(backup_dir) = self.frozen_mods_backup_dir() else {
+            return;
+        };
+        let mods_dir = self.content_state[ContentFolder::Mods].path.clone();
+        let config = self.configuration.get();
+        let for_loader = config.loader;
+        let for_version = config.minecraft_version;
+
+        let mut summaries =
+            Self::load_content_all(&backup_dir, backend.mod_metadata_manager.clone(), for_loader, for_version);
+        for summary in &mut summaries {
+            if let Ok(relative) = summary.path.strip_prefix(&backup_dir) {
+                summary.path = mods_dir.join(relative).into();
+            }
+        }
+        self.refresh_frozen_mods_summaries(backend, summaries);
     }
 }
 

@@ -49,8 +49,30 @@ pub struct InstanceContentSubpage {
     content_states: ContentStates,
     content_list: Entity<ListState<ContentListDelegate>>,
     content: Entity<Arc<[InstanceContentSummary]>>,
+    // For non-Mods tabs: the mods folder, so bundled modpack resource-pack/shader children can be
+    // surfaced under their own tab. `None` for the Mods tab.
+    mods_content: Option<Entity<Arc<[InstanceContentSummary]>>>,
     sort_dropdown: Entity<SelectState<NamedDropdown<InstanceContentSortKey>>>,
     _add_from_file_task: Option<Task<()>>,
+}
+
+/// Combines a tab's own folder content with the modpack bundles from the mods folder (when
+/// provided), so a modpack's resource-pack/shader children can appear under the matching tab. The
+/// delegate then filters each modpack's children down to the ones destined for its folder.
+fn combined_content_of(
+    folder: &Entity<Arc<[InstanceContentSummary]>>,
+    mods: Option<&Entity<Arc<[InstanceContentSummary]>>>,
+    cx: &App,
+) -> Vec<InstanceContentSummary> {
+    let mut combined: Vec<InstanceContentSummary> = folder.read(cx).to_vec();
+    if let Some(mods) = mods {
+        for item in mods.read(cx).iter() {
+            if item.content_summary.extra.is_modpack() {
+                combined.push(item.clone());
+            }
+        }
+    }
+    combined
 }
 
 #[derive(Clone, Copy)]
@@ -168,6 +190,9 @@ impl InstanceContentSubpage {
 
         let content_folder = content_type.content_folder();
         let content = instance.content[content_folder].clone();
+        // Non-Mods tabs also read the mods folder so they can surface modpack-bundled content.
+        let mods_content = (content_folder != ContentFolder::Mods)
+            .then(|| instance.content[ContentFolder::Mods].clone());
 
         let config = InterfaceConfig::get(cx);
         let mut sort_key = content_type.sort_key(config);
@@ -180,13 +205,14 @@ impl InstanceContentSubpage {
 
         let mut content_list_delegate = ContentListDelegate::new(
             instance_id,
+            content_folder,
             backend_handle.clone(),
             instance_loader,
             instance_version,
             sort_key,
             enabled_first,
         );
-        content_list_delegate.set_content(content.read(cx));
+        content_list_delegate.set_content(&combined_content_of(&content, mods_content.as_ref(), cx));
 
         let sort_dropdown = cx.new(|cx| {
             let items = valid_sort_modes
@@ -202,12 +228,30 @@ impl InstanceContentSubpage {
         });
 
         let content_for_observe = content.clone();
+        let mods_for_observe = mods_content.clone();
         let content_list = cx.new(move |cx| {
-            cx.observe(&content_for_observe, |list: &mut ListState<ContentListDelegate>, content, cx| {
-                list.delegate_mut().set_content(content.read(cx));
-                cx.notify();
-            })
-            .detach();
+            {
+                let content_e = content_for_observe.clone();
+                let mods_e = mods_for_observe.clone();
+                cx.observe(
+                    &content_for_observe,
+                    move |list: &mut ListState<ContentListDelegate>, _, cx| {
+                        list.delegate_mut().set_content(&combined_content_of(&content_e, mods_e.as_ref(), cx));
+                        cx.notify();
+                    },
+                )
+                .detach();
+            }
+
+            if let Some(mods_e) = mods_for_observe.clone() {
+                let content_e = content_for_observe.clone();
+                let mods_for_closure = mods_e.clone();
+                cx.observe(&mods_e, move |list: &mut ListState<ContentListDelegate>, _, cx| {
+                    list.delegate_mut().set_content(&combined_content_of(&content_e, Some(&mods_for_closure), cx));
+                    cx.notify();
+                })
+                .detach();
+            }
 
             ListState::new(content_list_delegate, window, cx).selectable(false).searchable(true)
         });
@@ -229,7 +273,7 @@ impl InstanceContentSubpage {
                 let enabled_first = this.content_type.sort_enabled_first(config);
                 this.content_type.set_sort_key(config, sort_key);
 
-                let content = this.content.read(cx).clone();
+                let content = combined_content_of(&this.content, this.mods_content.as_ref(), cx);
                 let content_list = this.content_list.clone();
                 cx.update_entity(&content_list, |list, cx| {
                     list.delegate_mut().set_sort_options(sort_key, enabled_first);
@@ -251,6 +295,7 @@ impl InstanceContentSubpage {
             content_states,
             content_list,
             content,
+            mods_content,
             sort_dropdown,
             _add_from_file_task: None,
         }
@@ -287,6 +332,10 @@ impl Render for InstanceContentSubpage {
         let theme = cx.theme();
 
         self.content_states.observe(self.content_type.content_folder());
+        // Non-Mods tabs also surface modpack-bundled content, so make sure the mods folder loads.
+        if self.mods_content.is_some() {
+            self.content_states.observe(ContentFolder::Mods);
+        }
 
         let header = h_flex()
             .gap_3()
@@ -416,7 +465,7 @@ impl Render for InstanceContentSubpage {
                             let sort_key = this.content_type.sort_key(config);
                             this.content_type.set_sort_enabled_first(config, enabled_first);
 
-                            let content = this.content.read(cx).clone();
+                            let content = combined_content_of(&this.content, this.mods_content.as_ref(), cx);
                             let content_list = this.content_list.clone();
                             cx.update_entity(&content_list, |list, cx| {
                                 list.delegate_mut().set_sort_options(sort_key, enabled_first);

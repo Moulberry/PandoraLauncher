@@ -393,6 +393,18 @@ impl Settings {
                                     settings.update_backend_configuration(window, cx);
                                 }
                             })))
+                        .child(Checkbox::new("terminal-in-tab")
+                            .label(t::settings::windows::terminal_in_tab())
+                            .checked(interface_config.terminal_in_tab)
+                            .on_click(cx.listener({
+                                let backend_handle = self.backend_handle.clone();
+                                move |_settings, value, _window, cx| {
+                                    InterfaceConfig::get_mut(cx).terminal_in_tab = *value;
+                                    backend_handle.send(MessageToBackend::SetTerminalInTab {
+                                        value: *value
+                                    });
+                                }
+                            })))
                         .child(Checkbox::new("quit-on-main-close")
                             .label(t::settings::windows::close_all_when_main_closed())
                             .checked(interface_config.quit_on_main_closed)

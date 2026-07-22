@@ -10,7 +10,7 @@ use gpui_component::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entity::{DataEntities, instance::InstanceEntry}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{content_subpage::InstanceContentSubpage, logs_subpage::InstanceLogsSubpage, quickplay_subpage::InstanceQuickplaySubpage, settings_subpage::InstanceSettingsSubpage}, page::Page}, root,
+    entity::{DataEntities, instance::InstanceEntry}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{content_subpage::InstanceContentSubpage, logs_subpage::InstanceLogsSubpage, quickplay_subpage::InstanceQuickplaySubpage, settings_subpage::InstanceSettingsSubpage, terminal_subpage::InstanceTerminalSubpage}, page::Page}, root,
 };
 
 use super::content_subpage::ContentType;
@@ -25,6 +25,8 @@ pub struct InstancePage {
 impl InstancePage {
     pub fn new(instance_id: InstanceID, data: &DataEntities, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let instance = data.instances.read(cx).entries.get(&instance_id).unwrap().clone();
+
+        cx.observe(&instance, |_, _, cx| cx.notify()).detach();
 
         let instance_subpage = InterfaceConfig::get(cx).instance_subpage;
         let subpage = instance_subpage.create(&instance, data, data.backend_handle.clone(), window, cx);
@@ -144,62 +146,59 @@ impl Page for InstancePage {
 
 impl Render for InstancePage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let instance_subpage = InterfaceConfig::get(cx).instance_subpage;
+        let mut instance_subpage = InterfaceConfig::get(cx).instance_subpage;
+
+        let global_terminal_in_tab = InterfaceConfig::get(cx).terminal_in_tab;
+        let effective_terminal_in_tab = self.instance.read(cx).configuration.terminal_in_tab.unwrap_or(global_terminal_in_tab);
+
+        // The Terminal tab is shown whenever the instance's effective mode is "tab" (live, even
+        // before the first launch). If a "Terminal" selection is active but the effective mode is no
+        // longer tab, fall back to Settings.
+        if instance_subpage == InstanceSubpageType::Terminal && !effective_terminal_in_tab {
+            instance_subpage = InstanceSubpageType::Settings;
+        }
+
         if instance_subpage != self.subpage.page_type() {
             self.subpage = instance_subpage.create(&self.instance, &self.data, self.backend_handle.clone(), window, cx);
         }
 
         let show_shader_tab = self.instance.read(cx).configuration.show_shader_tab || matches!(self.subpage, InstanceSubpage::Shaders(_));
+        let show_terminal_tab = effective_terminal_in_tab;
 
-        let selected_index = match &self.subpage {
-            InstanceSubpage::Quickplay(_) => 0,
-            InstanceSubpage::Logs(_) => 1,
-            InstanceSubpage::Mods(_) => 2,
-            InstanceSubpage::ResourcePacks(_) => 3,
-            InstanceSubpage::Shaders(_) => 4,
-            InstanceSubpage::Settings(_) => if show_shader_tab { 5 } else { 4 },
-        };
+        let mut tabs: Vec<(InstanceSubpageType, SharedString)> = vec![
+            (InstanceSubpageType::Quickplay, t::instance::quickplay().into()),
+            (InstanceSubpageType::Logs, t::instance::logs::title().into()),
+            (InstanceSubpageType::Mods, t::instance::content::mods().into()),
+            (InstanceSubpageType::ResourcePacks, t::instance::content::resourcepacks().into()),
+        ];
+        if show_shader_tab {
+            tabs.push((InstanceSubpageType::Shaders, t::instance::content::shaders().into()));
+        }
+        tabs.push((InstanceSubpageType::Settings, t::settings::title().into()));
+        if show_terminal_tab {
+            tabs.push((InstanceSubpageType::Terminal, t::instance::terminal::title().into()));
+        }
+
+        let current_type = self.subpage.page_type();
+        let selected_index = tabs.iter().position(|(ty, _)| *ty == current_type).unwrap_or(0);
+        let tab_types: Vec<InstanceSubpageType> = tabs.iter().map(|(ty, _)| *ty).collect();
+
+        let mut tab_bar = TabBar::new("bar")
+            .prefix(div().w_4())
+            .selected_index(selected_index)
+            .underline();
+        for (_, label) in &tabs {
+            tab_bar = tab_bar.child(Tab::new().label(label.clone()));
+        }
+        let tab_bar = tab_bar.on_click(cx.listener(move |_, index: &usize, _, cx| {
+            if let Some(page_type) = tab_types.get(*index) {
+                InterfaceConfig::get_mut(cx).instance_subpage = *page_type;
+            }
+        }));
 
         v_flex()
             .size_full()
-            .child(
-                TabBar::new("bar")
-                    .prefix(div().w_4())
-                    .selected_index(selected_index)
-                    .underline()
-                    .child(Tab::new().label(t::instance::quickplay()))
-                    .child(Tab::new().label(t::instance::logs::title()))
-                    .child(Tab::new().label(t::instance::content::mods()))
-                    .child(Tab::new().label(t::instance::content::resourcepacks()))
-                    .when(show_shader_tab, |this| {
-                        this.child(Tab::new().label(t::instance::content::shaders()))
-                    })
-                    .child(Tab::new().label(t::settings::title()))
-                    .on_click(cx.listener(move |_, index, _, cx| {
-                        let page_type = match *index {
-                            0 => InstanceSubpageType::Quickplay,
-                            1 => InstanceSubpageType::Logs,
-                            2 => InstanceSubpageType::Mods,
-                            3 => InstanceSubpageType::ResourcePacks,
-                            4 => if show_shader_tab {
-                                InstanceSubpageType::Shaders
-                            } else {
-                                InstanceSubpageType::Settings
-                            },
-                            5 => {
-                                if show_shader_tab {
-                                    InstanceSubpageType::Settings
-                                } else {
-                                    return;
-                                }
-                            },
-                            _ => {
-                                return;
-                            },
-                        };
-                        InterfaceConfig::get_mut(cx).instance_subpage = page_type;
-                    })),
-            )
+            .child(tab_bar)
             .child(self.subpage.clone().into_any_element())
     }
 }
@@ -214,6 +213,7 @@ pub enum InstanceSubpageType {
     ResourcePacks,
     Shaders,
     Settings,
+    Terminal,
 }
 
 impl InstanceSubpageType {
@@ -244,6 +244,9 @@ impl InstanceSubpageType {
             InstanceSubpageType::Settings => InstanceSubpage::Settings(cx.new(|cx| {
                 InstanceSettingsSubpage::new(instance, data, backend_handle, window, cx)
             })),
+            InstanceSubpageType::Terminal => InstanceSubpage::Terminal(cx.new(|cx| {
+                InstanceTerminalSubpage::new(instance, window, cx)
+            })),
         }
     }
 }
@@ -256,6 +259,7 @@ pub enum InstanceSubpage {
     ResourcePacks(Entity<InstanceContentSubpage>),
     Shaders(Entity<InstanceContentSubpage>),
     Settings(Entity<InstanceSettingsSubpage>),
+    Terminal(Entity<InstanceTerminalSubpage>),
 }
 
 impl InstanceSubpage {
@@ -267,6 +271,7 @@ impl InstanceSubpage {
             InstanceSubpage::ResourcePacks(_) => InstanceSubpageType::ResourcePacks,
             InstanceSubpage::Shaders(_) => InstanceSubpageType::Shaders,
             InstanceSubpage::Settings(_) => InstanceSubpageType::Settings,
+            InstanceSubpage::Terminal(_) => InstanceSubpageType::Terminal,
         }
     }
 
@@ -278,6 +283,7 @@ impl InstanceSubpage {
             Self::ResourcePacks(entity) => entity.into_any_element(),
             Self::Shaders(entity) => entity.into_any_element(),
             Self::Settings(entity) => entity.into_any_element(),
+            Self::Terminal(entity) => entity.into_any_element(),
         }
     }
 }

@@ -111,6 +111,10 @@ pub enum MessageToBackend {
         id: InstanceID,
         sandbox: bool,
     },
+    SetInstanceTerminalInTab {
+        id: InstanceID,
+        value: Option<bool>,
+    },
     SetInstanceMemory {
         id: InstanceID,
         memory: InstanceMemoryConfiguration,
@@ -259,6 +263,9 @@ pub enum MessageToBackend {
     SetOpenGameOutputAfterLaunching {
         value: bool,
     },
+    SetTerminalInTab {
+        value: bool,
+    },
     SetProxyConfiguration {
         config: ProxyConfig,
         password: Option<String>,
@@ -360,6 +367,10 @@ pub enum MessageToFrontend {
     },
     CreateGameOutputWindow {
         receiver: tokio::sync::mpsc::UnboundedReceiver<GameOutputMsg>
+    },
+    AttachGameOutput {
+        id: InstanceID,
+        receiver: tokio::sync::mpsc::UnboundedReceiver<GameOutputMsg>,
     },
     AddNotification {
         notification_type: BridgeNotificationType,

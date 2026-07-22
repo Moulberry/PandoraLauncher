@@ -3107,6 +3107,72 @@ pub mod instance {
             }
         }
     }
+    #[rustfmt::skip]
+    pub mod terminal {
+        pub fn get(key: &str) -> Option<&'static str> {
+            match key {
+                "no_output" => Some(no_output()),
+                "title" => Some(title()),
+                _ => None,
+            }
+        }
+        #[rustfmt::skip]
+        pub mod mode {
+            pub fn get(key: &str) -> Option<&'static str> {
+                match key {
+                    "default" => Some(default()),
+                    "tab" => Some(tab()),
+                    "window" => Some(window()),
+                    _ => None,
+                }
+            }
+            pub fn default() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    1 => "Standard (global)",
+                    2 => "Alapértelmezett (globális)",
+                    3 => "По умолчанию (глобально)",
+                    4 => "Standard (global)",
+                    _ => "Default (global)",
+                }
+            }
+            pub fn tab() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    1 => "Immer im Tab",
+                    2 => "Mindig lapon",
+                    3 => "Всегда во вкладке",
+                    4 => "Alltid i flik",
+                    _ => "Always in tab",
+                }
+            }
+            pub fn window() -> &'static str {
+                match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                    1 => "Immer im Fenster",
+                    2 => "Mindig ablakban",
+                    3 => "Всегда в окне",
+                    4 => "Alltid i fönster",
+                    _ => "Always in window",
+                }
+            }
+        }
+        pub fn no_output() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Noch keine Ausgabe",
+                2 => "Még nincs kimenet",
+                3 => "Пока нет вывода",
+                4 => "Ingen utdata än",
+                _ => "No output yet",
+            }
+        }
+        pub fn title() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Spielausgabe",
+                2 => "Játéknapló",
+                3 => "Логи игры",
+                4 => "Spelutdata",
+                _ => "Game Output",
+            }
+        }
+    }
     pub fn title() -> &'static str {
         match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
             1 => "Instanzen",
@@ -4686,6 +4752,7 @@ pub mod settings {
                 "close_all_when_main_closed" => Some(close_all_when_main_closed()),
                 "hide_main_window" => Some(hide_main_window()),
                 "open_game_output" => Some(open_game_output()),
+                "terminal_in_tab" => Some(terminal_in_tab()),
                 "title" => Some(title()),
                 "use_os_titlebar" => Some(use_os_titlebar()),
                 _ => None,
@@ -4716,6 +4783,15 @@ pub mod settings {
                 3 => "Открывать логи игры при запуске",
                 4 => "Öppna spelutdata vid spelstart",
                 _ => "Open game output on launch",
+            }
+        }
+        pub fn terminal_in_tab() -> &'static str {
+            match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+                1 => "Spielausgabe stattdessen im Tab öffnen",
+                2 => "Játéknapló megnyitása lapon helyette",
+                3 => "Открывать логи игры во вкладке",
+                4 => "Öppna spelutdata i flik istället",
+                _ => "Open game output in tab instead",
             }
         }
         pub fn title() -> &'static str {

@@ -145,6 +145,13 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::SetInstanceTerminalInTab { id, value } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.terminal_in_tab = value;
+                    });
+                }
+            },
             MessageToBackend::SetInstanceMemory { id, memory } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.configuration.modify(|configuration| {
@@ -1411,6 +1418,11 @@ impl BackendState {
                     config.dont_open_game_output_when_launching = !value;
                 });
             },
+            MessageToBackend::SetTerminalInTab { value } => {
+                self.config.write().modify(|config| {
+                    config.terminal_in_tab = value;
+                });
+            },
             MessageToBackend::SetProxyConfiguration { config, password } => {
                 self.config.write().modify(|backend_config| {
                     backend_config.proxy = config;
@@ -2011,6 +2023,7 @@ impl BackendState {
         }
 
         let game_output = !self.config.write().get().dont_open_game_output_when_launching;
+        let effective_terminal_in_tab = configuration.terminal_in_tab_effective(self.config.write().get().terminal_in_tab);
 
         let launch_tracker = ProgressTracker::new(Arc::from("Launching"), self.send.clone());
         modal_action.trackers.push(launch_tracker.clone());
@@ -2026,7 +2039,12 @@ impl BackendState {
             Ok(mut child) => {
                 if game_output {
                     if let Some(stdout) = child.stdout.take() {
-                        log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
+                        let receiver = log_reader::start_game_output(stdout, child.stderr.take());
+                        if effective_terminal_in_tab {
+                            self.send.send(MessageToFrontend::AttachGameOutput { id, receiver });
+                        } else {
+                            self.send.send(MessageToFrontend::CreateGameOutputWindow { receiver });
+                        }
                     }
                 }
 

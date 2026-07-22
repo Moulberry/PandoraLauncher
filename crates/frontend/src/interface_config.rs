@@ -57,6 +57,8 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub terminal_in_tab: bool,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub quit_on_main_closed: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub use_os_titlebar: bool,
@@ -159,6 +161,7 @@ impl Default for InterfaceConfig {
             modrinth_page_project_type: default_modrinth_project_type(),
             curseforge_page_class_id: default_curseforge_class_id(),
             hide_main_window_on_launch: false,
+            terminal_in_tab: false,
             quit_on_main_closed: false,
             use_os_titlebar: false,
             hide_server_addresses: false,

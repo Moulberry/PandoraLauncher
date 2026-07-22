@@ -93,6 +93,12 @@ pub fn start(
 
         t::set_lang(&InterfaceConfig::get(cx).language);
 
+        // Keep the backend's routing copy of the global terminal-in-tab setting in sync with the
+        // frontend-owned value, so shortcut/CLI launches route correctly.
+        backend_handle.send(bridge::message::MessageToBackend::SetTerminalInTab {
+            value: InterfaceConfig::get(cx).terminal_in_tab,
+        });
+
         gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
 
         let theme_folder = launcher_dir.join("themes");

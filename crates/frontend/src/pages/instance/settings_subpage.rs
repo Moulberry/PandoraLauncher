@@ -40,6 +40,7 @@ pub struct InstanceSettingsSubpage {
     disable_file_syncing: bool,
     sandbox_available: bool,
     sandbox: bool,
+    terminal_mode_state: Entity<SelectState<NamedDropdown<Option<bool>>>>,
 
     memory_override_enabled: bool,
     memory_min_input_state: Entity<InputState>,
@@ -94,6 +95,7 @@ impl InstanceSettingsSubpage {
         let account = entry.configuration.preferred_account;
         let disable_file_syncing = entry.configuration.disable_file_syncing;
         let sandbox = entry.configuration.sandbox;
+        let terminal_in_tab_override = entry.configuration.terminal_in_tab;
 
         let sandbox_available = if cfg!(target_os = "linux") {
             command::is_command_available("bwrap") && command::is_command_available("xdg-dbus-proxy")
@@ -168,6 +170,21 @@ impl InstanceSettingsSubpage {
         });
         cx.subscribe_in(&loader_select_state, window, Self::on_loader_selected).detach();
 
+        let terminal_mode_state = cx.new(|cx| {
+            let items = vec![
+                NamedDropdownItem { name: t::instance::terminal::mode::default().into(), item: None::<bool> },
+                NamedDropdownItem { name: t::instance::terminal::mode::tab().into(), item: Some(true) },
+                NamedDropdownItem { name: t::instance::terminal::mode::window().into(), item: Some(false) },
+            ];
+            let selected = match terminal_in_tab_override {
+                None => 0usize,
+                Some(true) => 1,
+                Some(false) => 2,
+            };
+            SelectState::new(NamedDropdown::new(items), Some(IndexPath::new(selected)), window, cx)
+        });
+        cx.subscribe(&terminal_mode_state, Self::on_terminal_mode_selected).detach();
+
         cx.observe_in(instance, window, |page, instance, window, cx| {
             let entry = instance.read(cx);
             page.instance_root_label = PathLabel::new(entry.root_path.clone(), true);
@@ -229,6 +246,7 @@ impl InstanceSettingsSubpage {
             disable_file_syncing,
             sandbox_available,
             sandbox,
+            terminal_mode_state,
             memory_override_enabled: memory.enabled,
             memory_min_input_state,
             memory_max_input_state,
@@ -469,6 +487,26 @@ impl InstanceSettingsSubpage {
 			id: self.instance_id,
 			account: value.as_ref().map(|value| value.item),
 		});
+    }
+
+    pub fn on_terminal_mode_selected(
+        &mut self,
+        _state: Entity<SelectState<NamedDropdown<Option<bool>>>>,
+        event: &SelectEvent<NamedDropdown<Option<bool>>>,
+        cx: &mut Context<Self>,
+    ) {
+        let SelectEvent::Confirm(value) = event;
+        let value = value.as_ref().map(|item| item.item).unwrap_or(None);
+        // Apply optimistically to the frontend instance so the Terminal tab shows/hides live,
+        // then persist via the backend.
+        self.instance.update(cx, |entry, cx| {
+            entry.configuration.terminal_in_tab = value;
+            cx.notify();
+        });
+        self.backend_handle.send(MessageToBackend::SetInstanceTerminalInTab {
+            id: self.instance_id,
+            value,
+        });
     }
 
     pub fn on_loader_selected(
@@ -856,6 +894,10 @@ impl Render for InstanceSettingsSubpage {
                         sandbox: *value
                     });
                 }))
+            ))
+            .child(crate::labelled(
+                t::instance::terminal::title(),
+                Select::new(&self.terminal_mode_state).w_full(),
             ));
 
         let runtime_content = v_flex()

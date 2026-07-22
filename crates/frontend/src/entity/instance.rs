@@ -8,6 +8,8 @@ use gpui_component::select::SelectItem;
 use indexmap::IndexMap;
 use schema::{instance::InstanceConfiguration, unique_bytes::UniqueBytes};
 
+use crate::game_output::GameOutput;
+
 pub struct InstanceEntries {
     pub entries: IndexMap<InstanceID, Entity<InstanceEntry>>,
 }
@@ -44,6 +46,7 @@ impl InstanceEntries {
                 servers: cx.new(|_| [].into()),
                 content_states,
                 content: enum_map::EnumMap::from_fn(|_| cx.new(|_| [].into())),
+                terminal_output: None,
             };
             instance.title = instance.create_title();
 
@@ -209,6 +212,7 @@ pub struct InstanceEntry {
     pub servers: Entity<Arc<[InstanceServerSummary]>>,
     pub content_states: ContentStates,
     pub content: enum_map::EnumMap<ContentFolder, Entity<Arc<[InstanceContentSummary]>>>,
+    pub terminal_output: Option<Entity<GameOutput>>,
 }
 
 #[derive(Clone)]

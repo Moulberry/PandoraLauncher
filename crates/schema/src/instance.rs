@@ -35,6 +35,8 @@ pub struct InstanceConfiguration {
     pub show_shader_tab: bool,
     #[serde(default, deserialize_with = "crate::try_deserialize")]
     pub sandbox: bool, // Default sandbox to false when loading old configuration json
+    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "crate::skip_if_none")]
+    pub terminal_in_tab: Option<bool>,
 }
 
 impl InstanceConfiguration {
@@ -54,7 +56,16 @@ impl InstanceConfiguration {
             disable_file_syncing: false,
             show_shader_tab: false,
             sandbox: false,  // todo: for now, off by default. In the future, turn this on by default
+            terminal_in_tab: None,
         }
+    }
+}
+
+impl InstanceConfiguration {
+    /// Resolve where game output should go for this instance.
+    /// `None` follows the global default; `Some(v)` overrides it.
+    pub fn terminal_in_tab_effective(&self, global: bool) -> bool {
+        self.terminal_in_tab.unwrap_or(global)
     }
 }
 
@@ -314,4 +325,26 @@ fn get_shared_library_path_for_name(name: &str) -> Option<Arc<Path>> {
     }
 
     None
+}
+
+#[cfg(test)]
+mod terminal_in_tab_tests {
+    use super::*;
+
+    #[test]
+    fn effective_follows_global_when_none() {
+        let mut config = InstanceConfiguration::new("1.21".into(), Loader::Vanilla);
+        config.terminal_in_tab = None;
+        assert_eq!(config.terminal_in_tab_effective(true), true);
+        assert_eq!(config.terminal_in_tab_effective(false), false);
+    }
+
+    #[test]
+    fn effective_overrides_global() {
+        let mut config = InstanceConfiguration::new("1.21".into(), Loader::Vanilla);
+        config.terminal_in_tab = Some(true);
+        assert_eq!(config.terminal_in_tab_effective(false), true);
+        config.terminal_in_tab = Some(false);
+        assert_eq!(config.terminal_in_tab_effective(true), false);
+    }
 }

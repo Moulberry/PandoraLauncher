@@ -847,6 +847,7 @@ pub struct GameOutputRoot {
     _search_task: Task<()>,
     _search_input_subscription: Subscription,
     focus_handle: FocusHandle,
+    close_window_on_action: bool,
 }
 
 #[derive(Clone)]
@@ -956,6 +957,23 @@ impl GameOutputRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        Self::new_impl(game_output, true, window, cx)
+    }
+
+    pub fn new_in_tab(
+        game_output: Entity<GameOutput>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new_impl(game_output, false, window, cx)
+    }
+
+    fn new_impl(
+        game_output: Entity<GameOutput>,
+        close_window_on_action: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let scroll_state = Rc::clone(&game_output.read(cx).scroll_state);
 
         let search_state = cx.new(|cx| InputState::new(window, cx).placeholder(t::common::search()).clean_on_escape());
@@ -972,6 +990,7 @@ impl GameOutputRoot {
             _search_task: Task::ready(()),
             _search_input_subscription,
             focus_handle,
+            close_window_on_action,
         }
     }
 
@@ -1124,8 +1143,10 @@ impl Render for GameOutputRoot {
                 }
             }))
             .track_focus(&self.focus_handle)
-            .on_action(|_: &CloseWindow, window, _| {
-                window.remove_window();
+            .when(self.close_window_on_action, |this| {
+                this.on_action(|_: &CloseWindow, window, _| {
+                    window.remove_window();
+                })
             })
     }
 }

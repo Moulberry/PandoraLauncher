@@ -2737,3 +2737,45 @@ ru = "м"
 [time.s]
 en = "s"
 ru = "с"
+
+[settings.windows.terminal_in_tab]
+en = "Open game output in tab instead"
+de = "Spielausgabe stattdessen im Tab öffnen"
+hu = "Játéknapló megnyitása lapon helyette"
+ru = "Открывать логи игры во вкладке"
+sv = "Öppna spelutdata i flik istället"
+
+[instance.terminal.title]
+en = "Game Output"
+de = "Spielausgabe"
+hu = "Játéknapló"
+ru = "Логи игры"
+sv = "Spelutdata"
+
+[instance.terminal.no_output]
+en = "No output yet"
+de = "Noch keine Ausgabe"
+hu = "Még nincs kimenet"
+ru = "Пока нет вывода"
+sv = "Ingen utdata än"
+
+[instance.terminal.mode.default]
+en = "Default (global)"
+de = "Standard (global)"
+hu = "Alapértelmezett (globális)"
+ru = "По умолчанию (глобально)"
+sv = "Standard (global)"
+
+[instance.terminal.mode.tab]
+en = "Always in tab"
+de = "Immer im Tab"
+hu = "Mindig lapon"
+ru = "Всегда во вкладке"
+sv = "Alltid i flik"
+
+[instance.terminal.mode.window]
+en = "Always in window"
+de = "Immer im Fenster"
+hu = "Mindig ablakban"
+ru = "Всегда в окне"
+sv = "Alltid i fönster"

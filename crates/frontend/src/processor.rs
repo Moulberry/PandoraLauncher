@@ -196,6 +196,18 @@ impl Processor {
                     cx.new(|cx| Root::new(game_output_root, window, cx))
                 });
             },
+            MessageToFrontend::AttachGameOutput { id, receiver } => {
+                let game_output = cx.new(|cx| GameOutput::new(receiver, cx));
+                // Bind the cloned entity to a `let` first so the `read(cx)` guard is
+                // dropped before `instance.update(cx, …)` re-borrows `cx` mutably.
+                let instance = self.data.instances.read(cx).entries.get(&id).cloned();
+                if let Some(instance) = instance {
+                    instance.update(cx, |instance, cx| {
+                        instance.terminal_output = Some(game_output);
+                        cx.notify();
+                    });
+                }
+            },
             MessageToFrontend::MoveInstanceToTop { id } => {
                 InstanceEntries::move_to_top(&self.data.instances, id, cx);
             },

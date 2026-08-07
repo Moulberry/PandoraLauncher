@@ -567,11 +567,6 @@ impl Render for LauncherUI {
             .on_click({
                 let data = self.data.clone();
                 move |_, window, cx| {
-                    if data.accounts.read(cx).accounts.is_empty() {
-                        crate::root::start_new_account_login(&data.backend_handle, window, cx);
-                        return;
-                    }
-
                     let build = crate::modals::accounts::build_accounts_sheet(&data, window, cx);
                     window.open_sheet_at(gpui_component::Placement::Left, cx, build);
                 }

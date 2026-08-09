@@ -51,7 +51,6 @@ log.workspace = true
 minisign-verify.workspace = true
 tar.workspace = true
 runas.workspace = true
-rusqlite.workspace = true
 walkdir.workspace = true
 zip.workspace = true
 url.workspace = true
@@ -64,6 +63,11 @@ command.workspace = true
 junction.workspace = true
 mslnk.workspace = true
 windows.workspace = true
+# Bundled sqlite only on Windows (no system sqlite guaranteed). Linux/macOS use system sqlite for faster builds.
+rusqlite = { version = "0.38.0", features = ["bundled"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+rusqlite.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libseccomp.workspace = true

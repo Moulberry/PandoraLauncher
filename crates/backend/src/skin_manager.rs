@@ -146,6 +146,26 @@ impl SkinManager {
         image.height() == 64 || image.height() == 32
     }
 
+    pub fn generate_head(image: &mut DynamicImage) -> Option<UniqueBytes> {
+        let mut head = image.crop(8, 8, 8, 8);
+        let head_overlay = image.crop(40, 8, 8, 8);
+
+        image::imageops::overlay(&mut head, &head_overlay, 0, 0);
+
+        let mut head_bytes = Vec::new();
+        let mut cursor = Cursor::new(&mut head_bytes);
+        let encoder = image::codecs::png::PngEncoder::new_with_quality(
+            &mut cursor,
+            image::codecs::png::CompressionType::Best,
+            Default::default(),
+        );
+        if head.write_with_encoder(encoder).is_err() {
+            return None;
+        }
+
+        Some(UniqueBytes::new(&head_bytes))
+    }
+
     fn set_failed(skin_manager: Arc<RwLock<Self>>, skin_url: Arc<str>) {
         let previous = skin_manager.write().skins_download.insert(skin_url, SkinEntry::Failed);
 
@@ -186,26 +206,13 @@ impl SkinManager {
 
             log::info!("Successfully downloaded skin from {}", skin_url);
 
-            let mut head = image.crop(8, 8, 8, 8);
-            let head_overlay = image.crop(40, 8, 8, 8);
-
-            image::imageops::overlay(&mut head, &head_overlay, 0, 0);
-
-            let mut head_bytes = Vec::new();
-            let mut cursor = Cursor::new(&mut head_bytes);
-            let encoder = image::codecs::png::PngEncoder::new_with_quality(
-                &mut cursor,
-                image::codecs::png::CompressionType::Best,
-                Default::default(),
-            );
-            if head.write_with_encoder(encoder).is_err() {
+            let Some(head_png) = Self::generate_head(&mut image) else {
                 log::warn!("Error creating head for {}", skin_url);
                 Self::set_failed(skin_manager, skin_url);
                 return;
-            }
+            };
 
             let mut skin_manager_guard = skin_manager.write();
-            let head_png = UniqueBytes::new(&head_bytes);
             let skin = skin_manager_guard.create_skin(image.into_rgba8(), &*bytes);
 
             let previous = skin_manager_guard.skins_download.insert(

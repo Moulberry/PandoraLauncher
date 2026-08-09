@@ -3987,6 +3987,7 @@ pub mod skins {
             "copy_from_player" => Some(copy_from_player()),
             "download" => Some(download()),
             "no_offline" => Some(no_offline()),
+            "offline_note" => Some(offline_note()),
             "open_folder" => Some(open_folder()),
             "select_skin" => Some(select_skin()),
             "title" => Some(title()),
@@ -4062,6 +4063,14 @@ pub mod skins {
             2 => "Nem alkalmazhatóak kinézetek offline fiókokra",
             3 => "Skins kan inte tillämpas på offline-konton",
             _ => "Skins cannot be applied to offline accounts",
+        }
+    }
+    pub fn offline_note() -> &'static str {
+        match crate::LANG.load(std::sync::atomic::Ordering::Relaxed) {
+            1 => "Dieser Skin wird nur lokal für dich angezeigt",
+            2 => "Ez a kinézet csak helyben, neked jelenik meg",
+            3 => "Detta skinn visas endast för dig lokalt",
+            _ => "This skin will only be shown to you on your device",
         }
     }
     pub fn open_folder() -> &'static str {

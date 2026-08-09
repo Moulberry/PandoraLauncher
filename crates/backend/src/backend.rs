@@ -517,11 +517,13 @@ impl BackendState {
                 Ok(None) => true,
                 Ok(Some(status)) => {
                     log::info!("Child process {} is no longer alive: {}", process.id(), status);
+                    instance.skin_server_guards.remove(&process.id());
                     killed = true;
                     false
                 },
                 Err(err) => {
                     log::error!("An error occured while waiting for process {}: {:?}", process.id(), err);
+                    instance.skin_server_guards.remove(&process.id());
                     killed = true;
                     false
                 },
@@ -530,11 +532,13 @@ impl BackendState {
                 Ok(None) => true,
                 Ok(Some(status)) => {
                     log::info!("Child process {} closed: {}", process.id(), status);
+                    instance.skin_server_guards.remove(&process.id());
                     killed = true;
                     false
                 },
                 Err(err) => {
                     log::error!("An error occured while waiting for closing process {}: {:?}", process.id(), err);
+                    instance.skin_server_guards.remove(&process.id());
                     killed = true;
                     false
                 },
@@ -544,6 +548,7 @@ impl BackendState {
             let to_kill = instance.closing_processes.extract_if(.., |(_, deadline)| now > *deadline);
             for (process, _) in to_kill {
                 log::info!("Force killed process {}", process.id());
+                instance.skin_server_guards.remove(&process.id());
                 let result = process.kill();
                 killed = true;
                 if let Err(err) = result {

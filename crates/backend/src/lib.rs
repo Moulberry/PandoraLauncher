@@ -37,6 +37,7 @@ mod persistent;
 mod server_list_pinger;
 mod shortcut;
 mod skin_manager;
+mod skin_server;
 mod syncing;
 mod update;
 

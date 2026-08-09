@@ -34,6 +34,8 @@ use schema::{
     java_runtime_component::{JavaRuntimeComponentFile, JavaRuntimeComponentManifest},
     loader::Loader,
     maven::MavenCoordinate,
+    minecraft_profile::SkinVariant,
+    unique_bytes::UniqueBytes,
     version::{
         GameLibrary, GameLibraryArtifact, GameLibraryDownloads, GameLibraryExtractOptions, GameLogging, LaunchArgument,
         LaunchArgumentValue, MinecraftVersion, OsArch, OsName, PartialMinecraftVersion, Rule, RuleAction,
@@ -56,6 +58,7 @@ use crate::{
         },
         manager::{MetaLoadError, MetadataManager},
     },
+    skin_server::SkinServerGuard,
 };
 
 #[derive(Clone)]
@@ -89,7 +92,7 @@ pub enum LaunchError {
     #[error("Can't find {loader:?} version for Minecraft {minecraft}")]
     CantFindLoader {
         loader: Loader,
-        minecraft: &'static str
+        minecraft: &'static str,
     },
     #[error("Invalid instance name: {0}")]
     InvalidInstanceName(&'static str),
@@ -125,10 +128,11 @@ impl Launcher {
         instance_info: InstanceConfiguration,
         quick_play: Option<QuickPlayLaunch>,
         login_info: MinecraftLoginInfo,
+        offline_skin: Option<OfflineSkin>,
         read_game_output: bool,
         launch_tracker: &ProgressTracker,
         modal_action: &ModalAction,
-    ) -> Result<PandoraChild, LaunchError> {
+    ) -> Result<(PandoraChild, Option<SkinServerGuard>), LaunchError> {
         log::info!("Launching {:?}", dot_minecraft_path);
 
         launch_tracker.set_total(6);
@@ -262,6 +266,36 @@ impl Launcher {
             }
         }
 
+        let (skin_server, offline_skin_injection, offline_yggdrasil_url, offline_javaagent_path) =
+            if let Some(offline_skin) = &offline_skin {
+                if let Some((guard, url)) = crate::skin_server::start_skin_server(
+                    offline_skin.bytes.clone(),
+                    login_info.uuid,
+                    login_info.username.clone(),
+                    offline_skin.variant,
+                )
+                .await
+                {
+                    let injection = OfflineSkinInjection {
+                        url: Arc::from(url.as_str()),
+                        variant: offline_skin.variant,
+                    };
+                    // Yggdrasil API root for authlib-injector (e.g. http://127.0.0.1:port/api/yggdrasil)
+                    let yggdrasil_url = {
+                        let parsed = url::Url::parse(&url).ok();
+                        parsed
+                            .and_then(|u| u.port().map(|p| format!("http://127.0.0.1:{p}/api/yggdrasil")))
+                            .map(|s| Arc::from(s.as_str()))
+                    };
+                    let javaagent_path = yggdrasil_url.as_ref().and_then(|_| Self::ensure_authlib_injector(&self.directories));
+                    (Some((guard, url)), Some(injection), yggdrasil_url, javaagent_path)
+                } else {
+                    (None, None, None, None)
+                }
+            } else {
+                (None, None, None, None)
+            };
+
         let launch_context = LaunchContext {
             launch_wrapper_path: self.launch_wrapper.clone(),
             java_path,
@@ -278,6 +312,9 @@ impl Launcher {
             log_configuration,
             rule_context: launch_rule_context,
             login_info,
+            offline_skin_injection,
+            offline_yggdrasil_url,
+            offline_javaagent_path,
         };
 
         if modal_action.has_requested_cancel() {
@@ -290,7 +327,7 @@ impl Launcher {
 
         launch_tracker.add_count(1);
 
-        Ok(child)
+        Ok((child, skin_server.map(|(guard, _)| guard)))
     }
 
     async fn create_launch_version(
@@ -329,7 +366,8 @@ impl Launcher {
                         let loader_version = if let Some(preferred_version) = instance_info.preferred_loader_version {
                             Ok(preferred_version)
                         } else {
-                            let manifest = self.meta.fetch(&FabricLoaderManifestMetadataItem).map_err(LaunchError::from).await?;
+                            let manifest =
+                                self.meta.fetch(&FabricLoaderManifestMetadataItem).map_err(LaunchError::from).await?;
 
                             let mut latest_loader_version = manifest.0.iter().find(|v| v.stable);
                             if latest_loader_version.is_none() {
@@ -338,17 +376,22 @@ impl Launcher {
                             if let Some(latest_loader_version) = latest_loader_version {
                                 Ok(latest_loader_version.version)
                             } else {
-                                Err(LaunchError::CantFindLoader { loader: Loader::Fabric, minecraft: instance_info.minecraft_version.as_str() })
+                                Err(LaunchError::CantFindLoader {
+                                    loader: Loader::Fabric,
+                                    minecraft: instance_info.minecraft_version.as_str(),
+                                })
                             }
                         }?;
 
                         launch_tracker.add_count(1);
                         launch_tracker.notify();
 
-                        let value = meta.fetch(&FabricLaunchMetadataItem {
-                            minecraft_version,
-                            loader_version,
-                        }).await?;
+                        let value = meta
+                            .fetch(&FabricLaunchMetadataItem {
+                                minecraft_version,
+                                loader_version,
+                            })
+                            .await?;
 
                         launch_tracker.add_count(1);
                         launch_tracker.notify();
@@ -363,7 +406,8 @@ impl Launcher {
                     let minecraft_version = instance_info.minecraft_version;
 
                     async move {
-                        let versions = meta.fetch(&MinecraftVersionManifestMetadataItem).await.map_err(LaunchError::from)?;
+                        let versions =
+                            meta.fetch(&MinecraftVersionManifestMetadataItem).await.map_err(LaunchError::from)?;
 
                         launch_tracker.add_count(1);
                         launch_tracker.notify();
@@ -465,18 +509,23 @@ impl Launcher {
                 let Some(loader_version) = instance_info.determine_forge_loader_version(&manifest) else {
                     return Err(LaunchError::CantFindLoader {
                         loader: Loader::Forge,
-                        minecraft: instance_info.minecraft_version.as_str()
+                        minecraft: instance_info.minecraft_version.as_str(),
                     });
                 };
 
-                self.create_forgelike_launch_version(http_client, progress_trackers, launch_tracker, instance_info,
+                self.create_forgelike_launch_version(
+                    http_client,
+                    progress_trackers,
+                    launch_tracker,
+                    instance_info,
                     minecraft_versions,
                     loader_version,
                     "https://maven.minecraftforge.net/net/minecraftforge/forge/{0}/forge-{0}-installer.jar.sha1",
                     "net/minecraftforge/forge/{0}/forge-{0}-installer.jar",
                     "https://maven.minecraftforge.net/net/minecraftforge/forge/{0}/forge-{0}-installer.jar",
                     true,
-                ).await
+                )
+                .await
             },
             Loader::NeoForge => {
                 launch_tracker.add_total(7);
@@ -492,18 +541,23 @@ impl Launcher {
                 let Some(loader_version) = instance_info.determine_neoforge_loader_version(&manifest) else {
                     return Err(LaunchError::CantFindLoader {
                         loader: Loader::NeoForge,
-                        minecraft: instance_info.minecraft_version.as_str()
+                        minecraft: instance_info.minecraft_version.as_str(),
                     });
                 };
 
-                self.create_forgelike_launch_version(http_client, progress_trackers, launch_tracker, instance_info,
+                self.create_forgelike_launch_version(
+                    http_client,
+                    progress_trackers,
+                    launch_tracker,
+                    instance_info,
                     minecraft_versions,
                     loader_version,
                     "https://maven.neoforged.net/releases/net/neoforged/neoforge/{0}/neoforge-{0}-installer.jar.sha1",
                     "net/neoforged/neoforge/{0}/neoforge-{0}-installer.jar",
                     "https://maven.neoforged.net/releases/net/neoforged/neoforge/{0}/neoforge-{0}-installer.jar",
                     false,
-                ).await
+                )
+                .await
             },
         }
     }
@@ -528,7 +582,6 @@ impl Launcher {
         else {
             return Err(LaunchError::CantFindVersion(instance_info.minecraft_version.as_str()));
         };
-
 
         // Download base Minecraft version and neoforge installer hash
         let installer_hash_url = installer_hash_url.replace("{0}", &loader_version);
@@ -1995,6 +2048,35 @@ async fn do_libraries_load(
     futures::future::try_join_all(tasks).await
 }
 
+impl Launcher {
+    fn ensure_authlib_injector(directories: &crate::directories::LauncherDirectories) -> Option<PathBuf> {
+        const BYTES: &[u8] = include_bytes!("../../assets/authlib-injector.jar");
+        let path = directories.temp_dir.join("authlib-injector-1.2.5.jar");
+        // Write if missing or hash mismatch
+        let needs_write = match std::fs::read(&path) {
+            Ok(existing) => {
+                use sha1::Digest;
+                let mut hasher = Sha1::new();
+                hasher.update(&existing);
+                let existing_hash = hasher.finalize();
+                let mut hasher2 = Sha1::new();
+                hasher2.update(BYTES);
+                let expected_hash = hasher2.finalize();
+                existing_hash != expected_hash
+            }
+            Err(_) => true,
+        };
+        if needs_write {
+            let _ = std::fs::create_dir_all(&directories.temp_dir);
+            if crate::write_safe(&path, BYTES).is_err() {
+                log::error!("Failed to write authlib-injector jar");
+                return None;
+            }
+        }
+        Some(path)
+    }
+}
+
 pub enum ArgumentExpansionKey {
     NativesDirectory,
     LibrariesDirectory,
@@ -2218,6 +2300,16 @@ impl LaunchRuleContext {
     }
 }
 
+pub struct OfflineSkin {
+    pub bytes: UniqueBytes,
+    pub variant: SkinVariant,
+}
+
+pub struct OfflineSkinInjection {
+    url: Arc<str>,
+    variant: SkinVariant,
+}
+
 pub struct LaunchContext {
     pub launch_wrapper_path: Arc<Path>,
     pub java_path: PathBuf,
@@ -2234,6 +2326,9 @@ pub struct LaunchContext {
     pub log_configuration: Option<OsString>,
     pub rule_context: LaunchRuleContext,
     pub login_info: MinecraftLoginInfo,
+    pub offline_skin_injection: Option<OfflineSkinInjection>,
+    pub offline_yggdrasil_url: Option<Arc<str>>,
+    pub offline_javaagent_path: Option<PathBuf>,
 }
 
 impl LaunchContext {
@@ -2364,7 +2459,9 @@ impl LaunchContext {
         command.arg("-Dsun.stderr.encoding=UTF-8");
 
         // This is only needed for 1.18.2 and below, but lets just add it for all versions
-        if self.configuration.loader == Loader::Forge && version_info.java_version.as_ref().map_or(0, |v| v.major_version) > 8 {
+        if self.configuration.loader == Loader::Forge
+            && version_info.java_version.as_ref().map_or(0, |v| v.major_version) > 8
+        {
             command.arg("--add-exports");
             command.arg("cpw.mods.bootstraplauncher/cpw.mods.bootstraplauncher=ALL-UNNAMED");
         }
@@ -2408,6 +2505,12 @@ impl LaunchContext {
             }
         }
 
+        if let (Some(agent_path), Some(yggdrasil_url)) =
+            (&self.offline_javaagent_path, &self.offline_yggdrasil_url)
+        {
+            command.arg(format!("-javaagent:{}={}", agent_path.display(), yggdrasil_url));
+        }
+
         command.arg("com.moulberry.pandora.LaunchWrapper");
 
         if let Some(path) = std::env::var_os("PATH") {
@@ -2434,6 +2537,10 @@ impl LaunchContext {
                 self.launch_wrapper_path.clone(),
                 self.assets_root.clone(),
             ];
+
+            if let Some(agent_path) = &self.offline_javaagent_path {
+                allow_read.push(Arc::from(agent_path.as_path()));
+            }
 
             allow_read.push(java_path_parent_parent.into());
 
@@ -2604,7 +2711,13 @@ impl LaunchContext {
             ArgumentExpansionKey::AuthXuid => OsStr::new("").into(), // These are just used for telemetry
             ArgumentExpansionKey::VersionType => OsStr::new("release").into(),
             ArgumentExpansionKey::QuickPlayPath => OsStr::new("quickPlay/log.json").into(),
-            ArgumentExpansionKey::UserProperties => OsStr::new("{}").into(),
+            ArgumentExpansionKey::UserProperties => {
+                if let Some(injection) = &self.offline_skin_injection {
+                    OsString::from(self.build_user_properties(injection)).into()
+                } else {
+                    OsStr::new("{}").into()
+                }
+            },
             ArgumentExpansionKey::UserType => OsStr::new("msa").into(),
             ArgumentExpansionKey::ResolutionWidth => {
                 OsString::from(format!("{}", self.rule_context.custom_resolution.unwrap().0)).into()
@@ -2634,6 +2747,41 @@ impl LaunchContext {
                 }
             },
         }
+    }
+
+    fn build_user_properties(&self, injection: &OfflineSkinInjection) -> String {
+        use base64::Engine;
+
+        let mut skin = serde_json::json!({
+            "url": injection.url.to_string(),
+        });
+        if injection.variant == SkinVariant::Slim {
+            skin["metadata"] = serde_json::json!({ "model": "slim" });
+        }
+
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis())
+            .unwrap_or(0);
+
+        let textures = serde_json::json!({
+            "timestamp": timestamp,
+            "profileId": self.login_info.uuid.simple().to_string(),
+            "profileName": self.login_info.username.to_string(),
+            "textures": {
+                "SKIN": skin,
+            },
+        });
+
+        let encoded = base64::engine::general_purpose::STANDARD.encode(textures.to_string());
+
+        serde_json::json!({
+            "textures": [{
+                "name": "textures",
+                "value": encoded,
+            }],
+        })
+        .to_string()
     }
 }
 

@@ -316,6 +316,8 @@ async fn import_accounts_from_atlauncher(
                     username: account.minecraft_username.clone().into(),
                     offline: false,
                     head: None,
+                    offline_skin: None,
+                    offline_skin_variant: None,
                 },
             );
             if let Some(last_account) = launcher_config.last_account

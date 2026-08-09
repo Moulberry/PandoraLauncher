@@ -494,9 +494,7 @@ impl BackendState {
                     // disk — the resourcepacks/shaderpacks folders aren't rebuilt on launch the way
                     // mods are, so otherwise a deleted resource pack/shader would linger.
                     let mut extracted_removals: Vec<std::path::PathBuf> = Vec::new();
-                    if delete
-                        && let Some(files) = instance_mod.content_summary.extra.modpack_files()
-                    {
+                    if delete && let Some(files) = instance_mod.content_summary.extra.modpack_files() {
                         for file in files.iter() {
                             if file.path.as_str() != &*child_filename {
                                 continue;
@@ -656,7 +654,8 @@ impl BackendState {
                         (minecraft.version.clone(), minecraft.get_loader().unwrap_or(Loader::Vanilla))
                     },
                     _ => {
-                        modal_action.set_error_message("Not a supported modpack file (.mrpack or CurseForge .zip)".into());
+                        modal_action
+                            .set_error_message("Not a supported modpack file (.mrpack or CurseForge .zip)".into());
                         modal_action.set_finished();
                         return;
                     },
@@ -727,8 +726,9 @@ impl BackendState {
                     // While the instance is running the live mods folder is a throwaway copy
                     // that gets restored from `original_mods/` on stop, so mirror the delete
                     // into the backup folder to make it persist.
-                    let backup_path =
-                        (folder == ContentFolder::Mods).then(|| instance.frozen_mods_backup_path(&live_path)).flatten();
+                    let backup_path = (folder == ContentFolder::Mods)
+                        .then(|| instance.frozen_mods_backup_path(&live_path))
+                        .flatten();
                     let backup_aux_path = match (folder, &aux_path) {
                         (ContentFolder::Mods, Some(aux_path)) => instance.frozen_mods_backup_path(aux_path),
                         _ => None,
@@ -1622,14 +1622,7 @@ impl BackendState {
             MessageToBackend::AddOfflineAccount { name, uuid } => {
                 let mut account_info = self.account_info.write();
                 account_info.modify(|account_info| {
-                    account_info.accounts.insert(
-                        uuid,
-                        BackendAccount {
-                            username: name,
-                            offline: true,
-                            head: None,
-                        },
-                    );
+                    account_info.accounts.insert(uuid, BackendAccount::new_offline(name));
                     account_info.selected_account = Some(uuid);
                 });
             },
@@ -1660,7 +1653,10 @@ impl BackendState {
                 account_info.modify(|account_info| {
                     let to_index = (from_index as isize + delta) as usize;
 
-                    if from_index >= account_info.accounts.len() || to_index >= account_info.accounts.len() || from_index == to_index {
+                    if from_index >= account_info.accounts.len()
+                        || to_index >= account_info.accounts.len()
+                        || from_index == to_index
+                    {
                         return;
                     }
 
@@ -1845,12 +1841,24 @@ impl BackendState {
             MessageToBackend::GetAccountSkin { account, result } => {
                 let backend = self.clone();
                 tokio::task::spawn(async move {
-                    let Some(account) = backend.get_minecraft_profile(account).await else {
+                    let stored = {
+                        let mut account_info = backend.account_info.write();
+                        account_info.get().accounts.get(&account).map(|account| {
+                            (account.offline, account.offline_skin.clone(), account.offline_skin_variant())
+                        })
+                    };
+
+                    if let Some((true, skin, variant)) = stored {
+                        _ = result.send(AccountSkinResult::Success { skin, variant });
+                        return;
+                    }
+
+                    let Some(profile) = backend.get_minecraft_profile(account).await else {
                         _ = result.send(AccountSkinResult::NeedsLogin);
                         return;
                     };
 
-                    if let Some(skin) = account.active_skin() {
+                    if let Some(skin) = profile.active_skin() {
                         SkinManager::frontend_request(&backend, skin.url.clone(), skin.variant, result);
                     } else {
                         _ = result.send(AccountSkinResult::Success {
@@ -1861,6 +1869,37 @@ impl BackendState {
                 });
             },
             MessageToBackend::SetAccountSkin { account, skin, variant } => {
+                let is_offline = {
+                    let mut account_info = self.account_info.write();
+                    account_info.get().accounts.get(&account).map(|account| account.offline).unwrap_or(false)
+                };
+
+                if is_offline {
+                    let Ok(mut image) = image::load_from_memory(&skin) else {
+                        self.send.send_error("Unable to load skin image");
+                        return;
+                    };
+                    if !SkinManager::is_valid_size(&image) {
+                        self.send.send_error("Skin must be 64x64 or 64x32 pixels");
+                        return;
+                    }
+                    let Some(head) = SkinManager::generate_head(&mut image) else {
+                        self.send.send_error("Unable to process skin image");
+                        return;
+                    };
+
+                    let mut account_info = self.account_info.write();
+                    account_info.modify(|account_info| {
+                        if let Some(account) = account_info.accounts.get_mut(&account) {
+                            account.offline_skin = Some(skin);
+                            account.offline_skin_variant = Some(variant);
+                            account.head = Some(head);
+                        }
+                    });
+                    self.send.send(account_info.get().create_update_message());
+                    return;
+                }
+
                 let Some((_, access_token)) = self.noninteractive_login_flow(account).await else {
                     self.send.send_error("Unable to get access token");
                     return;
@@ -2293,6 +2332,18 @@ impl BackendState {
             return;
         };
 
+        let offline_skin = if login_info.access_token.is_none() {
+            let mut account_info = self.account_info.write();
+            account_info.get().accounts.get(&login_info.uuid).and_then(|account| {
+                account.offline_skin.clone().map(|bytes| crate::launch::OfflineSkin {
+                    bytes,
+                    variant: account.offline_skin_variant(),
+                })
+            })
+        } else {
+            None
+        };
+
         tokio::select! {
             _ = self.prelaunch(id, &modal_action) => {},
             _ = modal_action.request_cancel.cancelled() => {
@@ -2318,6 +2369,7 @@ impl BackendState {
                 configuration,
                 quick_play,
                 login_info,
+                offline_skin,
                 game_output,
                 &launch_tracker,
                 &modal_action,
@@ -2331,7 +2383,7 @@ impl BackendState {
 
         let is_err = result.is_err();
         match result {
-            Ok(mut child) => {
+            Ok((mut child, skin_server)) => {
                 if game_output {
                     if let Some(stdout) = child.stdout.take() {
                         log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
@@ -2344,7 +2396,11 @@ impl BackendState {
                 child.stdout.take();
 
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    let process_id = child.process.id();
                     instance.processes.push(child.process);
+                    if let Some(skin_server) = skin_server {
+                        instance.skin_server_guards.insert(process_id, skin_server);
+                    }
                     instance.update_session();
                     self.quit_coordinator.set_can_quit(false);
                 }

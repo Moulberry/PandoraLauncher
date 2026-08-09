@@ -2096,6 +2096,11 @@ en = "Skins cannot be applied to offline accounts"
 de = "Skins können nicht auf Offline-Konten angewant werden"
 hu = "Nem alkalmazhatóak kinézetek offline fiókokra"
 sv = "Skins kan inte tillämpas på offline-konton"
+[skins.offline_note]
+en = "This skin will only be shown to you on your device"
+de = "Dieser Skin wird nur lokal für dich angezeigt"
+hu = "Ez a kinézet csak helyben, neked jelenik meg"
+sv = "Detta skinn visas endast för dig lokalt"
 [skins.add_from_file]
 en = "Add from file"
 de = "Füge aus Datei hinzu"

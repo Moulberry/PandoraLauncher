@@ -335,6 +335,8 @@ async fn import_accounts_from_multimc(
                                 username: profile.name.clone(),
                                 offline: false,
                                 head: None,
+                                offline_skin: None,
+                                offline_skin_variant: None,
                             },
                         );
                     }

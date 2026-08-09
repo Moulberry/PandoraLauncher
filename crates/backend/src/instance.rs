@@ -41,6 +41,7 @@ use crate::{
     mod_metadata::{ContentUpdateAction, ContentUpdateKey, ModMetadataManager},
     persistent::Persistent,
     server_list_pinger::{PingResult, ServerListPinger},
+    skin_server::SkinServerGuard,
 };
 
 #[derive(Debug)]
@@ -58,6 +59,7 @@ pub struct Instance {
     pub launch_keepalive: Option<KeepAliveHandle>,
     pub processes: Vec<PandoraProcess>,
     pub closing_processes: Vec<(PandoraProcess, Instant)>,
+    pub skin_server_guards: FxHashMap<u32, SkinServerGuard>,
     session_started_at: Option<Instant>,
 
     pub worlds_state: BridgeDataLoadState,
@@ -844,6 +846,7 @@ impl Instance {
             launch_keepalive: None,
             processes: Vec::new(),
             closing_processes: Vec::new(),
+            skin_server_guards: FxHashMap::default(),
             session_started_at: None,
 
             worlds_state: BridgeDataLoadState::default(),

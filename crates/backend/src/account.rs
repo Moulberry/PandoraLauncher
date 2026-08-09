@@ -3,7 +3,10 @@ use std::sync::Arc;
 use auth::models::MinecraftAccessToken;
 use bridge::{account::Account, message::MessageToFrontend};
 use indexmap::IndexMap;
-use schema::{minecraft_profile::MinecraftProfileResponse, unique_bytes::UniqueBytes};
+use schema::{
+    minecraft_profile::{MinecraftProfileResponse, SkinVariant},
+    unique_bytes::UniqueBytes,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -46,6 +49,10 @@ pub struct BackendAccount {
     #[serde(default)]
     pub offline: bool,
     pub head: Option<UniqueBytes>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offline_skin: Option<UniqueBytes>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offline_skin_variant: Option<SkinVariant>,
 }
 
 impl BackendAccount {
@@ -54,6 +61,22 @@ impl BackendAccount {
             username: profile.name.clone(),
             offline: false,
             head: None,
+            offline_skin: None,
+            offline_skin_variant: None,
         }
+    }
+
+    pub fn new_offline(username: Arc<str>) -> Self {
+        Self {
+            username,
+            offline: true,
+            head: None,
+            offline_skin: None,
+            offline_skin_variant: None,
+        }
+    }
+
+    pub fn offline_skin_variant(&self) -> SkinVariant {
+        self.offline_skin_variant.unwrap_or(SkinVariant::Classic)
     }
 }

@@ -248,10 +248,12 @@ impl Render for SkinsPage {
         let mut active_skin = None;
         let mut active_skin_variant = None;
         let controls;
+        let mut is_offline = false;
 
         let selected_account = self.data.accounts.read(cx).selected_account.clone();
         if let Some(account) = selected_account {
             let uuid = account.uuid;
+            is_offline = account.offline;
             let username = account.username(InterfaceConfig::get(cx).hide_usernames);
             let optifine_url = optifine_cape_url(&account.username);
             let optifine_uri: SharedUri = SharedString::new(optifine_url).into();
@@ -261,9 +263,7 @@ impl Render for SkinsPage {
                     widget.set_cape(cx, optifine_cape.clone());
                 });
             }
-            if account.offline {
-                controls = t::skins::no_offline().into_any_element();
-            } else if self.applying_to_account == Some(uuid) {
+            if self.applying_to_account == Some(uuid) {
                 if let Some(AccountSkinResult::Success { skin, variant }) = self.account_skins.get(&uuid) {
                     active_skin = skin.clone();
                     active_skin_variant = Some(*variant);
@@ -292,7 +292,7 @@ impl Render for SkinsPage {
                                 || *variant != selected_variant
                                 || self.active_cape != self.selected_cape
                         } else {
-                            self.active_cape != self.selected_cape
+                            self.selected_skin != *DEFAULT_SKIN || self.active_cape != self.selected_cape
                         };
                         controls = h_flex()
                             .gap_2()
@@ -312,6 +312,8 @@ impl Render for SkinsPage {
 
                                             if let Some(skin) = skin.clone() {
                                                 page.select_skin(skin, variant, cx);
+                                            } else {
+                                                page.select_skin(DEFAULT_SKIN.clone(), variant, cx);
                                             }
                                             cx.notify();
                                         })
@@ -326,9 +328,11 @@ impl Render for SkinsPage {
                                     .on_click({
                                         let skin = skin.clone();
                                         cx.listener(move |page, _, _, cx| {
-                                            if let Some(skin) = &skin
-                                                && skin != &page.selected_skin
-                                            {
+                                            let should_apply_skin = match &skin {
+                                                Some(stored_skin) => stored_skin != &page.selected_skin,
+                                                None => page.selected_skin != *DEFAULT_SKIN,
+                                            };
+                                            if should_apply_skin {
                                                 page.data.backend_handle.send(MessageToBackend::SetAccountSkin {
                                                     account: uuid,
                                                     skin: page.selected_skin.clone(),
@@ -817,6 +821,7 @@ impl Render for SkinsPage {
                     .w(px(220.0))
                     .flex_shrink_0()
                     .child(controls)
+                    .when(is_offline, |this| this.child(t::skins::offline_note()))
                     .child(self.player_model_widget.clone()),
             )
             .child(library.overflow_y_scrollbar())

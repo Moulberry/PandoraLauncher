@@ -177,6 +177,7 @@ impl Render for SyncingPage {
             .child(self.create_entry(sync_state, "config".into(), false, t::instance::sync::targets::config().into(), warning, info, cx))
             .child(self.create_entry(sync_state, "screenshots".into(), false, t::instance::sync::targets::screenshots().into(), warning, info, cx))
             .child(self.create_entry(sync_state, "resourcepacks".into(), false, t::instance::sync::targets::resourcepacks().into(), warning, info, cx))
+            .child(self.create_entry(sync_state, "downloads".into(), false, t::instance::sync::targets::downloads().into(), warning, info, cx))
             .child(self.create_entry(sync_state, "shaderpacks".into(), false, t::instance::sync::targets::shaderpacks().into(), warning, info, cx))
             .child(div().w_full().border_b_1().border_color(cx.theme().border).text_lg().child(t::instance::sync::mods()))
             .child(self.create_entry(sync_state, "flashback".into(), false, t::instance::sync::targets::flashback().into(), warning, info, cx))
@@ -257,6 +258,7 @@ static NAMED_SYNC_TARGETS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         "config",
         "screenshots",
         "resourcepacks",
+        "downloads",
         "shaderpacks",
         "flashback",
         "Distant_Horizons_server_data",

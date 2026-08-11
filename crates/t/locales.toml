@@ -2355,6 +2355,10 @@ de = "Synchronisiere Ressourcenpakete (resourcepacks)"
 hu = "Forráscsomagok mappájának szinkronizálása"
 sv = "Synka resurspakets folder"
 ru = "Синхронизировать ресурспаки (resourcepacks)"
+[instance.sync.targets.downloads]
+en = "Sync downloads folder"
+de = "Synchronisiere Server-Ressourcenpakete (downloads)"
+sv = "Synka serverresurspakets mappan (downloads)"
 [instance.sync.targets.shaderpacks]
 en = "Sync shaderpacks folder"
 de = "Synchronisiere Shaderpakete (shaderpacks)"

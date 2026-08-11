@@ -325,6 +325,7 @@ static DEFAULT_FOLDERS: Lazy<Vec<Arc<str>>> = Lazy::new(|| {
         "config",
         "screenshots",
         "resourcepacks",
+        "downloads",
         "shaderpacks",
         "flashback",
         "Distant_Horizons_server_data",

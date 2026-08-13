@@ -14,6 +14,8 @@ use uuid::Uuid;
 mod backend_filesystem;
 mod backend_handler;
 
+pub mod api_server;
+
 mod account;
 mod arcfactory;
 mod directories;

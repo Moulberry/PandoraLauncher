@@ -444,6 +444,14 @@ impl BridgeDataLoadState {
         self.0.load(std::sync::atomic::Ordering::Acquire) != Self::UNLOADED
     }
 
+    /// True only once a load has completed and none is in flight (LOADING bit
+    /// clear and no longer UNLOADED). Used to wait for a real result rather
+    /// than reading the empty pre-load snapshot mid-load.
+    pub fn is_loaded_idle(&self) -> bool {
+        let value = self.0.load(std::sync::atomic::Ordering::Acquire);
+        value != Self::UNLOADED && (value & Self::LOADING) == 0
+    }
+
     pub fn set_observed(&self) {
         self.0.fetch_or(Self::OBSERVED, std::sync::atomic::Ordering::AcqRel);
     }
@@ -508,6 +516,7 @@ pub enum UrlOrFile {
     }
 }
 
+#[derive(Clone)]
 pub struct GameOutputMsg {
     pub time: i64,
     pub level: GameOutputLogLevel,

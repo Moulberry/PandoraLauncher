@@ -85,11 +85,24 @@ impl BackendState {
                 self.create_instance(&name, &version, loader, icon).await;
             },
             MessageToBackend::DeleteInstance { id } => {
-                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                let removed = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     let result = std::fs::remove_dir_all(&instance.root_path);
                     if let Err(err) = result {
                         self.send.send_error(format!("Unable to delete instance folder: {}", err));
+                        false
+                    } else {
+                        true
                     }
+                } else {
+                    false
+                };
+                // Deregister immediately rather than waiting on the filesystem
+                // watcher: FSEvents intermittently drops the removal event on
+                // macOS, leaving a ghost instance in the registry until
+                // restart. remove_instance is a no-op for the later watcher
+                // event (the id is already gone from the slab).
+                if removed {
+                    self.remove_instance(id);
                 }
             },
             MessageToBackend::ExportInstance { id, format, options, output, modal_action } => {
@@ -305,7 +318,15 @@ impl BackendState {
                 quick_play,
                 modal_action,
             } => {
-                self.start_instance(id, quick_play, modal_action).await
+                // Spawned so a slow launch (network token refresh, asset and
+                // Java downloads, prelaunch copies) does not park the message
+                // loop: kills, config edits, API queries and process reaping
+                // keep working while the launch runs. Progress/errors still
+                // flow through modal_action.
+                let backend = self.clone();
+                tokio::task::spawn(async move {
+                    backend.start_instance(id, quick_play, modal_action).await;
+                });
             },
             MessageToBackend::SetContentEnabled { id, content_ids: mod_ids, enabled } => {
                 let mut instance_state = self.instance_state.write();
@@ -434,9 +455,20 @@ impl BackendState {
                     changes.dirty_path(summary.path);
                     instance.mark_content_dirty(self, ContentFolder::Mods, changes, true);
                 }
+                // Signal completion so ops.status reports finished for API
+                // clients (the download itself does not set this).
+                modal_action.set_finished();
             },
             MessageToBackend::DownloadAllMetadata => {
-                self.download_all_metadata().await;
+                // Spawned rather than awaited inline: download_all_metadata
+                // issues 1000+ fetches and panics on any failure. On the
+                // message loop that panic would unwind the whole backend and
+                // silently brick it; on its own task tokio contains the panic
+                // and the loop keeps running.
+                let this = self.clone();
+                tokio::spawn(async move {
+                    this.download_all_metadata().await;
+                });
             },
             MessageToBackend::InstallContent { content, modal_action } => {
                 let this = self.clone();
@@ -1358,8 +1390,15 @@ impl BackendState {
                 tracker.notify();
             },
             MessageToBackend::AddNewAccount { modal_action } => {
-                self.login_flow(&modal_action, None).await;
-                modal_action.set_finished();
+                // Spawned: the Microsoft login flow waits on a browser
+                // redirect that may never come (especially when triggered
+                // headless over the control API); it must not park the
+                // message loop. login_semaphore already serializes flows.
+                let backend = self.clone();
+                tokio::task::spawn(async move {
+                    backend.login_flow(&modal_action, None).await;
+                    modal_action.set_finished();
+                });
             },
             MessageToBackend::AddOfflineAccount { name, uuid } => {
                 let mut account_info = self.account_info.write();
@@ -1563,7 +1602,10 @@ impl BackendState {
                 tokio::task::spawn(crate::update::install_update(self.redirecting_http_client.clone(), self.directories.clone(), self.send.clone(), update, modal_action));
             },
             MessageToBackend::ImportFromOtherLauncher { launcher, import_job, modal_action } => {
-                crate::launcher_import::import_from_other_launcher(self, launcher, import_job, modal_action).await;
+                crate::launcher_import::import_from_other_launcher(self, launcher, import_job, modal_action.clone()).await;
+                // Signal completion so ops.status reports finished for API
+                // clients regardless of which import path was taken.
+                modal_action.set_finished();
             },
             MessageToBackend::GetAccountSkin { account, result } => {
                 let backend = self.clone();
@@ -1925,8 +1967,12 @@ impl BackendState {
                 }
             },
             MessageToBackend::Login { account, modal_action } => {
-                self.login_flow(&modal_action, Some(account)).await;
-                modal_action.set_finished();
+                // Spawned for the same reason as AddNewAccount.
+                let backend = self.clone();
+                tokio::task::spawn(async move {
+                    backend.login_flow(&modal_action, Some(account)).await;
+                    modal_action.set_finished();
+                });
             },
             MessageToBackend::Quit => {
                 self.should_quit.store(true, Ordering::Relaxed);
@@ -2005,7 +2051,7 @@ impl BackendState {
             Ok(mut child) => {
                 if game_output {
                     if let Some(stdout) = child.stdout.take() {
-                        log_reader::start_game_output(stdout, child.stderr.take(), self.send.clone());
+                        log_reader::start_game_output(id, stdout, child.stderr.take(), self.send.clone(), self.game_output_tap.read().clone());
                     }
                 }
 

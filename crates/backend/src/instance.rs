@@ -928,6 +928,21 @@ impl Instance {
         self.session_started_at.is_some()
     }
 
+    /// Last loaded world list, if any (None until a load completed).
+    pub fn cached_worlds(&self) -> Option<Arc<[InstanceWorldSummary]>> {
+        self.worlds.clone()
+    }
+
+    /// Last loaded server list, if any (None until a load completed).
+    pub fn cached_servers(&self) -> Option<Arc<[InstanceServerSummary]>> {
+        self.servers.clone()
+    }
+
+    /// Last loaded content summaries for a folder, if any.
+    pub fn cached_content(&self, folder: ContentFolder) -> Option<Arc<[InstanceContentSummary]>> {
+        self.content_state[folder].summaries.clone()
+    }
+
     pub fn status(&self) -> InstanceStatus {
         if !self.processes.is_empty() {
             InstanceStatus::Running

@@ -8,6 +8,7 @@ build = "build.rs"
 frontend.workspace = true
 backend.workspace = true
 tokio.workspace = true
+serde_json.workspace = true
 tokio-util.workspace = true
 bridge.workspace = true
 backtrace.workspace = true

@@ -47,6 +47,19 @@ enum SkinEntry {
 }
 
 impl SkinManager {
+    /// Snapshot of the loaded skin-library images (empty until a load runs).
+    /// Read by the control API after triggering RequestSkinLibrary.
+    pub fn skin_library(&self) -> Arc<[UniqueBytes]> {
+        self.skin_library.clone()
+    }
+
+    /// Whether a skin-library load has completed and none is in flight, so the
+    /// snapshot from skin_library() is a real result rather than the empty
+    /// pre-load state.
+    pub fn skin_library_ready(&self) -> bool {
+        self.skin_library_state.is_loaded_idle()
+    }
+
     fn create_skin(&mut self, image: RgbaImage, bytes: &[u8]) -> UniqueBytes {
         if let Some(cached) = self.skin_cache.get(&image) {
             cached.clone()

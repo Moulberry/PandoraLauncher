@@ -33,9 +33,36 @@ pub fn replace(string: &str) -> Cow<'_, str> {
     replaced
 }
 
-pub fn start_game_output(stdout: PipeReader, stderr: Option<PipeReader>, frontend: FrontendHandle) {
+pub fn start_game_output(
+    id: bridge::instance::InstanceID,
+    stdout: PipeReader,
+    stderr: Option<PipeReader>,
+    frontend: FrontendHandle,
+    tap: Option<crate::GameOutputTap>,
+) {
+    // The producer threads below send to `sender`. When a control-API client
+    // is streaming (tap present), interpose a relay that tees each message to
+    // the tap and forwards it to the frontend window; otherwise wire the
+    // producers straight to the frontend as before.
     let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-    frontend.send(MessageToFrontend::CreateGameOutputWindow { receiver });
+    if let Some(tap) = tap {
+        let (fe_tx, fe_rx) = tokio::sync::mpsc::unbounded_channel();
+        frontend.send(MessageToFrontend::CreateGameOutputWindow { receiver: fe_rx });
+        // Producers feed `sender`; drain its `receiver` here, tee to the API
+        // tap, and forward to the frontend window. Relaying continues until
+        // the game exits (all producer senders dropped), so closing the
+        // window no longer stops log capture, which is what an API subscriber
+        // wants.
+        let mut relay_rx = receiver;
+        std::thread::spawn(move || {
+            while let Some(msg) = relay_rx.blocking_recv() {
+                tap(id, &msg);
+                let _ = fe_tx.send(msg);
+            }
+        });
+    } else {
+        frontend.send(MessageToFrontend::CreateGameOutputWindow { receiver });
+    }
 
     if let Some(stderr) = stderr {
         let sender = sender.clone();

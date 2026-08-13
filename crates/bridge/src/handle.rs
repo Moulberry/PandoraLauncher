@@ -1,11 +1,19 @@
 use std::sync::Arc;
 
+use parking_lot::RwLock;
 #[cfg(debug_assertions)]
 use tokio::sync::mpsc::{Receiver, Sender};
 #[cfg(not(debug_assertions))]
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::{message::{BridgeNotificationType, MessageToBackend, MessageToFrontend}, serial::{AtomicOptionSerial, AtomicSerialProvider, AtomicSetSerial, Serial}};
+
+/// Observer invoked (synchronously, on the sending thread) for every
+/// MessageToFrontend that passes through any clone of a FrontendHandle.
+/// Installed once by the backend's API server so external clients can
+/// subscribe to state-change events without disturbing the single-consumer
+/// frontend channel. Must be cheap and non-blocking.
+pub type FrontendTap = Arc<dyn Fn(&MessageToFrontend) + Send + Sync>;
 
 pub fn create_pair() -> (BackendReceiver, BackendHandle, FrontendReceiver, FrontendHandle) {
     #[cfg(debug_assertions)]
@@ -39,6 +47,7 @@ pub fn create_pair() -> (BackendReceiver, BackendHandle, FrontendReceiver, Front
             sender: frontend_send,
             processed_serial: frontend_serial.clone(),
             next_serial: Default::default(),
+            tap: Arc::new(RwLock::new(None)),
         }
     )
 }
@@ -137,7 +146,7 @@ impl BackendHandle {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FrontendHandle {
     #[cfg(debug_assertions)]
     sender: Sender<(MessageToFrontend, Option<Serial>)>,
@@ -145,13 +154,34 @@ pub struct FrontendHandle {
     sender: UnboundedSender<(MessageToFrontend, Option<Serial>)>,
     processed_serial: AtomicSetSerial,
     next_serial: AtomicSerialProvider,
+    // Shared by every clone (created once in create_pair), so a tap installed
+    // after startup is seen by handles cloned before it.
+    tap: Arc<RwLock<Option<FrontendTap>>>,
+}
+
+impl std::fmt::Debug for FrontendHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FrontendHandle").finish_non_exhaustive()
+    }
 }
 
 unsafe impl Send for FrontendHandle {}
 unsafe impl Sync for FrontendHandle {}
 
 impl FrontendHandle {
+    /// Install the message tap. Replaces any previous tap.
+    pub fn install_tap(&self, tap: FrontendTap) {
+        *self.tap.write() = Some(tap);
+    }
+
+    fn run_tap(&self, message: &MessageToFrontend) {
+        if let Some(tap) = self.tap.read().as_ref() {
+            tap(message);
+        }
+    }
+
     pub fn send(&self, message: MessageToFrontend) {
+        self.run_tap(&message);
         #[cfg(debug_assertions)]
         if let Err(tokio::sync::mpsc::error::TrySendError::Full(v)) = self.sender.try_send((message, None)) {
             panic!("Sender is full, unable to send message: {v:?}");
@@ -167,6 +197,8 @@ impl FrontendHandle {
 
         let next_serial = self.next_serial.next();
         serial.set(next_serial);
+
+        self.run_tap(&message);
 
         #[cfg(debug_assertions)]
         if let Err(tokio::sync::mpsc::error::TrySendError::Full(v)) = self.sender.try_send((message, Some(next_serial))) {

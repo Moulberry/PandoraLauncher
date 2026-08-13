@@ -22,6 +22,13 @@ struct Cli {
     /// Instance to launch, instead of opening the launcher
     #[arg(long)]
     run_instance: Option<String>,
+    /// Send a control-API command to the running launcher and print the JSON
+    /// response (e.g. --api instances.list). See docs/API.md.
+    #[arg(long)]
+    api: Option<String>,
+    /// JSON object with parameters for --api
+    #[arg(long)]
+    api_params: Option<String>,
     /// Internal function to set traversable ACLs in an elevated context
     #[cfg(windows)]
     #[arg(long, hide = false, num_args = 2..)]
@@ -53,6 +60,12 @@ fn main() {
     let launcher_dir = data_dir.join("PandoraLauncher");
     _ = std::fs::create_dir_all(&launcher_dir);
     _ = std::env::set_current_dir(&launcher_dir);
+
+    // Control-API client mode: talk to the running launcher's api.sock and
+    // exit. Never takes the lockfile or opens a window.
+    if let Some(cmd) = cli.api {
+        std::process::exit(run_api_client(&launcher_dir, &cmd, cli.api_params.as_deref()));
+    }
 
     let socket = launcher_dir.join("launcher.sock");
 
@@ -372,6 +385,75 @@ impl tokio::io::AsyncWrite for PlatformClientStream {
     fn poll_shutdown(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> {
         tokio::io::AsyncWrite::poll_shutdown(self.project(), cx)
     }
+}
+
+/// Control-API client: send one command to the running launcher over
+/// <launcher_dir>/api.sock, print the JSON response on stdout, and return the
+/// process exit code (0 = ok, 1 = command error, 2 = transport error).
+/// `events.subscribe` switches to streaming mode and prints event lines until
+/// interrupted.
+#[cfg(unix)]
+fn run_api_client(launcher_dir: &Path, cmd: &str, params: Option<&str>) -> i32 {
+    use std::io::{BufRead, BufReader, Write};
+    use std::os::unix::net::UnixStream;
+
+    let params_value: serde_json::Value = match params {
+        Some(params) => match serde_json::from_str(params) {
+            Ok(value) => value,
+            Err(err) => {
+                eprintln!("invalid --api-params JSON: {err}");
+                return 2;
+            }
+        },
+        None => serde_json::Value::Null,
+    };
+
+    let socket_path = launcher_dir.join("api.sock");
+    let stream = match UnixStream::connect(&socket_path) {
+        Ok(stream) => stream,
+        Err(err) => {
+            eprintln!("unable to connect to {socket_path:?}: {err}");
+            eprintln!("is the launcher running? (the control API is served by the main launcher process)");
+            return 2;
+        }
+    };
+
+    let request = serde_json::json!({ "id": 0, "cmd": cmd, "params": params_value });
+    let mut writer = stream.try_clone().expect("clone unix stream");
+    if let Err(err) = writeln!(writer, "{request}") {
+        eprintln!("unable to send request: {err}");
+        return 2;
+    }
+
+    let reader = BufReader::new(stream);
+    let streaming = cmd == "events.subscribe";
+    for line in reader.lines() {
+        let line = match line {
+            Ok(line) => line,
+            Err(err) => {
+                eprintln!("connection error: {err}");
+                return 2;
+            }
+        };
+        if line.trim().is_empty() {
+            continue;
+        }
+        println!("{line}");
+        if !streaming {
+            let ok = serde_json::from_str::<serde_json::Value>(&line)
+                .ok()
+                .and_then(|v| v.get("ok").and_then(|ok| ok.as_bool()))
+                .unwrap_or(false);
+            return if ok { 0 } else { 1 };
+        }
+    }
+    if streaming { 0 } else { 2 }
+}
+
+#[cfg(not(unix))]
+fn run_api_client(_launcher_dir: &Path, _cmd: &str, _params: Option<&str>) -> i32 {
+    eprintln!("the control API is not available on this platform yet (unix socket only)");
+    2
 }
 
 fn run_cli(cli: Cli, frontend: &FrontendHandle, backend: &BackendHandle) {

@@ -144,6 +144,7 @@ pub fn start(runtime: tokio::runtime::Runtime, launcher_dir: PathBuf, send: Fron
         quit_coordinator: quit_handler,
         should_quit: AtomicBool::new(false),
         content_install_semaphore: Semaphore::new(8),
+        game_output_tap: Arc::new(RwLock::new(None)),
     };
 
     log::debug!("Doing initial backend load");
@@ -205,7 +206,16 @@ pub struct BackendState {
     pub quit_coordinator: QuitCoordinator,
     pub should_quit: AtomicBool,
     pub content_install_semaphore: Semaphore,
+    /// Optional sink for live game console output, installed by the control
+    /// API so it can re-emit stdout/stderr as `game.output` events. Shared in
+    /// an Arc<RwLock<..>> so an install after startup is seen everywhere. None
+    /// when no API client is streaming.
+    pub game_output_tap: Arc<RwLock<Option<GameOutputTap>>>,
 }
+
+/// Callback invoked for every game console message, tagged with the emitting
+/// instance. Installed by the control API; must be cheap and non-blocking.
+pub type GameOutputTap = Arc<dyn Fn(InstanceID, &bridge::message::GameOutputMsg) + Send + Sync>;
 
 pub struct CachedMinecraftProfile {
     pub profile: MinecraftProfileResponse,
@@ -237,7 +247,14 @@ impl BackendState {
         // Pre-fetch version manifest
         self.meta.load(&MinecraftVersionManifestMetadataItem).await;
 
-        Arc::new(self).handle(recv, watcher_rx).await;
+        let state = Arc::new(self);
+
+        // External control API (api.sock). Lives next to the backend so it can
+        // read state directly and send messages like a second frontend.
+        #[cfg(unix)]
+        crate::api_server::spawn(state.clone());
+
+        state.handle(recv, watcher_rx).await;
     }
 
     pub async fn load_all_instances(&self) {

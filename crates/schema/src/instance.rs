@@ -288,7 +288,7 @@ pub static AUTO_LIBRARY_PATH_GLFW: Lazy<Option<Arc<Path>>> = Lazy::new(|| get_sh
 pub static AUTO_LIBRARY_PATH_OPENAL: Lazy<Option<Arc<Path>>> = Lazy::new(|| get_shared_library_path_for_name("openal"));
 
 #[cfg(not(unix))]
-fn get_shared_library_path_for_name(name: &str) -> Option<Arc<Path>> {
+fn get_shared_library_path_for_name(_name: &str) -> Option<Arc<Path>> {
     None
 }
 

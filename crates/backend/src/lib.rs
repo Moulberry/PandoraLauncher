@@ -21,6 +21,7 @@ mod duplicate;
 mod export;
 mod install_content;
 mod instance;
+pub mod java_manager;
 mod java_manifest;
 mod launch;
 mod launch_wrapper;

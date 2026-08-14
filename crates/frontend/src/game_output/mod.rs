@@ -167,7 +167,9 @@ impl GameOutput {
                     let backup_total_lines_while_skipped = msg.text.len();
                     item_state.item_sizes.push(0);
                     item_state.items.push(GameOutputItem {
+                        time_millis: msg.time,
                         time: TimeShapedLine::Timestamp(msg.time),
+                        raw_level: msg.level,
                         level: shaped_level.clone(),
                         text: msg.text.clone(),
                         index: item_state.items.len(),
@@ -184,9 +186,11 @@ impl GameOutput {
             item_state.item_sizes.push(total_lines);
             item_state.total_line_count += total_lines;
             item_state.items.push(GameOutputItem {
+                time_millis: msg.time,
                 time: TimeShapedLine::Timestamp(msg.time),
-                level: shaped_level.clone(),
-                text: msg.text.clone(),
+                raw_level: msg.level,
+                level: shaped_level,
+                text: msg.text,
                 index: item_state.items.len(),
                 backup_total_lines_while_skipped: total_lines,
                 total_lines,
@@ -208,7 +212,9 @@ enum TimeShapedLine {
 }
 
 struct GameOutputItem {
+    time_millis: i64,
     time: TimeShapedLine,
+    raw_level: bridge::game_output::GameOutputLogLevel,
     level: Arc<ShapedLine>,
 
     text: Arc<[Arc<str>]>,
@@ -843,6 +849,7 @@ fn paint_lines<'a, const REVERSE: bool>(
 pub struct GameOutputRoot {
     scroll_handler: ScrollHandler,
     game_output: Entity<GameOutput>,
+    backend_handle: bridge::handle::BackendHandle,
     search_state: Entity<InputState>,
     _search_task: Task<()>,
     _search_input_subscription: Subscription,
@@ -953,6 +960,7 @@ impl ScrollbarHandle for ScrollHandler {
 impl GameOutputRoot {
     pub fn new(
         game_output: Entity<GameOutput>,
+        backend_handle: bridge::handle::BackendHandle,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -968,6 +976,7 @@ impl GameOutputRoot {
         Self {
             scroll_handler: ScrollHandler { state: scroll_state },
             game_output,
+            backend_handle,
             search_state,
             _search_task: Task::ready(()),
             _search_input_subscription,
@@ -1063,10 +1072,75 @@ impl GameOutputRoot {
 
         state.update(cx, |input, cx| input.set_loading(true, window, cx));
     }
+
+    fn upload_logs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let log = self.game_output.update(cx, |game_output, _| {
+            let Some(item_state) = &game_output.item_state else { return String::new() };
+            let mut log = String::new();
+            for item in &item_state.items {
+                let time_str = match chrono::TimeZone::timestamp_millis_opt(&chrono::Utc, item.time_millis) {
+                    chrono::LocalResult::Single(dt) => dt.format("%H:%M:%S").to_string(),
+                    _ => String::from("00:00:00"),
+                };
+                let level_str = format!("{:?}", item.raw_level).to_uppercase();
+                for line in item.text.iter() {
+                    log.push_str(&format!("[{}] [{}]: {}\n", time_str, level_str, line));
+                }
+            }
+            log
+        });
+
+        if log.is_empty() { return; }
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.backend_handle.send(bridge::message::MessageToBackend::UploadLog {
+            log,
+            result: tx,
+        });
+
+        cx.spawn_in(window, async move |_this, mut window| {
+            let result = rx.await;
+            let _ = window.update(|window, cx| {
+                use gpui_component::notification::{Notification, NotificationType};
+                use gpui_component::WindowExt;
+                
+                match result {
+                    Ok(Ok(url)) => {
+                        cx.write_to_clipboard(ClipboardItem::new_string(url.clone()));
+                        window.push_notification(
+                            Notification::new()
+                                .title("Logs Uploaded")
+                                .message(format!("URL copied to clipboard:\n{}", url))
+                                .with_type(NotificationType::Success),
+                            cx
+                        );
+                    }
+                    Ok(Err(e)) => {
+                        window.push_notification(
+                            Notification::new()
+                                .title("Upload Failed")
+                                .message(format!("Error: {}", e))
+                                .with_type(NotificationType::Error),
+                            cx
+                        );
+                    }
+                    Err(_) => {
+                        window.push_notification(
+                            Notification::new()
+                                .title("Upload Failed")
+                                .message("Backend disconnected.")
+                                .with_type(NotificationType::Error),
+                            cx
+                        );
+                    }
+                }
+            });
+        }).detach();
+    }
 }
 
 impl Render for GameOutputRoot {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let search = Input::new(&self.search_state).prefix(Icon::new(PandoraIcon::Search).small());
 
         let bar = h_flex()
@@ -1081,11 +1155,16 @@ impl Render for GameOutputRoot {
                 state.scrolling = GameOutputScrolling::Top { offset: Pixels::ZERO };
                 cx.notify();
             })))
+            .child(Button::new("upload").label(t::instance::logs::upload::label()).on_click(cx.listener(|root, _, window, cx| {
+                root.upload_logs(window, cx);
+            })))
             .child(Button::new("bottom").label(t::common::nav::bottom()).on_click(cx.listener(|root, _, _, cx| {
                 let mut state = root.scroll_handler.state.borrow_mut();
                 state.scrolling = GameOutputScrolling::Bottom;
                 cx.notify();
             })));
+
+        let notification_layer = gpui_component::Root::render_notification_layer(window, cx);
 
         v_flex()
             .size_full()
@@ -1110,6 +1189,7 @@ impl Render for GameOutputRoot {
                             .child(Scrollbar::vertical(&self.scroll_handler)),
                     ),
             )
+            .children(notification_layer)
             .on_scroll_wheel(cx.listener(|root, event: &ScrollWheelEvent, _, cx| {
                 let state = root.scroll_handler.state.borrow();
                 let delta = event.delta.pixel_delta(state.line_height).y;

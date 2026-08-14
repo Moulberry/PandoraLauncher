@@ -11,6 +11,7 @@ pub mod fabric_mod;
 pub mod forge;
 pub mod forge_mod;
 pub mod instance;
+pub mod java_manager;
 pub mod java_runtime_component;
 pub mod java_runtimes;
 pub mod loader;

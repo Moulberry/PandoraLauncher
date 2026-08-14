@@ -185,6 +185,10 @@ pub enum MessageToBackend {
         disabled_default: bool,
         enabled: bool,
     },
+    UploadLog {
+        log: String,
+        result: tokio::sync::oneshot::Sender<Result<String, String>>,
+    },
     DownloadContentChildren {
         id: InstanceID,
         content_id: InstanceContentID,
@@ -303,6 +307,18 @@ pub enum MessageToBackend {
         cape: Option<Uuid>,
     },
     RequestSkinLibrary,
+    FetchJavaVersions {
+        provider: schema::java_manager::JavaProvider,
+        result: tokio::sync::oneshot::Sender<Vec<schema::java_manager::JavaVariant>>,
+    },
+    InstallJava {
+        variant: schema::java_manager::JavaVariant,
+        modal_action: ModalAction,
+    },
+    UninstallJava {
+        variant: schema::java_manager::JavaVariant,
+        result: tokio::sync::oneshot::Sender<()>,
+    },
     RemoveFromSkinLibrary{
         skin: UniqueBytes,
     },

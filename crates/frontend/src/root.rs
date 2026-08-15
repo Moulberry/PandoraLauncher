@@ -156,6 +156,13 @@ pub fn start_instance(
 ) {
     let modal_action = ModalAction::default();
 
+    // Remove any stale live game outputs
+    if let Some(instance_entry) = data.instances.read(cx).entries.get(&id).cloned() {
+        instance_entry.update(cx, |entry, _| {
+            entry.live_game_output = None;
+        });
+    };
+
     let (sender, receiver) = tokio::sync::oneshot::channel();
 
     let live_game_output_display = InterfaceConfig::get(cx).live_game_output_display;

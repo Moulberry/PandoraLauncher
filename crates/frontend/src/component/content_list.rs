@@ -7,7 +7,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme, Disableable, IndexPath, Sizable, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, switch::Switch, v_flex
+    ActiveTheme, Disableable, IndexPath, Sizable, button::{Button, ButtonVariants}, h_flex, list::{ListDelegate, ListItem, ListState}, spinner::Spinner, switch::Switch, v_flex
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -72,6 +72,7 @@ pub struct ContentListDelegate {
     backend_handle: BackendHandle,
     sort_key: InstanceContentSortKey,
     enabled_first: bool,
+    loading: bool,
     content: Vec<InstanceContentSummary>,
     searched: Option<Vec<SummaryOrChild>>,
     children: Vec<Vec<ContentEntryChild>>,
@@ -100,6 +101,7 @@ impl ContentListDelegate {
             backend_handle,
             sort_key,
             enabled_first,
+            loading: true,
             content: Vec::new(),
             searched: None,
             children: Vec::new(),
@@ -648,6 +650,7 @@ impl ContentListDelegate {
         }
         drop(updating);
 
+        self.loading = false;
         self.content = mods.clone();
         self.children = children;
         self.searched = None;
@@ -740,6 +743,23 @@ impl ListDelegate for ContentListDelegate {
         } else {
             self.content.len()
         }
+    }
+
+    fn loading(&self, _cx: &App) -> bool {
+        self.loading
+    }
+
+    fn render_loading(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<ListState<Self>>,
+    ) -> impl IntoElement {
+        v_flex()
+            .w_full()
+            .h_1_2()
+            .items_center()
+            .justify_center()
+            .child(Spinner::new().color(cx.theme().muted_foreground).with_size(px(36.0)))
     }
 
     fn render_item(&mut self, ix: IndexPath, _window: &mut Window, cx: &mut Context<ListState<Self>>) -> Option<Self::Item> {

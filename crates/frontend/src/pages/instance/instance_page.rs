@@ -161,6 +161,14 @@ impl Render for InstancePage {
         let show_shader_tab = entry.configuration.show_shader_tab || matches!(self.subpage, InstanceSubpage::Shaders(_));
         let show_live_game_output = entry.live_game_output.is_some();
 
+        // Update live game output
+        if let InstanceSubpage::LiveGameOutput(current_output) = &self.subpage
+            && let Some(desired_output) = &entry.live_game_output
+            && current_output != desired_output
+        {
+            self.subpage = InstanceSubpage::LiveGameOutput(desired_output.clone());
+        }
+
         let selected_index = match &self.subpage {
             InstanceSubpage::Quickplay(_) => 0,
             InstanceSubpage::Logs(_) => 1,

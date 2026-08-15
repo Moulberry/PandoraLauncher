@@ -21,7 +21,7 @@ pub struct InstanceContentSubpage {
     backend_handle: BackendHandle,
     content_states: ContentStates,
     content_list: Entity<ListState<ContentListDelegate>>,
-    content: Entity<Arc<[InstanceContentSummary]>>,
+    content: Entity<Option<Arc<[InstanceContentSummary]>>>,
     sort_dropdown: Entity<SelectState<NamedDropdown<InstanceContentSortKey>>>,
     _add_from_file_task: Option<Task<()>>,
 }
@@ -152,7 +152,10 @@ impl InstanceContentSubpage {
         }
 
         let mut content_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone(), instance_loader, instance_version, sort_key, enabled_first);
-        content_list_delegate.set_content(content.read(cx));
+
+        if let Some(new_content) = content.read(cx) {
+            content_list_delegate.set_content(new_content);
+        }
 
         let sort_dropdown = cx.new(|cx| {
             let items = valid_sort_modes.iter().map(|key| {
@@ -166,7 +169,9 @@ impl InstanceContentSubpage {
         let content_for_observe = content.clone();
         let content_list = cx.new(move |cx| {
             cx.observe(&content_for_observe, |list: &mut ListState<ContentListDelegate>, content, cx| {
-                list.delegate_mut().set_content(content.read(cx));
+                if let Some(new_content) = content.read(cx) {
+                    list.delegate_mut().set_content(new_content);
+                }
                 cx.notify();
             }).detach();
 
@@ -192,7 +197,9 @@ impl InstanceContentSubpage {
             let content_list = this.content_list.clone();
             cx.update_entity(&content_list, |list, cx| {
                 list.delegate_mut().set_sort_options(sort_key, enabled_first);
-                list.delegate_mut().set_content(&content);
+                if let Some(content) = &content {
+                    list.delegate_mut().set_content(content);
+                }
                 cx.notify();
             });
             cx.notify();
@@ -332,7 +339,9 @@ impl Render for InstanceContentSubpage {
                         let content_list = this.content_list.clone();
                         cx.update_entity(&content_list, |list, cx| {
                             list.delegate_mut().set_sort_options(sort_key, enabled_first);
-                            list.delegate_mut().set_content(&content);
+                            if let Some(content) = &content {
+                                list.delegate_mut().set_content(content);
+                            }
                             cx.notify();
                         });
                         cx.notify();

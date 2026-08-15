@@ -841,7 +841,7 @@ impl ModMetadataManager {
         }))
     }
 
-    fn load_jarjar<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, _hash: [u8; 20], _filesize: Option<u64>, archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
+    fn load_jarjar<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], _filesize: Option<u64>, archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
         let bytes = file.bytes().ok()?;
 
         let metadata_json: JarJarMetadata = serde_json::from_slice(&bytes).inspect_err(|e| {
@@ -859,7 +859,8 @@ impl ModMetadataManager {
             };
 
             let extension = child.path.rsplit_once('.').map(|(_, last)| OsStr::new(last));
-            let summary = self.get_bytes(&child_bytes, extension);
+            let summary = self.load_mod_summary(hash, Some(child_bytes.len() as u64), &child_bytes, extension, true);
+
             if !ContentSummary::is_unknown(&summary) {
                 return Some(summary);
             }

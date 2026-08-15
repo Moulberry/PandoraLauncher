@@ -39,11 +39,11 @@ impl InstanceEntries {
                 playtime,
                 status: InstanceStatus::NotRunning,
                 worlds_state,
-                worlds: cx.new(|_| [].into()),
+                worlds: cx.new(|_| None),
                 servers_state,
-                servers: cx.new(|_| [].into()),
+                servers: cx.new(|_| None),
                 content_states,
-                content: enum_map::EnumMap::from_fn(|_| cx.new(|_| [].into())),
+                content: enum_map::EnumMap::from_fn(|_| cx.new(|_| None)),
                 live_game_output: None,
             };
             instance.title = instance.create_title();
@@ -130,7 +130,7 @@ impl InstanceEntries {
             if let Some(instance) = entries.entries.get_mut(&id) {
                 instance.update(cx, |instance, cx| {
                     instance.worlds.update(cx, |existing_worlds, cx| {
-                        *existing_worlds = worlds;
+                        *existing_worlds = Some(worlds);
                         cx.notify();
                     })
                 });
@@ -148,7 +148,7 @@ impl InstanceEntries {
             if let Some(instance) = entries.entries.get_mut(&id) {
                 instance.update(cx, |instance, cx| {
                     instance.servers.update(cx, |existing_servers, cx| {
-                        *existing_servers = servers;
+                        *existing_servers = Some(servers);
                         cx.notify();
                     })
                 });
@@ -161,7 +161,7 @@ impl InstanceEntries {
             if let Some(instance) = entries.entries.get_mut(&id) {
                 instance.update(cx, |instance, cx| {
                     instance.content[content_folder].update(cx, |existing_content, cx| {
-                        *existing_content = content;
+                        *existing_content = Some(content);
                         cx.notify();
                     })
                 });
@@ -205,11 +205,11 @@ pub struct InstanceEntry {
     pub playtime: InstancePlaytime,
     pub status: InstanceStatus,
     pub worlds_state: BridgeDataLoadState,
-    pub worlds: Entity<Arc<[InstanceWorldSummary]>>,
+    pub worlds: Entity<Option<Arc<[InstanceWorldSummary]>>>,
     pub servers_state: BridgeDataLoadState,
-    pub servers: Entity<Arc<[InstanceServerSummary]>>,
+    pub servers: Entity<Option<Arc<[InstanceServerSummary]>>>,
     pub content_states: ContentStates,
-    pub content: enum_map::EnumMap<ContentFolder, Entity<Arc<[InstanceContentSummary]>>>,
+    pub content: enum_map::EnumMap<ContentFolder, Entity<Option<Arc<[InstanceContentSummary]>>>>,
     pub live_game_output: Option<Entity<crate::game_output::GameOutputRoot>>,
 }
 

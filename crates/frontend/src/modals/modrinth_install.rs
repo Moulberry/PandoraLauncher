@@ -367,12 +367,13 @@ impl InstallDialog {
                 let mut existing_projects = FxHashSet::default();
 
                 for existing_content in instance.read(cx).content.values() {
-                    let existing_content = existing_content.read(cx);
-                    for summary in existing_content.iter() {
-                        let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
-                            continue;
-                        };
-                        existing_projects.insert(project_id.clone());
+                    if let Some(existing_content) = existing_content.read(cx) {
+                        for summary in existing_content.iter() {
+                            let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
+                                continue;
+                            };
+                            existing_projects.insert(project_id.clone());
+                        }
                     }
                 };
 

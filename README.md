@@ -31,3 +31,9 @@ Unlikely, for a few reasons:
 
 ## Instance Page
 ![Instance Page](https://raw.githubusercontent.com/Moulberry/PandoraLauncher/refs/heads/master/screenshots/instance.png)
+
+
+## New?
+- AuthlibInjector support
+- Custom CF api key support
+- minor linux improvements probably

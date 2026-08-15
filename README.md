@@ -1,41 +1,42 @@
 # Pandora Launcher
 
-Work in progress
+В разработке
 
-## Features
-- (Optional) sandboxing, to prevent mods from harming your system
-- Cross-instance file syncing (options, saves, etc.) (https://youtu.be/wb5EY2VsMKg)
-- Mod deduplication when installed through launcher (using reflinks or hard links)
-- Secure account credential management using platform keyrings
-- Uncapped live game log output
-- Content browser providing mods from Modrinth and CurseForge
-- Unique approach to modpack management (https://youtu.be/cdRVqd7b2BQ)
-- Native application (no Electron/Tauri)
-- No third-party metadata servers (no downtime, no delay when MC updates)
-- Automatic redaction of sensitive information (i.e. access tokens) in logs
+## Возможности
+- (Опциональная) песочница для предотвращения нанесения вреда вашей системе модами
+- Синхронизация файлов между инстансами (настройки, сохранения и т. д.) (https://youtu.be/wb5EY2VsMKg)
+- Дедупликация модов при установке через лаунчер (с использованием reflink или жёстких ссылок)
+- Безопасное хранение учётных данных с использованием системных хранилищ ключей
+- Неограниченный вывод игровых логов в реальном времени
+- Каталог контента с модами из Modrinth и CurseForge
+- Уникальный подход к управлению сборками модов (https://youtu.be/cdRVqd7b2BQ)
+- Нативное приложение (без Electron/Tauri)
+- Никаких сторонних серверов метаданных (никаких простоев и задержек при обновлении Minecraft)
+- Автоматическое удаление конфиденциальной информации из логов (например, токенов доступа)
 
-## FAQ
+## Часто задаваемые вопросы
 
-### Discord Server
+### Discord-сервер
 
 https://pandora.moulberry.com/discord
 
-### Where can I suggest a feature/report a bug?
+### Где можно предложить функцию или сообщить об ошибке?
 
-Please use GitHub issues.
+Используйте GitHub Issues.
 
-### Why should I use Pandora over other launchers?
+### Почему стоит использовать Pandora вместо других лаунчеров?
 
-1. If you like one of the features above
-2. If you like the general design/ux of the launcher, personally I find it very easy to use
-3. The launcher is designed to be performant, from storage space to cpu and memory usage
+1. Если вам нравится одна из перечисленных выше возможностей
+2. Если вам нравится общий дизайн/UX лаунчера — лично я считаю его очень удобным
+3. Лаунчер разработан с учётом производительности: как с точки зрения занимаемого места на диске, так и использования CPU и памяти
 
-### Will Pandora be monetized?
+### Будет ли Pandora монетизироваться?
 
-Unlikely, for a few reasons:
-- I believe that it is wrong for launchers to be monetized without distributing revenue back to mod creators that give the launcher value in the first place. Since I don't have the infrastructure to be able to redistribute revenue to mod creators, this is a big barrier.
-- Dealing with monetization takes a lot of (ongoing) work, probably more work than creating the launcher itself.
-- I personally dislike advertisements.
+Скорее всего, нет, по нескольким причинам:
+- Я считаю неправильным монетизировать лаунчеры, не распределяя часть дохода между создателями модов, которые и придают лаунчеру его ценность. Поскольку у меня нет инфраструктуры для распределения доходов между разработчиками модов, это является серьёзным препятствием.
+- Монетизация требует много постоянной работы, вероятно, больше, чем сама разработка лаунчера.
+- Я лично не люблю рекламу.
 
-## Instance Page
-![Instance Page](https://raw.githubusercontent.com/Moulberry/PandoraLauncher/refs/heads/master/screenshots/instance.png)
+## Страница инстанса
+
+![Страница инстанса](https://raw.githubusercontent.com/Moulberry/PandoraLauncher/refs/heads/master/screenshots/instance.png)

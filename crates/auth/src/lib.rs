@@ -4,3 +4,4 @@ pub mod credentials;
 pub mod models;
 pub mod secret;
 pub mod serve_redirect;
+pub mod yggdrasil;

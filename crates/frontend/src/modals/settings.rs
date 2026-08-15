@@ -48,6 +48,8 @@ struct Settings {
     proxy_username_input: Entity<InputState>,
     proxy_password_input: Entity<InputState>,
     proxy_password_changed: bool,
+    authlib_injector_url_input: Entity<InputState>,
+    curseforge_api_key_input: Entity<InputState>,
 }
 
 pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
@@ -127,6 +129,12 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             state.set_masked(true, window, cx);
             state
         });
+        let authlib_injector_url_input = cx.new(|cx| InputState::new(window, cx).placeholder("https://example.com/api/yggdrasil"));
+        let curseforge_api_key_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("Your CurseForge API Key");
+            state.set_masked(true, window, cx);
+            state
+        });
 
         let mut settings = Settings {
             selected_tab: SettingsTab::Interface,
@@ -146,6 +154,8 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             proxy_username_input,
             proxy_password_input,
             proxy_password_changed: false,
+            authlib_injector_url_input,
+            curseforge_api_key_input,
         };
 
         cx.subscribe(&settings.proxy_protocol_select, Settings::on_proxy_protocol_changed).detach();
@@ -153,6 +163,8 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
         cx.subscribe(&settings.proxy_port_input, Settings::on_proxy_input_changed).detach();
         cx.subscribe(&settings.proxy_username_input, Settings::on_proxy_input_changed).detach();
         cx.subscribe(&settings.proxy_password_input, Settings::on_proxy_password_changed).detach();
+        cx.subscribe(&settings.authlib_injector_url_input, Settings::on_authlib_input_changed).detach();
+        cx.subscribe(&settings.curseforge_api_key_input, Settings::on_curseforge_input_changed).detach();
 
         settings.update_backend_configuration(window, cx);
 
@@ -218,7 +230,15 @@ impl Settings {
                         input.set_value(password, window, cx);
                     });
                 }
-
+                
+                let config_clone = result.config.clone();
+                settings.authlib_injector_url_input.update(cx, |input, cx| {
+                    input.set_value(config_clone.authlib_injector_url.clone().unwrap_or_default(), window, cx);
+                });
+                settings.curseforge_api_key_input.update(cx, |input, cx| {
+                    input.set_value(config_clone.curseforge_api_key.clone().unwrap_or_default(), window, cx);
+                });
+                
                 settings.backend_config = Some(result.config);
                 settings.get_configuration_task = None;
                 cx.notify();
@@ -272,6 +292,26 @@ impl Settings {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn on_authlib_input_changed(&mut self, _: Entity<InputState>, event: &InputEvent, cx: &mut Context<Self>) {
+        if let InputEvent::Blur = event {
+            if self.backend_config.is_some() {
+                let value = self.authlib_injector_url_input.read(cx).value().to_string();
+                let url = if value.trim().is_empty() { None } else { Some(value.trim().to_string()) };
+                self.backend_handle.send(MessageToBackend::SetAuthlibInjectorUrl { url });
+            }
+        }
+    }
+
+    fn on_curseforge_input_changed(&mut self, _: Entity<InputState>, event: &InputEvent, cx: &mut Context<Self>) {
+        if let InputEvent::Blur = event {
+            if self.backend_config.is_some() {
+                let value = self.curseforge_api_key_input.read(cx).value().to_string();
+                let key = if value.trim().is_empty() { None } else { Some(value.trim().to_string()) };
+                self.backend_handle.send(MessageToBackend::SetCurseforgeApiKey { key });
+            }
         }
     }
 
@@ -501,6 +541,14 @@ impl Settings {
                             .child(t::settings::proxy::password())
                             .child(Input::new(&self.proxy_password_input)
                                 .disabled(!proxy_enabled || !proxy_auth_enabled))))
+            ))
+            .child(crate::labelled(
+                "Authlib Injector URL",
+                Input::new(&self.authlib_injector_url_input)
+            ))
+            .child(crate::labelled(
+                "CurseForge API Key",
+                Input::new(&self.curseforge_api_key_input)
             ))
             .child(div()
                 .pt_2()

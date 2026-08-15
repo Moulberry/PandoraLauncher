@@ -11,6 +11,7 @@ pub struct MinecraftLoginInfo {
     pub uuid: Uuid,
     pub username: Arc<str>,
     pub access_token: Option<MinecraftAccessToken>,
+    pub user_properties: Option<serde_json::Value>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -31,6 +32,7 @@ impl BackendAccountInfo {
                 username: account.username.clone(),
                 offline: account.offline,
                 head: account.head.clone(),
+                authlib_injector_url: account.authlib_injector_url.clone(),
             });
         }
         MessageToFrontend::AccountsUpdated {
@@ -46,6 +48,8 @@ pub struct BackendAccount {
     #[serde(default)]
     pub offline: bool,
     pub head: Option<UniqueBytes>,
+    #[serde(default)]
+    pub authlib_injector_url: Option<String>,
 }
 
 impl BackendAccount {
@@ -54,6 +58,7 @@ impl BackendAccount {
             username: profile.name.clone(),
             offline: false,
             head: None,
+            authlib_injector_url: None,
         }
     }
 }

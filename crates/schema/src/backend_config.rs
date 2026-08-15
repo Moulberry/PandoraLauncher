@@ -9,6 +9,10 @@ pub struct BackendConfig {
     pub sync_targets: SyncTargets,
     #[serde(default, skip_serializing_if = "crate::skip_if_default", deserialize_with = "crate::try_deserialize")]
     pub proxy: ProxyConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authlib_injector_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curseforge_api_key: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]

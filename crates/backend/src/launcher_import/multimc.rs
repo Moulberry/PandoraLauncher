@@ -311,7 +311,8 @@ async fn import_accounts_from_multimc(backend: &BackendState, import_job: &Impor
                         accounts.accounts.insert(profile.id, BackendAccount {
                             username: profile.name.clone(),
                             offline: false,
-                            head: None
+                            head: None,
+                            authlib_injector_url: None
                         });
                     }
 

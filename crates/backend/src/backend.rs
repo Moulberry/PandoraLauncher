@@ -67,8 +67,8 @@ pub fn start(runtime: tokio::runtime::Runtime, launcher_dir: PathBuf, send: Fron
 
     let directories = Arc::new(LauncherDirectories::new(launcher_dir));
 
-    let mut config: Persistent<BackendConfig> = Persistent::load(directories.config_json.clone());
-    let proxy_config = config.get().proxy.clone();
+    let config: Arc<RwLock<Persistent<BackendConfig>>> = Arc::new(RwLock::new(Persistent::load(directories.config_json.clone())));
+    let proxy_config = config.write().get().proxy.clone();
     let proxy_password: Option<String> = if proxy_config.enabled && proxy_config.auth_enabled {
         runtime.block_on(async {
             match PlatformSecretStorage::new().await {
@@ -94,6 +94,7 @@ pub fn start(runtime: tokio::runtime::Runtime, launcher_dir: PathBuf, send: Fron
     let meta = Arc::new(MetadataManager::new(
         http_client.clone(),
         directories.metadata_dir.clone(),
+        config.clone(),
     ));
 
     let (watcher_tx, watcher_rx) = tokio::sync::mpsc::channel::<notify_debouncer_full::DebounceEventResult>(64);
@@ -135,7 +136,7 @@ pub fn start(runtime: tokio::runtime::Runtime, launcher_dir: PathBuf, send: Fron
         launcher: Launcher::new(meta, directories, send),
         mod_metadata_manager: Arc::new(mod_metadata_manager),
         account_info: Arc::new(RwLock::new(account_info)),
-        config: Arc::new(RwLock::new(config)),
+        config: Arc::clone(&config),
         secret_storage: Arc::new(OnceCell::new()),
         login_semaphore: Arc::new(Semaphore::new(1)),
         cached_minecraft_profiles: Default::default(),
@@ -694,6 +695,62 @@ impl BackendState {
                         },
                     }
                 },
+            }
+        }
+    }
+
+    pub async fn authlib_injector_authenticate(
+        &self,
+        email: &str,
+        password: &str,
+        authlib_url: &str,
+    ) -> Result<(auth::yggdrasil::YggdrasilAuthenticateResponse, Option<Uuid>), String> {
+        log::info!("authlib_injector_authenticate called with email: {}, authlib_url: {}", email, authlib_url);
+        let client = auth::yggdrasil::YggdrasilClient::new(self.http_client.clone());
+        let yggdrasil_response = match client.authenticate(authlib_url, email, password, "PandoraLauncher").await {
+            Ok(response) => {
+                log::info!("YggdrasilClient::authenticate succeeded. Response profiles: {:?}", response.available_profiles.as_ref().map(|p| p.len()));
+                response
+            }
+            Err(e) => {
+                log::error!("YggdrasilClient::authenticate failed with error: {:?}", e);
+                return Err(format!("Authlib Injector login failed: {}", e));
+            }
+        };
+
+        // Determine the UUID
+        let uuid = yggdrasil_response.selected_profile.as_ref()
+            .or_else(|| yggdrasil_response.available_profiles.as_ref().and_then(|p| p.first()))
+            .map(|p| {
+                if let Ok(parsed) = uuid::Uuid::parse_str(&p.id) {
+                    log::info!("Parsed UUID from profile id: {}", p.id);
+                    parsed
+                } else {
+                    log::info!("Failed to parse UUID from profile id: {}, generating new v4 UUID", p.id);
+                    uuid::Uuid::new_v4()
+                }
+            });
+
+        log::info!("authlib_injector_authenticate returning success with UUID: {:?}", uuid);
+        Ok((yggdrasil_response, uuid))
+    }
+
+    pub async fn authlib_injector_refresh(
+        &self,
+        access_token: &str,
+        client_token: &str,
+        authlib_url: &str,
+    ) -> Result<auth::yggdrasil::YggdrasilRefreshResponse, String> {
+        log::info!("authlib_injector_refresh called with authlib_url: {}", authlib_url);
+        let client = auth::yggdrasil::YggdrasilClient::new(self.http_client.clone());
+        match client.refresh(authlib_url, access_token, client_token).await {
+            Ok(res) => {
+                log::info!("YggdrasilClient::refresh succeeded");
+                Ok(res)
+            }
+            Err(e) => {
+                log::error!("YggdrasilClient::refresh failed with error: {:?}", e);
+                Err(format!("Authlib Injector refresh failed: {}", e))
             }
         }
     }
@@ -1271,7 +1328,8 @@ impl BackendState {
                         return Some(MinecraftLoginInfo {
                             uuid,
                             username: account.username.clone(),
-                            access_token: None
+                            access_token: None,
+                            user_properties: None,
                         })
                     }
                     Some((uuid, account.username.clone()))
@@ -1291,6 +1349,7 @@ impl BackendState {
                     uuid,
                     username,
                     access_token: None,
+                    user_properties: None,
                 });
             }
 
@@ -1301,6 +1360,7 @@ impl BackendState {
             uuid: profile.id,
             username: profile.name.clone(),
             access_token: Some(access_token),
+            user_properties: profile.properties.clone(),
         })
     }
 }
@@ -1451,6 +1511,10 @@ pub enum LoginError {
     NeedsUserInteraction,
     #[error("Cancelled by user")]
     CancelledByUser,
+    #[error("Error refreshing Authlib Injector: {0}")]
+    ErrorRefreshingAuthlib(String),
+    #[error("Authlib Injector tokens missing")]
+    AuthlibTokensMissing,
 }
 
 struct PrelaunchModCopy {

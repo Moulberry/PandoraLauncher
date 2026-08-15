@@ -32,7 +32,7 @@ use crate::metadata::manager::{MetaLoadError, MetaLoadStateWrapper, MetadataMana
 pub trait MetadataItem: Debug {
     type T: Send + Sync + 'static;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder;
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder;
     fn expires(&self) -> bool;
     fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T>;
     fn post_process_download(bytes: &[u8]) -> Result<Cow<'_, [u8]>, MetaLoadError> {
@@ -53,8 +53,8 @@ pub struct MinecraftVersionManifestMetadataItem;
 impl MetadataItem for MinecraftVersionManifestMetadataItem {
     type T = MinecraftVersionManifest;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(MOJANG_VERSION_MANIFEST_URL)
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get(MOJANG_VERSION_MANIFEST_URL)
     }
 
     fn expires(&self) -> bool {
@@ -80,8 +80,8 @@ pub struct MojangJavaRuntimesMetadataItem;
 impl MetadataItem for MojangJavaRuntimesMetadataItem {
     type T = JavaRuntimes;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(JAVA_RUNTIMES_URL)
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get(JAVA_RUNTIMES_URL)
     }
 
     fn expires(&self) -> bool {
@@ -107,8 +107,8 @@ pub struct MinecraftVersionMetadataItem<'v>(pub &'v MinecraftVersionLink);
 impl<'v> MetadataItem for MinecraftVersionMetadataItem<'v> {
     type T = MinecraftVersion;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(self.0.url.as_str())
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get(self.0.url.as_str())
     }
 
     fn expires(&self) -> bool {
@@ -147,8 +147,8 @@ pub struct AssetsIndexMetadataItem {
 impl MetadataItem for AssetsIndexMetadataItem {
     type T = AssetsIndex;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(self.url.as_str())
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get(self.url.as_str())
     }
 
     fn expires(&self) -> bool {
@@ -182,8 +182,8 @@ pub struct MojangJavaRuntimeComponentMetadataItem {
 impl MetadataItem for MojangJavaRuntimeComponentMetadataItem {
     type T = JavaRuntimeComponentManifest;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(self.url.as_str())
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get(self.url.as_str())
     }
 
     fn expires(&self) -> bool {
@@ -213,8 +213,8 @@ pub struct FabricLoaderManifestMetadataItem;
 impl MetadataItem for FabricLoaderManifestMetadataItem {
     type T = FabricLoaderManifest;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(FABRIC_LOADER_MANIFEST_URL)
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get(FABRIC_LOADER_MANIFEST_URL)
     }
 
     fn expires(&self) -> bool {
@@ -243,8 +243,8 @@ pub struct FabricLaunchMetadataItem {
 impl MetadataItem for FabricLaunchMetadataItem {
     type T = FabricLaunch;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(format!("https://meta.fabricmc.net/v2/versions/loader/{}/{}", self.minecraft_version, self.loader_version))
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get(format!("https://meta.fabricmc.net/v2/versions/loader/{}/{}", self.minecraft_version, self.loader_version))
     }
 
     fn expires(&self) -> bool {
@@ -274,8 +274,8 @@ pub struct ModrinthSearchMetadataItem<'a>(pub &'a ModrinthSearchRequest);
 impl<'a> MetadataItem for ModrinthSearchMetadataItem<'a> {
     type T = ModrinthSearchResult;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(MODRINTH_SEARCH_URL).query(self.0)
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get(MODRINTH_SEARCH_URL).query(self.0)
     }
 
     fn expires(&self) -> bool {
@@ -297,9 +297,9 @@ pub struct ModrinthProjectVersionsMetadataItem<'a>(pub &'a ModrinthProjectVersio
 impl<'a> MetadataItem for ModrinthProjectVersionsMetadataItem<'a> {
     type T = ModrinthProjectVersionsResult;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
         let url = format!("https://api.modrinth.com/v2/project/{}/version?include_changelog=false", self.0.project_id);
-        let mut request = client.get(url);
+        let mut request = manager.http_client.get(url);
         if let Some(loaders) = &self.0.loaders && let Ok(str) = serde_json::to_string(loaders) {
             request = request.query(&[("loaders", str)]);
         }
@@ -328,9 +328,9 @@ pub struct ModrinthVersionMetadataItem(pub Arc<str>);
 impl MetadataItem for ModrinthVersionMetadataItem {
     type T = ModrinthProjectVersion;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
         let url = format!("https://api.modrinth.com/v2/version/{}", self.0);
-        client.get(url)
+        manager.http_client.get(url)
     }
 
     fn expires(&self) -> bool {
@@ -361,9 +361,9 @@ pub struct ModrinthVersionUpdateMetadataItem {
 impl MetadataItem for ModrinthVersionUpdateMetadataItem {
     type T = ModrinthVersionFileUpdateResult;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
         let url = format!("https://api.modrinth.com/v2/version_file/{}/update", self.sha1);
-        client.post(url).json(&self.params)
+        manager.http_client.post(url).json(&self.params)
     }
 
     fn expires(&self) -> bool {
@@ -400,9 +400,9 @@ pub struct ModrinthV3VersionUpdateMetadataItem {
 impl MetadataItem for ModrinthV3VersionUpdateMetadataItem {
     type T = ModrinthVersionFileUpdateResult;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
         let url = format!("https://api.modrinth.com/v3/version_file/{}/update", self.sha1);
-        client.post(url).json(&self.params)
+        manager.http_client.post(url).json(&self.params)
     }
 
     fn expires(&self) -> bool {
@@ -424,8 +424,8 @@ pub struct ModrinthVersionsFromHashesMetadataItem<'a>(pub &'a ModrinthVersionsFr
 impl<'a> MetadataItem for ModrinthVersionsFromHashesMetadataItem<'a> {
     type T = ModrinthVersionsFromHashesResponse;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.post("https://api.modrinth.com/v2/version_files").json(self.0)
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.post("https://api.modrinth.com/v2/version_files").json(self.0)
     }
 
     fn expires(&self) -> bool {
@@ -447,7 +447,7 @@ pub struct ModrinthProjectsMetadataItem<'a>(pub &'a ModrinthProjectsRequest);
 impl<'a> MetadataItem for ModrinthProjectsMetadataItem<'a> {
     type T = ModrinthProjectsResponse;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
         let mut ids = String::from("[");
         for (i, id) in self.0.ids.iter().enumerate() {
             if i > 0 {
@@ -459,7 +459,7 @@ impl<'a> MetadataItem for ModrinthProjectsMetadataItem<'a> {
         }
         ids.push(']');
 
-        client.get("https://api.modrinth.com/v2/projects").query(&[("ids", ids)])
+        manager.http_client.get("https://api.modrinth.com/v2/projects").query(&[("ids", ids)])
     }
 
     fn expires(&self) -> bool {
@@ -481,8 +481,8 @@ pub struct NeoforgeInstallerMavenMetadataItem;
 impl MetadataItem for NeoforgeInstallerMavenMetadataItem {
     type T = NeoforgeMavenManifest;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
     }
 
     fn expires(&self) -> bool {
@@ -516,8 +516,8 @@ pub struct ForgeInstallerMavenMetadataItem;
 impl MetadataItem for ForgeInstallerMavenMetadataItem {
     type T = ForgeMavenManifest;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get("https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml")
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get("https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml")
     }
 
     fn expires(&self) -> bool {
@@ -561,9 +561,9 @@ pub struct ModrinthProjectMetadataItem<'a>(pub &'a ModrinthProjectRequest);
 impl<'a> MetadataItem for ModrinthProjectMetadataItem<'a> {
     type T = ModrinthProjectResult;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
         let url = format!("{}/{}", MODRINTH_PROJECT_URL, self.0.project_id);
-        client.get(url)
+        manager.http_client.get(url)
     }
 
     fn expires(&self) -> bool {
@@ -585,12 +585,12 @@ pub struct CurseforgeSearchMetadataItem<'a>(pub &'a CurseforgeSearchRequest);
 impl<'a> MetadataItem for CurseforgeSearchMetadataItem<'a> {
     type T = CurseforgeSearchResult;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.get(CURSEFORGE_SEARCH_URL)
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.get(CURSEFORGE_SEARCH_URL)
             .query(self.0)
             .query(&[("gameId", MINECRAFT_GAME_ID)])
             .query(&[("sortOrder", "desc")])
-            .header("x-api-key", CURSEFORGE_API_KEY)
+            .header("x-api-key", manager.config.write().get().curseforge_api_key.as_deref().unwrap_or(CURSEFORGE_API_KEY))
     }
 
     fn expires(&self) -> bool {
@@ -612,10 +612,10 @@ pub struct CurseforgeFingerprintMetadataItem<'a>(pub &'a CurseforgeFingerprintRe
 impl<'a> MetadataItem for CurseforgeFingerprintMetadataItem<'a> {
     type T = CurseforgeFingerprintResponse;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.post("https://api.curseforge.com/v1/fingerprints")
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.post("https://api.curseforge.com/v1/fingerprints")
             .json(self.0)
-            .header("x-api-key", CURSEFORGE_API_KEY)
+            .header("x-api-key", manager.config.write().get().curseforge_api_key.as_deref().unwrap_or(CURSEFORGE_API_KEY))
     }
 
     fn expires(&self) -> bool {
@@ -637,10 +637,10 @@ pub struct CurseforgeGetModFilesMetadataItem<'a>(pub &'a CurseforgeGetModFilesRe
 impl<'a> MetadataItem for CurseforgeGetModFilesMetadataItem<'a> {
     type T = CurseforgeGetModFilesResult;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        let mut req = client.get(format!("https://api.curseforge.com/v1/mods/{}/files", self.0.mod_id))
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        let mut req = manager.http_client.get(format!("https://api.curseforge.com/v1/mods/{}/files", self.0.mod_id))
             .query(&[("gameId", MINECRAFT_GAME_ID)])
-            .header("x-api-key", CURSEFORGE_API_KEY);
+            .header("x-api-key", manager.config.write().get().curseforge_api_key.as_deref().unwrap_or(CURSEFORGE_API_KEY));
 
         if let Some(mod_loader_type) = self.0.mod_loader_type {
             req = req.query(&[("modLoaderType", mod_loader_type)]);
@@ -674,10 +674,10 @@ pub struct CurseforgeGetFilesMetadataItem<'a>(pub &'a CurseforgeGetFilesRequest)
 impl<'a> MetadataItem for CurseforgeGetFilesMetadataItem<'a> {
     type T = CurseforgeGetModFilesResult;
 
-    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
-        client.post("https://api.curseforge.com/v1/mods/files")
+    fn request(&self, manager: &MetadataManager) -> RequestBuilder {
+        manager.http_client.post("https://api.curseforge.com/v1/mods/files")
             .json(self.0)
-            .header("x-api-key", CURSEFORGE_API_KEY)
+            .header("x-api-key", manager.config.write().get().curseforge_api_key.as_deref().unwrap_or(CURSEFORGE_API_KEY))
     }
 
     fn expires(&self) -> bool {

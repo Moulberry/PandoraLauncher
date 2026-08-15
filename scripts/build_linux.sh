@@ -1,22 +1,28 @@
 #!/bin/bash
 set -e
 
-if [ -z "$1" ]; then
-    echo "Missing version argument"
-    exit 1
+cd "$(dirname "$0")/.."
+
+version="$1"
+if [ -z "$version" ] || [ "$version" = "latest" ]; then
+    version=$(grep -m 1 'version =' Cargo.toml | cut -d '"' -f 2 || echo "5.3.1")
 fi
 
-version=${1#v}
+version=${version#v}
 export PANDORA_RELEASE_VERSION=$version
 
-sudo apt-get update --yes && sudo apt-get install --yes libssl-dev libdbus-1-dev libx11-xcb1 libxkbcommon-x11-dev pkg-config libseccomp-dev libfontconfig-dev
-cargo build --release --frozen --target x86_64-unknown-linux-gnu
+if command -v apt-get &> /dev/null; then
+    sudo apt-get update --yes && sudo apt-get install --yes libssl-dev libdbus-1-dev libx11-xcb1 libxkbcommon-x11-dev pkg-config libseccomp-dev libfontconfig-dev || true
+fi
+cargo build --release --target x86_64-unknown-linux-gnu
 strip target/x86_64-unknown-linux-gnu/release/pandora_launcher
 mkdir -p dist
-mv target/x86_64-unknown-linux-gnu/release/pandora_launcher dist/PandoraLauncher-Linux-x86_64
+rm -f dist/PandoraLauncher-Linux-x86_64 dist/PandoraLauncher-Linux-x86_64-Portable
+cp -f target/x86_64-unknown-linux-gnu/release/pandora_launcher dist/PandoraLauncher-Linux-x86_64
 
-cargo install cargo-packager
-env -u CARGO_PACKAGER_SIGN_PRIVATE_KEY cargo packager --config '{'\
+cargo install cargo-packager || true
+export NO_STRIP=true
+env -u CARGO_PACKAGER_SIGN_PRIVATE_KEY NO_STRIP=true cargo packager --config '{'\
 '  "name": "pandora-launcher",'\
 '  "outDir": "./dist",'\
 '  "formats": ["deb", "appimage"],'\

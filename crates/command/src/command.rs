@@ -10,6 +10,7 @@ pub struct PandoraCommand {
     pub(crate) args: Vec<PandoraArg>,
     pub(crate) inherit_env: Option<fn(&OsStr) -> bool>,
     pub(crate) env: BTreeMap<PandoraArg, PandoraArg>,
+    pub(crate) removed_env: Vec<PandoraArg>,
     pub(crate) current_dir: Option<PathBuf>,
     pub(crate) stdin: PandoraStdioWriteMode,
     pub(crate) stdout: PandoraStdioReadMode,
@@ -33,6 +34,7 @@ impl PandoraCommand {
             args: Vec::new(),
             inherit_env: None,
             env: BTreeMap::default(),
+            removed_env: Vec::new(),
             current_dir: None,
             stdin: Default::default(),
             stdout: Default::default(),
@@ -55,9 +57,14 @@ impl PandoraCommand {
     pub fn env(&mut self, k: impl Into<PandoraArg>, v: impl Into<PandoraArg>) {
         self.env.insert(k.into(), v.into());
     }
+    pub fn env_remove(&mut self, k: impl Into<PandoraArg>) {
+        let key = k.into();
+        self.env.remove(&key);
+        self.removed_env.push(key);
+    }
 
-    pub fn current_dir(&mut self, current_dir: &Path) {
-        self.current_dir = Some(current_dir.to_path_buf());
+    pub fn current_dir(&mut self, dir: impl AsRef<Path>) {
+        self.current_dir = Some(dir.as_ref().to_path_buf());
     }
 
     pub fn stdin(&mut self, stdin: PandoraStdioWriteMode) {
@@ -130,7 +137,7 @@ impl PandoraCommand {
         if let Some(inherit_env) = self.inherit_env {
             for (k, v) in std::env::vars_os() {
                 let k: PandoraArg = k.into();
-                if self.env.contains_key(&k) {
+                if self.env.contains_key(&k) || self.removed_env.contains(&k) {
                     continue;
                 }
                 if !(inherit_env)(&k.0) {
@@ -141,7 +148,7 @@ impl PandoraCommand {
         } else {
             for (k, v) in std::env::vars_os() {
                 let k: PandoraArg = k.into();
-                if self.env.contains_key(&k) {
+                if self.env.contains_key(&k) || self.removed_env.contains(&k) {
                     continue;
                 }
                 self.env.insert(k, v.into());

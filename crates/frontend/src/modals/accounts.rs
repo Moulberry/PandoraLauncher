@@ -272,6 +272,53 @@ impl Render for Accounts {
                     crate::root::start_new_account_login(&backend_handle, window, cx);
                 }
             }))
+            .child(Button::new("add-authlib").h_10().success().icon(PandoraIcon::Plus).label("Add Authlib Account").on_click({
+                let backend_handle = self.backend_handle.clone();
+                move |_, window, cx| {
+                    let server_input = cx.new(|cx| {
+                        InputState::new(window, cx).placeholder("Server URL").default_value("https://authserver.ely.by/api/authlib-injector".to_string())
+                    });
+                    let email_input = cx.new(|cx| InputState::new(window, cx).placeholder("Email"));
+                    let password_input = cx.new(|cx| {
+                        let mut state = InputState::new(window, cx).placeholder("Password");
+                        state.set_masked(true, window, cx);
+                        state
+                    });
+                    
+                    let backend_handle = backend_handle.clone();
+                    window.open_dialog(cx, move |dialog, _, cx| {
+                        let server = server_input.read(cx).value();
+                        let email = email_input.read(cx).value();
+                        let password = password_input.read(cx).value();
+                        let valid = !email.is_empty() && !password.is_empty() && !server.is_empty();
+
+                        let backend_handle_clone = backend_handle.clone();
+                        let mut add_button = Button::new("add-authlib-btn").label("Add").on_click(move |_, window, cx| {
+                            window.close_dialog(cx);
+
+                            backend_handle_clone.send(MessageToBackend::AddAuthlibInjectorAccount {
+                                email: email.clone().into(),
+                                password: password.clone().into(),
+                                server_url: server.clone().into(),
+                                modal_action: bridge::modal_action::ModalAction::default(),
+                            });
+                        });
+
+                        if valid {
+                            add_button = add_button.success();
+                        }
+
+                        dialog.title("Add Authlib Account")
+                            .child(v_flex()
+                                .gap_2()
+                                .child(crate::labelled("Server URL", Input::new(&server_input)))
+                                .child(crate::labelled("Email", Input::new(&email_input)))
+                                .child(crate::labelled("Password", Input::new(&password_input)))
+                                .child(add_button)
+                            )
+                    });
+                }
+            }))
             .child(Button::new("add-offline").h_10().success().icon(PandoraIcon::Plus).label(t::account::add::offline()).on_click({
                 let backend_handle = self.backend_handle.clone();
                 move |_, window, cx| {

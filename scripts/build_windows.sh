@@ -1,12 +1,14 @@
 #!/bin/bash
 set -e
 
-if [ -z "$1" ]; then
-    echo "Missing version argument"
-    exit 1
+cd "$(dirname "$0")/.."
+
+version="$1"
+if [ -z "$version" ] || [ "$version" = "latest" ]; then
+    version=$(grep -m 1 'version =' Cargo.toml | cut -d '"' -f 2 || echo "5.3.1")
 fi
 
-version=${1#v}
+version=${version#v}
 export PANDORA_RELEASE_VERSION=$version
 
 cargo build --release --frozen --target x86_64-pc-windows-msvc

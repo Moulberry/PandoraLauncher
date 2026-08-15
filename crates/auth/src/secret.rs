@@ -262,6 +262,9 @@ mod inner {
             account.xbl = read_deserialize(&format!("PandoraLauncher_Xbl_{}", uuid))?;
             account.xsts = read_deserialize(&format!("PandoraLauncher_Xsts_{}", uuid))?;
             account.access_token = read_deserialize(&format!("PandoraLauncher_AccessToken_{}", uuid))?;
+            account.yggdrasil_access_token = read_deserialize(&format!("PandoraLauncher_YggdrasilAccessToken_{}", uuid))?;
+            account.yggdrasil_client_token = read_deserialize(&format!("PandoraLauncher_YggdrasilClientToken_{}", uuid))?;
+            account.yggdrasil_server_url = read_deserialize(&format!("PandoraLauncher_YggdrasilServerUrl_{}", uuid))?;
 
             Ok(Some(account))
         }
@@ -278,6 +281,9 @@ mod inner {
             write_serialize(&format!("PandoraLauncher_Xbl_{}", uuid), credentials.xbl.as_ref())?;
             write_serialize(&format!("PandoraLauncher_Xsts_{}", uuid), credentials.xsts.as_ref())?;
             write_serialize(&format!("PandoraLauncher_AccessToken_{}", uuid), credentials.access_token.as_ref())?;
+            write_serialize(&format!("PandoraLauncher_YggdrasilAccessToken_{}", uuid), credentials.yggdrasil_access_token.as_ref())?;
+            write_serialize(&format!("PandoraLauncher_YggdrasilClientToken_{}", uuid), credentials.yggdrasil_client_token.as_ref())?;
+            write_serialize(&format!("PandoraLauncher_YggdrasilServerUrl_{}", uuid), credentials.yggdrasil_server_url.as_ref())?;
 
             Ok(())
         }
@@ -291,6 +297,9 @@ mod inner {
                 delete(&format!("PandoraLauncher_Xbl_{}", uuid)),
                 delete(&format!("PandoraLauncher_Xsts_{}", uuid)),
                 delete(&format!("PandoraLauncher_AccessToken_{}", uuid)),
+                delete(&format!("PandoraLauncher_YggdrasilAccessToken_{}", uuid)),
+                delete(&format!("PandoraLauncher_YggdrasilClientToken_{}", uuid)),
+                delete(&format!("PandoraLauncher_YggdrasilServerUrl_{}", uuid)),
             ].into_iter().collect::<Result<(), _>>()?;
 
             Ok(())

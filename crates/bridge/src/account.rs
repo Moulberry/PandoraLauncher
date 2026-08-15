@@ -8,4 +8,5 @@ pub struct Account {
     pub username: Arc<str>,
     pub offline: bool,
     pub head: Option<UniqueBytes>,
+    pub authlib_injector_url: Option<String>,
 }

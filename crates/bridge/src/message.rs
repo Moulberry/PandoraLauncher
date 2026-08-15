@@ -248,6 +248,12 @@ pub enum MessageToBackend {
     AddNewAccount {
         modal_action: ModalAction,
     },
+    AddAuthlibInjectorAccount {
+        email: Arc<str>,
+        password: Arc<str>,
+        server_url: Arc<str>,
+        modal_action: ModalAction,
+    },
     AddOfflineAccount {
         name: Arc<str>,
         uuid: Uuid
@@ -265,6 +271,12 @@ pub enum MessageToBackend {
     SetProxyConfiguration {
         config: ProxyConfig,
         password: Option<String>,
+    },
+    SetAuthlibInjectorUrl {
+        url: Option<String>,
+    },
+    SetCurseforgeApiKey {
+        key: Option<String>,
     },
     CreateInstanceShortcut {
         id: InstanceID,

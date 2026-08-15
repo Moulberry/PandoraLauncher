@@ -291,6 +291,7 @@ async fn import_accounts_from_atlauncher(backend: &BackendState, import_job: &Im
                 username: account.minecraft_username.clone().into(),
                  offline: false,
                   head: None,
+                                authlib_injector_url: None,
               });
             if let Some(last_account) = launcher_config.last_account && account.username == last_account {
                    last_account_username = Some(account.uuid);

@@ -9,6 +9,8 @@ pub struct MinecraftProfileResponse {
     pub name: Arc<str>,
     pub skins: Vec<MinecraftProfileSkin>,
     pub capes: Vec<MinecraftProfileCape>,
+    #[serde(default)]
+    pub properties: Option<serde_json::Value>,
 }
 
 impl MinecraftProfileResponse {

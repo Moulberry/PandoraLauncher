@@ -5,7 +5,7 @@ use oauth2::{CsrfToken, PkceCodeVerifier};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-pub struct MinecraftAccessToken(pub(crate) Arc<str>);
+pub struct MinecraftAccessToken(pub Arc<str>);
 
 impl MinecraftAccessToken {
     pub fn secret(&self) -> &str {

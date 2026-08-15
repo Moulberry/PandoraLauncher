@@ -19,6 +19,12 @@ pub struct AccountCredentials {
     pub xsts: Option<XstsToken>,
     #[serde(default, skip_serializing_if = "skip_if_none")]
     pub access_token: Option<TokenWithExpiry>,
+    #[serde(default, skip_serializing_if = "skip_if_none")]
+    pub yggdrasil_access_token: Option<Arc<str>>,
+    #[serde(default, skip_serializing_if = "skip_if_none")]
+    pub yggdrasil_client_token: Option<Arc<str>>,
+    #[serde(default, skip_serializing_if = "skip_if_none")]
+    pub yggdrasil_server_url: Option<Arc<str>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -60,6 +66,9 @@ impl AuthStageWithData {
 
 impl AccountCredentials {
     pub fn access_token(&self) -> Option<MinecraftAccessToken> {
+        if let Some(token) = &self.yggdrasil_access_token {
+            return Some(MinecraftAccessToken(Arc::clone(token)));
+        }
         let now = Utc::now();
         if let Some(access_token) = &self.access_token && now < access_token.expiry {
             Some(MinecraftAccessToken(Arc::clone(&access_token.token)))

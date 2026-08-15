@@ -25,7 +25,7 @@ use schema::{
 };
 use serde::Deserialize;
 use sha1::{Digest, Sha1};
-use tokio::task::JoinHandle;
+
 use ustr::Ustr;
 
 use crate::metadata::items::{MetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem};
@@ -71,7 +71,8 @@ pub struct MetadataManager {
 
     expiring: tokio::sync::Mutex<VecDeque<(Instant, KeepAlive)>>,
 
-    http_client: reqwest::Client,
+    pub http_client: reqwest::Client,
+    pub config: Arc<parking_lot::RwLock<crate::persistent::Persistent<schema::backend_config::BackendConfig>>>,
 }
 
 #[derive(thiserror::Error, Clone, Debug)]
@@ -163,13 +164,13 @@ impl From<tokio::task::JoinError> for MetaLoadError {
 pub enum MetaLoadState<T> {
     #[default]
     Unloaded,
-    Pending(JoinHandle<Result<Arc<T>, MetaLoadError>>),
+    Pending(tokio::task::JoinHandle<Result<Arc<T>, MetaLoadError>>),
     Loaded(Arc<T>),
     Error(MetaLoadError),
 }
 
 impl MetadataManager {
-    pub fn new(http_client: reqwest::Client, directory: Arc<Path>) -> Self {
+    pub fn new(http_client: reqwest::Client, directory: Arc<Path>, config: Arc<parking_lot::RwLock<crate::persistent::Persistent<schema::backend_config::BackendConfig>>>) -> Self {
         Self {
             states: tokio::sync::Mutex::new(MetadataManagerStates::default()),
 
@@ -183,6 +184,7 @@ impl MetadataManager {
             expiring: Default::default(),
 
             http_client,
+            config,
         }
     }
 
@@ -217,7 +219,7 @@ impl MetadataManager {
                 &mut wrapper.1,
                 item,
                 cache_file,
-                &self.http_client,
+                self,
             );
         }
     }
@@ -244,7 +246,7 @@ impl MetadataManager {
                 &mut wrapper.1,
                 item,
                 cache_file,
-                &self.http_client,
+                self,
             );
         }
 
@@ -278,11 +280,11 @@ impl MetadataManager {
         state: &mut MetaLoadState<I::T>,
         item: &I,
         cache_file: Option<impl AsRef<Path> + Send + Sync + 'static>,
-        http_client: &reqwest::Client,
+        manager: &MetadataManager,
     ) {
         log::debug!("Loading metadata {:?}", item);
 
-        let request = item.request(http_client);
+        let request = item.request(manager);
         let expected_hash = item.data_hash().and_then(|sha1| {
             let mut expected_hash = [0u8; 20];
             hex::decode_to_slice(sha1.as_str(), &mut expected_hash).ok()?;

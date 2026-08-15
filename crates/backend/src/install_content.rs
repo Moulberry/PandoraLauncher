@@ -589,8 +589,31 @@ impl BackendState {
                     .find(|hash| hash.algo == 1).map(|hash| &hash.value);
                 let size = file.file_length as usize;
 
-                let Some(url) = file.download_url.as_ref() else {
-                    return Err(ContentInstallError::NoThirdPartyDownloads);
+                let url = match file.download_url.as_ref() {
+                    Some(url) => url.clone(),
+                    None => {
+                        let request_url = format!("https://api.curseforge.com/v1/mods/{}/files/{}/download-url", project_id, file.id);
+                        let api_key = self.config.write().get().curseforge_api_key.clone();
+                        let client = reqwest::Client::new();
+                        let result = client.get(&request_url)
+                            .header("x-api-key", api_key.as_deref().unwrap_or(schema::curseforge::CURSEFORGE_API_KEY))
+                            .send().await;
+
+                        match result {
+                            Ok(response) if response.status().is_success() => {
+                                if let Ok(json) = response.json::<serde_json::Value>().await {
+                                    if let Some(url) = json.get("data").and_then(|v| v.as_str()) {
+                                        Arc::from(url)
+                                    } else {
+                                        return Err(ContentInstallError::NoThirdPartyDownloads);
+                                    }
+                                } else {
+                                    return Err(ContentInstallError::NoThirdPartyDownloads);
+                                }
+                            }
+                            _ => return Err(ContentInstallError::NoThirdPartyDownloads),
+                        }
+                    }
                 };
 
                 let Some(sha1) = sha1 else {
@@ -608,7 +631,7 @@ impl BackendState {
                 };
 
                 let (path, hash, mod_summary) = self.download_file_into_library(&modal_action,
-                    (&safe_filename).into(), url, hash, size, download_meta).await?;
+                    (&safe_filename).into(), &url, hash, size, download_meta).await?;
 
                 if is_wrong_version && mod_summary.extra.is_strict_minecraft_version() {
                     return Err(ContentInstallError::UnableToFindVersion);
@@ -1041,7 +1064,7 @@ impl BackendState {
 
         if let Ok(url) = url::Url::parse(&**url) {
             if let Some(host) = url.host_str() && host.ends_with("forgecdn.net") {
-                builder = builder.header("x-api-key", CURSEFORGE_API_KEY);
+                builder = builder.header("x-api-key", self.config.write().get().curseforge_api_key.as_deref().unwrap_or(CURSEFORGE_API_KEY));
             }
         }
 

@@ -22,6 +22,12 @@ struct Cli {
     /// Instance to launch, instead of opening the launcher
     #[arg(long)]
     run_instance: Option<String>,
+    /// Custom data directory path
+    #[arg(long)]
+    data_dir: Option<PathBuf>,
+    /// Force portable mode (uses the executable or AppImage directory)
+    #[arg(long)]
+    portable: bool,
     /// Internal function to set traversable ACLs in an elevated context
     #[cfg(windows)]
     #[arg(long, hide = false, num_args = 2..)]
@@ -43,7 +49,7 @@ fn main() {
         }
     }
 
-    let data_dir = if let Some(portable_dir) = get_portable_dir() {
+    let data_dir = if let Some(portable_dir) = get_portable_dir(&cli) {
         portable_dir
     } else {
         let base_dirs = directories::BaseDirs::new().unwrap();
@@ -453,6 +459,22 @@ fn start_deadlock_detection(deadlock_message: &Arc<parking_lot::lock_api::RwLock
     });
 }
 
+struct IgnoreBrokenPipe<W: std::io::Write>(W);
+impl<W: std::io::Write> std::io::Write for IgnoreBrokenPipe<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self.0.write(buf) {
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(buf.len()),
+            other => other,
+        }
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self.0.flush() {
+            Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+            other => other,
+        }
+    }
+}
+
 fn init_logging(level: log::LevelFilter, log_file: &Path) -> Result<(), fern::InitError> {
     let base_config = fern::Dispatch::new()
         .level_for("pandora_launcher", level)
@@ -492,7 +514,7 @@ fn init_logging(level: log::LevelFilter, log_file: &Path) -> Result<(), fern::In
                 message = message
             ))
         })
-        .chain(std::io::stdout());
+        .chain(fern::Output::writer(Box::new(IgnoreBrokenPipe(std::io::stdout())), "\n"));
 
     base_config
         .chain(file_config)
@@ -502,11 +524,29 @@ fn init_logging(level: log::LevelFilter, log_file: &Path) -> Result<(), fern::In
     Ok(())
 }
 
-fn get_portable_dir() -> Option<PathBuf> {
+fn get_portable_dir(cli: &Cli) -> Option<PathBuf> {
+    if let Some(custom_dir) = &cli.data_dir {
+        return Some(custom_dir.clone());
+    }
+
+    if let Some(env_dir) = std::env::var_os("PANDORA_DATA_DIR") {
+        return Some(PathBuf::from(env_dir));
+    }
+
+    // When running inside an AppImage, std::env::current_exe() points to /tmp/.mount_xxx.
+    // The actual path to the .AppImage file is provided in the $APPIMAGE environment variable.
+    if let Some(appimage_path) = std::env::var_os("APPIMAGE") {
+        let path = PathBuf::from(appimage_path);
+        let file_name = path.file_name()?.to_string_lossy();
+        if cli.portable || file_name.to_lowercase().contains("portable") {
+            return path.parent().map(|p| p.to_path_buf());
+        }
+    }
+
     let current_exe = std::env::current_exe().ok()?;
     let file_name = current_exe.file_name()?;
     let file_name = file_name.to_string_lossy();
-    if file_name.to_lowercase().contains("portable") {
+    if cli.portable || file_name.to_lowercase().contains("portable") {
         Some(current_exe.parent()?.into())
     } else {
         None

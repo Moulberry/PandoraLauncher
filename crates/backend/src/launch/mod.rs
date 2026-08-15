@@ -95,6 +95,7 @@ impl Launcher {
         instance_info: InstanceConfiguration,
         quick_play: Option<QuickPlayLaunch>,
         login_info: MinecraftLoginInfo,
+        authlib_injector_url: Option<String>,
         read_game_output: bool,
         launch_tracker: &ProgressTracker,
         modal_action: &ModalAction,
@@ -242,6 +243,7 @@ impl Launcher {
             log_configuration,
             rule_context: launch_rule_context,
             login_info,
+            authlib_injector_url,
         };
 
         if modal_action.has_requested_cancel() {
@@ -2116,6 +2118,7 @@ pub struct LaunchContext {
     pub log_configuration: Option<OsString>,
     pub rule_context: LaunchRuleContext,
     pub login_info: MinecraftLoginInfo,
+    pub authlib_injector_url: Option<String>,
 }
 
 impl LaunchContext {
@@ -2265,6 +2268,74 @@ impl LaunchContext {
                 }
             }
         }
+        
+        if let Some(authlib_url) = &self.authlib_injector_url {
+            log::info!("Authlib-injector URL provided: {}", authlib_url);
+            let injector_path = self.libraries_dir.join("authlib-injector.jar");
+            if !injector_path.exists() {
+                log::info!("authlib-injector.jar not found at {}, downloading...", injector_path.display());
+                match reqwest::get("https://authlib-injector.yushi.moe/artifact/latest.json").await {
+                    Ok(json_resp) => match json_resp.json::<serde_json::Value>().await {
+                        Ok(metadata) => {
+                            if let Some(download_url) = metadata["download_url"].as_str() {
+                                log::info!("Found authlib-injector download URL: {}", download_url);
+                                match reqwest::get(download_url).await {
+                                    Ok(response) => match response.bytes().await {
+                                        Ok(bytes) => {
+                                            if let Err(e) = tokio::fs::write(&injector_path, bytes).await {
+                                                log::error!("Failed to write authlib-injector.jar: {}", e);
+                                            } else {
+                                                log::info!("Successfully downloaded and saved authlib-injector.jar");
+                                            }
+                                        }
+                                        Err(e) => log::error!("Failed to read authlib-injector.jar bytes: {}", e),
+                                    },
+                                    Err(e) => log::error!("Failed to download authlib-injector.jar from url: {}", e),
+                                }
+                            } else {
+                                log::error!("No download_url found in authlib-injector metadata");
+                            }
+                        }
+                        Err(e) => log::error!("Failed to parse authlib-injector metadata: {}", e),
+                    },
+                    Err(e) => log::error!("Failed to fetch authlib-injector latest.json: {}", e),
+                }
+            } else {
+                log::info!("authlib-injector.jar already exists at {}", injector_path.display());
+            }
+
+            if injector_path.exists() {
+                log::info!("Adding authlib-injector to JVM arguments");
+                command.arg(format!("-javaagent:{}={}", injector_path.display(), authlib_url));
+                match reqwest::get(authlib_url).await {
+                    Ok(response) => match response.json::<serde_json::Value>().await {
+                        Ok(metadata) => {
+                            if let Some(key) = metadata["meta"]["signaturePublickey"].as_str() {
+                                let clean_key = key.replace("-----BEGIN PUBLIC KEY-----", "")
+                                                   .replace("-----END PUBLIC KEY-----", "")
+                                                   .replace('\n', "")
+                                                   .replace('\r', "");
+                                let clean_key = clean_key.trim();
+                                if !clean_key.is_empty() {
+                                    log::info!("Prefetching authlib-injector Yggdrasil key");
+                                    command.arg(format!("-Dauthlibinjector.yggdrasil.prefetched={}", clean_key));
+                                } else {
+                                    log::warn!("Cleaned authlib-injector key is empty");
+                                }
+                            } else {
+                                log::warn!("No signaturePublickey found in authlib-injector meta");
+                            }
+                        }
+                        Err(e) => log::warn!("Failed to parse authlib-injector meta json: {}", e),
+                    },
+                    Err(e) => log::warn!("Failed to fetch authlib-injector meta: {}", e),
+                }
+            } else {
+                log::error!("authlib-injector.jar does not exist, skipping JVM argument attachment");
+            }
+        } else {
+            log::info!("No authlib_injector_url provided for this launch context");
+        }
 
         command.arg("com.moulberry.pandora.LaunchWrapper");
 
@@ -2275,6 +2346,17 @@ impl LaunchContext {
                 command.env("PATH", new_path_arg);
             }
         }
+
+        // Prevent game from inheriting AppImage or desktop integration variables to fix window grouping
+        command.env_remove("APPIMAGE");
+        command.env_remove("APPDIR");
+        command.env_remove("DESKTOPINTEGRATION");
+        command.env_remove("OWD");
+        command.env_remove("ARGV0");
+        command.env_remove("BAMF_DESKTOP_FILE_HINT");
+        command.env_remove("DESKTOP_STARTUP_ID");
+        command.env_remove("GIO_LAUNCHED_DESKTOP_FILE");
+        command.env_remove("XDG_ACTIVATION_TOKEN");
 
         let mut child = if self.configuration.sandbox {
             #[cfg(target_os = "linux")]
@@ -2443,7 +2525,7 @@ impl LaunchContext {
             ArgumentExpansionKey::GameDirectory => self.game_dir.as_os_str().into(),
             ArgumentExpansionKey::AssetsRoot => self.assets_root.as_os_str().into(),
             ArgumentExpansionKey::AssetsIndexName => OsStr::new(&self.assets_index_name).into(),
-            ArgumentExpansionKey::AuthUuid => OsString::from(self.login_info.uuid.as_hyphenated().to_string()).into(),
+            ArgumentExpansionKey::AuthUuid => OsString::from(self.login_info.uuid.simple().to_string()).into(),
             ArgumentExpansionKey::AuthAccessToken => OsStr::new(if let Some(access_token) = &self.login_info.access_token {
                 access_token.secret()
             } else {
@@ -2453,7 +2535,13 @@ impl LaunchContext {
             ArgumentExpansionKey::AuthXuid => OsStr::new("").into(), // These are just used for telemetry
             ArgumentExpansionKey::VersionType => OsStr::new("release").into(),
             ArgumentExpansionKey::QuickPlayPath => OsStr::new("quickPlay/log.json").into(),
-            ArgumentExpansionKey::UserProperties => OsStr::new("{}").into(),
+            ArgumentExpansionKey::UserProperties => {
+                if let Some(props) = &self.login_info.user_properties {
+                    OsString::from(serde_json::to_string(props).unwrap_or_else(|_| "{}".to_string())).into()
+                } else {
+                    OsStr::new("{}").into()
+                }
+            },
             ArgumentExpansionKey::UserType => OsStr::new("msa").into(),
             ArgumentExpansionKey::ResolutionWidth => OsString::from(format!("{}", self.rule_context.custom_resolution.unwrap().0)).into(),
             ArgumentExpansionKey::ResolutionHeight => OsString::from(format!("{}", self.rule_context.custom_resolution.unwrap().1)).into(),

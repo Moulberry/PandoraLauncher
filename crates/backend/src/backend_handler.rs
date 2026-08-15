@@ -1368,13 +1368,20 @@ impl BackendState {
                 self.login_flow(&modal_action, None).await;
                 modal_action.set_finished();
             },
+            MessageToBackend::AddAuthlibInjectorAccount { email, password, server_url, modal_action } => {
+                let backend = self.clone();
+                tokio::task::spawn(async move {
+                    backend.add_authlib_injector_account(&email, &password, &server_url, &modal_action).await;
+                });
+            },
             MessageToBackend::AddOfflineAccount { name, uuid } => {
                 let mut account_info = self.account_info.write();
                 account_info.modify(|account_info| {
                     account_info.accounts.insert(uuid, BackendAccount {
                         username: name,
                         offline: true,
-                        head: None
+                        head: None,
+                        authlib_injector_url: None
                     });
                     account_info.selected_account = Some(uuid);
                 });
@@ -1411,6 +1418,17 @@ impl BackendState {
                     }
 
                     account_info.accounts.move_index(from_index, to_index);
+                });
+            },
+
+            MessageToBackend::SetAuthlibInjectorUrl { url } => {
+                self.config.write().modify(|config| {
+                    config.authlib_injector_url = url;
+                });
+            },
+            MessageToBackend::SetCurseforgeApiKey { key } => {
+                self.config.write().modify(|config| {
+                    config.curseforge_api_key = key;
                 });
             },
             MessageToBackend::SetProxyConfiguration { config, password } => {
@@ -1570,14 +1588,28 @@ impl BackendState {
             MessageToBackend::GetAccountSkin { account, result } => {
                 let backend = self.clone();
                 tokio::task::spawn(async move {
-                    let Some(account) = backend.get_minecraft_profile(account).await else {
+                    let Some(profile) = backend.get_minecraft_profile(account).await else {
                         _ = result.send(AccountSkinResult::NeedsLogin);
                         return;
                     };
 
-                    if let Some(skin) = account.active_skin() {
+                    if let Some(skin) = profile.active_skin() {
                         SkinManager::frontend_request(&backend, skin.url.clone(), skin.variant, result);
                     } else {
+                        let authlib_url = backend.account_info.write().get().accounts.get(&account).and_then(|a| a.authlib_injector_url.clone());
+                        if let Some(url) = authlib_url {
+                            let session_url = format!("{}/sessionserver/session/minecraft/profile/{}", url, account.simple());
+                            let mut skin_url = None;
+                            if let Ok(response) = backend.http_client.get(&session_url).send().await {
+                                if let Ok(body) = response.text().await {
+                                    skin_url = BackendState::extract_skin_url_from_profile(&body);
+                                }
+                            }
+                            if let Some(s_url) = skin_url {
+                                SkinManager::frontend_request(&backend, s_url, SkinVariant::Classic, result);
+                                return;
+                            }
+                        }
                         _ = result.send(AccountSkinResult::Success { skin: None, variant: SkinVariant::Classic });
                     }
                 });
@@ -1999,7 +2031,8 @@ impl BackendState {
 
         let launch_tracker = ProgressTracker::new(Arc::from("Launching"), self.send.clone());
         modal_action.trackers.push(launch_tracker.clone());
-        let result = self.launcher.launch(&self.redirecting_http_client, dot_minecraft, configuration, quick_play, login_info, live_game_output.is_some(), &launch_tracker, &modal_action).await;
+        let authlib_injector_url = self.account_info.write().get().accounts.get(&login_info.uuid).and_then(|a| a.authlib_injector_url.clone());
+        let result = self.launcher.launch(&self.redirecting_http_client, dot_minecraft, configuration, quick_play, login_info, authlib_injector_url, live_game_output.is_some(), &launch_tracker, &modal_action).await;
 
         if matches!(result, Err(LaunchError::CancelledByUser)) {
             self.send.send(MessageToFrontend::CloseModal);
@@ -2037,7 +2070,7 @@ impl BackendState {
         launch_tracker.notify();
     }
 
-    fn extract_skin_url_from_profile(profile_json: &str) -> Option<Arc<str>> {
+    pub fn extract_skin_url_from_profile(profile_json: &str) -> Option<Arc<str>> {
         use base64::Engine;
         let parsed: serde_json::Value = serde_json::from_str(profile_json).ok()?;
         for prop in parsed["properties"].as_array()? {
@@ -2050,6 +2083,10 @@ impl BackendState {
             }
         }
         None
+    }
+    pub fn extract_properties_from_profile(profile_json: &str) -> Option<serde_json::Value> {
+        let parsed: serde_json::Value = serde_json::from_str(profile_json).ok()?;
+        Some(parsed["properties"].clone())
     }
 
     pub async fn get_minecraft_profile(&self, account: Uuid) -> Option<MinecraftProfileResponse> {
@@ -2174,7 +2211,64 @@ impl BackendState {
         let login_tracker = ProgressTracker::new(Arc::from("Logging in"), self.send.clone());
         modal_action.trackers.push(login_tracker.clone());
 
-        let login_result = self.login(&mut credentials, Some(&login_tracker), Some(&modal_action)).await;
+        let authlib_url = if let Some(uuid) = selected_account {
+            self.account_info.write().get().accounts.get(&uuid).and_then(|acc| acc.authlib_injector_url.clone())
+        } else {
+            None
+        };
+
+        let login_result = if let Some(url) = authlib_url.as_deref() {
+            if let Some(access) = &credentials.yggdrasil_access_token
+                && let Some(client) = &credentials.yggdrasil_client_token
+            {
+                match self.authlib_injector_refresh(access, client, &url).await {
+                    Ok(resp) => {
+                        credentials.yggdrasil_access_token = Some(resp.access_token.clone());
+                        credentials.yggdrasil_client_token = Some(resp.client_token.clone());
+
+                        if let Some(profile) = resp.selected_profile.as_ref() {
+                            let uuid = uuid::Uuid::parse_str(&profile.id).unwrap_or_else(|_| uuid::Uuid::new_v4());
+                            
+                            let mut skin_url = None;
+                            let mut properties = None;
+                            let session_url = format!("{}/sessionserver/session/minecraft/profile/{}", url, uuid.simple());
+                            if let Ok(response) = self.http_client.get(&session_url).send().await {
+                                if let Ok(body) = response.text().await {
+                                    skin_url = BackendState::extract_skin_url_from_profile(&body);
+                                    properties = BackendState::extract_properties_from_profile(&body);
+                                }
+                            }
+                            
+                            let skins = if let Some(s_url) = skin_url {
+                                vec![schema::minecraft_profile::MinecraftProfileSkin {
+                                    state: schema::minecraft_profile::SkinState::Active,
+                                    url: s_url,
+                                    variant: schema::minecraft_profile::SkinVariant::Classic,
+                                }]
+                            } else {
+                                vec![]
+                            };
+
+                            let m_profile = MinecraftProfileResponse {
+                                id: uuid,
+                                name: profile.name.clone(),
+                                skins,
+                                capes: vec![],
+                                properties,
+                            };
+                            Ok((m_profile, auth::models::MinecraftAccessToken(resp.access_token)))
+                        } else {
+                            Err(LoginError::ErrorRefreshingAuthlib("No selected profile returned".into()))
+                        }
+                    }
+                    Err(e) => Err(LoginError::ErrorRefreshingAuthlib(e))
+                }
+            } else {
+                Err(LoginError::AuthlibTokensMissing)
+            }
+        } else {
+            self.login(&mut credentials, Some(&login_tracker), Some(&modal_action)).await
+        };
 
         if matches!(login_result, Err(LoginError::CancelledByUser)) {
             self.send.send(MessageToFrontend::CloseModal);
@@ -2343,6 +2437,80 @@ impl BackendState {
         }
 
         println!("Done downloading all metadata");
+    }
+
+    pub async fn add_authlib_injector_account(
+        &self,
+        email: &str,
+        password: &str,
+        server_url: &str,
+        modal_action: &ModalAction,
+    ) {
+        log::info!("Attempting to add authlib-injector account for email: {}, server: {}", email, server_url);
+        match self.authlib_injector_authenticate(email, password, server_url).await {
+            Ok((response, uuid)) => {
+                log::info!("Successfully authenticated authlib-injector account. UUID: {:?}", uuid);
+                let uuid = uuid.unwrap_or_else(|| uuid::Uuid::new_v4());
+                
+                let mut credentials = AccountCredentials::default();
+                credentials.yggdrasil_access_token = Some(response.access_token.clone());
+                credentials.yggdrasil_client_token = Some(response.client_token.clone());
+                
+                if let Some(secret_storage) = self.get_secret_storage(Some(modal_action)).await {
+                    if let Err(e) = secret_storage.write_credentials(uuid, &credentials).await {
+                        log::error!("Failed to save credentials for authlib-injector account: {}", e);
+                        modal_action.set_error_message(format!("Failed to save credentials: {}", e).into());
+                        modal_action.set_finished();
+                        return;
+                    }
+                    log::info!("Successfully saved credentials for authlib-injector account");
+                } else {
+                    log::warn!("Warning: secret storage is not available");
+                }
+
+                let username = response.selected_profile.as_ref()
+                    .or_else(|| response.available_profiles.as_ref().and_then(|p| p.first()))
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| "Unknown".into());
+
+                log::info!("Determined username: {}", username);
+
+                let mut skin_url = None;
+                let session_url = format!("{}/sessionserver/session/minecraft/profile/{}", server_url, uuid.simple());
+                if let Ok(response) = self.http_client.get(&session_url).send().await {
+                    if let Ok(body) = response.text().await {
+                        skin_url = BackendState::extract_skin_url_from_profile(&body);
+                    }
+                }
+                log::info!("Skin URL determined: {:?}", skin_url);
+
+                let mut account_info = self.account_info.write();
+                account_info.modify(|account_info| {
+                    account_info.accounts.insert(uuid, BackendAccount {
+                        username,
+                        offline: false,
+                        head: None,
+                        authlib_injector_url: Some(server_url.to_string()),
+                    });
+                    account_info.selected_account = Some(uuid);
+                });
+                log::info!("Account added to AccountInfo");
+
+                if let Some(s_url) = skin_url {
+                    SkinManager::update_account(self, uuid, s_url);
+                }
+
+                self.send.send(account_info.get().create_update_message());
+                self.send.send(MessageToFrontend::CloseModal);
+                modal_action.set_finished();
+                log::info!("Successfully completed add_authlib_injector_account");
+            }
+            Err(e) => {
+                log::error!("Error in authlib_injector_authenticate: {}", e);
+                modal_action.set_error_message(e.into());
+                modal_action.set_finished();
+            }
+        }
     }
 }
 

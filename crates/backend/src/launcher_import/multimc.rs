@@ -470,14 +470,14 @@ fn import_instances_from_multimc(backend: &BackendState, import_job: &ImportFrom
         let target_dot_minecraft = to_import.pandora_path.join(".minecraft");
         if mmc_minecraft.exists() {
             _ = std::fs::create_dir_all(&target_dot_minecraft);
-            _ = crate::copy_content_recursive(&mmc_minecraft, &target_dot_minecraft, false, &|copied, total| {
+            _ = crate::fs::copy_content_recursive(&mmc_minecraft, &target_dot_minecraft, false, &|copied, total| {
                 tracker.set_total(total as usize);
                 tracker.set_count(copied as usize);
                 tracker.notify();
             });
         } else if mmc_dot_minecraft.exists() {
             _ = std::fs::create_dir_all(&target_dot_minecraft);
-            _ = crate::copy_content_recursive(&mmc_dot_minecraft, &target_dot_minecraft, false, &|copied, total| {
+            _ = crate::fs::copy_content_recursive(&mmc_dot_minecraft, &target_dot_minecraft, false, &|copied, total| {
                 tracker.set_total(total as usize);
                 tracker.set_count(copied as usize);
                 tracker.notify();
@@ -485,17 +485,17 @@ fn import_instances_from_multimc(backend: &BackendState, import_job: &ImportFrom
         }
 
         // Copy icon
-        _ = std::fs::copy(to_import.folder.join("icon.png"), to_import.pandora_path.join("icon.png"));
+        _ = crate::fs::fastcopy(&to_import.folder.join("icon.png"), &to_import.pandora_path.join("icon.png"), true, false);
 
         // Write info_v1.json
         let info_path = to_import.pandora_path.join("info_v1.json");
-        _ = crate::write_safe(&info_path, &configuration_bytes);
+        _ = crate::fs::write_safe(&info_path, &configuration_bytes);
 
         // Write stats_v1.json if we have some stats
         if stats != InstanceStats::default() {
             let stats_path = to_import.pandora_path.join("stats_v1.json");
             if let Ok(stats_bytes) = serde_json::to_vec(&stats) {
-                _ = crate::write_safe(&stats_path, &stats_bytes);
+                _ = crate::fs::write_safe(&stats_path, &stats_bytes);
             }
         }
 

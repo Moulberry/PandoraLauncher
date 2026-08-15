@@ -135,21 +135,23 @@ impl CurseforgeSearchPage {
                 for content_folder in ContentFolder::iter() {
                     let mut specific_installed_content: FxHashMap<u32, Vec<InstalledContent>> = FxHashMap::default();
 
-                    for summary in instance_content[content_folder].read(cx).iter() {
-                        let ContentSource::CurseforgeProject { project_id: project } = summary.content_source else {
-                            continue;
-                        };
+                    if let Some(content) = instance_content[content_folder].read(cx) {
+                        for summary in content.iter() {
+                            let ContentSource::CurseforgeProject { project_id: project } = summary.content_source else {
+                                continue;
+                            };
 
-                        let installed_content = InstalledContent {
-                            content_id: summary.id,
-                            status: summary.update.status_if_matches(loader, minecraft_version.as_str()),
-                        };
+                            let installed_content = InstalledContent {
+                                content_id: summary.id,
+                                status: summary.update.status_if_matches(loader, minecraft_version.as_str()),
+                            };
 
-                        let installed = all_installed_content_by_project.entry(project).or_default();
-                        installed.push(installed_content);
+                            let installed = all_installed_content_by_project.entry(project).or_default();
+                            installed.push(installed_content);
 
-                        let installed = specific_installed_content.entry(project).or_default();
-                        installed.push(installed_content);
+                            let installed = specific_installed_content.entry(project).or_default();
+                            installed.push(installed_content);
+                        }
                     }
 
                     specific_installed_content_by_project[content_folder] = specific_installed_content;
@@ -160,17 +162,18 @@ impl CurseforgeSearchPage {
 
                         specific.clear();
 
-                        let content = entity.read(cx);
-                        for summary in content.iter() {
-                            let ContentSource::CurseforgeProject { project_id: project } = summary.content_source else {
-                                continue;
-                            };
+                        if let Some(content) = entity.read(cx) {
+                            for summary in content.iter() {
+                                let ContentSource::CurseforgeProject { project_id: project } = summary.content_source else {
+                                    continue;
+                                };
 
-                            let installed = specific.entry(project).or_default();
-                            installed.push(InstalledContent {
-                                content_id: summary.id,
-                                status: summary.update.status_if_matches(loader, minecraft_version.as_str()),
-                            })
+                                let installed = specific.entry(project).or_default();
+                                installed.push(InstalledContent {
+                                    content_id: summary.id,
+                                    status: summary.update.status_if_matches(loader, minecraft_version.as_str()),
+                                })
+                            }
                         }
 
                         page.all_installed_content_by_project.clear();

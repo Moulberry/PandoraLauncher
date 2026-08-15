@@ -10,13 +10,12 @@ use gpui_component::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entity::{DataEntities, instance::InstanceEntry}, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{content_subpage::InstanceContentSubpage, logs_subpage::InstanceLogsSubpage, quickplay_subpage::InstanceQuickplaySubpage, settings_subpage::InstanceSettingsSubpage}, page::Page}, root,
+    entity::{DataEntities, instance::InstanceEntry}, game_output::GameOutputRoot, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{content_subpage::InstanceContentSubpage, logs_subpage::InstanceLogsSubpage, quickplay_subpage::InstanceQuickplaySubpage, settings_subpage::InstanceSettingsSubpage}, page::Page}, root
 };
 
 use super::content_subpage::ContentType;
 
 pub struct InstancePage {
-    backend_handle: BackendHandle,
     data: DataEntities,
     pub instance: Entity<InstanceEntry>,
     subpage: InstanceSubpage,
@@ -29,8 +28,12 @@ impl InstancePage {
         let instance_subpage = InterfaceConfig::get(cx).instance_subpage;
         let subpage = instance_subpage.create(&instance, data, data.backend_handle.clone(), window, cx);
 
+        let subpage = subpage.unwrap_or_else(|| {
+            InterfaceConfig::get_mut(cx).instance_subpage = InstanceSubpageType::Quickplay;
+            InstanceSubpageType::Quickplay.create(&instance, data, data.backend_handle.clone(), window, cx).unwrap()
+        });
+
         Self {
-            backend_handle: data.backend_handle.clone(),
             data: data.clone(),
             instance,
             subpage,
@@ -43,13 +46,13 @@ impl Page for InstancePage {
         let instance = self.instance.read(cx);
         let id = instance.id;
         let name = instance.name.clone();
-        let backend_handle = self.backend_handle.clone();
+        let data = self.data.clone();
 
         let button = match instance.status {
             InstanceStatus::NotRunning => {
                 Button::new("start_instance").success().icon(PandoraIcon::Play).label(t::instance::start::label()).on_click(
                     move |_, window, cx| {
-                        root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
+                        root::start_instance(id, name.clone(), None, &data, window, cx);
                     },
                 ).into_any_element()
             },
@@ -62,7 +65,7 @@ impl Page for InstancePage {
                     .icon(PandoraIcon::Loader)
                     .label(t::instance::start::stopping())
                     .on_click({
-                        let backend_handle = backend_handle.clone();
+                        let backend_handle = data.backend_handle.clone();
                         move |_, _, _| {
                             backend_handle.send(MessageToBackend::KillInstance { id });
                         }
@@ -76,7 +79,7 @@ impl Page for InstancePage {
                         .icon(PandoraIcon::Close)
                         .label(t::instance::kill_instance())
                         .on_click({
-                            let backend_handle = backend_handle.clone();
+                            let backend_handle = data.backend_handle.clone();
                             move |_, _, _| {
                                 backend_handle.send(MessageToBackend::KillInstance { id });
                             }
@@ -86,7 +89,7 @@ impl Page for InstancePage {
                         .icon(PandoraIcon::Play)
                         .on_click(move |_, window, cx| {
                             let name = name.clone();
-                            let backend_handle = backend_handle.clone();
+                            let data = data.clone();
                             window.open_dialog(cx, move |dialog, _, _| {
                                 dialog.title(t::instance::already_running::title())
                                     .overlay_closable(false)
@@ -111,10 +114,10 @@ impl Page for InstancePage {
                                                 .label(t::instance::already_running::start_anyway())
                                                 .on_click({
                                                     let name = name.clone();
-                                                    let backend_handle = backend_handle.clone();
+                                                    let data = data.clone();
                                                     move |_, window, cx| {
                                                         window.close_dialog(cx);
-                                                        root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
+                                                        root::start_instance(id, name.clone(), None, &data, window, cx);
                                                     }
                                                 })
                                         ))
@@ -146,10 +149,25 @@ impl Render for InstancePage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let instance_subpage = InterfaceConfig::get(cx).instance_subpage;
         if instance_subpage != self.subpage.page_type() {
-            self.subpage = instance_subpage.create(&self.instance, &self.data, self.backend_handle.clone(), window, cx);
+            let subpage = instance_subpage.create(&self.instance, &self.data, self.data.backend_handle.clone(), window, cx);
+
+            self.subpage = subpage.unwrap_or_else(|| {
+                InterfaceConfig::get_mut(cx).instance_subpage = InstanceSubpageType::Quickplay;
+                InstanceSubpageType::Quickplay.create(&self.instance, &self.data, self.data.backend_handle.clone(), window, cx).unwrap()
+            });
         }
 
-        let show_shader_tab = self.instance.read(cx).configuration.show_shader_tab || matches!(self.subpage, InstanceSubpage::Shaders(_));
+        let entry = self.instance.read(cx);
+        let show_shader_tab = entry.configuration.show_shader_tab || matches!(self.subpage, InstanceSubpage::Shaders(_));
+        let show_live_game_output = entry.live_game_output.is_some();
+
+        // Update live game output
+        if let InstanceSubpage::LiveGameOutput(current_output) = &self.subpage
+            && let Some(desired_output) = &entry.live_game_output
+            && current_output != desired_output
+        {
+            self.subpage = InstanceSubpage::LiveGameOutput(desired_output.clone());
+        }
 
         let selected_index = match &self.subpage {
             InstanceSubpage::Quickplay(_) => 0,
@@ -158,6 +176,7 @@ impl Render for InstancePage {
             InstanceSubpage::ResourcePacks(_) => 3,
             InstanceSubpage::Shaders(_) => 4,
             InstanceSubpage::Settings(_) => if show_shader_tab { 5 } else { 4 },
+            InstanceSubpage::LiveGameOutput(_) => if show_shader_tab { 6 } else { 5 },
         };
 
         v_flex()
@@ -175,6 +194,9 @@ impl Render for InstancePage {
                         this.child(Tab::new().label(t::instance::content::shaders()))
                     })
                     .child(Tab::new().label(t::settings::title()))
+                    .when(show_live_game_output, |this| {
+                        this.child(Tab::new().label(t::instance::live_game_output()))
+                    })
                     .on_click(cx.listener(move |_, index, _, cx| {
                         let page_type = match *index {
                             0 => InstanceSubpageType::Quickplay,
@@ -189,9 +211,14 @@ impl Render for InstancePage {
                             5 => {
                                 if show_shader_tab {
                                     InstanceSubpageType::Settings
+                                } else if show_live_game_output {
+                                    InstanceSubpageType::LiveGameOutput
                                 } else {
                                     return;
                                 }
+                            },
+                            6 => {
+                                InstanceSubpageType::LiveGameOutput
                             },
                             _ => {
                                 return;
@@ -214,6 +241,7 @@ pub enum InstanceSubpageType {
     ResourcePacks,
     Shaders,
     Settings,
+    LiveGameOutput,
 }
 
 impl InstanceSubpageType {
@@ -224,10 +252,10 @@ impl InstanceSubpageType {
         backend_handle: BackendHandle,
         window: &mut gpui::Window,
         cx: &mut App
-    ) -> InstanceSubpage {
-        match self {
+    ) -> Option<InstanceSubpage> {
+        Some(match self {
             InstanceSubpageType::Quickplay => InstanceSubpage::Quickplay(cx.new(|cx| {
-                InstanceQuickplaySubpage::new(instance, backend_handle, window, cx)
+                InstanceQuickplaySubpage::new(instance, data, window, cx)
             })),
             InstanceSubpageType::Logs => InstanceSubpage::Logs(cx.new(|cx| {
                 InstanceLogsSubpage::new(instance, backend_handle, window, cx)
@@ -244,7 +272,14 @@ impl InstanceSubpageType {
             InstanceSubpageType::Settings => InstanceSubpage::Settings(cx.new(|cx| {
                 InstanceSettingsSubpage::new(instance, data, backend_handle, window, cx)
             })),
-        }
+            InstanceSubpageType::LiveGameOutput => {
+                if let Some(game_output) = instance.read(cx).live_game_output.clone() {
+                    InstanceSubpage::LiveGameOutput(game_output)
+                } else {
+                    return None;
+                }
+            },
+        })
     }
 }
 
@@ -256,6 +291,7 @@ pub enum InstanceSubpage {
     ResourcePacks(Entity<InstanceContentSubpage>),
     Shaders(Entity<InstanceContentSubpage>),
     Settings(Entity<InstanceSettingsSubpage>),
+    LiveGameOutput(Entity<GameOutputRoot>),
 }
 
 impl InstanceSubpage {
@@ -267,6 +303,7 @@ impl InstanceSubpage {
             InstanceSubpage::ResourcePacks(_) => InstanceSubpageType::ResourcePacks,
             InstanceSubpage::Shaders(_) => InstanceSubpageType::Shaders,
             InstanceSubpage::Settings(_) => InstanceSubpageType::Settings,
+            InstanceSubpage::LiveGameOutput(_) => InstanceSubpageType::LiveGameOutput,
         }
     }
 
@@ -278,6 +315,7 @@ impl InstanceSubpage {
             Self::ResourcePacks(entity) => entity.into_any_element(),
             Self::Shaders(entity) => entity.into_any_element(),
             Self::Settings(entity) => entity.into_any_element(),
+            Self::LiveGameOutput(entity) => entity.into_any_element(),
         }
     }
 }

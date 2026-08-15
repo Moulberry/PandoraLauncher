@@ -8,7 +8,7 @@ use notify::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use strum::IntoEnumIterator;
 
-use crate::{BackendState, FolderChanges, WatchTarget, skin_manager::SkinManager};
+use crate::{BackendState, WatchTarget, fs::FolderChanges, skin_manager::SkinManager};
 
 #[derive(Debug)]
 enum FilesystemEvent {

@@ -467,7 +467,7 @@ impl InstanceSettingsSubpage {
 
 		self.backend_handle.send(MessageToBackend::SetInstancePreferredAccount {
 			id: self.instance_id,
-			account: value.as_ref().map(|value| value.item),
+			account: value.clone(),
 		});
     }
 
@@ -1072,7 +1072,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })
             ))
-            .child(Button::new("shortcut").label(t::instance::create_shortcut()).overflow_x_hidden().success().on_click({
+            .child(Button::new("shortcut").label(t::instance::create_shortcut()).icon(PandoraIcon::ExternalLink).overflow_x_hidden().success().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |_: &ClickEvent, _, cx| {
@@ -1100,6 +1100,20 @@ impl Render for InstanceSettingsSubpage {
                     }).detach();
                 }
             }))
+            .child(Button::new("duplicate")
+                .label(t::instance::duplicate::action())
+                .icon(PandoraIcon::Copy)
+                .overflow_x_hidden()
+                .on_click({
+                    let instance = self.instance.clone();
+                    let instances = self.data.instances.clone();
+                    let backend_handle = self.backend_handle.clone();
+                    move |_: &ClickEvent, window, cx| {
+                        let instance = instance.read(cx);
+                        crate::modals::duplicate_instance::open_duplicate_instance(instance.id, instance.name.clone(), instances.clone(), backend_handle.clone(), window, cx);
+                    }
+                })
+            )
             .child(Button::new("export")
                 .label(t::instance::export::action())
                 .icon(PandoraIcon::Archive)
@@ -1113,7 +1127,7 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })
             )
-            .child(Button::new("delete").label(t::instance::delete()).overflow_x_hidden().danger().on_click({
+            .child(Button::new("delete").label(t::instance::delete()).icon(PandoraIcon::Trash2).overflow_x_hidden().danger().on_click({
                 let instance = self.instance.clone();
                 let backend_handle = self.backend_handle.clone();
                 move |click: &ClickEvent, window, cx| {

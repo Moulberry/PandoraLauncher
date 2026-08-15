@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bridge::modal_action::{ModalAction, ProgressTrackerFinishType};
 use gpui::{prelude::*, *};
 use gpui_component::{
-    WindowExt, button::{Button, ButtonVariant, ButtonVariants}, notification::Notification, v_flex
+    WindowExt, button::{Button, ButtonVariant, ButtonVariants}, notification::Notification, v_flex, Disableable
 };
 
 use crate::{component::{
@@ -254,7 +254,7 @@ pub fn show_modal(
             modal
                 .overlay_closable(false)
                 .keyboard(false)
-                .footer(Button::new("cancel").label(t::common::cancel()).on_click(move |_, _, _| request_cancel.cancel()))
+                .footer(Button::new("cancel").disabled(modal_action.has_requested_cancel()).label(t::common::cancel()).on_click(move |_, _, _| request_cancel.cancel()))
         }
     });
 }

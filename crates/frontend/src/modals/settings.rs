@@ -10,9 +10,8 @@ use gpui_component::{
     input::{Input, InputEvent, InputState, NumberInput},
     select::{SearchableVec, Select, SelectEvent, SelectState},
     sheet::Sheet,
-    spinner::Spinner,
     tab::{Tab, TabBar},
-    v_flex, ActiveTheme, Disableable, Sizable, ThemeRegistry,
+    v_flex, ActiveTheme, Disableable, ThemeRegistry,
 };
 use schema::backend_config::{BackendConfig, ProxyConfig, ProxyProtocol};
 
@@ -20,7 +19,7 @@ use crate::{
     component::named_dropdown::{NamedDropdown, NamedDropdownItem},
     entity::DataEntities,
     icon::PandoraIcon,
-    interface_config::InterfaceConfig,
+    interface_config::{InterfaceConfig, LiveGameOutputDisplay},
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -39,6 +38,7 @@ struct Settings {
     pending_request: bool,
     backend_config: Option<BackendConfig>,
     get_configuration_task: Option<Task<()>>,
+    live_game_output_select: Entity<SelectState<NamedDropdown<LiveGameOutputDisplay>>>,
     // Proxy settings state
     proxy_enabled: bool,
     proxy_protocol_select: Entity<SelectState<Vec<&'static str>>>,
@@ -53,11 +53,14 @@ struct Settings {
 pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut App) -> impl Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static {
     let theme_folder = data.theme_folder.clone();
     let settings = cx.new(|cx| {
+        let interface_config = InterfaceConfig::get(cx);
+        let current_language = interface_config.language.clone();
+        let current_live_game_output_display = interface_config.live_game_output_display;
+
         let language_select = cx.new(|cx| {
             let lang_options = Settings::build_language_options();
-            let lang = &InterfaceConfig::get(cx).language;
             let selected_index = lang_options.iter()
-                .position(|item| item.item == *lang)
+                .position(|item| item.item == current_language)
                 .map(IndexPath::new);
             SelectState::new(NamedDropdown::new(lang_options), selected_index, window, cx)
         });
@@ -87,6 +90,28 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             gpui_component::Theme::global_mut(cx).apply_config(&theme);
         }).detach();
 
+        let live_game_output_select = NamedDropdown::create_and_select(vec![
+            NamedDropdownItem {
+                name: t::settings::windows::live_game_output_display::tab_on_instance_page().into(),
+                item: LiveGameOutputDisplay::TabOnInstancePage,
+            },
+            NamedDropdownItem {
+                name: t::settings::windows::live_game_output_display::separate_window().into(),
+                item: LiveGameOutputDisplay::SeparateWindow,
+            },
+            NamedDropdownItem {
+                name: t::settings::windows::live_game_output_display::hidden().into(),
+                item: LiveGameOutputDisplay::Hidden,
+            },
+        ], current_live_game_output_display, window, cx);
+
+        cx.subscribe(&live_game_output_select, |_, _, event, cx| {
+            let SelectEvent::Confirm(Some(value)) = event else {
+                return;
+            };
+            InterfaceConfig::get_mut(cx).live_game_output_display = *value;
+        }).detach();
+
         let proxy_protocol_select = cx.new(|cx| {
             let protocols = vec!["HTTP", "HTTPS", "SOCKS5"];
             let mut state = SelectState::new(protocols, None, window, cx);
@@ -112,6 +137,7 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
             pending_request: false,
             backend_config: None,
             get_configuration_task: None,
+            live_game_output_select,
             proxy_enabled: false,
             proxy_protocol_select,
             proxy_host_input,
@@ -306,11 +332,10 @@ impl Settings {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let SelectEvent::Confirm(_) = event;
-        let Some(lang_item) = self.language_select.read(cx).selected_value().cloned() else {
+        let SelectEvent::Confirm(Some(lang)) = event else {
             return;
         };
-        let lang = lang_item.item;
+        let lang = lang.clone();
         t::set_lang(&lang);
 
         let lang_options = Self::build_language_options();
@@ -331,7 +356,7 @@ impl Settings {
     fn render_interface_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let interface_config = InterfaceConfig::get(cx);
 
-        let mut div = v_flex()
+        let div = v_flex()
             .px_4()
             .py_3()
             .gap_3()
@@ -368,68 +393,54 @@ impl Settings {
                             InterfaceConfig::get_mut(cx).quick_delete_instance = *value;
                         }))
                     )
-            );
-
-        if let Some(backend_config) = &self.backend_config {
-            div = div
-                .child(crate::labelled(
-                    t::settings::windows::title(),
-                    v_flex().gap_2()
-                        .child(Checkbox::new("hide-on-launch")
-                            .label(t::settings::windows::hide_main_window())
-                            .checked(interface_config.hide_main_window_on_launch)
-                            .on_click(|value, _, cx| {
-                                InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
-                            }))
-                        .child(Checkbox::new("open-game-output")
-                            .label(t::settings::windows::open_game_output())
-                            .checked(!backend_config.dont_open_game_output_when_launching)
-                            .on_click(cx.listener({
-                                let backend_handle = self.backend_handle.clone();
-                                move |settings, value, window, cx| {
-                                    backend_handle.send(MessageToBackend::SetOpenGameOutputAfterLaunching {
-                                        value: *value
-                                    });
-                                    settings.update_backend_configuration(window, cx);
-                                }
-                            })))
-                        .child(Checkbox::new("quit-on-main-close")
-                            .label(t::settings::windows::close_all_when_main_closed())
-                            .checked(interface_config.quit_on_main_closed)
-                            .on_click(|value, _, cx| {
-                                InterfaceConfig::get_mut(cx).quit_on_main_closed = *value;
-                            }))
-                        .child(Checkbox::new("use-os-titlebar")
-                            .label(t::settings::windows::use_os_titlebar())
-                            .checked(interface_config.use_os_titlebar)
-                            .on_click(|value, _, cx| {
-                                InterfaceConfig::get_mut(cx).use_os_titlebar = *value;
-                            }))
-                ))
-        } else {
-            div = div.child(Spinner::new().large());
-        }
-
-        div = div.child(crate::labelled(t::settings::privacy::title(),
-            v_flex().gap_2()
-                .child(Checkbox::new("hide-usernames")
-                    .label(t::settings::privacy::hide_usernames())
-                    .checked(interface_config.hide_usernames)
-                    .on_click(|value, _, cx| {
-                        InterfaceConfig::get_mut(cx).hide_usernames = *value;
-                    }))
-                .child(Checkbox::new("hide-skins")
-                    .label(t::settings::privacy::hide_skins())
-                    .checked(interface_config.hide_skins)
-                    .on_click(|value, _, cx| {
-                        InterfaceConfig::get_mut(cx).hide_skins = *value;
-                    }))
-                .child(Checkbox::new("hide-server-addresses")
-                    .label(t::settings::privacy::hide_server_addresses())
-                    .checked(interface_config.hide_server_addresses)
-                    .on_click(|value, _, cx| {
-                        InterfaceConfig::get_mut(cx).hide_server_addresses = *value;
-                    }))
+            )
+            .child(crate::labelled(
+                t::settings::windows::live_game_output_display(),
+                Select::new(&self.live_game_output_select)
+            ))
+            .child(crate::labelled(
+                t::settings::windows::title(),
+                v_flex().gap_2()
+                    .child(Checkbox::new("hide-on-launch")
+                        .label(t::settings::windows::hide_main_window())
+                        .checked(interface_config.hide_main_window_on_launch)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).hide_main_window_on_launch = *value;
+                        }))
+                    .child(Checkbox::new("quit-on-main-close")
+                        .label(t::settings::windows::close_all_when_main_closed())
+                        .checked(interface_config.quit_on_main_closed)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).quit_on_main_closed = *value;
+                        }))
+                    .child(Checkbox::new("use-os-titlebar")
+                        .label(t::settings::windows::use_os_titlebar())
+                        .checked(interface_config.use_os_titlebar)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).use_os_titlebar = *value;
+                        }))
+            ))
+            .child(crate::labelled(
+                t::settings::privacy::title(),
+                v_flex().gap_2()
+                    .child(Checkbox::new("hide-usernames")
+                        .label(t::settings::privacy::hide_usernames())
+                        .checked(interface_config.hide_usernames)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).hide_usernames = *value;
+                        }))
+                    .child(Checkbox::new("hide-skins")
+                        .label(t::settings::privacy::hide_skins())
+                        .checked(interface_config.hide_skins)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).hide_skins = *value;
+                        }))
+                    .child(Checkbox::new("hide-server-addresses")
+                        .label(t::settings::privacy::hide_server_addresses())
+                        .checked(interface_config.hide_server_addresses)
+                        .on_click(|value, _, cx| {
+                            InterfaceConfig::get_mut(cx).hide_server_addresses = *value;
+                        }))
         ));
 
         div

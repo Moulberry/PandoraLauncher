@@ -8,7 +8,7 @@ use schema::{minecraft_profile::SkinVariant, unique_bytes::UniqueBytes};
 use tokio::sync::oneshot::Sender;
 use uuid::Uuid;
 
-use crate::{BackendState, FolderChanges};
+use crate::{BackendState, fs::FolderChanges};
 
 pub struct SkinManager {
     skin_cache: HashMap<RgbaImage, UniqueBytes>,

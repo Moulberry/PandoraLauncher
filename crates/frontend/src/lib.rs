@@ -229,6 +229,7 @@ pub fn open_main_window(data: &DataEntities, cx: &mut App) -> AnyWindowHandle {
                 appears_transparent: use_custom_titlebar,
                 ..Default::default()
             }),
+            app_owns_titlebar_drag: use_custom_titlebar,
             window_bounds,
             window_decorations: Some(if use_custom_titlebar { WindowDecorations::Client } else { WindowDecorations::Server }),
             ..Default::default()
@@ -311,6 +312,19 @@ pub(crate) fn is_single_component_path(path: &str) -> bool {
     }
 
     components.count() == 1
+}
+
+pub(crate) fn get_unique_instance_name(original_name: &str, existing_names: &[&str]) -> String {
+    if !existing_names.iter().any(|n| *n == original_name) {
+        return original_name.to_string();
+    }
+    for i in 1..100 {
+        let numbered = format!("{original_name} ({i})");
+        if !existing_names.iter().any(|n| *n == &numbered) {
+            return numbered;
+        }
+    }
+    String::new()
 }
 
 #[inline]

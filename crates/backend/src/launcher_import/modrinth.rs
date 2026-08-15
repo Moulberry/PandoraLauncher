@@ -98,7 +98,7 @@ pub fn import_instances_from_modrinth(backend: &BackendState, import_job: Import
         let target_dot_minecraft = to_import.pandora_path.join(".minecraft");
 
         _ = std::fs::create_dir_all(&target_dot_minecraft);
-        _ = crate::copy_content_recursive(&to_import.minecraft_folder, &target_dot_minecraft, false, &|copied, total| {
+        _ = crate::fs::copy_content_recursive(&to_import.minecraft_folder, &target_dot_minecraft, false, &|copied, total| {
             tracker.set_total(total as usize);
             tracker.set_count(copied as usize);
             tracker.notify();
@@ -111,12 +111,12 @@ pub fn import_instances_from_modrinth(backend: &BackendState, import_job: Import
             if let Ok(icon_bytes) = std::fs::read(icon_path) {
                 if let Ok(format) = image::guess_format(&icon_bytes) {
                     if format == ImageFormat::Png {
-                        _ = crate::write_safe(&to_import.pandora_path.join("icon.png"), &icon_bytes);
+                        _ = crate::fs::write_safe(&to_import.pandora_path.join("icon.png"), &icon_bytes);
                     } else if let Ok(image) = image::load_from_memory_with_format(&icon_bytes, format) {
                         let mut png_bytes = Vec::new();
                         let mut cursor = Cursor::new(&mut png_bytes);
                         if image.write_to(&mut cursor, image::ImageFormat::Png).is_ok() {
-                            _ = crate::write_safe(&to_import.pandora_path.join("icon.png"), &png_bytes);
+                            _ = crate::fs::write_safe(&to_import.pandora_path.join("icon.png"), &png_bytes);
                         }
                     }
                 }
@@ -125,7 +125,7 @@ pub fn import_instances_from_modrinth(backend: &BackendState, import_job: Import
 
         // Write info_v1.json
         let info_path = to_import.pandora_path.join("info_v1.json");
-        _ = crate::write_safe(&info_path, &configuration_bytes);
+        _ = crate::fs::write_safe(&info_path, &configuration_bytes);
 
         all_tracker.add_count(1);
         all_tracker.notify();

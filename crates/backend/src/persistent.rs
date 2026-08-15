@@ -2,7 +2,7 @@ use std::{path::Path, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::IoOrSerializationError;
+use crate::fs::IoOrSerializationError;
 
 #[derive(Debug)]
 pub struct Persistent<T: Serialize + for <'de> Deserialize<'de>> {
@@ -14,7 +14,7 @@ pub struct Persistent<T: Serialize + for <'de> Deserialize<'de>> {
 impl<T: Serialize + for <'de> Deserialize<'de> + Default> Persistent<T> {
     pub fn load(path: Arc<Path>) -> Self {
         let data = if path.exists() {
-            match crate::read_json(&path) {
+            match crate::fs::read_json(&path) {
                 Ok(data) => data,
                 Err(err) => {
                     log::error!("Error while loading file: {err:?}");
@@ -34,7 +34,7 @@ impl<T: Serialize + for <'de> Deserialize<'de> + Default> Persistent<T> {
 
 impl<T: Serialize + for <'de> Deserialize<'de>> Persistent<T> {
     pub fn try_load(path: Arc<Path>) -> Result<Self, IoOrSerializationError> {
-        let data = crate::read_json(&path)?;
+        let data = crate::fs::read_json(&path)?;
         Ok(Self {
             path,
             dirty: false,
@@ -43,7 +43,7 @@ impl<T: Serialize + for <'de> Deserialize<'de>> Persistent<T> {
     }
 
     pub fn load_or(path: Arc<Path>, default_value: T) -> Self {
-        let data = crate::read_json(&path).unwrap_or(default_value);
+        let data = crate::fs::read_json(&path).unwrap_or(default_value);
         Self {
             path,
             dirty: false,
@@ -59,7 +59,7 @@ impl<T: Serialize + for <'de> Deserialize<'de>> Persistent<T> {
         (func)(&mut self.data);
 
         if let Ok(bytes) = serde_json::to_vec(&self.data) {
-            if crate::write_safe(&self.path, &bytes).is_ok() {
+            if crate::fs::write_safe(&self.path, &bytes).is_ok() {
                 self.dirty = true;
             }
         }
@@ -87,7 +87,7 @@ impl<T: Serialize + for <'de> Deserialize<'de>> Persistent<T> {
     fn load_from_disk(&mut self) {
         self.dirty = false;
 
-        let Ok(data) = crate::read_json(&self.path) else {
+        let Ok(data) = crate::fs::read_json(&self.path) else {
             return;
         };
 

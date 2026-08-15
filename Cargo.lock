@@ -724,6 +724,7 @@ dependencies = [
  "rand 0.8.6",
  "rayon",
  "rc-zip-sync",
+ "reflink-copy",
  "regex",
  "relative-path",
  "reqwest",
@@ -790,7 +791,7 @@ dependencies = [
  "bitflags 2.13.1",
  "cexpr",
  "clang-sys",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -6608,6 +6609,18 @@ version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed#184e124bba43220e1e39f73ff63f563fc8f27c76"
 dependencies = [
  "derive_refineable",
+]
+
+[[package]]
+name = "reflink-copy"
+version = "0.1.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9dd7ab4af0363d5ccfd2838d782a28196cf32a5cc2e4fe3c5dc83f2be588b8b"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "rustix 1.1.2",
+ "windows 0.62.2",
 ]
 
 [[package]]

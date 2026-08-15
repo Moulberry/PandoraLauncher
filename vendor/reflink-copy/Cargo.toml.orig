@@ -1,0 +1,38 @@
+[package]
+name = "reflink-copy"
+version = "0.1.30"
+authors = ["Jiahao XU <Jiahao_XU@outlook.com>"]
+edition = "2018"
+description = "copy-on-write mechanism on supported file systems"
+documentation = "https://docs.rs/reflink-copy"
+homepage = "https://github.com/cargo-bins/reflink-copy"
+repository = "https://github.com/cargo-bins/reflink-copy"
+readme = "README.md"
+keywords = ["reflink", "COW", "copy", "btrfs", "xfs"]
+categories = ["filesystem", "os"]
+license = "MIT/Apache-2.0"
+
+[dependencies]
+cfg-if = "1.0.0"
+tracing = { version = "0.1.37", default-features = false, optional = true }
+tracing-attributes = { version = "0.1.26", optional = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies.rustix]
+version = "1.0.1"
+default-features = false
+features = ["fs", "std"]
+
+[target.'cfg(target_os = "linux")'.dependencies.libc]
+version = "0.2.169"
+
+[target.'cfg(windows)'.dependencies]
+# Use a wider range to avoid duplication of the windows crates in downstream crates
+windows = { version = ">=0.61.0,<0.63.0", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Ioctl", "Win32_System_IO", "Win32_System_SystemServices"] }
+
+[features]
+tracing = ["dep:tracing", "dep:tracing-attributes"]
+
+[dev-dependencies]
+tempfile = "3.12.0"
+regex = "1.11.1"
+walkdir = "2.5.0"

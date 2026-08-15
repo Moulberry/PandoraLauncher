@@ -238,7 +238,7 @@ impl ModMetadataManager {
                 data[checksum_start..checksum_start+4].copy_from_slice(&u32::to_le_bytes(checksum));
                 data[checksum_start+4..checksum_start+8].copy_from_slice(&u32::to_le_bytes(data_len as u32));
             }
-            _ = crate::write_safe(&self.cached_curseforge_info_dat, &data);
+            _ = crate::fs::write_safe(&self.cached_curseforge_info_dat, &data);
         }
         self.content_sources.write().write_dirty_to_folder(&self.sources_dir);
     }
@@ -640,7 +640,7 @@ impl ModMetadataManager {
             let summary = if let Some(cached) = self.by_hash.read().get(&file_hash).cloned() {
                 Some(cached)
             } else {
-                let content_path = crate::create_content_library_path(&self.content_library_dir, file_hash, path.extension());
+                let content_path = crate::fs::create_content_library_path(&self.content_library_dir, file_hash, path.extension());
 
                 if let Ok(mut file) = std::fs::File::open(&content_path) {
                     let filesize = file.metadata().ok().as_ref().map(std::fs::Metadata::len);
@@ -788,7 +788,7 @@ impl ModMetadataManager {
             let summary = if let Some(cached) = self.by_hash.read().get(&cached_info.hash).cloned() {
                 Some(cached)
             } else {
-                let content_path = crate::create_content_library_path(&self.content_library_dir, cached_info.hash, filename.extension());
+                let content_path = crate::fs::create_content_library_path(&self.content_library_dir, cached_info.hash, filename.extension());
 
                 if let Ok(mut file) = std::fs::File::open(&content_path) {
                     let filesize = file.metadata().ok().as_ref().map(std::fs::Metadata::len);
@@ -841,7 +841,7 @@ impl ModMetadataManager {
         }))
     }
 
-    fn load_jarjar<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, _hash: [u8; 20], _filesize: Option<u64>, archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
+    fn load_jarjar<R: rc_zip_sync::HasCursor>(self: &Arc<Self>, hash: [u8; 20], _filesize: Option<u64>, archive: &rc_zip_sync::ArchiveHandle<R>, file: EntryHandle<'_, R>) -> Option<Arc<ContentSummary>> {
         let bytes = file.bytes().ok()?;
 
         let metadata_json: JarJarMetadata = serde_json::from_slice(&bytes).inspect_err(|e| {
@@ -859,7 +859,8 @@ impl ModMetadataManager {
             };
 
             let extension = child.path.rsplit_once('.').map(|(_, last)| OsStr::new(last));
-            let summary = self.get_bytes(&child_bytes, extension);
+            let summary = self.load_mod_summary(hash, Some(child_bytes.len() as u64), &child_bytes, extension, true);
+
             if !ContentSummary::is_unknown(&summary) {
                 return Some(summary);
             }
@@ -1149,7 +1150,7 @@ impl ContentSources {
                 for (key, source) in values {
                     Self::write(&mut data, key, source);
                 }
-                _ = crate::write_safe(&path, &data);
+                _ = crate::fs::write_safe(&path, &data);
             }
         }
     }
@@ -1175,7 +1176,7 @@ impl ContentSources {
             Self::write(&mut data, key, source);
         }
 
-        _ = crate::write_safe(&path, &data);
+        _ = crate::fs::write_safe(&path, &data);
     }
 
     fn write(data: &mut Vec<u8>, key: &[u8], source: &ContentSource) {

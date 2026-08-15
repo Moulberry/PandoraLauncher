@@ -10,7 +10,7 @@ use schema::pandora_update::UpdatePrompt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath, resize_panel::{ResizePanel, ResizePanelState}, shrinking_text::ShrinkingText, title_bar::TitleBar}, entity::{
+    component::{menu::{MenuGroup, MenuGroupItem}, page_path::PagePath, resize_panel::{ResizePanel, ResizePanelState}, shrinking_text::ShrinkingText, title_bar::{TitleBar, TitleBarState}}, entity::{
         DataEntities, account::AccountExt, instance::{InstanceAddedEvent, InstanceEntries, InstanceModifiedEvent, InstanceMovedToTopEvent, InstanceRemovedEvent}
     }, icon::PandoraIcon, interface_config::InterfaceConfig, modals, pages::{curseforge_page::CurseforgeSearchPage, import::ImportPage, instance::instance_page::InstancePage, instances_page::InstancesPage, modrinth_page::ModrinthSearchPage, modrinth_project_page::ModrinthProjectPage, page::Page, skins_page::SkinsPage, syncing_page::SyncingPage}, png_render_cache,
 };
@@ -278,7 +278,6 @@ impl LauncherUI {
                     CurseforgeSearchPage::new(installing_for.flatten(), data, window, cx)
                 });
                 Ok(LauncherPage::Curseforge(page))
-
             },
             PageType::Import => {
                 Ok(LauncherPage::Import(cx.new(|cx| ImportPage::new(data, window, cx))))
@@ -569,8 +568,38 @@ impl Render for LauncherUI {
                 }
             });
 
+        let header_drag_state = window.use_keyed_state("sidebar-header-drag-state", cx, |_, _| TitleBarState::default());
         let header = h_flex()
-            .when_else(cfg!(target_os = "macos"), |this| this.pt(px(9.0)), |this| this.pt(px(14.0)))
+            .id("sidebar-header")
+            .window_control_area(WindowControlArea::Drag)
+            .on_mouse_down_out(window.listener_for(&header_drag_state, |state, _, _, _| {
+                state.should_move = false;
+            }))
+            .when(cfg!(target_os = "linux"), |this| {
+                this.on_double_click(|_, window, _| window.zoom_window())
+            })
+            .when(cfg!(target_os = "macos"), |this| {
+                this.on_double_click(|_, window, _| window.titlebar_double_click())
+            })
+            .on_mouse_down(
+                MouseButton::Left,
+                window.listener_for(&header_drag_state, |state, _, _, _| {
+                    state.should_move = true;
+                }),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                window.listener_for(&header_drag_state, |state, _, _, _| {
+                    state.should_move = false;
+                }),
+            )
+            .on_mouse_move(window.listener_for(&header_drag_state, |state, _, window, _| {
+                if state.should_move {
+                    state.should_move = false;
+                    window.start_window_move();
+                }
+            }))
+            .when_else(cfg!(target_os = "macos"), |this| this.pt(px(41.0)), |this| this.pt(px(14.0)))
             .px_5()
             .pb_2()
             .gap_2()
@@ -590,14 +619,6 @@ impl Render for LauncherUI {
             .max_size_full()
             .bg(cx.theme().sidebar)
             .text_color(cx.theme().sidebar_foreground)
-            .when(cfg!(target_os = "macos"), |this| {
-                this.child(h_flex()
-                    .id("sidebar-double-clicker")
-                    .w_full()
-                    .h(px(32.0))
-                    .on_double_click(|_, window, _| window.titlebar_double_click())
-                )
-            })
             .child(header)
             .child(v_flex()
                 .flex_1()

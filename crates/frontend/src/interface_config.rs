@@ -57,6 +57,8 @@ pub struct InterfaceConfig {
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub hide_main_window_on_launch: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub live_game_output_display: LiveGameOutputDisplay,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub quit_on_main_closed: bool,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub use_os_titlebar: bool,
@@ -78,6 +80,15 @@ pub struct InterfaceConfig {
     pub skin_list_sort_desc: bool,
     #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
     pub skin_list_show_3d: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, strum::EnumIter)]
+#[serde(rename_all = "lowercase")]
+pub enum LiveGameOutputDisplay {
+    #[default]
+    TabOnInstancePage,
+    SeparateWindow,
+    Hidden,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, strum::EnumIter)]
@@ -159,6 +170,7 @@ impl Default for InterfaceConfig {
             modrinth_page_project_type: default_modrinth_project_type(),
             curseforge_page_class_id: default_curseforge_class_id(),
             hide_main_window_on_launch: false,
+            live_game_output_display: LiveGameOutputDisplay::default(),
             quit_on_main_closed: false,
             use_os_titlebar: false,
             hide_server_addresses: false,

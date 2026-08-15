@@ -609,7 +609,7 @@ impl Launcher {
                     _ = std::fs::create_dir_all(parent);
                 }
 
-                _ = crate::write_safe(&path_in_library, &bytes);
+                _ = crate::fs::write_safe(&path_in_library, &bytes);
             }
         }
 
@@ -637,14 +637,14 @@ impl Launcher {
                 if let Some(sha1) = &artifact.sha1 {
                     let mut expected_hash = [0u8; 20];
                     if hex::decode_to_slice(sha1.as_str(), &mut expected_hash).is_ok() {
-                        if crate::check_sha1_hash(&path, expected_hash).unwrap_or(false) {
+                        if crate::fs::check_sha1_hash(&path, expected_hash).unwrap_or(false) {
                             return None;
                         }
                     };
                 }
 
                 if let Ok(bytes) = builtin.bytes() {
-                    _ = crate::write_safe(&path, &bytes);
+                    _ = crate::fs::write_safe(&path, &bytes);
                 } else {
                     log::warn!("Unable to copy {} from zip", artifact.path);
                 }
@@ -693,7 +693,7 @@ impl Launcher {
                 };
                 if let Some(target) = SafePath::new(file_name) {
                     let target = target.to_path(&forge_temp);
-                    crate::write_safe(&target, &file.bytes()?)?;
+                    crate::fs::write_safe(&target, &file.bytes()?)?;
                     data.insert(key, target.into_os_string());
                 } else {
                     log::error!("Unable to extract {}", file_name);
@@ -857,7 +857,7 @@ impl Launcher {
             return Err(LoadLibrariesError::IllegalLibraryPath(forge_path.into()).into());
         }
         let forge_artifact_path = self.directories.libraries_dir.join(forge_path.as_str());
-        crate::write_safe(&forge_artifact_path, &file.bytes()?)?;
+        crate::fs::write_safe(&forge_artifact_path, &file.bytes()?)?;
 
         // Read partial minecraft version
         let version: PartialMinecraftVersion = install_profile.version_info.into_partial_version(ForgeSide::Client);
@@ -1006,10 +1006,10 @@ impl Launcher {
         };
         let runtime_component = runtime_components.first().ok_or(LoadJavaRuntimeError::UnknownComponentForPlatform)?;
 
-        if !crate::is_single_component_path_str(jre_component.as_str()) {
+        if !crate::fs::is_single_component_path_str(jre_component.as_str()) {
             return Err(LoadJavaRuntimeError::InvalidComponentPath);
         }
-        if !crate::is_single_component_path_str(&platform) {
+        if !crate::fs::is_single_component_path_str(&platform) {
             return Err(LoadJavaRuntimeError::InvalidComponentPath);
         }
 
@@ -1144,7 +1144,7 @@ impl Launcher {
         let valid_hash_on_disk = {
             let path = path.clone();
             tokio::task::spawn_blocking(move || {
-                crate::check_sha1_hash(&path, expected_hash).unwrap_or(false)
+                crate::fs::check_sha1_hash(&path, expected_hash).unwrap_or(false)
             }).await.unwrap()
         };
 
@@ -1210,7 +1210,7 @@ impl Launcher {
                     return false;
                 };
 
-                if !crate::check_sha1_hash(Path::new(&key), expected_hash).unwrap_or(false) {
+                if !crate::fs::check_sha1_hash(Path::new(&key), expected_hash).unwrap_or(false) {
                     return false;
                 }
             }
@@ -1495,7 +1495,7 @@ async fn do_java_runtime_load(
                         let path = path.clone();
                         let permit = disk_semaphore.acquire().await.unwrap();
                         let result = tokio::task::spawn_blocking(move || {
-                            crate::check_sha1_hash(&path, expected_hash).unwrap_or(false)
+                            crate::fs::check_sha1_hash(&path, expected_hash).unwrap_or(false)
                         }).await.unwrap();
                         drop(permit);
                         result
@@ -1698,7 +1698,7 @@ async fn do_asset_objects_load(
                 let path = path.clone();
                 let permit = disk_semaphore.acquire().await.unwrap();
                 let result = tokio::task::spawn_blocking(move || {
-                    crate::check_sha1_hash(&path, expected_hash).unwrap_or(false)
+                    crate::fs::check_sha1_hash(&path, expected_hash).unwrap_or(false)
                 }).await.unwrap();
                 drop(permit);
                 result
@@ -1822,7 +1822,7 @@ async fn do_libraries_load(
                 let artifact_path = artifact_path.clone();
                 let permit = disk_semaphore.acquire().await.unwrap();
                 let result = tokio::task::spawn_blocking(move || {
-                    crate::check_sha1_hash(&artifact_path, expected_hash).unwrap_or(false)
+                    crate::fs::check_sha1_hash(&artifact_path, expected_hash).unwrap_or(false)
                 }).await.unwrap();
                 drop(permit);
                 result

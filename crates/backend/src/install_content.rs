@@ -251,7 +251,7 @@ impl BackendState {
 
                 let _ = std::fs::create_dir_all(target_path.parent().unwrap());
 
-                match crate::hard_link_or_copy(&install.from, &target_path) {
+                match crate::fs::fastcopy(&install.from, &target_path, true, true) {
                     Ok(()) => {
                         if let Some(replace) = install.replace {
                             self.replace_aux_path(&replace, &install.mod_summary, &target_path);
@@ -772,7 +772,7 @@ impl BackendState {
                     let tracker = tracker.clone();
                     let extension = extension.map(OsString::from);
                     tokio::task::spawn_blocking(move || {
-                        let valid_hash_on_disk = crate::check_sha1_hash(&path, hash).unwrap_or(false);
+                        let valid_hash_on_disk = crate::fs::check_sha1_hash(&path, hash).unwrap_or(false);
 
                         tracker.set_count(2);
                         tracker.notify();
@@ -847,7 +847,7 @@ impl BackendState {
             return;
         }
 
-        let Some(old_aux_path) = crate::pandora_aux_path(&old_summary.id, &old_summary.name, &replace) else {
+        let Some(old_aux_path) = crate::fs::pandora_aux_path(&old_summary.id, &old_summary.name, &replace) else {
             return;
         };
 
@@ -860,7 +860,7 @@ impl BackendState {
             return;
         }
 
-        let Some(new_aux_path) = crate::pandora_aux_path(&new_summary.id, &new_summary.name, new_path) else {
+        let Some(new_aux_path) = crate::fs::pandora_aux_path(&new_summary.id, &new_summary.name, new_path) else {
             _ = std::fs::remove_file(&old_aux_path);
             return;
         };
@@ -1023,7 +1023,7 @@ impl BackendState {
         let valid_hash_on_disk = {
             let path = path.clone();
             tokio::task::spawn_blocking(move || {
-                crate::check_sha1_hash(&path, sha1).unwrap_or(false)
+                crate::fs::check_sha1_hash(&path, sha1).unwrap_or(false)
             }).await.unwrap()
         };
 

@@ -6,7 +6,7 @@ use log::debug;
 use schema::{instance::{InstanceConfiguration, InstanceMemoryConfiguration,  InstanceWrapperCommandConfiguration}, loader::Loader};
 use serde::Deserialize;
 use uuid::Uuid;
-use crate::{BackendState, account::BackendAccount, write_safe};
+use crate::{BackendState, account::BackendAccount};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -448,7 +448,7 @@ fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportF
         let target_dot_minecraft = to_import.pandora_path.join(".minecraft");
 
         _ = std::fs::create_dir_all(&target_dot_minecraft);
-        _ = crate::copy_content_recursive(&to_import.folder, &target_dot_minecraft, false, &|copied, total| {
+        _ = crate::fs::copy_content_recursive(&to_import.folder, &target_dot_minecraft, false, &|copied, total| {
             tracker.set_total(total as usize);
             tracker.set_count(copied as usize);
             tracker.notify();
@@ -491,7 +491,7 @@ fn import_instances_from_atlauncher(backend: &BackendState, import_job: &ImportF
         }
 
         let info_path = to_import.pandora_path.join("info_v1.json");
-        _ = write_safe(&info_path, &configuration_bytes);
+        _ = crate::fs::write_safe(&info_path, &configuration_bytes);
 
         all_tracker.add_count(1);
         all_tracker.notify();

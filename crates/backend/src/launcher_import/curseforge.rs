@@ -5,7 +5,7 @@ use schema::{curseforge::{CurseforgeModLoaderType}, instance::{InstanceConfigura
 use serde::Deserialize;
 use ustr::Ustr;
 
-use crate::{BackendState, write_safe};
+use crate::BackendState;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -148,7 +148,7 @@ pub fn import_instances_from_curseforge(backend: &BackendState, import_job: &Imp
         let target_dot_minecraft = to_import.pandora_path.join(".minecraft");
 
         _ = std::fs::create_dir_all(&target_dot_minecraft);
-        _ = crate::copy_content_recursive(&to_import.folder, &target_dot_minecraft, false, &|copied, total| {
+        _ = crate::fs::copy_content_recursive(&to_import.folder, &target_dot_minecraft, false, &|copied, total| {
             tracker.set_total(total as usize);
             tracker.set_count(copied as usize);
             tracker.notify();
@@ -164,7 +164,7 @@ pub fn import_instances_from_curseforge(backend: &BackendState, import_job: &Imp
         _ = std::fs::remove_file(&target_dot_minecraft.join("minecraftinstance.json"));
 
         let info_path = to_import.pandora_path.join("info_v1.json");
-        _ = write_safe(&info_path, &configuration_bytes);
+        _ = crate::fs::write_safe(&info_path, &configuration_bytes);
 
         all_tracker.add_count(1);
         all_tracker.notify();

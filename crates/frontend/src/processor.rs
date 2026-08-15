@@ -1,10 +1,10 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
 use bridge::{instance::InstanceStatus, message::{BridgeNotificationType, MessageToFrontend}, quit::QuitCoordinator};
-use gpui::{AnyWindowHandle, App, AppContext, SharedString, TitlebarOptions, Window, WindowDecorations, WindowOptions, px, size};
+use gpui::{AnyWindowHandle, App, SharedString, Window};
 use gpui_component::{notification::{Notification, NotificationType}, Root, WindowExt};
 
-use crate::{entity::{DataEntities, account::AccountEntries, instance::{ContentStates, InstanceEntries}, metadata::FrontendMetadata}, game_output::{GameOutput, GameOutputRoot}, interface_config::InterfaceConfig, root::LauncherRoot};
+use crate::{entity::{DataEntities, account::AccountEntries, instance::{ContentStates, InstanceEntries}, metadata::FrontendMetadata}, interface_config::InterfaceConfig, root::LauncherRoot};
 
 pub struct Processor {
     data: DataEntities,
@@ -175,25 +175,6 @@ impl Processor {
                 };
                 _ = handle.update(cx, |_, window, cx| {
                     window.close_all_dialogs(cx);
-                });
-            },
-            MessageToFrontend::CreateGameOutputWindow { receiver } => {
-                self.quit_coordinator.set_can_quit(false);
-                let options = WindowOptions {
-                    app_id: Some("PandoraLauncher".into()),
-                    window_min_size: Some(size(px(360.0), px(240.0))),
-                    titlebar: Some(TitlebarOptions {
-                        title: Some(t::system::game_output().into()),
-                        ..Default::default()
-                    }),
-                    window_decorations: Some(WindowDecorations::Server),
-                    ..Default::default()
-                };
-                _ = cx.open_window(options, |window, cx| {
-                    let game_output = cx.new(|cx| GameOutput::new(receiver, cx));
-                    let game_output_root = cx.new(|cx| GameOutputRoot::new(game_output.clone(), window, cx));
-                    window.activate_window();
-                    cx.new(|cx| Root::new(game_output_root, window, cx))
                 });
             },
             MessageToFrontend::MoveInstanceToTop { id } => {

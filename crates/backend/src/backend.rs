@@ -741,7 +741,7 @@ impl BackendState {
             if connector.exists() {
                 let original_connector = original_mods_dir.join(".connector");
                 _ = std::fs::create_dir_all(&original_connector);
-                _ = crate::copy_content_recursive(&connector, &original_connector, false, &|_, _| {});
+                _ = crate::fs::copy_content_recursive(&connector, &original_connector, false, &|_, _| {});
             }
         }
 
@@ -817,7 +817,7 @@ impl BackendState {
             if original_connector.exists() {
                 let connector = mods_dir.join(".connector");
                 _ = std::fs::create_dir_all(&connector);
-                _ = crate::copy_content_recursive(&original_connector, &connector, false, &|_, _| {});
+                _ = crate::fs::copy_content_recursive(&original_connector, &connector, false, &|_, _| {});
             }
         }
     }
@@ -859,7 +859,7 @@ impl BackendState {
                     };
 
                     let extension = path.extension().and_then(OsStr::to_str);
-                    let content_library_path = crate::create_content_library_path(&content_library_dir, summary.content_summary.hash, extension);
+                    let content_library_path = crate::fs::create_content_library_path(&content_library_dir, summary.content_summary.hash, extension);
 
                     if content_library_path.exists() {
                         mod_copies.push(PrelaunchModCopy {
@@ -891,7 +891,7 @@ impl BackendState {
                 }).cloned().collect::<Vec<_>>();
 
                 modpack_installs.push(ModpackInstall {
-                    aux_path: crate::pandora_aux_path_for_content(&summary),
+                    aux_path: crate::fs::pandora_aux_path_for_content(&summary),
                     files: filtered_files
                 });
             }
@@ -900,7 +900,7 @@ impl BackendState {
         for modpack_install in modpack_installs {
             let content_library_dir = &self.directories.content_library_dir.clone();
             let mut aux: Option<AuxiliaryContentMeta> = if let Some(aux_path) = &modpack_install.aux_path {
-                Some(crate::read_json(&aux_path).unwrap_or_default())
+                Some(crate::fs::read_json(&aux_path).unwrap_or_default())
             } else {
                 None
             };
@@ -915,7 +915,7 @@ impl BackendState {
 
                 // Always try to override config/yosbr/ files
                 if path.starts_with("config/yosbr/") {
-                    return !crate::check_sha1_hash(dest, new_sha1).unwrap_or(false);
+                    return !crate::fs::check_sha1_hash(dest, new_sha1).unwrap_or(false);
                 }
 
                 let mut old_hash = [0u8; 20];
@@ -923,7 +923,7 @@ impl BackendState {
                     return true;
                 };
 
-                if let Ok(matches) = crate::check_sha1_hash(dest, old_hash) {
+                if let Ok(matches) = crate::fs::check_sha1_hash(dest, old_hash) {
                     // Override the file if the hash on disk matches the old hash, and the override has changed
                     // This makes it so that if the file wasn't modified, it'll override with the new version
                     // But if the file was modified by the user, it'll avoid overriding
@@ -966,7 +966,7 @@ impl BackendState {
                                     aux_changed = true;
                                 }
 
-                                _ = crate::write_safe(&dest_path, &bytes);
+                                _ = crate::fs::write_safe(&dest_path, &bytes);
                             }
                         }
                     } else {
@@ -980,7 +980,7 @@ impl BackendState {
                         } else {
                             let dest_path = rel_path.to_path(&dot_minecraft_dir);
 
-                            let content_path = crate::create_content_library_path(content_library_dir, file.hash, rel_path.extension());
+                            let content_path = crate::fs::create_content_library_path(content_library_dir, file.hash, rel_path.extension());
 
                             if should_override_file(file.path.as_str(), &dest_path, file.hash, &aux) {
                                 if let Some(aux) = &mut aux {
@@ -989,8 +989,8 @@ impl BackendState {
                                     aux_changed = true;
                                 }
 
-                                let _ = std::fs::create_dir_all(dest_path.parent().unwrap());
-                                let _ = std::fs::copy(content_path, dest_path);
+                                _ = std::fs::create_dir_all(dest_path.parent().unwrap());
+                                _ = crate::fs::fastcopy(&content_path, &dest_path, true, false);
                             }
                         }
                     }
@@ -1001,7 +1001,7 @@ impl BackendState {
 
                 if let Some(aux_path) = &modpack_install.aux_path && aux_changed {
                     if let Ok(bytes) = serde_json::to_vec(aux.as_ref().unwrap()) {
-                        _ = crate::write_safe(&aux_path, &bytes);
+                        _ = crate::fs::write_safe(&aux_path, &bytes);
                     }
                 }
 
@@ -1028,11 +1028,11 @@ impl BackendState {
             match mod_copy.source {
                 PrelaunchModCopySource::FromContentLibrary { hash } => {
                     let extension = mod_copy.path.extension();
-                    let path = crate::create_content_library_path_osstrext(&content_library_dir, hash, extension);
+                    let path = crate::fs::create_content_library_path_osstrext(&content_library_dir, hash, extension);
 
                     if !path.exists() {
                         log::error!("Unable to copy from content library because path doesn't exist: {:?}", path);
-                    } else if let Err(err) = std::fs::copy(&path, &target_path) {
+                    } else if let Err(err) = crate::fs::fastcopy(&path, &target_path, true, false) {
                         log::error!("Error copying mod from {:?} to {:?}:\n{:?}", path, target_path, err);
                     }
                 },
@@ -1186,7 +1186,7 @@ impl BackendState {
 
     pub async fn create_instance(&self, name: &str, version: &str, loader: Loader, icon: Option<EmbeddedOrRaw>) -> Option<PathBuf> {
         log::info!("Creating instance {name}");
-        if !crate::is_single_component_path_str(&name) {
+        if !crate::fs::is_single_component_path_str(&name) {
             self.send.send_warning(format!("Unable to create instance, name must not be a path: {}", name));
             return None;
         }
@@ -1215,7 +1215,7 @@ impl BackendState {
                 if let Ok(format) = image::guess_format(&*image_bytes) {
                     if format == ImageFormat::Png {
                         let icon_path = instance_dir.join("icon.png");
-                        crate::write_safe(&icon_path, &*image_bytes).unwrap();
+                        crate::fs::write_safe(&icon_path, &*image_bytes).unwrap();
                     } else {
                         self.send.send_error("Unable to apply icon: only pngs are supported");
                     }
@@ -1227,13 +1227,13 @@ impl BackendState {
         }
 
         let info_path = instance_dir.join("info_v1.json");
-        crate::write_safe(&info_path, serde_json::to_string(&instance_info).unwrap().as_bytes()).unwrap();
+        crate::fs::write_safe(&info_path, serde_json::to_string(&instance_info).unwrap().as_bytes()).unwrap();
 
         Some(instance_dir.clone())
     }
 
     pub async fn rename_instance(self: &Arc<Self>, id: InstanceID, name: &str) {
-        if !crate::is_single_component_path_str(&name) {
+        if !crate::fs::is_single_component_path_str(&name) {
             self.send.send_warning(format!("Unable to rename instance, name must not be a path: {}", name));
             return;
         }

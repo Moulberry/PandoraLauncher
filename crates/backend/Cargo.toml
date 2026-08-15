@@ -59,6 +59,7 @@ crc32fast.workspace = true
 scopeguard.workspace = true
 hickory-resolver.workspace = true
 command.workspace = true
+reflink-copy.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 junction.workspace = true

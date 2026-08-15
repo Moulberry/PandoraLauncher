@@ -1,0 +1,188 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+          - target: armv7-unknown-linux-musleabihf
+            os: ubuntu-latest
+            use-cross: true
+          - target: armv7-unknown-linux-gnueabihf
+            os: ubuntu-latest
+            use-cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            use-cross: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use-cross: true
+
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.target }}
+
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install cross
+      if: matrix.use-cross
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cross
+
+    - name: Install host target
+      if: "!matrix.use-cross"
+      run: rustup target add ${{ matrix.target }}
+
+    - name: Install musl-tools
+      if: ${{ matrix.target == 'x86_64-unknown-linux-musl' }}
+      run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Setup Dev-Drive ReFS1
+      if: ${{ matrix.os == 'windows-latest' }}
+      uses: samypr100/setup-dev-drive@v4
+      with:
+        drive-size: 1GB
+        drive-format: ReFS
+        drive-type: Fixed
+        drive-path: "${{ runner.temp }}/refs1.vhdx"
+        mount-path: "${{ runner.temp }}/refs1"
+
+    - name: Setup Dev-Drive ReFS2
+      if: ${{ matrix.os == 'windows-latest' }}
+      uses: samypr100/setup-dev-drive@v4
+      with:
+        drive-size: 1GB
+        drive-format: ReFS
+        drive-type: Dynamic
+        drive-path: "${{ runner.temp }}/refs2.vhdx"
+        mount-path: "${{ runner.temp }}/refs2"
+
+    - name: Setup Dev-Drive NTFS
+      if: ${{ matrix.os == 'windows-latest' }}
+      uses: samypr100/setup-dev-drive@v4
+      with:
+        drive-size: 1GB
+        drive-format: NTFS
+        drive-type: Dynamic
+        drive-path: "${{ runner.temp }}/ntfs.vhdx"
+        mount-path: "${{ runner.temp }}/ntfs"
+
+    - name: Test
+      if: "! matrix.use-cross"
+      run: cargo test --target ${{ matrix.target }} -- --include-ignored --show-output
+      env:
+        RUST_BACKTRACE: 1
+
+    - name: Test using cross
+      if: "matrix.use-cross"
+      run: cross test --target ${{ matrix.target }} -- --include-ignored --show-output
+      env:
+        RUST_BACKTRACE: 1
+
+  cross-check:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-linux-android, armv7-linux-androideabi, aarch64-apple-darwin]
+
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install rustup target
+      run: rustup target add ${{ matrix.target }}
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Cross check
+      run: cargo check --target ${{ matrix.target }}
+
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v6
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Clippy
+      run: cargo clippy --no-deps
+
+    - name: Format
+      run: cargo fmt --all --check
+
+    - name: Check feature tracing
+      run: cargo check --all-features
+
+  minimal-versions:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install nightly
+      run: |
+        rustup toolchain install nightly --no-self-update --profile minimal
+
+    - name: Create Cargo.lock with minimal versions
+      run: cargo +nightly -Zminimal-versions update
+
+    - uses: Swatinem/rust-cache@v2
+
+    - run: cargo check --all-features
+
+  cross-check-unsupported-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-illumos]
+
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install rustup target
+      run: |
+        rustup toolchain install nightly --profile minimal --component rust-src
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Cross check
+      run: cargo +nightly check --target ${{ matrix.target }} -Zbuild-std

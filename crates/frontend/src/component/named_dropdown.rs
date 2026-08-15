@@ -17,14 +17,14 @@ impl <T: Clone + PartialEq> PartialEq for NamedDropdownItem<T> {
 }
 
 impl<T: Clone + PartialEq> SelectItem for NamedDropdownItem<T> {
-    type Value = Self;
+    type Value = T;
 
     fn title(&self) -> SharedString {
         self.name.clone()
     }
 
     fn value(&self) -> &Self::Value {
-        self
+        &self.item
     }
 }
 
@@ -41,8 +41,17 @@ impl<T: Clone + PartialEq> NamedDropdown<T> {
 
     pub fn create(items: Vec<NamedDropdownItem<T>>, window: &mut Window, cx: &mut App) -> Entity<SelectState<Self>> {
         cx.new(|cx| {
-            let instance_list = Self::new(items);
-            SelectState::new(instance_list, None, window, cx)
+            let delegate = Self::new(items);
+            SelectState::new(delegate, None, window, cx)
+        })
+    }
+
+    pub fn create_and_select(items: Vec<NamedDropdownItem<T>>, selected: T, window: &mut Window, cx: &mut App) -> Entity<SelectState<Self>> {
+        cx.new(|cx| {
+            let delegate = Self::new(items);
+            let mut select_state = SelectState::new(delegate, None, window, cx);
+            select_state.set_selected_value(&selected, window, cx);
+            select_state
         })
     }
 }

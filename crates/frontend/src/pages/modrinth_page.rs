@@ -143,21 +143,23 @@ impl ModrinthSearchPage {
                 for content_folder in ContentFolder::iter() {
                     let mut specific_installed_content: FxHashMap<Arc<str>, Vec<InstalledContent>> = FxHashMap::default();
 
-                    for summary in instance_content[content_folder].read(cx).iter() {
-                        let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
-                            continue;
-                        };
+                    if let Some(content) = instance_content[content_folder].read(cx) {
+                        for summary in content.iter() {
+                            let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
+                                continue;
+                            };
 
-                        let installed_content = InstalledContent {
-                            content_id: summary.id,
-                            status: summary.update.status_if_matches(loader, minecraft_version.as_str()),
-                        };
+                            let installed_content = InstalledContent {
+                                content_id: summary.id,
+                                status: summary.update.status_if_matches(loader, minecraft_version.as_str()),
+                            };
 
-                        let installed = all_installed_content_by_project.entry(project_id.clone()).or_default();
-                        installed.push(installed_content);
+                            let installed = all_installed_content_by_project.entry(project_id.clone()).or_default();
+                            installed.push(installed_content);
 
-                        let installed = specific_installed_content.entry(project_id.clone()).or_default();
-                        installed.push(installed_content);
+                            let installed = specific_installed_content.entry(project_id.clone()).or_default();
+                            installed.push(installed_content);
+                        }
                     }
 
                     specific_installed_content_by_project[content_folder] = specific_installed_content;
@@ -168,17 +170,18 @@ impl ModrinthSearchPage {
 
                         specific.clear();
 
-                        let content = entity.read(cx);
-                        for summary in content.iter() {
-                            let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
-                                continue;
-                            };
+                        if let Some(content) = entity.read(cx) {
+                            for summary in content.iter() {
+                                let ContentSource::ModrinthProject { project_id } = &summary.content_source else {
+                                    continue;
+                                };
 
-                            let installed = specific.entry(project_id.clone()).or_default();
-                            installed.push(InstalledContent {
-                                content_id: summary.id,
-                                status: summary.update.status_if_matches(loader, minecraft_version.as_str()),
-                            })
+                                let installed = specific.entry(project_id.clone()).or_default();
+                                installed.push(InstalledContent {
+                                    content_id: summary.id,
+                                    status: summary.update.status_if_matches(loader, minecraft_version.as_str()),
+                                })
+                            }
                         }
 
                         page.all_installed_content_by_project.clear();

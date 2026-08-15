@@ -1,4 +1,4 @@
-use bridge::{handle::BackendHandle, instance::InstanceStatus, message::MessageToBackend};
+use bridge::{instance::InstanceStatus, message::MessageToBackend};
 use gpui::{prelude::*, *};
 use gpui_component::{
     button::{Button, ButtonVariants}, h_flex, table::{Column, ColumnSort, TableDelegate, TableState}, v_flex, ActiveTheme, Icon, Sizable
@@ -13,7 +13,7 @@ use crate::{
 pub struct InstanceList {
     columns: Vec<Column>,
     items: Vec<InstanceEntry>,
-    backend_handle: BackendHandle,
+    data: DataEntities,
     _instance_added_subscription: Subscription,
     _instance_removed_subscription: Subscription,
     _instance_modified_subscription: Subscription,
@@ -63,7 +63,7 @@ impl InstanceList {
                         .resizable(true),
                 ],
                 items,
-                backend_handle: data.backend_handle.clone(),
+                data: data.clone(),
                 _instance_added_subscription,
                 _instance_removed_subscription,
                 _instance_modified_subscription,
@@ -91,7 +91,7 @@ impl InstanceList {
             Icon::default().path(icon_path).size_16().min_w_16().min_h_16().into_any_element()
         };
 
-        let play_button = render_play_button(item, index, self.backend_handle.clone());
+        let play_button = render_play_button(item, index, self.data.clone());
 
         let theme = cx.theme();
         v_flex()
@@ -169,7 +169,7 @@ impl TableDelegate for InstanceList {
                 "name" => item.name.clone().into_any_element(),
                 "version" => item.configuration.minecraft_version.as_str().into_any_element(),
                 "controls" => {
-                    let play_button = render_play_button(item, row_ix, self.backend_handle.clone());
+                    let play_button = render_play_button(item, row_ix, self.data.clone());
 
                     h_flex()
                         .size_full()
@@ -194,7 +194,7 @@ impl TableDelegate for InstanceList {
     }
 }
 
-fn render_play_button(item: &InstanceEntry, index: usize, backend_handle: BackendHandle) -> Button {
+fn render_play_button(item: &InstanceEntry, index: usize, data: DataEntities) -> Button {
     let name = item.name.clone();
     let id = item.id;
     match item.status {
@@ -204,7 +204,7 @@ fn render_play_button(item: &InstanceEntry, index: usize, backend_handle: Backen
                 .label(t::instance::start::label())
                 .on_click(
                 move |_, window, cx| {
-                    root::start_instance(id, name.clone(), None, &backend_handle, window, cx);
+                    root::start_instance(id, name.clone(), None, &data, window, cx);
                 },
             )
         },
@@ -223,7 +223,7 @@ fn render_play_button(item: &InstanceEntry, index: usize, backend_handle: Backen
                 .danger()
                 .label(t::instance::kill())
                 .on_click({
-                    let backend_handle = backend_handle.clone();
+                    let backend_handle = data.backend_handle.clone();
                     move |_, _, _| {
                         backend_handle.send(MessageToBackend::KillInstance { id });
                     }

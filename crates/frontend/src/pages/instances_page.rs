@@ -32,12 +32,10 @@ impl InstancesPage {
             SelectState::new(delegate, Some(IndexPath::new(row)), window, cx)
         });
         cx.subscribe(&view_dropdown, |_, _, event: &SelectEvent<NamedDropdown<InstancesViewMode>>, cx| {
-            let SelectEvent::Confirm(Some(value)) = event else {
+            let SelectEvent::Confirm(Some(view)) = event else {
                 return;
             };
-            let view = value.item;
-
-            InterfaceConfig::get_mut(cx).instances_view_mode = view;
+            InterfaceConfig::get_mut(cx).instances_view_mode = *view;
         }).detach();
 
         Self {

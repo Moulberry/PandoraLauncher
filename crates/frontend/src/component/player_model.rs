@@ -156,7 +156,7 @@ impl Element for PlayerModel {
                 let (send, recv) = tokio::sync::oneshot::channel();
 
                 cx.background_executor().spawn(async move {
-                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation, 0.0, 1.0))
+                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation, 0.0, 0.85))
                 }).detach();
 
                 let skin = state.skin.clone();

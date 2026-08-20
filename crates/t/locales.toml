@@ -881,6 +881,9 @@ hu = "${name: &str} (Beta)"
 sv = "${name: &str} (Beta)"
 ru = "${name: &str} (бета)"
 fr = "${name: &str} (Beta)"
+[modrinth.versions.range]
+en = "${first: &str} - ${last: &str} (${count: usize} versions)"
+ru = "${first: &str} - ${last: &str} (всего версий: ${count: usize})"
 
 [curseforge.name]
 en = "Curseforge"
@@ -1063,6 +1066,9 @@ hu = "OK"
 sv = "OK"
 ru = "ОК"
 fr = "OK"
+[common.cannot_be_undone]
+en = "This cannot be undone"
+ru = "Это действие нельзя отменить"
 [common.nav.top]
 en = "Go to Top"
 pl = "Przejdź na górę"
@@ -1155,6 +1161,7 @@ fr = "Signaler un bug"
 en = "Join the Discord server"
 pl = "Dołącz do serwera Discord"
 hu = "Csatlakozz a Discord-szerverhez"
+ru = "Присоединиться к серверу Discord"
 fr = "Rejoins le serveur Discord"
 [system.update.available]
 en = "Update Available"
@@ -1418,6 +1425,7 @@ ru = "Серверы"
 fr = "Serveurs"
 [instance.live_game_output]
 en = "Live Game Output"
+ru = "Логи в реальном времени"
 [instance.total_playtime]
 en = "Total Playtime"
 pl = "Całkowity czas gry"
@@ -2769,10 +2777,13 @@ ru = "Обновить"
 fr = "Mise à jour"
 [instance.content.update_all_mods]
 en = "Update all mods (${count: usize})"
+ru = "Обновить все моды (${count: usize})"
 [instance.content.update_all_resourcepacks]
 en = "Update all resourcepacks (${count: usize})"
+ru = "Обновить все ресурспаки (${count: usize})"
 [instance.content.update_all_shaders]
 en = "Update all shaders (${count: usize})"
+ru = "Обновить все шейдеры (${count: usize})"
 [instance.content.update.check.label]
 en = "Check for updates"
 pl = "Sprawdź aktualizacje"
@@ -2876,6 +2887,21 @@ hu = "Telepítés egyedileg - nem lehet autómatikusan frissíteni"
 sv = "Installera manuellt - kan inte automatiskt uppdatera"
 ru = "Установлено вручную - автоматическое обновление невозможно"
 fr = "Installé manuellement - ne peut pas être mis à jour automatiquement"
+[instance.content.unzip.tooltip]
+en = "Unzip Modpack"
+ru = "Распаковать сборку"
+[instance.content.unzip.action]
+en = "Unzip"
+ru = "Распаковать"
+[instance.content.unzip.title]
+en = "Unzip '${name: &str}'"
+ru = "Распаковка \"${name: &str}\""
+[instance.content.unzip.warning]
+en = "Unzipping this modpack will place all the mods directly into your mods folder. The mods will be treated individually instead of being tied to the modpack"
+ru = "После распаковки все моды из этой сборки окажутся прямо в папке для модов. Они будут считаться отдельными модами, а не частью сборки"
+[instance.content.unzip.error]
+en = "Error while unzipping modpack"
+ru = "Ошибка при распаковке сборки"
 
 [instance.content.sort_key.name]
 en = "Name"
@@ -3183,6 +3209,7 @@ fr = "Synchroniser le dossier des packs de ressources"
 en = "Sync server resourcepacks folder (downloads)"
 de = "Synchronisiere Server-Ressourcenpakete (downloads)"
 sv = "Synka serverresurspakets mappan (downloads)"
+ru = "Синхронизировать ресурспаки сервера (downloads)"
 [instance.sync.targets.shaderpacks]
 en = "Sync shaderpacks folder"
 pl = "Synchronizuj folder shaderpacks"
@@ -3343,12 +3370,16 @@ ru = "Окна"
 fr = "Fenêtres"
 [settings.windows.live_game_output_display]
 en = "Live game output display"
+ru = "Показ логов в реальном времени"
 [settings.windows.live_game_output_display.tab_on_instance_page]
 en = "Tab on Instance Page"
+ru = "На вкладке экземпляра"
 [settings.windows.live_game_output_display.separate_window]
 en = "Separate Window"
+ru = "В отдельном окне"
 [settings.windows.live_game_output_display.hidden]
 en = "Hidden"
+ru = "Не показывать"
 [settings.windows.hide_main_window]
 en = "Hide main window on launch"
 pl = "Ukryj główne okno przy uruchomieniu"
@@ -3371,7 +3402,7 @@ pl = "Użyj paska tytułu systemu operacyjnego (wymaga restartu)"
 de = "Nutze Betriebssystem-Titelleiste (Neustart benötigt)"
 hu = "Oprendszer címsáv használata (újraindítás szükséges)"
 sv = "Använd operativsystemets titlebar (kräver omstart)"
-ru = "Использовать системный заголовок (нужен перезапуск)"
+ru = "Использовать системный заголовок окна (нужен перезапуск)"
 fr = "Utiliser la barre de titre du système d'exploitation (nécessite un redémarrage)"
 [settings.privacy.title]
 en = "Privacy"
@@ -3540,6 +3571,12 @@ pl = "Wybierz konto, aby wyświetlić/edytować skiny"
 hu = "Válassz egy fiókot a kinézetek megnézéséhez/szerkesztéséhez"
 ru = "Выберите учётную запись для просмотра/изменения скинов"
 fr = "Sélectionnez un compte pour afficher/modifier les skins"
+[skins.player_model.classic]
+en = "Classic"
+ru = "Classic"
+[skins.player_model.slim]
+en = "Slim"
+ru = "Slim"
 [skins.player_model.yaw]
 en = "Yaw: ${value: i32}°"
 pl = "Yaw: ${value: i32}°"

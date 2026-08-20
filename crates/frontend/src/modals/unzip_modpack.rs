@@ -12,8 +12,8 @@ pub fn open_unzip_modpack(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let title: SharedString = format!("Unzip '{}'", content_title).into();
-    let warning: SharedString = format!("Unzipping this modpack will place all the mods directly into your mods folder. The mods will be treated individually instead of being tied to the modpack").into();
+    let title: SharedString = t::instance::content::unzip::title(content_title).into();
+    let warning: SharedString = t::instance::content::unzip::warning().into();
 
     window.open_dialog(cx, move |dialog, _, cx| {
         dialog
@@ -23,7 +23,7 @@ pub fn open_unzip_modpack(
                 .w_full()
                 .gap_2()
                 .child(warning.clone())
-                .child(div().text_color(cx.theme().button_danger_foreground).rounded(cx.theme().radius).child("This cannot be undone"))
+                .child(div().text_color(cx.theme().button_danger_foreground).rounded(cx.theme().radius).child(t::common::cannot_be_undone()))
                 .child(h_flex()
                     .w_full()
                     .gap_2()
@@ -35,7 +35,7 @@ pub fn open_unzip_modpack(
                         }))
                     .child(Button::new("unzip")
                         .flex_1()
-                        .label("Unzip")
+                        .label(t::instance::content::unzip::action())
                         .on_click({
                             let backend_handle = backend_handle.clone();
                             let title = title.clone();
@@ -49,7 +49,7 @@ pub fn open_unzip_modpack(
                                 });
                                 window.close_dialog(cx);
 
-                                crate::modals::generic::show_modal(window, cx, title.clone(), "Error while unzipping modpack".into(), modal_action);
+                                crate::modals::generic::show_modal(window, cx, title.clone(), t::instance::content::unzip::error().into(), modal_action);
                             }
                         }))
                 ))

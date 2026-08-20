@@ -238,7 +238,7 @@ impl Render for PlayerModelWidget {
                     .gap_2()
                     .pb_2()
                     .child(Button::new("classic")
-                        .label("Classic")
+                        .label(t::skins::player_model::classic())
                         .flex_1()
                         .selected(self.variant == SkinVariant::Classic)
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -248,7 +248,7 @@ impl Render for PlayerModelWidget {
                             });
                         })))
                     .child(Button::new("slim")
-                        .label("Slim")
+                        .label(t::skins::player_model::slim())
                         .flex_1()
                         .selected(self.variant == SkinVariant::Slim)
                         .on_click(cx.listener(|this, _, _, cx| {

@@ -365,7 +365,7 @@ impl Render for ModrinthProjectPage {
                     let text = if gv.len() <= 5 {
                         gv.iter().map(|v| v.as_ref()).collect::<Vec<_>>().join(", ")
                     } else {
-                        format!("{} - {} ({} versions)",
+                        t::modrinth::versions::range(
                             gv.first().map(|v| v.as_ref()).unwrap_or(""),
                             gv.last().map(|v| v.as_ref()).unwrap_or(""),
                             gv.len())

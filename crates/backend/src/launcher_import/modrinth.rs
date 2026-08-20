@@ -14,6 +14,15 @@ struct ModrinthInstanceToImport {
     minecraft_folder: Arc<Path>,
 }
 
+fn table_exists(conn: &rusqlite::Connection, table_name: &str) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?1",
+        [table_name],
+        |_| Ok(()),
+    )
+    .is_ok()
+}
+
 pub fn import_instances_from_modrinth(backend: &BackendState, import_job: ImportFromOtherLauncherJob, modal_action: &ModalAction) -> rusqlite::Result<()> {
     if import_job.paths.is_empty() {
         return Ok(());
@@ -29,7 +38,16 @@ pub fn import_instances_from_modrinth(backend: &BackendState, import_job: Import
 
     let conn = rusqlite::Connection::open(app_db)?;
 
-    let mut stmt = conn.prepare("SELECT path, icon_path, game_version, mod_loader FROM profiles")?;
+    let mut stmt = if table_exists(&conn, "instances") && table_exists(&conn, "instance_content_sets") {
+        conn.prepare(
+            "SELECT i.path, i.icon_path, cs.game_version, cs.loader \
+             FROM instances i \
+             LEFT JOIN instance_content_sets cs ON i.applied_content_set_id = cs.id",
+        )?
+    } else {
+        conn.prepare("SELECT path, icon_path, game_version, mod_loader FROM profiles")?
+    };
+
     let mut query = stmt.query([])?;
 
     let mut to_import = Vec::new();
@@ -159,13 +177,12 @@ pub fn read_profiles_from_modrinth_db(modrinth: &Path) -> rusqlite::Result<Optio
         }
     }
 
-    if let Ok(mut stmt) = conn.prepare("SELECT path FROM instances") {
-        if let Ok(query) = stmt.query([]) {
-            return Ok(Some(paths_from_query(profile_dir_main, profile_dir_fallback, query)?));
-        }
-    }
+    let mut stmt = if table_exists(&conn, "instances") {
+        conn.prepare("SELECT path FROM instances")?
+    } else {
+        conn.prepare("SELECT path FROM profiles")?
+    };
 
-    let mut stmt = conn.prepare("SELECT path FROM profiles")?;
     let query = stmt.query([])?;
     Ok(Some(paths_from_query(profile_dir_main, profile_dir_fallback, query)?))
 }

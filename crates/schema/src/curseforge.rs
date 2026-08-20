@@ -35,6 +35,8 @@ pub struct CurseforgeGetModFilesRequest {
     pub game_version: Option<Ustr>,
     #[serde(skip_serializing_if = "crate::skip_if_none")]
     pub mod_loader_type: Option<u32>,
+    #[serde(default, skip_serializing_if = "crate::skip_if_none")]
+    pub release_types: Option<&'static [u32]>,
     #[serde(skip_serializing_if = "crate::skip_if_none")]
     pub page_size: Option<u32>,
 }

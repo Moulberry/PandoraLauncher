@@ -2029,6 +2029,19 @@ hu = "Nem lehet izolálni: hiányzó bwrap és xdg-dbus-proxy parancsok"
 ru = "Невозможно использовать песочницу: отсутствуют команды bwrap и xdg-dbus-proxy"
 fr = "Impossible de lancer le mode sandbox : les commandes bwrap et xdg-dbus-proxy sont manquantes"
 
+[instance.update_channel.label]
+en = "Update Channel"
+ru = "Канал обновления"
+[instance.update_channel.release]
+en = "Release"
+ru = "Релиз"
+[instance.update_channel.beta]
+en = "Beta"
+ru = "Бета"
+[instance.update_channel.alpha]
+en = "Alpha"
+ru = "Альфа"
+
 [instance.linux.label]
 en = "Linux Performance"
 pl = "Wydajność w systemie Linux"

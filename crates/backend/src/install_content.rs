@@ -526,6 +526,7 @@ impl BackendState {
                     mod_id: project_id,
                     game_version: content.minecraft_version.into(),
                     mod_loader_type,
+                    release_types: None,
                     page_size: Some(1)
                 })).await;
 
@@ -540,6 +541,7 @@ impl BackendState {
                         mod_id: project_id,
                         game_version: content.minecraft_version.into(),
                         mod_loader_type: None,
+                        release_types: None,
                         page_size: Some(1)
                     })).await;
                     not_found = matches!(result, Err(MetaLoadError::NonOK(404))) ||
@@ -555,6 +557,7 @@ impl BackendState {
                         mod_id: project_id,
                         game_version: None,
                         mod_loader_type: None,
+                        release_types: None,
                         page_size: Some(1)
                     })).await;
                     not_found = matches!(result, Err(MetaLoadError::NonOK(404))) ||

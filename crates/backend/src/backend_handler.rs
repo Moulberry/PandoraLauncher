@@ -136,6 +136,13 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::SetInstanceUpdateChannel { id, update_channel } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.update_channel = update_channel;
+                    });
+                }
+            },
             MessageToBackend::SetInstanceDisableFileSyncing { id, disable_file_syncing } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.configuration.modify(|configuration| {
@@ -540,14 +547,16 @@ impl BackendState {
                 }
             },
             MessageToBackend::UpdateCheck { instance: id, modal_action } => {
-                let (loader, version) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                let (loader, version, update_channel) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     let configuration = instance.configuration.get();
-                    (configuration.loader, configuration.minecraft_version)
+                    (configuration.loader, configuration.minecraft_version, configuration.update_channel)
                 } else {
                     self.send.send_error("Can't update instance, unknown id");
                     modal_action.set_finished_with_error("Can't update instance, unknown id".into());
                     return;
                 };
+
+                let version_types = update_channel.modrinth_version_types();
 
                 let mut content = Vec::new();
                 for folder in ContentFolder::iter() {
@@ -572,31 +581,37 @@ impl BackendState {
                 let mod_params = &VersionUpdateParameters {
                     loaders: [modrinth_loader].into(),
                     game_versions: [version].into(),
+                    version_types,
                 };
 
                 let fabric_mod_params = &VersionUpdateParameters {
                     loaders: [ModrinthLoader::Fabric].into(),
                     game_versions: [version].into(),
+                    version_types,
                 };
 
                 let forge_mod_params = &VersionUpdateParameters {
                     loaders: [ModrinthLoader::Forge].into(),
                     game_versions: [version].into(),
+                    version_types,
                 };
 
                 let neoforge_mod_params = &VersionUpdateParameters {
                     loaders: [ModrinthLoader::NeoForge].into(),
                     game_versions: [version].into(),
+                    version_types,
                 };
 
                 let resourcepack_params = &VersionUpdateParameters {
                     loaders: [ModrinthLoader::Minecraft].into(),
                     game_versions: [version].into(),
+                    version_types,
                 };
 
                 let shaderpack_params = &VersionUpdateParameters {
                     loaders: [ModrinthLoader::Iris, ModrinthLoader::Optifine, ModrinthLoader::Canvas].into(),
                     game_versions: [version].into(),
+                    version_types,
                 };
 
                 let modrinth_modpack_params = &VersionV3UpdateParameters {
@@ -605,6 +620,7 @@ impl BackendState {
                         mrpack_loaders: [modrinth_loader].into(),
                         game_versions: [version].into(),
                     },
+                    version_types,
                 };
 
                 let meta = self.meta.clone();
@@ -734,6 +750,7 @@ impl BackendState {
                                         mod_id: project_id,
                                         game_version: Some(version),
                                         mod_loader_type,
+                                        release_types: Some(update_channel.curseforge_version_types()),
                                         page_size: Some(1)
                                     })).await;
 

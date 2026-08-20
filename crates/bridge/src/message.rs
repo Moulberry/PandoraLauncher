@@ -5,7 +5,7 @@ use std::{
 use schema::{
     backend_config::{BackendConfig, ProxyConfig}, instance::{
         InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
-        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration,
+        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, UpdateChannel,
     }, loader::Loader, minecraft_profile::{MinecraftProfileCape, SkinVariant}, pandora_update::UpdatePrompt, unique_bytes::UniqueBytes
 };
 use ustr::Ustr;
@@ -99,6 +99,10 @@ pub enum MessageToBackend {
     SetInstanceLoader {
         id: InstanceID,
         loader: Loader
+    },
+    SetInstanceUpdateChannel {
+        id: InstanceID,
+        update_channel: UpdateChannel,
     },
     SetInstancePreferredAccount {
     	id: InstanceID,

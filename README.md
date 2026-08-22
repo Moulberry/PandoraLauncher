@@ -32,10 +32,10 @@ Please use GitHub issues.
 
 ### Will Pandora be monetized?
 
-Unlikely, for a few reasons:
-- I believe that it is wrong for launchers to be monetized without distributing revenue back to mod creators that give the launcher value in the first place. Since I don't have the infrastructure to be able to redistribute revenue to mod creators, this is a big barrier.
-- Dealing with monetization takes a lot of (ongoing) work, probably more work than creating the launcher itself.
-- I personally dislike advertisements.
+Never:
+- It would ruin all competition with other launchers like MultiMC and Prism
+- Third-party launchers being closed-source makes no sense
+- Everyone hates ads
 
 ## Instance Page
 ![Instance Page](https://raw.githubusercontent.com/Moulberry/PandoraLauncher/refs/heads/master/screenshots/instance.png)

@@ -191,7 +191,7 @@ fn main() {
 
         backend::start(runtime, launcher_dir.clone(), frontend_handle, backend_handle.clone(), backend_recv, quit_handler.fork());
         frontend::start(launcher_dir.clone(), panic_message, deadlock_message, backend_handle, frontend_recv, quit_handler);
-        log::info!("Quiting...");
+        log::info!("Quitting...");
     } else {
         eprintln!("Connecting to existing local socket: {socket:?}");
 

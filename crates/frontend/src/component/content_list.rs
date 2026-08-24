@@ -247,7 +247,7 @@ impl ContentListDelegate {
             Some(Button::new(("unzip", element_id))
                 .outline()
                 .icon(PandoraIcon::PackageOpen)
-                .tooltip("Unzip Modpack")
+                .tooltip(t::instance::content::unzip::tooltip())
                 .on_click({
                     let instance_id = self.id;
                     let content_id = summary.id;

@@ -883,6 +883,7 @@ ru = "${name: &str} (бета)"
 fr = "${name: &str} (Beta)"
 [modrinth.versions.range]
 en = "${first: &str} - ${last: &str} (${count: usize} versions)"
+hu = "${first: &str} - ${last: &str} (${count: usize} verzió)"
 ru = "${first: &str} - ${last: &str} (всего версий: ${count: usize})"
 
 [curseforge.name]
@@ -1049,6 +1050,7 @@ fr = "Icône"
 en = "Custom icon"
 pl = "Własna ikona"
 de = "Eigenes Symbol"
+hu = "Egyedi ikon"
 ru = "Свой значок"
 fr = "Icône personnalisée"
 [common.apply_changes]
@@ -1069,6 +1071,7 @@ ru = "ОК"
 fr = "OK"
 [common.cannot_be_undone]
 en = "This cannot be undone"
+hu = "Ezt nem lehet visszacsinálni"
 ru = "Это действие нельзя отменить"
 [common.nav.top]
 en = "Go to Top"
@@ -1376,8 +1379,8 @@ fr = "Instance sans nom"
 en = "(${num: usize} instances were incompatible)"
 pl = "(${num: usize} instancji było niekompatybilnych)"
 de = "(${num: usize} Instanzen waren inkompatibel)"
-hu = "(${num: usize} példány nem kompatibilis"
-sv = "(${num: usize} instanserna var okompatibla"
+hu = "(${num: usize} példány nem kompatibilis)"
+sv = "(${num: usize} instanserna var okompatibla)"
 ru = "(несовместимых экземпляров: ${num: usize})"
 fr = "(${num: usize} instances étaient incompatibles)"
 [instance.new]
@@ -1428,6 +1431,7 @@ ru = "Серверы"
 fr = "Serveurs"
 [instance.live_game_output]
 en = "Live Game Output"
+hu = "Élő játék kimenet"
 ru = "Логи в реальном времени"
 [instance.total_playtime]
 en = "Total Playtime"
@@ -1694,22 +1698,27 @@ fr = "Nom non valide"
 [instance.duplicate.action]
 en = "Duplicate"
 de = "Duplizieren"
+hu = "Duplikálás"
 ru = "Дублировать"
 [instance.duplicate.title]
 en = "Duplicate Instance"
 de = "Instanz duplizieren"
+hu = "Példány duplikálása"
 ru = "Дублирование экземпляра"
 [instance.duplicate.copy_of]
 en = "Copy of ${name: &str}"
 de = "Kopie von ${name: &str}"
+hu = "${name: &str} másolata"
 ru = "Копия ${name: &str}"
 [instance.duplicate.progress]
 en = "Duplicating instance"
 de = "Instanz wird dupliziert"
+hu = "Példány duplikálása"
 ru = "Создание дубликата экземпляра"
 [instance.duplicate.error]
 en = "Error duplicating instance"
 de = "Fehler beim Duplizieren der Instanz"
+hu = "Hiba a példány duplikálása közben"
 ru = "Не удалось создать дубликат экземпляра"
 [instance.export.action]
 en = "Export"
@@ -2088,7 +2097,7 @@ fr = "Utiliser un GPU dédié"
 en = "Disable GL Threaded Optimizations"
 pl = "Wyłącz optymalizacje wielowątkowe GL"
 de = "GL-Thread-Optimierungen deaktivieren"
-hu = "GL-Thread-Optimizációk kikapcsolása"
+hu = "GL-Thread-Optimalizációk kikapcsolása"
 sv = "Inaktivera GL-trådade optimeringar"
 ru = "Отключить потоковые оптимизации GL"
 fr = "Désactiver les optimisations GL par threads"
@@ -2795,14 +2804,17 @@ fr = "Mise à jour"
 [instance.content.update_all_mods]
 en = "Update all mods (${count: usize})"
 de = "Aktualisiere alle mods (${count: usize})"
+hu = "Minden mod frissítése (${count: usize})"
 ru = "Обновить все моды (${count: usize})"
 [instance.content.update_all_resourcepacks]
 en = "Update all resourcepacks (${count: usize})"
 de = "Aktualisiere alle Ressourcenpakete (${count: usize})"
+hu = "Minden forráscsomag frissítése (${count: usize})"
 ru = "Обновить все ресурспаки (${count: usize})"
 [instance.content.update_all_shaders]
 en = "Update all shaders (${count: usize})"
 de = "Aktualisiere alle Shader (${count: usize})"
+hu = "Minden shader frissítése (${count: usize})"
 ru = "Обновить все шейдеры (${count: usize})"
 [instance.content.update.check.label]
 en = "Check for updates"
@@ -2909,18 +2921,23 @@ ru = "Установлено вручную - автоматическое об�
 fr = "Installé manuellement - ne peut pas être mis à jour automatiquement"
 [instance.content.unzip.tooltip]
 en = "Unzip Modpack"
+hu = "Modcsomag kicsomagolása"
 ru = "Распаковать сборку"
 [instance.content.unzip.action]
 en = "Unzip"
+hu = "Kicsomagolás"
 ru = "Распаковать"
 [instance.content.unzip.title]
 en = "Unzip '${name: &str}'"
+hu = "'${name: &str}' kicsomagolása"
 ru = "Распаковка \"${name: &str}\""
 [instance.content.unzip.warning]
 en = "Unzipping this modpack will place all the mods directly into your mods folder. The mods will be treated individually instead of being tied to the modpack"
+hu = "A modcsomag kicsomagolása az összes modot rögtön a mod mappádba helyezi. A modok külön lesznek kezelve ahelyett, hogy a modcsomaghoz lennének kötve"
 ru = "После распаковки все моды из этой сборки окажутся прямо в папке для модов. Они будут считаться отдельными модами, а не частью сборки"
 [instance.content.unzip.error]
 en = "Error while unzipping modpack"
+hu = "Hiba a modcsomag kicsomagolásakor"
 ru = "Ошибка при распаковке сборки"
 
 [instance.content.sort_key.name]
@@ -3246,6 +3263,7 @@ fr = "Synchroniser le dossier des packs de ressources"
 [instance.sync.targets.downloads]
 en = "Sync server resourcepacks folder (downloads)"
 de = "Synchronisiere Server-Ressourcenpakete (downloads)"
+hu = "Szerverforráscsomagok mappájának szinkronizálása (downloads)"
 sv = "Synka serverresurspakets mappan (downloads)"
 ru = "Синхронизировать ресурспаки сервера (downloads)"
 [instance.sync.targets.shaderpacks]
@@ -3411,18 +3429,22 @@ fr = "Fenêtres"
 [settings.windows.live_game_output_display]
 en = "Live game output display"
 de = "Live-Anzeige der Spielausgabe"
+hu = "Élő játék kimenet stílusa"
 ru = "Показ логов в реальном времени"
 [settings.windows.live_game_output_display.tab_on_instance_page]
 en = "Tab on Instance Page"
 de = "Tab auf der Instanzseite"
+hu = "Fül a példány oldalon"
 ru = "На вкладке экземпляра"
 [settings.windows.live_game_output_display.separate_window]
 en = "Separate Window"
 de = "Separates Fenster"
+hu = "Külön ablak"
 ru = "В отдельном окне"
 [settings.windows.live_game_output_display.hidden]
 en = "Hidden"
 de = "Versteckt"
+hu = "Rejtett"
 ru = "Не показывать"
 [settings.windows.hide_main_window]
 en = "Hide main window on launch"
@@ -3618,9 +3640,11 @@ ru = "Выберите учётную запись для просмотра/и�
 fr = "Sélectionnez un compte pour afficher/modifier les skins"
 [skins.player_model.classic]
 en = "Classic"
+hu = "Klasszikus"
 ru = "Classic"
 [skins.player_model.slim]
 en = "Slim"
+hu = "Karcsú"
 ru = "Slim"
 [skins.player_model.yaw]
 en = "Yaw: ${value: i32}°"

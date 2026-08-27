@@ -156,7 +156,7 @@ impl Element for PlayerModel {
                 let yaw = state.yaw;
                 let pitch = state.pitch;
                 let animation = state.animation;
-                let zoom = state.animation;
+                let zoom = state.zoom;
                 let variant = state.variant;
 
                 let (send, recv) = tokio::sync::oneshot::channel();

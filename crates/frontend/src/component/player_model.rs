@@ -6,6 +6,7 @@ use schema::{minecraft_profile::SkinVariant, unique_bytes::UniqueBytes};
 pub const DEFAULT_YAW: f64 = 22.5;
 pub const DEFAULT_PITCH: f64 = 10.5;
 pub const DEFAULT_ANIMATION: f64 = 1.0/16.0;
+pub const DEFAULT_ZOOM: f64 = 1.0;
 
 struct RenderedPlayerModel {
     image: Arc<RenderImage>,
@@ -15,6 +16,7 @@ struct RenderedPlayerModel {
     yaw: f64,
     pitch: f64,
     animation: f64,
+    zoom: f64,
     width: u32,
     height: u32,
 }
@@ -26,6 +28,7 @@ pub struct PlayerModelState {
     pub yaw: f64,
     pub pitch: f64,
     pub animation: f64,
+    pub zoom: f64,
     rendered: Option<RenderedPlayerModel>,
     render_task: Option<Task<()>>,
 }
@@ -39,6 +42,7 @@ impl PlayerModelState {
             yaw: DEFAULT_YAW,
             pitch: DEFAULT_PITCH,
             animation: DEFAULT_ANIMATION,
+            zoom: DEFAULT_ZOOM,
             rendered: None,
             render_task: None,
         });
@@ -56,7 +60,8 @@ impl PlayerModelState {
         };
         return rendered.width != width || rendered.height != height || rendered.yaw != self.yaw
             || rendered.pitch != self.pitch || rendered.animation != self.animation
-            || rendered.variant != self.variant || rendered.skin != self.skin || rendered.cape != self.cape;
+            || rendered.variant != self.variant || rendered.skin != self.skin || rendered.cape != self.cape
+            || rendered.zoom != self.zoom;
     }
 }
 
@@ -151,12 +156,13 @@ impl Element for PlayerModel {
                 let yaw = state.yaw;
                 let pitch = state.pitch;
                 let animation = state.animation;
+                let zoom = state.animation;
                 let variant = state.variant;
 
                 let (send, recv) = tokio::sync::oneshot::channel();
 
                 cx.background_executor().spawn(async move {
-                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation, 0.0, 1.0))
+                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation, 0.0, zoom))
                 }).detach();
 
                 let skin = state.skin.clone();
@@ -184,6 +190,7 @@ impl Element for PlayerModel {
                             yaw,
                             pitch,
                             animation,
+                            zoom,
                             width: image_width,
                             height: image_height,
                         });

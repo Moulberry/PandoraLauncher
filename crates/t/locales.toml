@@ -3643,6 +3643,13 @@ de = "Animation"
 hu = "Animáció"
 ru = "Анимация"
 fr = "Animation"
+[skins.player_model.zoom]
+en = "Zoom"
+pl = "Zoom"
+de = "Zoom"
+hu = "Zoom"
+ru = "Зум"
+fr = "Zoom"
 [skins.add_from_file]
 en = "Add from file"
 pl = "Dodaj z pliku"

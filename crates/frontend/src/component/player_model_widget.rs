@@ -11,6 +11,7 @@ pub struct PlayerModelWidget {
     yaw_slider_state: Entity<SliderState>,
     pitch_slider_state: Entity<SliderState>,
     animation_slider_state: Entity<SliderState>,
+    zoom_slider_state: Entity<SliderState>,
     animating_yaw: bool,
     animating_pitch_positive: bool,
     animating_pitch: bool,
@@ -31,18 +32,23 @@ impl PlayerModelWidget {
         let animation_slider_state = cx.new(|_| {
             SliderState::new().min(0.0).max(1.0).step(1.0/800.0).default_value(player_model::DEFAULT_ANIMATION as f32)
         });
+        let zoom_slider_state = cx.new(|_| {
+            SliderState::new().min(0.0).max(1.0).step(0.01).default_value(player_model::DEFAULT_ZOOM as f32)
+        });
 
         let variant = crate::skin_renderer::determine_skin_variant(&skin).unwrap_or(SkinVariant::Classic);
 
         cx.subscribe(&yaw_slider_state, Self::on_yaw_changed).detach();
         cx.subscribe(&pitch_slider_state, Self::on_pitch_changed).detach();
         cx.subscribe(&animation_slider_state, Self::on_animation_changed).detach();
+        cx.subscribe(&zoom_slider_state, Self::on_zoom_changed).detach();
 
         Self {
             player_model_state: PlayerModelState::new(cx, skin, variant),
             yaw_slider_state,
             pitch_slider_state,
             animation_slider_state,
+            zoom_slider_state,
             animating_yaw: false,
             animating_pitch_positive: true,
             animating_pitch: false,
@@ -110,6 +116,16 @@ impl PlayerModelWidget {
         self.animating_animation = false;
         self.player_model_state.update(cx, |state, cx| {
             state.animation = change.start() as f64;
+            cx.notify();
+        })
+    }
+
+    fn on_zoom_changed(&mut self, _: Entity<SliderState>, event: &SliderEvent, cx: &mut Context<Self>) {
+        let SliderEvent::Change(change) = event else {
+            return;
+        };
+        self.player_model_state.update(cx, |state, cx| {
+            state.zoom = change.start() as f64;
             cx.notify();
         })
     }
@@ -290,6 +306,11 @@ impl Render for PlayerModelWidget {
                                 cx.notify();
                             }))))
                     .child(Slider::new(&self.animation_slider_state)))
+                .child(v_flex()
+                    .child(h_flex().w_full().justify_between().text_sm()
+                        .child(t::skins::player_model::zoom())
+                    .child(Slider::new(&self.zoom_slider_state)))
+                )
             )
     }
 }

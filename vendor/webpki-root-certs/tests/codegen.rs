@@ -1,7 +1,7 @@
 use std::fmt::Write;
 use std::fs;
 
-use ring::digest;
+use aws_lc_rs::digest;
 
 use webpki_ccadb::fetch_ccadb_roots;
 
@@ -22,7 +22,7 @@ async fn new_generated_code_is_fresh() {
 
         write!(&mut encoded_cert_der, "b\"").unwrap();
         for &b in root.der().as_ref() {
-            encoded_cert_der.push_str(&format!("\\x{:02X}", b));
+            encoded_cert_der.push_str(&format!("\\x{b:02X}"));
         }
         encoded_cert_der.push('"');
 

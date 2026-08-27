@@ -2,7 +2,6 @@ use crate::internals::respan::respan;
 use proc_macro2::Span;
 use quote::ToTokens;
 use std::mem;
-use syn::punctuated::Punctuated;
 use syn::{
     parse_quote, Data, DeriveInput, Expr, ExprPath, GenericArgument, GenericParam, Generics, Macro,
     Path, PathArguments, QSelf, ReturnType, Token, Type, TypeParamBound, TypePath, WherePredicate,
@@ -49,7 +48,7 @@ impl ReplaceReceiver<'_> {
 
         path.leading_colon = Some(**path.segments.pairs().next().unwrap().punct().unwrap());
 
-        let segments = mem::replace(&mut path.segments, Punctuated::new());
+        let segments = mem::take(&mut path.segments);
         path.segments = segments.into_pairs().skip(1).collect();
     }
 
@@ -112,7 +111,7 @@ impl ReplaceReceiver<'_> {
                 self.visit_type_mut(&mut ty.elem);
                 self.visit_expr_mut(&mut ty.len);
             }
-            Type::BareFn(ty) => {
+            Type::FnPtr(ty) => {
                 for arg in &mut ty.inputs {
                     self.visit_type_mut(&mut arg.ty);
                 }
@@ -191,7 +190,7 @@ impl ReplaceReceiver<'_> {
             }
             PathArguments::Parenthesized(arguments) => {
                 for argument in &mut arguments.inputs {
-                    self.visit_type_mut(argument);
+                    self.visit_type_mut(&mut argument.ty);
                 }
                 self.visit_return_type_mut(&mut arguments.output);
             }
@@ -209,7 +208,9 @@ impl ReplaceReceiver<'_> {
         match bound {
             #![cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
             TypeParamBound::Trait(bound) => self.visit_path_mut(&mut bound.path),
-            TypeParamBound::Lifetime(_) | TypeParamBound::Verbatim(_) => {}
+            TypeParamBound::Lifetime(_)
+            | TypeParamBound::PreciseCapture(_)
+            | TypeParamBound::Verbatim(_) => {}
             _ => {}
         }
     }

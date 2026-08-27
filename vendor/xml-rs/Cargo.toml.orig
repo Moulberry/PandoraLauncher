@@ -1,6 +1,6 @@
 [package]
 name = "xml-rs"
-version = "0.8.28"
+version = "0.8.29"
 authors = ["Vladimir Matveev <vmatveev@citrine.cc>"]
 license = "MIT"
 description = "An XML library in pure Rust"
@@ -23,7 +23,7 @@ name = "xml-analyze"
 path = "src/analyze.rs"
 
 [badges]
-maintenance = { status = "actively-developed" }
+maintenance = { status = "deprecated" }
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]

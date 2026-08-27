@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0 OR MIT
+//
 // Copyright 2024 The Fuchsia Authors
 //
 // Licensed under a BSD-style license <LICENSE-BSD>, Apache License, Version 2.0
@@ -6,7 +8,7 @@
 // This file may not be copied, modified, or distributed except according to
 // those terms.
 
-#![allow(missing_copy_implementations, missing_debug_implementations)]
+#![allow(missing_copy_implementations, missing_debug_implementations, missing_docs)]
 
 //! The parameterized invariants of a [`Ptr`][super::Ptr].
 //!
@@ -39,7 +41,15 @@ pub trait Aliasing: Sealed {
 }
 
 /// The alignment invariant of a [`Ptr`][super::Ptr].
-pub trait Alignment: Sealed {}
+pub trait Alignment: Sealed {
+    #[doc(hidden)]
+    #[must_use]
+    fn read<T, I, R>(ptr: crate::Ptr<'_, T, I>) -> T
+    where
+        T: Copy + Read<I::Aliasing, R>,
+        I: Invariants<Alignment = Self, Validity = Valid>,
+        I::Aliasing: Reference;
+}
 
 /// The validity invariant of a [`Ptr`][super::Ptr].
 ///
@@ -83,7 +93,16 @@ pub trait Alignment: Sealed {}
 ///   mechanism (e.g. a `&` reference used to derive `src`) to write `x` where
 ///   `x ∈ S(T, V)` but `x ∉ S(U, W)`, which would violate the guarantee that
 ///   `dst`'s referent may only contain values in `S(U, W)`.
-pub unsafe trait Validity: Sealed {}
+pub unsafe trait Validity: Sealed {
+    const KIND: ValidityKind;
+}
+
+pub enum ValidityKind {
+    Uninit,
+    AsInitialized,
+    Initialized,
+    Valid,
+}
 
 /// An [`Aliasing`] invariant which is either [`Shared`] or [`Exclusive`].
 ///
@@ -123,12 +142,32 @@ impl Reference for Exclusive {}
 /// It is unknown whether the pointer is aligned.
 pub enum Unaligned {}
 
-impl Alignment for Unaligned {}
+impl Alignment for Unaligned {
+    #[inline(always)]
+    fn read<T, I, R>(ptr: crate::Ptr<'_, T, I>) -> T
+    where
+        T: Copy + Read<I::Aliasing, R>,
+        I: Invariants<Alignment = Self, Validity = Valid>,
+        I::Aliasing: Reference,
+    {
+        (*ptr.into_unalign().as_ref()).into_inner()
+    }
+}
 
 /// The referent is aligned: for `Ptr<T>`, the referent's address is a multiple
 /// of the `T`'s alignment.
 pub enum Aligned {}
-impl Alignment for Aligned {}
+impl Alignment for Aligned {
+    #[inline(always)]
+    fn read<T, I, R>(ptr: crate::Ptr<'_, T, I>) -> T
+    where
+        T: Copy + Read<I::Aliasing, R>,
+        I: Invariants<Alignment = Self, Validity = Valid>,
+        I::Aliasing: Reference,
+    {
+        *ptr.as_ref()
+    }
+}
 
 /// Any bit pattern is allowed in the `Ptr`'s referent, including uninitialized
 /// bytes.
@@ -137,7 +176,9 @@ pub enum Uninit {}
 // function of any property of `T` other than its bit validity (in fact, it's
 // not even a property of `T`'s bit validity, but this is more than we are
 // required to uphold).
-unsafe impl Validity for Uninit {}
+unsafe impl Validity for Uninit {
+    const KIND: ValidityKind = ValidityKind::Uninit;
+}
 
 /// The byte ranges initialized in `T` are also initialized in the referent of a
 /// `Ptr<T>`.
@@ -169,7 +210,9 @@ unsafe impl Validity for Uninit {}
 pub enum AsInitialized {}
 // SAFETY: `AsInitialized`'s validity is well-defined for all `T: ?Sized`, and
 // is not a function of any property of `T` other than its bit validity.
-unsafe impl Validity for AsInitialized {}
+unsafe impl Validity for AsInitialized {
+    const KIND: ValidityKind = ValidityKind::AsInitialized;
+}
 
 /// The byte ranges in the referent are fully initialized. In other words, if
 /// the referent is `N` bytes long, then it contains a bit-valid `[u8; N]`.
@@ -178,14 +221,18 @@ pub enum Initialized {}
 // not a function of any property of `T` other than its bit validity (in fact,
 // it's not even a property of `T`'s bit validity, but this is more than we are
 // required to uphold).
-unsafe impl Validity for Initialized {}
+unsafe impl Validity for Initialized {
+    const KIND: ValidityKind = ValidityKind::Initialized;
+}
 
 /// The referent of a `Ptr<T>` is valid for `T`, upholding bit validity and any
 /// library safety invariants.
 pub enum Valid {}
 // SAFETY: `Valid`'s validity is well-defined for all `T: ?Sized`, and is not a
 // function of any property of `T` other than its bit validity.
-unsafe impl Validity for Valid {}
+unsafe impl Validity for Valid {
+    const KIND: ValidityKind = ValidityKind::Valid;
+}
 
 /// # Safety
 ///
@@ -220,13 +267,11 @@ impl<T: ?Sized> Read<Exclusive, BecauseExclusive> for T {}
 /// Unsynchronized reads are permitted because only one live [`Ptr`](crate::Ptr)
 /// or reference may exist to the referent bytes at a time.
 #[derive(Copy, Clone, Debug)]
-#[doc(hidden)]
 pub enum BecauseExclusive {}
 
 /// Unsynchronized reads are permitted because no live [`Ptr`](crate::Ptr)s or
 /// references permit interior mutation.
 #[derive(Copy, Clone, Debug)]
-#[doc(hidden)]
 pub enum BecauseImmutable {}
 
 use sealed::Sealed;

@@ -252,7 +252,7 @@ impl<'a> Context<'a> {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 enum TypeKind {
     Enum,
     Struct,
@@ -866,6 +866,7 @@ fn make_drop_impl(cx: &Context<'_>) -> TokenStream {
         // call-site span.
         let unsafety = <Token![unsafe]>::default();
         quote_spanned! { span =>
+            #[allow(clippy::missing_trait_methods)]
             impl #impl_generics _pin_project::__private::Drop for #ident #ty_generics
             #where_clause
             {
@@ -1065,10 +1066,7 @@ fn ensure_not_packed(orig: &OriginalType<'_>, fields: Option<&Fields>) -> Result
         }
     }
 
-    let fields = match fields {
-        Some(fields) => fields,
-        None => return Ok(TokenStream::new()),
-    };
+    let Some(fields) = fields else { return Ok(TokenStream::new()) };
 
     // Workaround for https://github.com/taiki-e/pin-project/issues/32
     // Through the tricky use of proc macros, it's possible to bypass
@@ -1111,6 +1109,8 @@ fn ensure_not_packed(orig: &OriginalType<'_>, fields: Option<&Fields>) -> Result
     // Note:
     // - Lint-based tricks aren't perfect, but they're much better than nothing:
     //   https://github.com/taiki-e/pin-project-lite/issues/26
+    //   Since Rust 1.69, unaligned_references is a hard error, so this issue only
+    //   affects projects that using only very old compilers.
     //
     // - Enable both unaligned_references and safe_packed_borrows lints
     //   because unaligned_references lint does not exist in older compilers:

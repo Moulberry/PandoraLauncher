@@ -415,13 +415,17 @@ impl<T> Worker<T> {
             buffer.write(b, MaybeUninit::new(task));
         }
 
+        // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+        #[cfg(not(crossbeam_sanitize_thread))]
         atomic::fence(Ordering::Release);
+        let store_order = if cfg!(crossbeam_sanitize_thread) {
+            Ordering::Release
+        } else {
+            Ordering::Relaxed
+        };
 
         // Increment the back index.
-        //
-        // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
-        // races because it doesn't understand fences.
-        self.inner.back.store(b.wrapping_add(1), Ordering::Release);
+        self.inner.back.store(b.wrapping_add(1), store_order);
     }
 
     /// Pops a task from the queue.
@@ -900,13 +904,17 @@ impl<T> Stealer<T> {
             }
         }
 
+        // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+        #[cfg(not(crossbeam_sanitize_thread))]
         atomic::fence(Ordering::Release);
+        let store_order = if cfg!(crossbeam_sanitize_thread) {
+            Ordering::Release
+        } else {
+            Ordering::Relaxed
+        };
 
         // Update the back index in the destination queue.
-        //
-        // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
-        // races because it doesn't understand fences.
-        dest.inner.back.store(dest_b, Ordering::Release);
+        dest.inner.back.store(dest_b, store_order);
 
         // Return with success.
         Steal::Success(())
@@ -1149,13 +1157,17 @@ impl<T> Stealer<T> {
             }
         }
 
+        // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+        #[cfg(not(crossbeam_sanitize_thread))]
         atomic::fence(Ordering::Release);
+        let store_order = if cfg!(crossbeam_sanitize_thread) {
+            Ordering::Release
+        } else {
+            Ordering::Relaxed
+        };
 
         // Update the back index in the destination queue.
-        //
-        // This ordering could be `Relaxed`, but then thread sanitizer would falsely report data
-        // races because it doesn't understand fences.
-        dest.inner.back.store(dest_b, Ordering::Release);
+        dest.inner.back.store(dest_b, store_order);
 
         // Return with success.
         Steal::Success(unsafe { task.assume_init() })
@@ -1546,7 +1558,7 @@ impl<T> Injector<T> {
         self.steal_batch_with_limit(dest, MAX_BATCH)
     }
 
-    /// Steals no more than of tasks and pushes them into a worker.
+    /// Steals no more than `limit` of tasks and pushes them into a worker.
     ///
     /// How many tasks exactly will be stolen is not specified. That said, this method will try to
     /// steal around half of the tasks in the queue, but also not more than some constant limit.
@@ -1689,15 +1701,19 @@ impl<T> Injector<T> {
                 }
             }
 
+            // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+            #[cfg(not(crossbeam_sanitize_thread))]
             atomic::fence(Ordering::Release);
+            let store_order = if cfg!(crossbeam_sanitize_thread) {
+                Ordering::Release
+            } else {
+                Ordering::Relaxed
+            };
 
             // Update the back index in the destination queue.
-            //
-            // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
-            // data races because it doesn't understand fences.
             dest.inner
                 .back
-                .store(dest_b.wrapping_add(batch_size as isize), Ordering::Release);
+                .store(dest_b.wrapping_add(batch_size as isize), store_order);
 
             // Destroy the block if we've reached the end, or if another thread wanted to destroy
             // but couldn't because we were busy reading from the slot.
@@ -1892,15 +1908,19 @@ impl<T> Injector<T> {
                 }
             }
 
+            // ThreadSanitizer does not understand fences, so we omit fence and do store with Release ordering.
+            #[cfg(not(crossbeam_sanitize_thread))]
             atomic::fence(Ordering::Release);
+            let store_order = if cfg!(crossbeam_sanitize_thread) {
+                Ordering::Release
+            } else {
+                Ordering::Relaxed
+            };
 
             // Update the back index in the destination queue.
-            //
-            // This ordering could be `Relaxed`, but then thread sanitizer would falsely report
-            // data races because it doesn't understand fences.
             dest.inner
                 .back
-                .store(dest_b.wrapping_add(batch_size as isize), Ordering::Release);
+                .store(dest_b.wrapping_add(batch_size as isize), store_order);
 
             // Destroy the block if we've reached the end, or if another thread wanted to destroy
             // but couldn't because we were busy reading from the slot.
@@ -2028,7 +2048,7 @@ impl<T> Drop for Injector<T> {
 
 impl<T> fmt::Debug for Injector<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.pad("Worker { .. }")
+        f.pad("Injector { .. }")
     }
 }
 

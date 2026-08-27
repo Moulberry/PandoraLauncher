@@ -370,7 +370,7 @@ impl Element for ReadonlyTextFieldComponent {
                         }
 
                         let mut scroll_state = inner.scroll_state.borrow_mut();
-                        scroll_state.bounds_y = bounds.size.height;
+                        scroll_state.bounds = bounds;
                         scroll_state.line_height = line_height;
                         scroll_state.lines = if let Some(item_state) = &inner.item_state {
                             item_state.total_line_count
@@ -421,7 +421,7 @@ impl ReadonlyTextField {
             };
         }
 
-        let max_offset = (item_state.total_line_count * line_height - scroll_state.bounds_y).max(px(1.0));
+        let max_offset = (item_state.total_line_count * line_height - scroll_state.bounds.size.height).max(px(1.0));
 
         match &mut scroll_state.scrolling {
             GameOutputScrolling::Bottom => {
@@ -460,8 +460,8 @@ impl ReadonlyTextField {
                         let drag_pivot = active_drag.drag_pivot.min(Pixels::ZERO);
                         let real_pivot = active_drag.real_pivot.min(Pixels::ZERO);
                         let new_max_offset =
-                            (item_state.total_line_count * line_height - scroll_state.bounds_y).max(px(1.0));
-                        let old_max_offset = (active_drag.start_content_height - scroll_state.bounds_y).max(px(1.0));
+                            (item_state.total_line_count * line_height - scroll_state.bounds.size.height).max(px(1.0));
+                        let old_max_offset = (active_drag.start_content_height - scroll_state.bounds.size.height).max(px(1.0));
 
                         if offset < drag_pivot {
                             effective_offset = (offset - drag_pivot) / (-old_max_offset - drag_pivot)
@@ -533,7 +533,7 @@ impl ReadonlyTextField {
                     let render_offset = -(remainder_lines * line_height) + line_remainder + line_height - top_offset_for_inset;
 
                     if scroll_state.active_drag.is_some() {
-                        let mut remaining_lines = ((scroll_state.bounds_y - render_offset) / line_height) as usize + 1;
+                        let mut remaining_lines = ((scroll_state.bounds.size.height - render_offset) / line_height) as usize + 1;
                         let mut changed = false;
                         for item in item_state.items[item_index..].iter_mut() {
                             if item.skip {
@@ -700,7 +700,7 @@ struct ActiveDrag {
 struct GameOutputScrollState {
     lines: usize,
     line_height: Pixels,
-    bounds_y: Pixels,
+    bounds: Bounds<Pixels>,
     scrolling: GameOutputScrolling,
     active_drag: Option<ActiveDrag>,
 }
@@ -723,14 +723,14 @@ impl GameOutputScrollState {
     }
 
     pub fn max_scroll_amount(&self) -> Pixels {
-        (self.lines * self.line_height - self.bounds_y).max(Pixels::ZERO)
+        (self.lines * self.line_height - self.bounds.size.height).max(Pixels::ZERO)
     }
 
     pub fn offset(&self) -> Pixels {
         match self.scrolling {
             GameOutputScrolling::Bottom => {
                 let content_height = self.content_height_for_scrollbar();
-                -(content_height - self.bounds_y)
+                -(content_height - self.bounds.size.height)
             },
             GameOutputScrolling::Top { offset } => offset,
         }
@@ -739,7 +739,7 @@ impl GameOutputScrollState {
     pub fn set_offset(&mut self, new_offset: Pixels) {
         let content_height = self.content_height_for_scrollbar();
         let new_offset = new_offset.min(Pixels::ZERO);
-        let total_offset = -(content_height - self.bounds_y);
+        let total_offset = -(content_height - self.bounds.size.height);
 
         if new_offset < total_offset + self.line_height / 4.0 {
             self.scrolling = GameOutputScrolling::Bottom;
@@ -750,6 +750,11 @@ impl GameOutputScrollState {
 }
 
 impl ScrollbarHandle for ScrollHandler {
+    fn viewport_bounds(&self) -> Bounds<Pixels> {
+        let state = self.state.borrow();
+        state.bounds
+    }
+
     fn offset(&self) -> Point<Pixels> {
         let state = self.state.borrow();
         Point::new(Pixels::ZERO, state.offset())

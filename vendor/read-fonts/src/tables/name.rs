@@ -15,6 +15,9 @@ impl<'a> Name<'a> {
 
 impl NameRecord {
     /// Return a type that can decode the string data for this name entry.
+    ///
+    /// The `data` argument should be the name table's data section, which can
+    /// be retrieved via [`Name::string_data`].
     pub fn string<'a>(&self, data: FontData<'a>) -> Result<NameString<'a>, ReadError> {
         let start = self.string_offset().non_null().unwrap_or(0);
         let end = start + self.length() as usize;
@@ -163,6 +166,13 @@ impl Iterator for CharIter<'_> {
                     let Some(c2) = self.bump_u16() else {
                         return Some(rep);
                     };
+                    if !(0xDC00..=0xDFFF).contains(&c2) {
+                        // c1 is an unpaired high surrogate; rewind so c2 is
+                        // decoded on its own rather than folded into a bogus
+                        // scalar.
+                        self.pos -= 2;
+                        return Some(rep);
+                    }
                     ((c1 & 0x3FF) << 10) + (c2 as u32 & 0x3FF) + 0x10000
                 } else {
                     c1
@@ -305,5 +315,27 @@ mod tests {
             pos: 0,
         };
         assert!(chars.eq(['ऄ', std::char::REPLACEMENT_CHARACTER].into_iter()))
+    }
+
+    #[test]
+    fn high_surrogate_followed_by_non_low() {
+        let rep = std::char::REPLACEMENT_CHARACTER;
+        // High surrogate (0xD800) followed by a BMP scalar 'A' (U+0041): the
+        // high surrogate is unpaired and 'A' must still be decoded.
+        let chars = CharIter {
+            data: &[0xD8, 0x00, 0x00, 0x41],
+            encoding: Encoding::Utf16Be,
+            pos: 0,
+        };
+        assert!(chars.eq([rep, 'A'].into_iter()));
+
+        // High surrogate (0xD800) followed by a valid pair (U+1F600): the first
+        // unit is unpaired and the following pair must decode intact.
+        let chars = CharIter {
+            data: &[0xD8, 0x00, 0xD8, 0x3D, 0xDE, 0x00],
+            encoding: Encoding::Utf16Be,
+            pos: 0,
+        };
+        assert!(chars.eq([rep, '😀'].into_iter()));
     }
 }

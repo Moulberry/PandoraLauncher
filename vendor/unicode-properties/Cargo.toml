@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "unicode-properties"
-version = "0.1.3"
+version = "0.1.4"
 authors = [
     "Charles Lew <crlf0710@gmail.com>",
     "Manish Goregaokar <manishsmail@gmail.com>",
@@ -22,6 +22,7 @@ exclude = [
     "target/*",
     "Cargo.lock",
 ]
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -41,6 +42,14 @@ categories = ["no-std::no-alloc"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/unicode-rs/unicode-properties"
 
+[features]
+default = [
+    "general-category",
+    "emoji",
+]
+emoji = []
+general-category = []
+
 [lib]
 name = "unicode_properties"
 path = "src/lib.rs"
@@ -54,11 +63,3 @@ name = "general_category"
 path = "tests/general_category.rs"
 
 [dependencies]
-
-[features]
-default = [
-    "general-category",
-    "emoji",
-]
-emoji = []
-general-category = []

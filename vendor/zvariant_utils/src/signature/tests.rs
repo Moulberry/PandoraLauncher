@@ -153,6 +153,31 @@ fn invalid_strings() {
 }
 
 #[test]
+fn recursion_limits() {
+    // Deeply nested structs or arrays are rejected rather than overflowing the stack — the
+    // parser fails as soon as the limit is passed, without recursing through the whole string.
+    // Both the parsing and the allocation-free `check_only` (`validate`) paths reject them.
+    let deep_structs = format!("{}i{}", "(".repeat(20_000), ")".repeat(20_000));
+    assert!(Signature::from_str(&deep_structs).is_err());
+    assert!(validate(deep_structs.as_bytes()).is_err());
+    let deep_arrays = format!("{}i", "a".repeat(20_000));
+    assert!(Signature::from_str(&deep_arrays).is_err());
+    assert!(validate(deep_arrays.as_bytes()).is_err());
+
+    // The exact per-container limits mirror zvariant's (de)serialization limits (see
+    // `zvariant::container_depths`): 32 deep is accepted, 33 rejected — for structs and arrays.
+    assert!(validate(format!("{}i{}", "(".repeat(32), ")".repeat(32)).as_bytes()).is_ok());
+    assert!(validate(format!("{}i{}", "(".repeat(33), ")".repeat(33)).as_bytes()).is_err());
+    assert!(validate(format!("{}i", "a".repeat(32)).as_bytes()).is_ok());
+    assert!(validate(format!("{}i", "a".repeat(33)).as_bytes()).is_err());
+
+    // A long but shallow signature (many fields, little nesting) is fine — there is no length
+    // limit, so a wide struct or a top-level run of many types is accepted.
+    assert!(validate("i".repeat(1000).as_bytes()).is_ok());
+    assert!(validate(format!("({})", "i".repeat(1000)).as_bytes()).is_ok());
+}
+
+#[test]
 fn hash() {
     // We need to test if all variants of Signature hold this invariant:
     test_hash(&Signature::U16, &Signature::U16);

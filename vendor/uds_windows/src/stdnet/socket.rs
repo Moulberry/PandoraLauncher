@@ -3,7 +3,7 @@
 use std::io;
 use std::mem;
 use std::net::Shutdown;
-use std::os::raw::{c_int, c_ulong};
+use std::os::raw::c_int;
 use std::os::windows::io::{
     AsRawSocket, AsSocket, BorrowedSocket, FromRawSocket, IntoRawSocket, OwnedSocket, RawSocket,
 };
@@ -13,26 +13,17 @@ use std::time::Duration;
 
 use super::{cvt, last_error};
 
-use winapi::shared::minwindef::DWORD;
-use winapi::shared::ntdef::HANDLE;
-use winapi::shared::ws2def::{AF_UNIX, SOCKADDR, SOCK_STREAM, SOL_SOCKET, SO_ERROR};
-
-use winapi::um::handleapi::SetHandleInformation;
-use winapi::um::processthreadsapi::GetCurrentProcessId;
-use winapi::um::winbase::INFINITE;
-use winapi::um::winsock2::{
+use windows_sys::Win32::Foundation::SetHandleInformation;
+use windows_sys::Win32::Foundation::HANDLE;
+use windows_sys::Win32::Networking::WinSock::{
     accept, closesocket, getsockopt as c_getsockopt, ioctlsocket, recv, send,
-    setsockopt as c_setsockopt, shutdown, WSADuplicateSocketW, WSASocketW, WSAStartup, FIONBIO,
-    INVALID_SOCKET, SOCKET, WSADATA, WSAPROTOCOL_INFOW,
+    setsockopt as c_setsockopt, shutdown, WSADuplicateSocketW, WSASocketW, WSAStartup, AF_UNIX,
+    FIONBIO, INVALID_SOCKET, SD_BOTH, SD_RECEIVE, SD_SEND, SOCKADDR, SOCKET, SOCK_STREAM,
+    SOL_SOCKET, SO_ERROR, WSADATA, WSAPROTOCOL_INFOW, WSA_FLAG_OVERLAPPED,
 };
-use winapi::um::ws2tcpip::socklen_t;
-// use winapi::WSACleanup;
+use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 
-pub const WSA_FLAG_OVERLAPPED: DWORD = 0x01;
-pub const HANDLE_FLAG_INHERIT: DWORD = 0x01;
-pub const SD_RECEIVE: c_int = 0x00;
-pub const SD_SEND: c_int = 0x01;
-pub const SD_BOTH: c_int = 0x02;
+pub const HANDLE_FLAG_INHERIT: u32 = 0x01;
 
 #[derive(Debug)]
 pub struct Socket(SOCKET);
@@ -81,7 +72,7 @@ impl Socket {
     pub fn new() -> io::Result<Socket> {
         let socket = unsafe {
             match WSASocketW(
-                AF_UNIX,
+                AF_UNIX as i32,
                 SOCK_STREAM,
                 0,
                 ptr::null_mut(),
@@ -122,7 +113,7 @@ impl Socket {
                 info.iAddressFamily,
                 info.iSocketType,
                 info.iProtocol,
-                &mut info,
+                &info,
                 0,
                 WSA_FLAG_OVERLAPPED,
             ) {
@@ -160,7 +151,7 @@ impl Socket {
     }
 
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        let mut nonblocking = nonblocking as c_ulong;
+        let mut nonblocking = nonblocking as u32;
         let r = unsafe { ioctlsocket(self.0, FIONBIO as c_int, &mut nonblocking) };
         if r == 0 {
             Ok(())
@@ -206,7 +197,7 @@ impl Socket {
     }
 
     pub fn timeout(&self, kind: c_int) -> io::Result<Option<Duration>> {
-        let raw: DWORD = getsockopt(self, SOL_SOCKET, kind)?;
+        let raw: u32 = getsockopt(self, SOL_SOCKET, kind)?;
         if raw == 0 {
             Ok(None)
         } else {
@@ -225,7 +216,7 @@ pub fn setsockopt<T>(sock: &Socket, opt: c_int, val: c_int, payload: T) -> io::R
             opt,
             val,
             payload,
-            mem::size_of::<T>() as socklen_t,
+            mem::size_of::<T>() as i32,
         ))?;
         Ok(())
     }
@@ -234,7 +225,7 @@ pub fn setsockopt<T>(sock: &Socket, opt: c_int, val: c_int, payload: T) -> io::R
 pub fn getsockopt<T: Copy>(sock: &Socket, opt: c_int, val: c_int) -> io::Result<T> {
     unsafe {
         let mut slot: T = mem::zeroed();
-        let mut len = mem::size_of::<T>() as socklen_t;
+        let mut len = mem::size_of::<T>() as i32;
         cvt(c_getsockopt(
             sock.as_raw_socket() as _,
             opt,
@@ -247,7 +238,7 @@ pub fn getsockopt<T: Copy>(sock: &Socket, opt: c_int, val: c_int) -> io::Result<
     }
 }
 
-fn dur2timeout(dur: Duration) -> DWORD {
+fn dur2timeout(dur: Duration) -> u32 {
     // Note that a duration is a (u64, u32) (seconds, nanoseconds) pair, and the
     // timeouts in windows APIs are typically u32 milliseconds. To translate, we
     // have two pieces to take care of:
@@ -255,6 +246,7 @@ fn dur2timeout(dur: Duration) -> DWORD {
     // * Nanosecond precision is rounded up
     // * Greater than u32::MAX milliseconds (50 days) is rounded up to INFINITE
     //   (never time out).
+    const INFINITE: u32 = u32::MAX;
     dur.as_secs()
         .checked_mul(1000)
         .and_then(|ms| ms.checked_add((dur.subsec_nanos() as u64) / 1_000_000))
@@ -266,10 +258,10 @@ fn dur2timeout(dur: Duration) -> DWORD {
             })
         })
         .map(|ms| {
-            if ms > <DWORD>::max_value() as u64 {
+            if ms > u32::MAX as u64 {
                 INFINITE
             } else {
-                ms as DWORD
+                ms as u32
             }
         })
         .unwrap_or(INFINITE)

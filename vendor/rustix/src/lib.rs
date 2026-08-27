@@ -178,6 +178,8 @@ pub(crate) mod maybe_polyfill;
 pub(crate) mod check_types;
 #[macro_use]
 pub(crate) mod bitcast;
+#[cfg(sanitize_memory)]
+pub(crate) mod msan;
 
 // linux_raw: Weak symbols are used by the use-libc-auxv feature for
 // glibc 2.15 support.
@@ -194,7 +196,6 @@ mod weak;
 // Pick the backend implementation to use.
 #[cfg_attr(libc, path = "backend/libc/mod.rs")]
 #[cfg_attr(linux_raw, path = "backend/linux_raw/mod.rs")]
-#[cfg_attr(wasi, path = "backend/wasi/mod.rs")]
 mod backend;
 
 /// Export the `*Fd` types and traits that are used in rustix's public API.
@@ -224,7 +225,7 @@ pub mod ffi;
 #[cfg_attr(docsrs, doc(cfg(feature = "fs")))]
 pub mod fs;
 pub mod io;
-#[cfg(linux_kernel)]
+#[cfg(all(linux_kernel, not(target_os = "android")))]
 #[cfg(feature = "io_uring")]
 #[cfg_attr(docsrs, doc(cfg(feature = "io_uring")))]
 pub mod io_uring;

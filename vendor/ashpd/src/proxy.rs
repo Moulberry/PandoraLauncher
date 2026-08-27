@@ -329,7 +329,10 @@ impl<'a> Proxy<'a> {
             }))
     }
 
-    pub(crate) async fn signal<I>(&self, name: &'static str) -> Result<impl Stream<Item = I>, Error>
+    pub(crate) async fn signal<I>(
+        &self,
+        name: &'static str,
+    ) -> Result<impl Stream<Item = I> + use<I>, Error>
     where
         I: for<'de> Deserialize<'de> + Type + Debug,
     {

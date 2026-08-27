@@ -1,4 +1,5 @@
 #![deny(clippy::all, clippy::pedantic)]
+#![deny(unsafe_op_in_unsafe_fn)]
 #![allow(
     // pedantic exceptions
     clippy::cast_possible_truncation,
@@ -250,16 +251,13 @@ impl MmapOptions {
         // This is not a problem on 64-bit targets, but on 32-bit one
         // having a file or an anonymous mapping larger than 2GB is quite normal
         // and we have to prevent it.
-        //
-        // The code below is essentially the same as in Rust's std:
-        // https://github.com/rust-lang/rust/blob/db78ab70a88a0a5e89031d7ee4eccec835dcdbde/library/alloc/src/raw_vec.rs#L495
-        if len > isize::MAX as u64 {
+        if isize::try_from(len).is_err() {
             return Err(Error::new(
                 ErrorKind::InvalidData,
                 "memory map length overflows isize",
             ));
         }
-
+        // If an unsigned number (u64) fits in isize, then it fits in usize.
         Ok(len as usize)
     }
 
@@ -368,7 +366,7 @@ impl MmapOptions {
     /// This option requests that no swap space will be allocated for the memory map,
     /// which can be useful for extremely large maps that are only written to sparsely.
     ///
-    /// This option is currently supported on Linux, Android, macOS, iOS, NetBSD, Solaris and Illumos.
+    /// This option is currently supported on Linux, Android, Apple platforms (macOS, iOS, visionOS, etc.), NetBSD, Solaris and Illumos.
     /// On those platforms, this option corresponds to the `MAP_NORESERVE` flag.
     /// On Linux, this option is ignored if [`vm.overcommit_memory`](https://www.kernel.org/doc/Documentation/vm/overcommit-accounting) is set to 2.
     ///
@@ -404,6 +402,8 @@ impl MmapOptions {
     ///
     /// This method returns an error when the underlying system call fails, which can happen for a
     /// variety of reasons, such as when the file is not open with read permissions.
+    ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     ///
     /// # Example
     ///
@@ -449,6 +449,8 @@ impl MmapOptions {
     ///
     /// This method returns an error when the underlying system call fails, which can happen for a
     /// variety of reasons, such as when the file is not open with read permissions.
+    ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     pub unsafe fn map_exec<T: MmapAsRawDesc>(&self, file: T) -> Result<Mmap> {
         let desc = file.as_raw_desc();
 
@@ -472,6 +474,8 @@ impl MmapOptions {
     ///
     /// This method returns an error when the underlying system call fails, which can happen for a
     /// variety of reasons, such as when the file is not open with read and write permissions.
+    ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     ///
     /// # Example
     ///
@@ -523,6 +527,8 @@ impl MmapOptions {
     /// This method returns an error when the underlying system call fails, which can happen for a
     /// variety of reasons, such as when the file is not open with writable permissions.
     ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
+    ///
     /// # Example
     ///
     /// ```
@@ -560,6 +566,8 @@ impl MmapOptions {
     ///
     /// This method returns an error when the underlying system call fails, which can happen for a
     /// variety of reasons, such as when the file is not open with read permissions.
+    ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     ///
     /// # Example
     ///
@@ -599,12 +607,14 @@ impl MmapOptions {
     ///
     /// The memory map length should be configured using [`MmapOptions::len()`]
     /// before creating an anonymous memory map, otherwise a zero-length mapping
-    /// will be crated.
+    /// will be created.
     ///
     /// # Errors
     ///
     /// This method returns an error when the underlying system call fails or
     /// when `len > isize::MAX`.
+    ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     pub fn map_anon(&self) -> Result<MmapMut> {
         let len = self.len.unwrap_or(0);
 
@@ -627,6 +637,8 @@ impl MmapOptions {
     ///
     /// This method returns an error when the underlying system call fails, which can happen for a
     /// variety of reasons, such as when the file is not open with read and write permissions.
+    ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     pub fn map_raw<T: MmapAsRawDesc>(&self, file: T) -> Result<MmapRaw> {
         let desc = file.as_raw_desc();
 
@@ -647,7 +659,9 @@ impl MmapOptions {
     ///
     /// # Errors
     ///
-    /// This method returns an error when the underlying system call fails
+    /// This method returns an error when the underlying system call fails.
+    ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     pub fn map_raw_read_only<T: MmapAsRawDesc>(&self, file: T) -> Result<MmapRaw> {
         let desc = file.as_raw_desc();
 
@@ -723,6 +737,8 @@ impl Mmap {
     /// This method returns an error when the underlying system call fails, which can happen for a
     /// variety of reasons, such as when the file is not open with read permissions.
     ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
+    ///
     /// # Example
     ///
     /// ```
@@ -744,7 +760,8 @@ impl Mmap {
     /// # }
     /// ```
     pub unsafe fn map<T: MmapAsRawDesc>(file: T) -> Result<Mmap> {
-        MmapOptions::new().map(file)
+        // SAFETY: safety requirements forwarded to caller.
+        unsafe { MmapOptions::new().map(file) }
     }
 
     /// Transition the memory map to be writable.
@@ -794,8 +811,11 @@ impl Mmap {
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
     #[cfg(unix)]
     pub fn advise(&self, advice: Advice) -> Result<()> {
-        self.inner
-            .advise(advice as libc::c_int, 0, self.inner.len())
+        // SAFETY: The `Advice` enum only allows safe advice values.
+        unsafe {
+            self.inner
+                .advise(advice as libc::c_int, 0, self.inner.len())
+        }
     }
 
     /// Advise OS how this memory map will be accessed.
@@ -803,10 +823,18 @@ impl Mmap {
     /// Used with the [unchecked flags][UncheckedAdvice]. Only supported on Unix.
     ///
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
+    ///
+    /// # Safety
+    /// This function can modify the memory map in ways that do not fit in Rust's safe memory access model.
+    /// Care must be taken not to break the soundness rules of the Rust compiler.
+    /// Refer to the operating system documentation to see what each of the [`UncheckedAdvice`] variant does.
     #[cfg(unix)]
     pub unsafe fn unchecked_advise(&self, advice: UncheckedAdvice) -> Result<()> {
-        self.inner
-            .advise(advice as libc::c_int, 0, self.inner.len())
+        // SAFETY: safety requirements forwarded to caller.
+        unsafe {
+            self.inner
+                .advise(advice as libc::c_int, 0, self.inner.len())
+        }
     }
 
     /// Advise OS how this range of memory map will be accessed.
@@ -818,7 +846,8 @@ impl Mmap {
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
     #[cfg(unix)]
     pub fn advise_range(&self, advice: Advice, offset: usize, len: usize) -> Result<()> {
-        self.inner.advise(advice as libc::c_int, offset, len)
+        // SAFETY: The `Advice` enum only allows safe advice values.
+        unsafe { self.inner.advise(advice as libc::c_int, offset, len) }
     }
 
     /// Advise OS how this range of memory map will be accessed.
@@ -828,6 +857,11 @@ impl Mmap {
     /// The offset and length must be in the bounds of the memory map.
     ///
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
+    ///
+    /// # Safety
+    /// This function can modify the memory map in ways that do not fit in Rust's safe memory access model.
+    /// Care must be taken not to break the soundness rules of the Rust compiler.
+    /// Refer to the operating system documentation to see what each of the [`UncheckedAdvice`] variant does.
     #[cfg(unix)]
     pub unsafe fn unchecked_advise_range(
         &self,
@@ -835,7 +869,8 @@ impl Mmap {
         offset: usize,
         len: usize,
     ) -> Result<()> {
-        self.inner.advise(advice as libc::c_int, offset, len)
+        // SAFETY: safety requirements forwarded to caller.
+        unsafe { self.inner.advise(advice as libc::c_int, offset, len) }
     }
 
     /// Lock the whole memory map into RAM. Only supported on Unix.
@@ -925,6 +960,8 @@ impl MmapRaw {
     ///
     /// This method returns an error when the underlying system call fails, which can happen for a
     /// variety of reasons, such as when the file is not open with read and write permissions.
+    ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     pub fn map_raw<T: MmapAsRawDesc>(file: T) -> Result<MmapRaw> {
         MmapOptions::new().map_raw(file)
     }
@@ -948,7 +985,7 @@ impl MmapRaw {
     /// but will cause SIGBUS (or equivalent) signal.
     #[inline]
     pub fn as_mut_ptr(&self) -> *mut u8 {
-        self.inner.ptr() as *mut u8
+        self.inner.ptr().cast_mut()
     }
 
     /// Returns the length in bytes of the memory map.
@@ -1038,8 +1075,11 @@ impl MmapRaw {
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
     #[cfg(unix)]
     pub fn advise(&self, advice: Advice) -> Result<()> {
-        self.inner
-            .advise(advice as libc::c_int, 0, self.inner.len())
+        // SAFETY: The `Advice` enum only allows safe advice values.
+        unsafe {
+            self.inner
+                .advise(advice as libc::c_int, 0, self.inner.len())
+        }
     }
 
     /// Advise OS how this memory map will be accessed.
@@ -1047,10 +1087,18 @@ impl MmapRaw {
     /// Used with the [unchecked flags][UncheckedAdvice]. Only supported on Unix.
     ///
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
+    ///
+    /// # Safety
+    /// This function can modify the memory map in ways that do not fit in Rust's safe memory access model.
+    /// Care must be taken not to break the soundness rules of the Rust compiler.
+    /// Refer to the operating system documentation to see what each of the [`UncheckedAdvice`] variant does.
     #[cfg(unix)]
     pub unsafe fn unchecked_advise(&self, advice: UncheckedAdvice) -> Result<()> {
-        self.inner
-            .advise(advice as libc::c_int, 0, self.inner.len())
+        // SAFETY: safety requirements forwarded to caller.
+        unsafe {
+            self.inner
+                .advise(advice as libc::c_int, 0, self.inner.len())
+        }
     }
 
     /// Advise OS how this range of memory map will be accessed.
@@ -1062,7 +1110,8 @@ impl MmapRaw {
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
     #[cfg(unix)]
     pub fn advise_range(&self, advice: Advice, offset: usize, len: usize) -> Result<()> {
-        self.inner.advise(advice as libc::c_int, offset, len)
+        // SAFETY: The `Advice` enum only allows safe advice values.
+        unsafe { self.inner.advise(advice as libc::c_int, offset, len) }
     }
 
     /// Advise OS how this range of memory map will be accessed.
@@ -1072,6 +1121,11 @@ impl MmapRaw {
     /// The offset and length must be in the bounds of the memory map.
     ///
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
+    ///
+    /// # Safety
+    /// This function can modify the memory map in ways that do not fit in Rust's safe memory access model.
+    /// Care must be taken not to break the soundness rules of the Rust compiler.
+    /// Refer to the operating system documentation to see what each of the [`UncheckedAdvice`] variant does.
     #[cfg(unix)]
     pub unsafe fn unchecked_advise_range(
         &self,
@@ -1079,7 +1133,8 @@ impl MmapRaw {
         offset: usize,
         len: usize,
     ) -> Result<()> {
-        self.inner.advise(advice as libc::c_int, offset, len)
+        // SAFETY: safety requirements forwarded to caller.
+        unsafe { self.inner.advise(advice as libc::c_int, offset, len) }
     }
 
     /// Lock the whole memory map into RAM. Only supported on Unix.
@@ -1187,6 +1242,8 @@ impl MmapMut {
     /// This method returns an error when the underlying system call fails, which can happen for a
     /// variety of reasons, such as when the file is not open with read and write permissions.
     ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
+    ///
     /// # Example
     ///
     /// ```
@@ -1214,7 +1271,8 @@ impl MmapMut {
     /// # }
     /// ```
     pub unsafe fn map_mut<T: MmapAsRawDesc>(file: T) -> Result<MmapMut> {
-        MmapOptions::new().map_mut(file)
+        // SAFETY: safety requirements forwarded to caller.
+        unsafe { MmapOptions::new().map_mut(file) }
     }
 
     /// Creates an anonymous memory map.
@@ -1225,6 +1283,8 @@ impl MmapMut {
     ///
     /// This method returns an error when the underlying system call fails or
     /// when `len > isize::MAX`.
+    ///
+    /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     pub fn map_anon(length: usize) -> Result<MmapMut> {
         MmapOptions::new().len(length).map_anon()
     }
@@ -1356,8 +1416,11 @@ impl MmapMut {
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
     #[cfg(unix)]
     pub fn advise(&self, advice: Advice) -> Result<()> {
-        self.inner
-            .advise(advice as libc::c_int, 0, self.inner.len())
+        // SAFETY: The `Advice` enum only allows safe advice values.
+        unsafe {
+            self.inner
+                .advise(advice as libc::c_int, 0, self.inner.len())
+        }
     }
 
     /// Advise OS how this memory map will be accessed.
@@ -1367,8 +1430,11 @@ impl MmapMut {
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
     #[cfg(unix)]
     pub unsafe fn unchecked_advise(&self, advice: UncheckedAdvice) -> Result<()> {
-        self.inner
-            .advise(advice as libc::c_int, 0, self.inner.len())
+        // SAFETY: Safety requirements pushed to caller.
+        unsafe {
+            self.inner
+                .advise(advice as libc::c_int, 0, self.inner.len())
+        }
     }
 
     /// Advise OS how this range of memory map will be accessed.
@@ -1380,7 +1446,8 @@ impl MmapMut {
     /// See [madvise()](https://man7.org/linux/man-pages/man2/madvise.2.html) map page.
     #[cfg(unix)]
     pub fn advise_range(&self, advice: Advice, offset: usize, len: usize) -> Result<()> {
-        self.inner.advise(advice as libc::c_int, offset, len)
+        // SAFETY: The `Advice` enum only allows safe advice values.
+        unsafe { self.inner.advise(advice as libc::c_int, offset, len) }
     }
 
     /// Advise OS how this range of memory map will be accessed.
@@ -1397,7 +1464,8 @@ impl MmapMut {
         offset: usize,
         len: usize,
     ) -> Result<()> {
-        self.inner.advise(advice as libc::c_int, offset, len)
+        // SAFETY: Safety requirements pushed to caller.
+        unsafe { self.inner.advise(advice as libc::c_int, offset, len) }
     }
 
     /// Lock the whole memory map into RAM. Only supported on Unix.

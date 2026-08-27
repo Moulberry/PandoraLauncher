@@ -34,6 +34,7 @@ fn iface_and_proxy_unix_p2p() {
     block_on(iface_and_proxy_(true));
 }
 
+#[allow(deprecated)] // exercises the deprecated `unix_stream`, which must keep working
 #[instrument]
 async fn iface_and_proxy_(#[allow(unused)] p2p: bool) {
     let event = event_listener::Event::new();

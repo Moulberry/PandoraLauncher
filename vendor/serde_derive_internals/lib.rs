@@ -1,4 +1,4 @@
-#![doc(html_root_url = "https://docs.rs/serde_derive_internals/0.29.1")]
+#![doc(html_root_url = "https://docs.rs/serde_derive_internals/0.30.0")]
 #![cfg_attr(not(check_cfg), allow(unexpected_cfgs))]
 // Ignored clippy lints
 #![allow(
@@ -9,6 +9,7 @@
     // clippy bug: https://github.com/rust-lang/rust-clippy/issues/6797
     clippy::manual_map,
     clippy::missing_panics_doc,
+    clippy::needless_lifetimes,
     clippy::redundant_field_names,
     clippy::result_unit_err,
     clippy::should_implement_trait,
@@ -20,6 +21,7 @@
 // Ignored clippy_pedantic lints
 #![allow(
     clippy::doc_markdown,
+    clippy::elidable_lifetime_names,
     clippy::enum_glob_use,
     clippy::items_after_statements,
     clippy::let_underscore_untyped,
@@ -35,9 +37,11 @@
     clippy::single_match_else,
     clippy::struct_excessive_bools,
     clippy::too_many_lines,
+    clippy::uninlined_format_args,
     clippy::unused_self,
     clippy::wildcard_imports
 )]
+#![allow(unknown_lints, mismatched_lifetime_syntaxes)]
 
 extern crate proc_macro2;
 extern crate quote;

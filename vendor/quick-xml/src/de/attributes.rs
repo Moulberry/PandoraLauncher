@@ -2,13 +2,14 @@
 
 use std::borrow::Cow;
 
-use serde::de::{DeserializeSeed, Deserializer, Error, IntoDeserializer, MapAccess, Visitor};
+use serde::de::{DeserializeSeed, Deserializer, Error, MapAccess, Visitor};
 use serde::forward_to_deserialize_any;
 
 use crate::de::key::QNameDeserializer;
 use crate::de::SimpleTypeDeserializer;
 use crate::errors::serialize::DeError;
 use crate::events::attributes::Attributes;
+use crate::XmlVersion;
 
 impl<'i> Attributes<'i> {
     /// Converts this iterator into a serde's [`MapAccess`] trait to use with serde.
@@ -17,15 +18,14 @@ impl<'i> Attributes<'i> {
     /// # Parameters
     /// - `prefix`: a prefix of the field names in structs that should be stripped
     ///   to get the local attribute name. The [`crate::de::Deserializer`] uses `"@"`
-    ///   as a prefix, but [`Self::into_deserializer()`] uses empy string, which mean
-    ///   that we do not strip anything.
+    ///   as a prefix.
     ///
     /// # Example
     /// ```
     /// # use pretty_assertions::assert_eq;
     /// use quick_xml::events::BytesStart;
+    /// use quick_xml::XmlVersion;
     /// use serde::Deserialize;
-    /// use serde::de::IntoDeserializer;
     ///
     /// #[derive(Debug, PartialEq, Deserialize)]
     /// struct MyData<'i> {
@@ -46,7 +46,7 @@ impl<'i> Attributes<'i> {
     ///     3
     /// );
     /// // Strip nothing from the field names
-    /// let de = tag.attributes().clone().into_deserializer();
+    /// let de = tag.attributes().clone().into_map_access(XmlVersion::Implicit1_0, "");
     /// assert_eq!(
     ///     MyData::deserialize(de).unwrap(),
     ///     MyData {
@@ -56,7 +56,7 @@ impl<'i> Attributes<'i> {
     /// );
     ///
     /// // Strip "@" from the field name
-    /// let de = tag.attributes().into_map_access("@");
+    /// let de = tag.attributes().into_map_access(XmlVersion::Implicit1_0, "@");
     /// assert_eq!(
     ///     MyDataPrefixed::deserialize(de).unwrap(),
     ///     MyDataPrefixed {
@@ -66,30 +66,25 @@ impl<'i> Attributes<'i> {
     /// );
     /// ```
     #[inline]
-    pub const fn into_map_access(self, prefix: &'static str) -> AttributesDeserializer<'i> {
+    pub const fn into_map_access(
+        self,
+        version: XmlVersion,
+        prefix: &'static str,
+    ) -> AttributesDeserializer<'i> {
         AttributesDeserializer {
             iter: self,
             value: None,
             prefix,
             key_buf: String::new(),
+            version,
         }
-    }
-}
-
-impl<'de> IntoDeserializer<'de, DeError> for Attributes<'de> {
-    type Deserializer = AttributesDeserializer<'de>;
-
-    #[inline]
-    fn into_deserializer(self) -> Self::Deserializer {
-        self.into_map_access("")
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /// A deserializer used to make possible to pack all attributes into a struct.
-/// It is created by [`Attributes::into_map_access`] or [`Attributes::into_deserializer`]
-/// methods.
+/// It is created by [`Attributes::into_map_access`] method.
 ///
 /// This deserializer always call [`Visitor::visit_map`] with self as [`MapAccess`].
 ///
@@ -106,8 +101,9 @@ pub struct AttributesDeserializer<'i> {
     /// This prefix will be stripped from struct fields before match against attribute name.
     prefix: &'static str,
     /// Buffer to store attribute name as a field name exposed to serde consumers.
-    /// Keeped in the serializer to avoid many small allocations
+    /// Kept in the deserializer to avoid many small allocations
     key_buf: String,
+    version: XmlVersion,
 }
 
 impl<'de> Deserializer<'de> for AttributesDeserializer<'de> {
@@ -157,8 +153,12 @@ impl<'de> MapAccess<'de> for AttributesDeserializer<'de> {
     {
         match self.value.take() {
             Some(value) => {
-                let de =
-                    SimpleTypeDeserializer::from_part(&value, 0..value.len(), self.iter.decoder());
+                let de = SimpleTypeDeserializer::from_attr(
+                    &value,
+                    0..value.len(),
+                    self.version,
+                    self.iter.decoder(),
+                );
                 seed.deserialize(de)
             }
             None => Err(DeError::KeyNotRead),

@@ -8,12 +8,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    Disableable, IndexPath, Sizable, WindowExt,
-    button::{Button, ButtonVariants},
-    checkbox::Checkbox,
-    input::{Input, InputState, NumberInput},
-    select::{Select, SelectEvent, SelectState},
-    v_flex, h_flex,
+    Disableable, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputState, NumberInput, Textarea, TextareaState}, select::{Select, SelectEvent, SelectState}, v_flex,
 };
 
 use crate::{labelled, modals::generic};
@@ -40,7 +35,7 @@ struct ExportInstanceModalState {
     name_input: Entity<InputState>,
     version_input: Entity<InputState>,
 
-    modrinth_summary_input: Entity<InputState>,
+    modrinth_summary_input: Entity<TextareaState>,
 
     curseforge_author_input: Entity<InputState>,
     curseforge_recommended_ram_enabled: bool,
@@ -70,7 +65,7 @@ impl ExportInstanceModalState {
         let version_input = cx.new(|cx| InputState::new(window, cx).placeholder("1.0.0"));
         let name_input = cx.new(|cx| InputState::new(window, cx).default_value(instance_name.clone()));
 
-        let modrinth_summary_input = cx.new(|cx| InputState::new(window, cx).auto_grow(1, 4));
+        let modrinth_summary_input = cx.new(|cx| TextareaState::new(window, cx).auto_grow(1, 4));
 
         let curseforge_author_input = cx.new(|cx| InputState::new(window, cx));
         let curseforge_recommended_ram_input = cx.new(|cx| InputState::new(window, cx).default_value("4096"));
@@ -231,7 +226,7 @@ impl ExportInstanceModalState {
             .gap_2()
             .child(labelled(t::instance::export::name(), Input::new(&self.name_input)))
             .child(labelled(t::instance::export::version(), Input::new(&self.version_input)))
-            .child(labelled(t::instance::export::summary(), Input::new(&self.modrinth_summary_input)));
+            .child(labelled(t::instance::export::summary(), Textarea::new(&self.modrinth_summary_input)));
 
         let curseforge_options = v_flex()
             .gap_2()

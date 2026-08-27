@@ -42,6 +42,7 @@ use crate::sealed::Sealed;
 use core::fmt::Debug;
 use core::mem::MaybeUninit;
 use core::ptr::null;
+use zeroize::Zeroize;
 
 mod tests;
 
@@ -108,7 +109,7 @@ pub const AES_256: AesBlockCipher = AesBlockCipher {
 /// A Key Wrap (KW) algorithm implementation.
 #[allow(clippy::module_name_repetitions)]
 pub trait KeyWrap: Sealed {
-    /// Peforms the key wrap encryption algorithm using a block cipher.
+    /// Performs the key wrap encryption algorithm using a block cipher.
     /// It wraps `plaintext` and writes the corresponding ciphertext to `output`.
     ///
     /// # Errors
@@ -119,7 +120,7 @@ pub trait KeyWrap: Sealed {
         output: &'output mut [u8],
     ) -> Result<&'output mut [u8], Unspecified>;
 
-    /// Peforms the key wrap decryption algorithm using a block cipher.
+    /// Performs the key wrap decryption algorithm using a block cipher.
     /// It unwraps `ciphertext` and writes the corresponding plaintext to `output`.
     ///
     /// # Errors
@@ -134,7 +135,7 @@ pub trait KeyWrap: Sealed {
 /// A Key Wrap with Padding (KWP) algorithm implementation.
 #[allow(clippy::module_name_repetitions)]
 pub trait KeyWrapPadded: Sealed {
-    /// Peforms the key wrap padding encryption algorithm using a block cipher.
+    /// Performs the key wrap padding encryption algorithm using a block cipher.
     /// It wraps and pads `plaintext` writes the corresponding ciphertext to `output`.
     ///
     /// # Errors
@@ -145,7 +146,7 @@ pub trait KeyWrapPadded: Sealed {
         output: &'output mut [u8],
     ) -> Result<&'output mut [u8], Unspecified>;
 
-    /// Peforms the key wrap padding decryption algorithm using a block cipher.
+    /// Performs the key wrap padding decryption algorithm using a block cipher.
     /// It unwraps the padded `ciphertext` and writes the corresponding plaintext to `output`.
     ///
     /// # Errors
@@ -160,12 +161,12 @@ pub trait KeyWrapPadded: Sealed {
 /// AES Key Encryption Key.
 pub type AesKek = KeyEncryptionKey<AesBlockCipher>;
 
-/// The key-encryption key used with the selected cipher algorithn to wrap or unwrap a key.
+/// The key-encryption key used with the selected cipher algorithm to wrap or unwrap a key.
 ///
-/// Implements the NIST SP 800-38F key wrapping algoirthm.
+/// Implements the NIST SP 800-38F key wrapping algorithm.
 ///
 /// The NIST specification is similar to that of RFC 3394 but with the following caveats:
-/// * Specifies a maxiumum plaintext length that can be accepted.
+/// * Specifies a maximum plaintext length that can be accepted.
 /// * Allows implementations to specify a subset of valid lengths accepted.
 /// * Allows for the usage of other 128-bit block ciphers other than AES.
 pub struct KeyEncryptionKey<Cipher: BlockCipher> {
@@ -198,7 +199,7 @@ impl<Cipher: BlockCipher> KeyEncryptionKey<Cipher> {
 impl<Cipher: BlockCipher> Sealed for KeyEncryptionKey<Cipher> {}
 
 impl KeyWrap for KeyEncryptionKey<AesBlockCipher> {
-    /// Peforms the key wrap encryption algorithm using `KeyEncryptionKey`'s configured block cipher.
+    /// Performs the key wrap encryption algorithm using `KeyEncryptionKey`'s configured block cipher.
     /// It wraps `plaintext` and writes the corresponding ciphertext to `output`.
     ///
     /// # Validation
@@ -252,7 +253,7 @@ impl KeyWrap for KeyEncryptionKey<AesBlockCipher> {
         Ok(&mut output[..out_len])
     }
 
-    /// Peforms the key wrap decryption algorithm using `KeyEncryptionKey`'s configured block cipher.
+    /// Performs the key wrap decryption algorithm using `KeyEncryptionKey`'s configured block cipher.
     /// It unwraps `ciphertext` and writes the corresponding plaintext to `output`.
     ///
     /// # Validation
@@ -267,7 +268,7 @@ impl KeyWrap for KeyEncryptionKey<AesBlockCipher> {
         ciphertext: &[u8],
         output: &'output mut [u8],
     ) -> Result<&'output mut [u8], Unspecified> {
-        if output.len() < ciphertext.len() - 8 {
+        if ciphertext.len() < 8 || output.len() < ciphertext.len() - 8 {
             return Err(Unspecified);
         }
 
@@ -286,8 +287,8 @@ impl KeyWrap for KeyEncryptionKey<AesBlockCipher> {
         let aes_key = unsafe { aes_key.assume_init() };
 
         // AWS-LC validates the following:
-        // * in_len < INT_MAX
-        // * in_len > 24
+        // * in_len <= INT_MAX
+        // * in_len >= 24
         // * in_len % 8 == 0
         let out_len = indicator_check!(unsafe {
             AES_unwrap_key(
@@ -312,7 +313,7 @@ impl KeyWrap for KeyEncryptionKey<AesBlockCipher> {
 }
 
 impl KeyWrapPadded for KeyEncryptionKey<AesBlockCipher> {
-    /// Peforms the key wrap padding encryption algorithm using `KeyEncryptionKey`'s configured block cipher.
+    /// Performs the key wrap padding encryption algorithm using `KeyEncryptionKey`'s configured block cipher.
     /// It wraps and pads `plaintext` writes the corresponding ciphertext to `output`.
     ///
     /// # Validation
@@ -358,7 +359,7 @@ impl KeyWrapPadded for KeyEncryptionKey<AesBlockCipher> {
         Ok(&mut output[..out_len])
     }
 
-    /// Peforms the key wrap padding decryption algorithm using `KeyEncryptionKey`'s configured block cipher.
+    /// Performs the key wrap padding decryption algorithm using `KeyEncryptionKey`'s configured block cipher.
     /// It unwraps the padded `ciphertext` and writes the corresponding plaintext to `output`.
     ///
     /// # Sizing `output`
@@ -405,6 +406,12 @@ impl KeyWrapPadded for KeyEncryptionKey<AesBlockCipher> {
         }
 
         Ok(&mut output[..out_len])
+    }
+}
+
+impl<Cipher: BlockCipher> Drop for KeyEncryptionKey<Cipher> {
+    fn drop(&mut self) {
+        self.key.zeroize();
     }
 }
 

@@ -1,5 +1,4 @@
 //! computing closure for the colr table
-
 use font_types::{GlyphId, GlyphId16};
 
 use crate::{collections::IntSet, tables::variations::NO_VARIATION_INDEX, ResolveOffset};
@@ -27,19 +26,40 @@ impl Colr<'_> {
         let Some(Ok(records)) = self.base_glyph_records() else {
             return;
         };
-        for glyph_id in glyph_set.iter() {
-            let Ok(glyph_id) = glyph_id.try_into() else {
-                continue;
-            };
-            let record = match records.binary_search_by(|rec| rec.glyph_id().cmp(&glyph_id)) {
-                Ok(idx) => records[idx],
-                _ => continue,
-            };
-            let start = record.first_layer_index() as usize;
-            let end = start + record.num_layers() as usize;
-            for layer_index in start..end {
-                if let Ok((_gid, palette_id)) = self.v0_layer(layer_index) {
-                    palette_indices.insert(palette_id);
+
+        let Some(Ok(layers)) = self.layer_records() else {
+            return;
+        };
+        let num_records = records.len() as u32;
+        let bit_storage = u32::BITS - num_records.leading_zeros();
+        if glyph_set.is_inverted() || num_records <= glyph_set.len() as u32 * bit_storage {
+            for record in records {
+                if !glyph_set.contains(GlyphId::from(record.glyph_id())) {
+                    continue;
+                }
+                let start = record.first_layer_index() as usize;
+                let end = start + record.num_layers() as usize;
+                for layer_index in start..end {
+                    if let Some(layer) = layers.get(layer_index) {
+                        palette_indices.insert(layer.palette_index());
+                    }
+                }
+            }
+        } else {
+            for glyph_id in glyph_set.iter() {
+                let Ok(glyph_id) = glyph_id.try_into() else {
+                    continue;
+                };
+                let record = match records.binary_search_by(|rec| rec.glyph_id().cmp(&glyph_id)) {
+                    Ok(idx) => records[idx],
+                    _ => continue,
+                };
+                let start = record.first_layer_index() as usize;
+                let end = start + record.num_layers() as usize;
+                for layer_index in start..end {
+                    if let Some(layer) = layers.get(layer_index) {
+                        palette_indices.insert(layer.palette_index());
+                    }
                 }
             }
         }
@@ -62,16 +82,37 @@ impl Colr<'_> {
         if let Some(Ok(base_glyph_list)) = self.base_glyph_list() {
             let base_glyph_records = base_glyph_list.base_glyph_paint_records();
             let offset_data = base_glyph_list.offset_data();
-            for paint_record in base_glyph_records {
-                let gid = paint_record.glyph_id();
-                if !glyph_set.contains(GlyphId::from(gid)) {
-                    continue;
+            let num_records = base_glyph_records.len() as u32;
+            let bit_storage = u32::BITS - num_records.leading_zeros();
+            if glyph_set.is_inverted() || num_records <= glyph_set.len() as u32 * bit_storage {
+                for record in base_glyph_records {
+                    let gid = record.glyph_id();
+                    if !glyph_set.contains(GlyphId::from(gid)) {
+                        continue;
+                    }
+                    if let Ok(paint) = record.paint(offset_data) {
+                        c.dispatch(&paint);
+                    }
                 }
-                if let Ok(paint) = paint_record.paint(offset_data) {
-                    c.dispatch(&paint);
+            } else {
+                for glyph_id in glyph_set.iter() {
+                    let Ok(glyph_id) = glyph_id.try_into() else {
+                        continue;
+                    };
+                    let record = match base_glyph_records
+                        .binary_search_by(|rec| rec.glyph_id().cmp(&glyph_id))
+                    {
+                        Ok(idx) => &base_glyph_records[idx],
+                        _ => continue,
+                    };
+                    if record.paint_offset().is_null() {
+                        continue;
+                    }
+                    if let Ok(paint) = record.paint(offset_data) {
+                        c.dispatch(&paint);
+                    }
                 }
             }
-
             glyph_set.union(&c.glyph_set);
         }
 
@@ -93,19 +134,39 @@ impl Colr<'_> {
         let Some(Ok(records)) = self.base_glyph_records() else {
             return;
         };
-        for glyph_id in glyph_set.iter() {
-            let Ok(glyph_id) = glyph_id.try_into() else {
-                continue;
-            };
-            let record = match records.binary_search_by(|rec| rec.glyph_id().cmp(&glyph_id)) {
-                Ok(idx) => records[idx],
-                _ => continue,
-            };
-            let start = record.first_layer_index() as usize;
-            let end = start + record.num_layers() as usize;
-            for layer_index in start..end {
-                if let Ok((gid, _palette_id)) = self.v0_layer(layer_index) {
-                    glyphset_colrv0.insert(GlyphId::from(gid));
+        let Some(Ok(layers)) = self.layer_records() else {
+            return;
+        };
+        let num_records = records.len() as u32;
+        let bit_storage = u32::BITS - num_records.leading_zeros();
+        if glyph_set.is_inverted() || num_records <= glyph_set.len() as u32 * bit_storage {
+            for record in records {
+                if !glyph_set.contains(GlyphId::from(record.glyph_id())) {
+                    continue;
+                }
+                let start = record.first_layer_index() as usize;
+                let end = start + record.num_layers() as usize;
+                for layer_index in start..end {
+                    if let Some(layer) = layers.get(layer_index) {
+                        glyphset_colrv0.insert(GlyphId::from(layer.glyph_id()));
+                    }
+                }
+            }
+        } else {
+            for glyph_id in glyph_set.iter() {
+                let Ok(glyph_id) = glyph_id.try_into() else {
+                    continue;
+                };
+                let record = match records.binary_search_by(|rec| rec.glyph_id().cmp(&glyph_id)) {
+                    Ok(idx) => records[idx],
+                    _ => continue,
+                };
+                let start = record.first_layer_index() as usize;
+                let end = start + record.num_layers() as usize;
+                for layer_index in start..end {
+                    if let Some(layer) = layers.get(layer_index) {
+                        glyphset_colrv0.insert(GlyphId::from(layer.glyph_id()));
+                    }
                 }
             }
         }
@@ -166,9 +227,8 @@ impl<'a> Colrv1ClosureContext<'a> {
         false
     }
 
-    fn add_layer_indices(&mut self, first_layer_index: u32, last_layer_index: u32) {
-        self.layer_indices
-            .insert_range(first_layer_index..=last_layer_index);
+    fn add_layer_index(&mut self, layer_index: u32) {
+        self.layer_indices.insert(layer_index);
     }
 
     fn add_palette_index(&mut self, palette_index: u16) {
@@ -270,14 +330,16 @@ impl PaintColrLayers<'_> {
         };
         let first_layer_index = self.first_layer_index();
         let last_layer_index = first_layer_index + num_layers as u32 - 1;
-        c.add_layer_indices(first_layer_index, last_layer_index);
 
         let offset_data = layer_list.offset_data();
+        let paint_offsets = layer_list.paint_offsets();
         for layer_index in first_layer_index..=last_layer_index {
-            if let Some(paint_offset) = layer_list.paint_offsets().get(layer_index as usize) {
-                if let Ok(paint) = paint_offset.get().resolve::<Paint>(offset_data) {
-                    c.dispatch(&paint);
-                }
+            let Some(paint_offset) = paint_offsets.get(layer_index as usize) else {
+                break;
+            };
+            if let Ok(paint) = paint_offset.get().resolve::<Paint>(offset_data) {
+                c.add_layer_index(layer_index);
+                c.dispatch(&paint);
             }
         }
     }
@@ -308,8 +370,8 @@ impl PaintVarLinearGradient<'_> {
     fn v1_closure(&self, c: &mut Colrv1ClosureContext) {
         if let Ok(var_colorline) = self.color_line() {
             var_colorline.v1_closure(c);
+            c.add_variation_indices(self.var_index_base(), 6);
         }
-        c.add_variation_indices(self.var_index_base(), 6);
     }
 }
 
@@ -325,8 +387,8 @@ impl PaintVarRadialGradient<'_> {
     fn v1_closure(&self, c: &mut Colrv1ClosureContext) {
         if let Ok(var_colorline) = self.color_line() {
             var_colorline.v1_closure(c);
+            c.add_variation_indices(self.var_index_base(), 6);
         }
-        c.add_variation_indices(self.var_index_base(), 6);
     }
 }
 
@@ -342,15 +404,15 @@ impl PaintVarSweepGradient<'_> {
     fn v1_closure(&self, c: &mut Colrv1ClosureContext) {
         if let Ok(var_colorline) = self.color_line() {
             var_colorline.v1_closure(c);
+            c.add_variation_indices(self.var_index_base(), 4);
         }
-        c.add_variation_indices(self.var_index_base(), 4);
     }
 }
 
 impl PaintGlyph<'_> {
     fn v1_closure(&self, c: &mut Colrv1ClosureContext) {
-        c.add_glyph_id(self.glyph_id());
         if let Ok(paint) = self.paint() {
+            c.add_glyph_id(self.glyph_id());
             c.dispatch(&paint);
         }
     }
@@ -391,8 +453,8 @@ impl VarAffine2x3<'_> {
 impl PaintVarTransform<'_> {
     fn v1_closure(&self, c: &mut Colrv1ClosureContext) {
         if let Ok(paint) = self.paint() {
-            c.dispatch(&paint);
             if let Ok(affine2x3) = self.transform() {
+                c.dispatch(&paint);
                 affine2x3.v1_closure(c);
             }
         }
@@ -569,17 +631,11 @@ impl Clip {
         let Ok(clip_box) = self.clip_box(clip_list.offset_data()) else {
             return;
         };
-        //TODO: replace below code when we have intersects(Range) available for int-set
-        let mut included_gids = IntSet::empty();
         let start_id = GlyphId::from(self.start_glyph_id());
         let end_id = GlyphId::from(self.end_glyph_id());
-        included_gids.insert_range(start_id..=end_id);
-        included_gids.intersect(&c.glyph_set);
-
-        if included_gids.is_empty() {
-            return;
+        if c.glyph_set.intersects_range(start_id..=end_id) {
+            clip_box.v1_closure(c);
         }
-        clip_box.v1_closure(c);
     }
 }
 

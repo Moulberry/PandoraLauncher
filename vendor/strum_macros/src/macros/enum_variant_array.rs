@@ -27,6 +27,7 @@ pub fn static_variants_array_inner(ast: &DeriveInput) -> syn::Result<TokenStream
         .collect::<syn::Result<Vec<_>>>()?;
 
     Ok(quote! {
+        #[automatically_derived]
         impl #impl_generics #strum_module_path::VariantArray for #name #ty_generics #where_clause {
             const VARIANTS: &'static [Self] = &[ #(#name::#idents),* ];
         }

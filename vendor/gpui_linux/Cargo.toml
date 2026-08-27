@@ -23,6 +23,13 @@ autobenches = false
 readme = false
 license = "Apache-2.0"
 
+[package.metadata.cargo-shear]
+ignored = [
+    "bitflags",
+    "scap",
+    "x11-clipboard",
+]
+
 [features]
 default = [
     "wayland",
@@ -107,7 +114,7 @@ optional = true
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.collections]
 version = "0.1.0"
-path = "../collections"
+path = '..\collections'
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.filedescriptor]
 version = "0.8.2"
@@ -117,43 +124,19 @@ optional = true
 version = "0.3.32"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.gpui]
-path = "../gpui"
+path = '..\gpui'
 default-features = false
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.gpui_util]
-path = "../gpui_util"
+path = '..\gpui_util'
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.gpui_wgpu]
-path = "../gpui_wgpu"
+path = '..\gpui_wgpu'
 features = ["font-kit"]
 optional = true
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.http_client]
-path = "../http_client"
-
-[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.image]
-version = "0.25.1"
-features = [
-    "bmp",
-    "dds",
-    "exr",
-    "ff",
-    "gif",
-    "hdr",
-    "ico",
-    "jpeg",
-    "png",
-    "pnm",
-    "qoi",
-    "rayon",
-    "tga",
-    "tiff",
-    "webp",
-]
-default-features = false
-
-[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.itertools]
-version = "0.14.0"
+path = '..\http_client'
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.libc]
 version = "0.2"
@@ -183,15 +166,6 @@ optional = true
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.parking_lot]
 version = "0.12.1"
 
-[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.pathfinder_geometry]
-version = "0.5"
-
-[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.pollster]
-version = "0.4.0"
-
-[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.profiling]
-version = "1"
-
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.raw-window-handle]
 version = "0.6"
 
@@ -214,11 +188,8 @@ features = [
 version = "2.0"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.strum]
-version = "0.27.2"
+version = "0.28"
 features = ["derive"]
-
-[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.swash]
-version = "0.2.6"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.url]
 version = "2.2"

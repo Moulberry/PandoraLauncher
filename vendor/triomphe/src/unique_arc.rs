@@ -5,14 +5,13 @@ use core::iter::FromIterator;
 use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::{Deref, DerefMut};
-use core::ptr::{self, addr_of_mut, NonNull};
-use core::sync::atomic::AtomicUsize;
+use core::ptr::{self, addr_of_mut};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::iterator_as_exact_size_iterator::IteratorAsExactSizeIterator;
-use crate::HeaderSlice;
+use crate::{AllocError, HeaderSlice};
 
 use super::{Arc, ArcInner};
 
@@ -54,22 +53,50 @@ impl<T> UniqueArc<T> {
         UniqueArc(Arc::new(data))
     }
 
+    /// Fallible version of [`UniqueArc::new`].
+    ///
+    /// Returns `Err(AllocError)` instead of aborting on allocation failure.
+    #[inline]
+    pub fn try_new(data: T) -> Result<Self, AllocError> {
+        Arc::try_new(data).map(UniqueArc)
+    }
+
     /// Construct an uninitialized arc
     #[inline]
     pub fn new_uninit() -> UniqueArc<MaybeUninit<T>> {
-        unsafe {
-            let layout = Layout::new::<ArcInner<MaybeUninit<T>>>();
-            let ptr = alloc::alloc::alloc(layout);
-            let mut p = NonNull::new(ptr)
-                .unwrap_or_else(|| alloc::alloc::handle_alloc_error(layout))
-                .cast::<ArcInner<MaybeUninit<T>>>();
-            ptr::write(&mut p.as_mut().count, AtomicUsize::new(1));
-
-            UniqueArc(Arc {
-                p,
-                phantom: PhantomData,
+        // Delegate to the shared `Arc` allocation helper so that there is a
+        // single out-of-memory code path in the crate.
+        //
+        // Safety: the closure only changes the type of the pointer.
+        let inner = unsafe {
+            Arc::<MaybeUninit<T>>::allocate_for_layout(Layout::new::<MaybeUninit<T>>(), |mem| {
+                mem as *mut ArcInner<MaybeUninit<T>>
             })
-        }
+        };
+
+        UniqueArc(Arc {
+            p: inner,
+            phantom: PhantomData,
+        })
+    }
+
+    /// Fallible version of [`UniqueArc::new_uninit`].
+    ///
+    /// Returns `Err(AllocError)` instead of aborting on allocation failure.
+    #[inline]
+    pub fn try_new_uninit() -> Result<UniqueArc<MaybeUninit<T>>, AllocError> {
+        // Safety: the closure only changes the type of the pointer.
+        let inner = unsafe {
+            Arc::<MaybeUninit<T>>::try_allocate_for_layout(
+                Layout::new::<MaybeUninit<T>>(),
+                |mem| mem as *mut ArcInner<MaybeUninit<T>>,
+            )?
+        };
+
+        Ok(UniqueArc(Arc {
+            p: inner,
+            phantom: PhantomData,
+        }))
     }
 
     /// Gets the inner value of the unique arc
@@ -173,6 +200,16 @@ impl<T> UniqueArc<[MaybeUninit<T>]> {
         UniqueArc(arc)
     }
 
+    /// Fallible version of [`UniqueArc::new_uninit_slice`].
+    ///
+    /// Returns `Err(AllocError)` instead of aborting on allocation failure.
+    pub fn try_new_uninit_slice(len: usize) -> Result<Self, AllocError> {
+        let arc: Arc<HeaderSlice<(), [MaybeUninit<T>]>> =
+            UniqueArc::try_from_header_and_uninit_slice((), len)?.0;
+        let arc: Arc<[MaybeUninit<T>]> = arc.into();
+        Ok(UniqueArc(arc))
+    }
+
     /// # Safety
     ///
     /// Must initialize all fields before calling this function.
@@ -203,6 +240,30 @@ impl<H, T> UniqueArc<HeaderSlice<H, [MaybeUninit<T>]>> {
             p: inner,
             phantom: PhantomData,
         })
+    }
+
+    /// Fallible version of [`UniqueArc::from_header_and_uninit_slice`].
+    ///
+    /// Returns `Err(AllocError)` instead of aborting on allocation failure.
+    #[inline]
+    pub fn try_from_header_and_uninit_slice(header: H, len: usize) -> Result<Self, AllocError> {
+        let inner =
+            Arc::<HeaderSlice<H, [MaybeUninit<T>]>>::try_allocate_for_header_and_slice(len)?;
+
+        unsafe {
+            // Safety: inner is a valid pointer, so this can't go out of bounds
+            let dst = addr_of_mut!((*inner.as_ptr()).data.header);
+
+            // Safety: `dst` is valid for writes (just allocated)
+            ptr::write(dst, header);
+        }
+
+        // Safety: ptr is valid & the inner structure is initialized.
+        // We wrote the header above and the slice can stay unitialized as it's [MaybeUninit<T>]
+        Ok(Self(Arc {
+            p: inner,
+            phantom: PhantomData,
+        }))
     }
 
     /// # Safety
@@ -306,6 +367,39 @@ mod tests {
     fn unique_into_inner() {
         let unique = UniqueArc::new(10u64);
         assert_eq!(UniqueArc::into_inner(unique), 10);
+    }
+
+    #[test]
+    fn try_new() {
+        let unique = UniqueArc::try_new(10u64).unwrap();
+        assert_eq!(UniqueArc::into_inner(unique), 10);
+    }
+
+    #[test]
+    fn try_new_uninit() {
+        let mut arc: UniqueArc<MaybeUninit<_>> = UniqueArc::try_new_uninit().unwrap();
+        arc.write(999);
+
+        let arc = unsafe { UniqueArc::assume_init(arc) };
+        assert_eq!(*arc, 999);
+    }
+
+    #[test]
+    fn try_new_uninit_slice() {
+        let mut arc: UniqueArc<[MaybeUninit<u16>]> = UniqueArc::try_new_uninit_slice(3).unwrap();
+        arc.fill(MaybeUninit::new(2));
+        let arc = unsafe { UniqueArc::assume_init_slice(arc) }.shareable();
+        assert_eq!(&*arc, [2, 2, 2]);
+    }
+
+    #[test]
+    fn try_from_header_and_uninit_slice() {
+        let mut uarc: UniqueArc<HeaderSliceWithLengthUnchecked<u8, MaybeUninit<u16>>> =
+            UniqueArc::try_from_header_and_uninit_slice(HeaderWithLength::new(1, 3), 3).unwrap();
+        uarc.slice.fill(MaybeUninit::new(2));
+        let arc = unsafe { uarc.assume_init_slice_with_header() }.shareable();
+        assert_eq!(arc.header.header, 1);
+        assert_eq!(&arc.slice, [2, 2, 2]);
     }
 
     #[test]

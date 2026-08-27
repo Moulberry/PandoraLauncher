@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.66.1"
+rust-version = "1.71"
 name = "strum"
-version = "0.27.2"
+version = "0.28.0"
 authors = ["Peter Glotfelty <peter.glotfelty@microsoft.com>"]
 build = false
 autolib = false
@@ -58,12 +58,12 @@ name = "strum"
 path = "src/lib.rs"
 
 [dependencies.phf]
-version = "0.12"
+version = "0.13"
 features = ["macros"]
 optional = true
 
 [dependencies.strum_macros]
-version = "0.27"
+version = "0.28"
 optional = true
 
 [dev-dependencies]

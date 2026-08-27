@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+# [0.10.1] - 2026-07-13
+
+### Fixed
+
+- Unsoundness in `Once::force_into_inner`, `Once::try_into_inner`, and
+  `Once::into_inner_unchecked`. Thanks to `@Poseidon` for catching this.
+
 # [0.10.0] - 2025-03-26
 
 ### Added

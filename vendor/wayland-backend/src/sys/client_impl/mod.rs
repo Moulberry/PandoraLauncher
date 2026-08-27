@@ -126,7 +126,9 @@ impl InnerObjectId {
         );
 
         let alive = if is_rust_managed {
-            // Safety: the object is rust_managed, so its user-data pointer must be valid
+            // SAFETY: the object is rust_managed, so its user-data pointer must be valid
+            // The udata won't be concurrently destroyed because the caller of this function
+            // guarantees the `*mut wl_proxy` is valid until it returns.
             let udata = unsafe {
                 &*(ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, ptr)
                     as *mut ProxyUserData)
@@ -173,6 +175,7 @@ impl std::fmt::Debug for InnerObjectId {
     }
 }
 
+#[derive(Clone)]
 struct ProxyUserData {
     alive: Arc<AtomicBool>,
     data: Arc<dyn ObjectData>,
@@ -403,6 +406,10 @@ impl Dispatcher {
         // We erase the lifetime of the Handle to be able to store it in the tls,
         // it's safe as it'll only last until the end of this function call anyway
         let ret = BACKEND.set(&backend, || unsafe {
+            // SAFETY: The `display` pointer will remain valid until `ConnectionState` is dropped, which
+            // we hold a strong reference to.
+            // Proxy pointers a ref-counted internally in libwayland, so a proxy destroy in another
+            // thread won't free a proxy that is being dispatched here until it is done.
             ffi_dispatch!(wayland_client_handle(), wl_display_dispatch_queue_pending, display, evq)
         });
         if ret < 0 {
@@ -425,6 +432,9 @@ pub struct InnerReadEventsGuard {
     display: *mut wl_display,
     done: bool,
 }
+
+unsafe impl Send for InnerReadEventsGuard {}
+unsafe impl Sync for InnerReadEventsGuard {}
 
 impl InnerReadEventsGuard {
     pub fn try_new(backend: InnerBackend) -> Option<Self> {
@@ -523,15 +533,15 @@ impl InnerBackend {
         }
     }
 
-    fn destroy_object_inner(&self, guard: &mut MutexGuard<ConnectionState>, id: &ObjectId) {
+    fn destroy_object_inner(&self, mut guard: MutexGuard<ConnectionState>, id: &ObjectId) {
         if let Some(ref alive) = id.id.alive {
+            // SAFTETY: the udata_ptr must be valid as we are in a rust-managed object, and we are done with using udata
             let udata = unsafe {
-                Box::from_raw(ffi_dispatch!(
-                    wayland_client_handle(),
-                    wl_proxy_get_user_data,
-                    id.id.ptr
-                ) as *mut ProxyUserData)
+                ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, id.id.ptr)
             };
+            if udata.is_null() {
+                panic!("NULL user data on object {id:?}");
+            }
             unsafe {
                 ffi_dispatch!(
                     wayland_client_handle(),
@@ -540,11 +550,12 @@ impl InnerBackend {
                     std::ptr::null_mut()
                 );
             }
+            let udata = unsafe { Box::from_raw(udata as *mut ProxyUserData) };
             alive.store(false, Ordering::Release);
+            guard.known_proxies.remove(&id.id.ptr);
+            drop(guard);
             udata.data.destroyed(id.clone());
         }
-
-        guard.known_proxies.remove(&id.id.ptr);
 
         unsafe {
             ffi_dispatch!(wayland_client_handle(), wl_proxy_destroy, id.id.ptr);
@@ -552,11 +563,13 @@ impl InnerBackend {
     }
 
     pub fn destroy_object(&self, id: &ObjectId) -> Result<(), InvalidId> {
+        let guard = self.lock_state();
+
         if !id.id.alive.as_ref().map(|a| a.load(Ordering::Acquire)).unwrap_or(false) {
             return Err(InvalidId);
         }
 
-        self.destroy_object_inner(&mut self.lock_state(), id);
+        self.destroy_object_inner(guard, id);
         Ok(())
     }
 
@@ -758,13 +771,15 @@ impl InnerBackend {
         };
 
         if message_desc.is_destructor {
-            self.destroy_object_inner(&mut guard, &ObjectId { id })
+            self.destroy_object_inner(guard, &ObjectId { id })
         }
 
         Ok(child_id)
     }
 
     pub fn get_data(&self, ObjectId { id }: ObjectId) -> Result<Arc<dyn ObjectData>, InvalidId> {
+        let mut _guard = self.lock_state();
+
         if !id.alive.as_ref().map(|a| a.load(Ordering::Acquire)).unwrap_or(false) {
             return Err(InvalidId);
         }
@@ -774,11 +789,12 @@ impl InnerBackend {
             return Ok(Arc::new(DumbObjectData));
         }
 
-        let udata = unsafe {
-            &*(ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, id.ptr)
-                as *mut ProxyUserData)
-        };
-        Ok(udata.data.clone())
+        let udata =
+            unsafe { ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, id.ptr) };
+        if udata.is_null() {
+            panic!("NULL user data on object {id:?}");
+        }
+        Ok(unsafe { &*(udata as *mut ProxyUserData) }.data.clone())
     }
 
     pub fn set_data(
@@ -786,6 +802,8 @@ impl InnerBackend {
         ObjectId { id }: ObjectId,
         data: Arc<dyn ObjectData>,
     ) -> Result<(), InvalidId> {
+        let mut _guard = self.lock_state();
+
         if !id.alive.as_ref().map(|a| a.load(Ordering::Acquire)).unwrap_or(false) {
             return Err(InvalidId);
         }
@@ -795,10 +813,13 @@ impl InnerBackend {
             return Err(InvalidId);
         }
 
-        let udata = unsafe {
-            &mut *(ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, id.ptr)
-                as *mut ProxyUserData)
-        };
+        let mut _guard = self.lock_state();
+        let udata =
+            unsafe { ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, id.ptr) };
+        if udata.is_null() {
+            panic!("NULL user data on object {id:?}");
+        }
+        let udata = unsafe { &mut *(udata as *mut ProxyUserData) };
 
         udata.data = data;
 
@@ -871,17 +892,29 @@ unsafe extern "C" fn dispatcher_func(
 ) -> c_int {
     let proxy = proxy as *mut wl_proxy;
 
-    // Safety: if our dispatcher fun is called, then the associated proxy must be rust_managed and have a valid user_data
-    let udata_ptr = unsafe {
-        ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, proxy) as *mut ProxyUserData
+    let Some(udata) = BACKEND.with(|backend| {
+        // SAFETY: if our dispatcher func is called, then the associated proxy must be rust_managed and have a valid user_data
+        // If another thread calls `wl_proxy_destroy()`, the proxy will still be valid due to ref
+        // counting in libwayland. But we may get a `NULL` user data.
+        let _guard = backend.backend.lock_state();
+        let udata = ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, proxy);
+        if udata.is_null() {
+            return None;
+        }
+        Some(unsafe { &*(udata as *mut ProxyUserData) }.clone())
+    }) else {
+        // Another thread has destroyed the proxy, so drop the event.
+        return 0;
     };
-    let udata = unsafe { &mut *udata_ptr };
 
-    let interface = udata.interface;
-    let message_desc = match interface.events.get(opcode as usize) {
+    let message_desc = match udata.interface.events.get(opcode as usize) {
         Some(desc) => desc,
         None => {
-            crate::log_error!("Unknown event opcode {} for interface {}.", opcode, interface.name);
+            crate::log_error!(
+                "Unknown event opcode {} for interface {}.",
+                opcode,
+                udata.interface.name
+            );
             return -1;
         }
     };
@@ -926,17 +959,39 @@ unsafe extern "C" fn dispatcher_func(
                     let listener =
                         ffi_dispatch!(wayland_client_handle(), wl_proxy_get_listener, obj);
                     if ptr::eq(listener, &RUST_MANAGED as *const u8 as *const c_void) {
-                        // Safety: the object is rust-managed, its user-data must be valid
-                        let obj_udata = unsafe {
-                            &*(ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, obj)
-                                as *mut ProxyUserData)
+                        let Some(obj_udata) = BACKEND.with(|backend| {
+                            let _guard = backend.backend.lock_state();
+                            // SAFETY: the object is rust-managed, its user-data must be valid
+                            // If another thread calls `wl_proxy_destroy()`, the proxy will still be valid due to ref
+                            // counting in libwayland. But we may get a `NULL` user data.
+                            let udata = unsafe {
+                                ffi_dispatch!(wayland_client_handle(), wl_proxy_get_user_data, obj)
+                            };
+                            if !udata.is_null() {
+                                Some(unsafe { &mut *(udata as *mut ProxyUserData) }.clone())
+                            } else {
+                                None
+                            }
+                        }) else {
+                            // If arg has object been destroyed in another thread, treat the same
+                            // way as a argument received as `NULL` from libwayland.
+                            // TODO Add a test for this
+                            parsed_args.push(Argument::Object(ObjectId {
+                                id: InnerObjectId {
+                                    alive: None,
+                                    id: 0,
+                                    ptr: std::ptr::null_mut(),
+                                    interface: &ANONYMOUS_INTERFACE,
+                                },
+                            }));
+                            continue;
                         };
                         if !same_interface(next_interface, obj_udata.interface) {
                             crate::log_error!(
                                 "Received object {}@{} in {}.{} but expected interface {}.",
                                 obj_udata.interface.name,
                                 obj_id,
-                                interface.name,
+                                udata.interface.name,
                                 message_desc.name,
                                 next_interface.name,
                             );
@@ -979,7 +1034,7 @@ unsafe extern "C" fn dispatcher_func(
                     let child_interface = message_desc.child_interface.unwrap_or_else(|| {
                         crate::log_warn!(
                             "Event {}.{} creates an anonymous object.",
-                            interface.name,
+                            udata.interface.name,
                             opcode
                         );
                         &ANONYMOUS_INTERFACE
@@ -1035,24 +1090,16 @@ unsafe extern "C" fn dispatcher_func(
         if let Some((ref new_id, _)) = created {
             guard.known_proxies.insert(new_id.ptr);
         }
-        if message_desc.is_destructor {
-            guard.known_proxies.remove(&proxy);
-        }
         std::mem::drop(guard);
-        udata.data.clone().event(
+        let ret = udata.data.clone().event(
             backend,
             Message { sender_id: id.clone(), opcode: opcode as u16, args: parsed_args },
-        )
+        );
+        if message_desc.is_destructor {
+            backend.backend.destroy_object_inner(backend.backend.lock_state(), &id);
+        }
+        ret
     });
-
-    if message_desc.is_destructor {
-        // Safety: the udata_ptr must be valid as we are in a rust-managed object, and we are done with using udata
-        let udata = unsafe { Box::from_raw(udata_ptr) };
-        ffi_dispatch!(wayland_client_handle(), wl_proxy_set_user_data, proxy, std::ptr::null_mut());
-        udata.alive.store(false, Ordering::Release);
-        udata.data.destroyed(id);
-        ffi_dispatch!(wayland_client_handle(), wl_proxy_destroy, proxy);
-    }
 
     match (created, ret) {
         (Some((_, child_udata_ptr)), Some(child_data)) => {
@@ -1083,6 +1130,10 @@ impl Drop for ConnectionState {
         // Cleanup the objects we know about, libwayland will discard any future message
         // they receive.
         for proxy_ptr in self.known_proxies.drain() {
+            // SAFETY: `InnerBackend::get_data()` cannot be called after this point since we
+            // are dropping the backend.
+            // If the proxy is in `known_proxies`, it is managed by us and has not yet been
+            // destroyed.
             let _ = unsafe {
                 Box::from_raw(ffi_dispatch!(
                     wayland_client_handle(),

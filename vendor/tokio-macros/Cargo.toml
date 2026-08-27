@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "tokio-macros"
-version = "2.7.0"
+version = "2.7.2"
 authors = ["Tokio Contributors <team@tokio.rs>"]
 build = false
 autolib = false
@@ -47,7 +47,7 @@ version = "1.0.60"
 version = "1"
 
 [dependencies.syn]
-version = "2.0"
+version = "3.0"
 features = ["full"]
 
 [dev-dependencies.tokio]

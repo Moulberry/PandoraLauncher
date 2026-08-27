@@ -11,7 +11,7 @@
 #![warn(missing_docs)]
 
 #[cfg(not(feature = "std"))]
-use core2::io;
+use no_std_io2::io;
 
 #[cfg(feature = "alloc")]
 use alloc::{vec, vec::Vec};
@@ -713,7 +713,6 @@ pub trait BitRead {
     /// assert_eq!(r.read::<8, u8>().unwrap(), 0x04);
     /// ```
     #[cfg(feature = "alloc")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
     fn read_to_vec(&mut self, bytes: usize) -> io::Result<Vec<u8>> {
         read_to_vec(|buf| self.read_bytes(buf), bytes)
     }
@@ -1354,7 +1353,6 @@ pub trait BitRead2 {
     ///
     /// Passes along any I/O error from the underlying stream.
     #[cfg(feature = "alloc")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
     fn read_to_vec(&mut self, bytes: usize) -> io::Result<Vec<u8>> {
         read_to_vec(|buf| self.read_bytes(buf), bytes)
     }
@@ -1852,7 +1850,7 @@ where
     #[inline]
     #[allow(clippy::seek_from_current)]
     pub fn position_in_bits(&mut self) -> io::Result<u64> {
-        // core2 doesn't have `seek_from_current`
+        // no_std_io2 doesn't have `seek_from_current`
         let bytes = self.reader.seek(io::SeekFrom::Current(0))?;
         Ok(bytes * 8 - (self.bits as u64))
     }
@@ -1967,7 +1965,6 @@ pub trait ByteRead {
     ///
     /// Passes along any I/O error from the underlying stream.
     #[cfg(feature = "alloc")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
     fn read_to_vec(&mut self, bytes: usize) -> io::Result<Vec<u8>> {
         read_to_vec(|buf| self.read_bytes(buf), bytes)
     }

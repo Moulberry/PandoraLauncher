@@ -20,16 +20,13 @@ thread_local! {
 /// Adds an error encountered by the build script while executing a command.
 fn add_command_error(name: &str, path: &str, arguments: &[&str], message: String) {
     COMMAND_ERRORS.with(|e| {
-        e.borrow_mut()
-            .entry(name.into())
-            .or_default()
-            .push(format!(
-                "couldn't execute `{} {}` (path={}) ({})",
-                name,
-                arguments.join(" "),
-                path,
-                message,
-            ))
+        e.borrow_mut().entry(name.into()).or_default().push(format!(
+            "couldn't execute `{} {}` (path={}) ({})",
+            name,
+            arguments.join(" "),
+            path,
+            message,
+        ))
     });
 }
 
@@ -185,18 +182,19 @@ const DIRECTORIES_WINDOWS: &[(&str, bool)] = &[
     // system-wide directories.
     ("C:\\Users\\*\\scoop\\apps\\llvm\\current\\lib", true),
     ("C:\\MSYS*\\MinGW*\\lib", false),
+    ("C:\\MSYS*\\clang*\\lib", false),
     ("C:\\Program Files*\\LLVM\\lib", true),
     ("C:\\LLVM\\lib", true),
     // LLVM + Clang can be installed as a component of Visual Studio.
     // https://github.com/KyleMayes/clang-sys/issues/121
-    ("C:\\Program Files*\\Microsoft Visual Studio\\*\\VC\\Tools\\Llvm\\**\\lib", true),
+    (
+        "C:\\Program Files*\\Microsoft Visual Studio\\**\\VC\\Tools\\Llvm\\**\\lib",
+        true,
+    ),
 ];
 
 /// `libclang` directory patterns for illumos
-const DIRECTORIES_ILLUMOS: &[&str] = &[
-    "/opt/ooce/llvm-*/lib",
-    "/opt/ooce/clang-*/lib",
-];
+const DIRECTORIES_ILLUMOS: &[&str] = &["/opt/ooce/llvm-*/lib", "/opt/ooce/clang-*/lib"];
 
 //================================================
 // Searching
@@ -308,6 +306,14 @@ pub fn search_libclang_directories(filenames: &[String], variable: &str) -> Vec<
         }
     }
 
+    // Search the directories in the `LIBRARY_PATH` environment variable,
+    // used by GCC to find libraries to link.
+    if let Ok(path) = env::var("LIBRARY_PATH") {
+        for directory in env::split_paths(&path) {
+            found.extend(search_directories(&directory, filenames));
+        }
+    }
+
     // Determine the `libclang` directory patterns.
     let directories: Vec<&str> = if target_os!("haiku") {
         DIRECTORIES_HAIKU.into()
@@ -322,6 +328,9 @@ pub fn search_libclang_directories(filenames: &[String], variable: &str) -> Vec<
             .filter(|d| d.1 || !msvc)
             .map(|d| d.0)
             .collect()
+    } else if target_os!("cygwin") {
+        // For Cygwin/MSYS environments, the filesystem layout is Unix-like.
+        DIRECTORIES_LINUX.into()
     } else if target_os!("illumos") {
         DIRECTORIES_ILLUMOS.into()
     } else {
@@ -333,7 +342,11 @@ pub fn search_libclang_directories(filenames: &[String], variable: &str) -> Vec<
     let directories = if test!() {
         directories
             .iter()
-            .map(|d| d.strip_prefix('/').or_else(|| d.strip_prefix("C:\\")).unwrap_or(d))
+            .map(|d| {
+                d.strip_prefix('/')
+                    .or_else(|| d.strip_prefix("C:\\"))
+                    .unwrap_or(d)
+            })
             .collect::<Vec<_>>()
     } else {
         directories

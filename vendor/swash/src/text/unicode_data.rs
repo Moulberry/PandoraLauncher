@@ -527,6 +527,14 @@ pub enum Script {
     Unknown = 156,
 }
 
+impl Script {
+    /// True if this is not an inherited/common/unknown script.
+    #[inline]
+    pub fn is_real(self) -> bool {
+        (self as u8) < 154
+    }
+}
+
 /// Canonical combining class.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(u8)]

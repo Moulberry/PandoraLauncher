@@ -6,7 +6,8 @@ use super::super::{
     outline::Outline,
     shape::{ShapedCluster, Shaper},
     style::{ScriptGroup, StyleClass},
-    topo::{compute_segments, link_segments, Axis},
+    topo::{compute_segments, link_segments, Axis, Dimension},
+    QuirksMode,
 };
 use crate::MetadataProvider;
 use raw::{types::F2Dot14, TableProvider};
@@ -21,6 +22,7 @@ pub(super) fn compute_widths(
     shaper: &Shaper,
     coords: &[F2Dot14],
     style: &StyleClass,
+    quirks: QuirksMode,
 ) -> [(WidthMetrics, UnscaledWidths); 2] {
     let mut result: [(WidthMetrics, UnscaledWidths); 2] = Default::default();
     let font = shaper.font();
@@ -49,9 +51,12 @@ pub(super) fn compute_widths(
         })
         .next();
     if let Some(glyph) = glyph {
-        if outline.fill(&glyph, coords).is_ok() && !outline.points.is_empty() {
+        if outline.fill(&glyph, coords, quirks).is_ok() && !outline.points.is_empty() {
             // Now process each dimension
-            for (dim, (_metrics, widths)) in result.iter_mut().enumerate() {
+            for (dim, (_metrics, widths)) in [Dimension::Horizontal, Dimension::Vertical]
+                .into_iter()
+                .zip(result.iter_mut())
+            {
                 axis.reset(dim, outline.orientation);
                 // Segment computation for widths always uses the default
                 // script group
@@ -196,7 +201,7 @@ mod tests {
         let shaper = Shaper::new(&font, ShaperMode::Nominal);
         let script = &style::STYLE_CLASSES[style_class];
         let [(hori_metrics, hori_widths), (vert_metrics, vert_widths)] =
-            compute_widths(&shaper, Default::default(), script);
+            compute_widths(&shaper, Default::default(), script, QuirksMode::default());
         assert_eq!(hori_metrics, expected[0].0);
         assert_eq!(hori_widths.as_slice(), expected[0].1);
         assert_eq!(vert_metrics, expected[1].0);

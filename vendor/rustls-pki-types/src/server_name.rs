@@ -79,7 +79,7 @@ impl ServerName<'_> {
 }
 
 impl fmt::Debug for ServerName<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DnsName(d) => f.debug_tuple("DnsName").field(&d.as_ref()).finish(),
             Self::IpAddress(i) => f.debug_tuple("IpAddress").field(i).finish(),
@@ -163,6 +163,12 @@ impl From<std::net::Ipv4Addr> for ServerName<'_> {
 impl From<std::net::Ipv6Addr> for ServerName<'_> {
     fn from(v6: std::net::Ipv6Addr) -> Self {
         Self::IpAddress(IpAddr::V6(v6.into()))
+    }
+}
+
+impl<'a> From<DnsName<'a>> for ServerName<'a> {
+    fn from(dns_name: DnsName<'a>) -> Self {
+        Self::DnsName(dns_name)
     }
 }
 
@@ -286,20 +292,21 @@ impl Hash for DnsNameInner<'_> {
 impl fmt::Debug for DnsNameInner<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Borrowed(s) => f.write_fmt(format_args!("{:?}", s)),
+            Self::Borrowed(s) => f.write_fmt(format_args!("{s:?}")),
             #[cfg(feature = "alloc")]
-            Self::Owned(s) => f.write_fmt(format_args!("{:?}", s)),
+            Self::Owned(s) => f.write_fmt(format_args!("{s:?}")),
         }
     }
 }
 
 /// The provided input could not be parsed because
 /// it is not a syntactically-valid DNS Name.
+#[allow(clippy::exhaustive_structs)]
 #[derive(Debug)]
 pub struct InvalidDnsNameError;
 
 impl fmt::Display for InvalidDnsNameError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("invalid dns name")
     }
 }
@@ -308,17 +315,16 @@ impl fmt::Display for InvalidDnsNameError {
 impl StdError for InvalidDnsNameError {}
 
 const fn validate(input: &[u8]) -> Result<(), InvalidDnsNameError> {
-    enum State {
+    enum LabelState {
+        /// The current label is still empty
         Start,
-        Next,
-        NumericOnly { len: usize },
-        NextAfterNumericOnly,
-        Subsequent { len: usize },
-        Hyphen { len: usize },
+        /// The current label contains at least one non-digit
+        HasLetter,
+        /// The current label is non-empty and all-numeric so far
+        AllNumeric,
+        /// The last character was a hyphen
+        EndsInHyphen,
     }
-
-    use State::*;
-    let mut state = Start;
 
     /// "Labels must be 63 characters or less."
     const MAX_LABEL_LENGTH: usize = 63;
@@ -326,49 +332,60 @@ const fn validate(input: &[u8]) -> Result<(), InvalidDnsNameError> {
     /// https://devblogs.microsoft.com/oldnewthing/20120412-00/?p=7873
     const MAX_NAME_LENGTH: usize = 253;
 
-    if input.len() > MAX_NAME_LENGTH {
+    if input.is_empty() || input.len() > MAX_NAME_LENGTH {
         return Err(InvalidDnsNameError);
     }
 
+    let mut start = 0;
+    let mut state = LabelState::Start;
     let mut idx = 0;
-    while idx < input.len() {
-        let ch = input[idx];
-        state = match (state, ch) {
-            (Start | Next | NextAfterNumericOnly | Hyphen { .. }, b'.') => {
-                return Err(InvalidDnsNameError);
-            }
-            (Subsequent { .. }, b'.') => Next,
-            (NumericOnly { .. }, b'.') => NextAfterNumericOnly,
-            (Subsequent { len } | NumericOnly { len } | Hyphen { len }, _)
-                if len >= MAX_LABEL_LENGTH =>
-            {
-                return Err(InvalidDnsNameError);
-            }
-            (Start | Next | NextAfterNumericOnly, b'0'..=b'9') => NumericOnly { len: 1 },
-            (NumericOnly { len }, b'0'..=b'9') => NumericOnly { len: len + 1 },
-            (Start | Next | NextAfterNumericOnly, b'a'..=b'z' | b'A'..=b'Z' | b'_') => {
-                Subsequent { len: 1 }
-            }
-            (Subsequent { len } | NumericOnly { len } | Hyphen { len }, b'-') => {
-                Hyphen { len: len + 1 }
-            }
-            (
-                Subsequent { len } | NumericOnly { len } | Hyphen { len },
-                b'a'..=b'z' | b'A'..=b'Z' | b'_' | b'0'..=b'9',
-            ) => Subsequent { len: len + 1 },
-            _ => return Err(InvalidDnsNameError),
+    loop {
+        let ch = match idx < input.len() {
+            true => Some(input[idx]),
+            false => None,
         };
+
+        match ch {
+            Some(b'a'..=b'z' | b'A'..=b'Z' | b'_') => state = LabelState::HasLetter,
+            Some(b'0'..=b'9') => {
+                state = match state {
+                    LabelState::Start | LabelState::AllNumeric => LabelState::AllNumeric,
+                    LabelState::HasLetter | LabelState::EndsInHyphen => LabelState::HasLetter,
+                }
+            }
+            Some(b'.') | None => {
+                let len = idx - start;
+                if len == 0 || len > MAX_LABEL_LENGTH || matches!(state, LabelState::EndsInHyphen) {
+                    return Err(InvalidDnsNameError);
+                }
+
+                // Break on a trailing dot as well as on the end of input, keeping
+                // `state` intact for the final all-numeric check below.
+                if idx + 1 >= input.len() {
+                    break;
+                }
+
+                idx += 1;
+                start = idx;
+                state = LabelState::Start;
+                continue;
+            }
+            Some(b'-') => match idx == start {
+                true => return Err(InvalidDnsNameError),
+                false => state = LabelState::EndsInHyphen,
+            },
+            _ => return Err(InvalidDnsNameError),
+        }
+
         idx += 1;
     }
 
-    if matches!(
-        state,
-        Start | Hyphen { .. } | NumericOnly { .. } | NextAfterNumericOnly
-    ) {
-        return Err(InvalidDnsNameError);
+    // The final label (whether or not the name has a trailing dot) must
+    // not be all-numeric, to avoid confusion with an IPv4 address.
+    match state {
+        LabelState::AllNumeric => Err(InvalidDnsNameError),
+        _ => Ok(()),
     }
-
-    Ok(())
 }
 
 /// `no_std` implementation of `std::net::IpAddr`.
@@ -376,6 +393,7 @@ const fn validate(input: &[u8]) -> Result<(), InvalidDnsNameError> {
 /// Note: because we intend to replace this type with `core::net::IpAddr` as soon as it is
 /// stabilized, the identity of this type should not be considered semver-stable. However, the
 /// attached interfaces are stable; they form a subset of those provided by `core::net::IpAddr`.
+#[allow(clippy::exhaustive_enums)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum IpAddr {
     /// An Ipv4 address.
@@ -439,6 +457,12 @@ impl From<std::net::Ipv6Addr> for IpAddr {
 /// attached interfaces are stable; they form a subset of those provided by `core::net::Ipv4Addr`.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Ipv4Addr([u8; 4]);
+
+impl From<[u8; 4]> for Ipv4Addr {
+    fn from(value: [u8; 4]) -> Self {
+        Self(value)
+    }
+}
 
 impl TryFrom<&str> for Ipv4Addr {
     type Error = AddrParseError;
@@ -542,7 +566,7 @@ mod parser {
     }
 
     impl<'a> Parser<'a> {
-        pub(super) fn new(input: &'a [u8]) -> Self {
+        pub(super) const fn new(input: &'a [u8]) -> Self {
             Parser { state: input }
         }
 
@@ -764,8 +788,8 @@ use parser::{AddrKind, Parser};
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct AddrParseError(AddrKind);
 
-impl core::fmt::Display for AddrParseError {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for AddrParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self.0 {
             AddrKind::Ipv4 => "invalid IPv4 address syntax",
             AddrKind::Ipv6 => "invalid IPv6 address syntax",
@@ -852,7 +876,7 @@ mod tests {
     fn test_validation() {
         for (input, expected) in TESTS {
             #[cfg(feature = "std")]
-            println!("test: {:?} expected valid? {:?}", input, expected);
+            println!("test: {input:?} expected valid? {expected:?}");
             let name_ref = DnsName::try_from(*input);
             assert_eq!(*expected, name_ref.is_ok());
             let name = DnsName::try_from(input.to_string());
@@ -863,20 +887,20 @@ mod tests {
     #[cfg(feature = "alloc")]
     #[test]
     fn error_is_debug() {
-        assert_eq!(format!("{:?}", InvalidDnsNameError), "InvalidDnsNameError");
+        assert_eq!(format!("{InvalidDnsNameError:?}"), "InvalidDnsNameError");
     }
 
     #[cfg(feature = "alloc")]
     #[test]
     fn error_is_display() {
-        assert_eq!(format!("{}", InvalidDnsNameError), "invalid dns name");
+        assert_eq!(format!("{InvalidDnsNameError}"), "invalid dns name");
     }
 
     #[cfg(feature = "alloc")]
     #[test]
     fn dns_name_is_debug() {
         let example = DnsName::try_from("example.com".to_string()).unwrap();
-        assert_eq!(format!("{:?}", example), "DnsName(\"example.com\")");
+        assert_eq!(format!("{example:?}"), "DnsName(\"example.com\")");
     }
 
     #[cfg(feature = "alloc")]
@@ -888,7 +912,7 @@ mod tests {
         #[cfg(feature = "std")]
         {
             use std::collections::HashSet;
-            let mut h = HashSet::<DnsName>::new();
+            let mut h = HashSet::<DnsName<'_>>::new();
             h.insert(example);
         }
     }

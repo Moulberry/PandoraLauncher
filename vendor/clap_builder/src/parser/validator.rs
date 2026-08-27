@@ -1,4 +1,5 @@
 // Internal
+use crate::INTERNAL_ERROR_MSG;
 use crate::builder::StyledStr;
 use crate::builder::{Arg, ArgGroup, ArgPredicate, Command, PossibleValue};
 use crate::error::{Error, Result as ClapResult};
@@ -8,7 +9,6 @@ use crate::util::ChildGraph;
 use crate::util::FlatMap;
 use crate::util::FlatSet;
 use crate::util::Id;
-use crate::INTERNAL_ERROR_MSG;
 
 pub(crate) struct Validator<'cmd> {
     cmd: &'cmd Command,
@@ -40,7 +40,7 @@ impl<'cmd> Validator<'cmd> {
             let bn = self.cmd.get_bin_name_fallback();
             return Err(Error::missing_subcommand(
                 self.cmd,
-                bn.to_string(),
+                bn.to_owned(),
                 self.cmd
                     .all_subcommand_names()
                     .map(|s| s.to_owned())
@@ -502,7 +502,7 @@ fn gather_direct_conflicts(cmd: &Command, id: &Id) -> Vec<Id> {
 }
 
 fn gather_arg_direct_conflicts(cmd: &Command, arg: &Arg) -> Vec<Id> {
-    let mut conf = arg.blacklist.clone();
+    let mut conf = arg.conflicts.clone();
     for group_id in cmd.groups_for_arg(arg.get_id()) {
         let group = cmd.find_group(&group_id).expect(INTERNAL_ERROR_MSG);
         conf.extend(group.conflicts.iter().cloned());

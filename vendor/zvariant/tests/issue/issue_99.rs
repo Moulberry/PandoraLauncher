@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "gvariant", allow(deprecated))]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use zvariant::{LE, Type, Value, serialized::Context, to_bytes_for_signature};

@@ -165,7 +165,7 @@ impl<'a> TupleVariationHeader<'a> {
     #[inline(always)]
     pub fn peak_tuple(&self) -> Option<Tuple<'a>> {
         self.tuple_index().embedded_peak_tuple().then(|| {
-            let range = self.shape.peak_tuple_byte_range();
+            let range = self.peak_tuple_byte_range();
             Tuple {
                 values: self.data.read_array(range).unwrap(),
             }
@@ -177,7 +177,7 @@ impl<'a> TupleVariationHeader<'a> {
     #[inline(always)]
     pub fn intermediate_start_tuple(&self) -> Option<Tuple<'a>> {
         self.tuple_index().intermediate_region().then(|| {
-            let range = self.shape.intermediate_start_tuple_byte_range();
+            let range = self.intermediate_start_tuple_byte_range();
             Tuple {
                 values: self.data.read_array(range).unwrap(),
             }
@@ -189,7 +189,7 @@ impl<'a> TupleVariationHeader<'a> {
     #[inline(always)]
     pub fn intermediate_end_tuple(&self) -> Option<Tuple<'a>> {
         self.tuple_index().intermediate_region().then(|| {
-            let range = self.shape.intermediate_end_tuple_byte_range();
+            let range = self.intermediate_end_tuple_byte_range();
             Tuple {
                 values: self.data.read_array(range).unwrap(),
             }
@@ -201,8 +201,8 @@ impl<'a> TupleVariationHeader<'a> {
     #[inline(always)]
     pub fn intermediate_tuples(&self) -> Option<(Tuple<'a>, Tuple<'a>)> {
         self.tuple_index().intermediate_region().then(|| {
-            let start_range = self.shape.intermediate_start_tuple_byte_range();
-            let end_range = self.shape.intermediate_end_tuple_byte_range();
+            let start_range = self.intermediate_start_tuple_byte_range();
+            let end_range = self.intermediate_end_tuple_byte_range();
             (
                 Tuple {
                     values: self.data.read_array(start_range).unwrap(),
@@ -425,35 +425,47 @@ impl ExactSizeIterator for PackedPointNumbersIter<'_> {}
 pub struct PackedDeltas<'a> {
     data: FontData<'a>,
     // How many values we expect
-    count: usize,
+    count: Option<usize>,
 }
 
 impl<'a> PackedDeltas<'a> {
     pub(crate) fn new(data: FontData<'a>, count: usize) -> Self {
-        Self { data, count }
+        Self {
+            data,
+            count: Some(count),
+        }
     }
 
     /// NOTE: this is unbounded, and assumes all of data is deltas.
     #[doc(hidden)] // used by tests in write-fonts
     pub fn consume_all(data: FontData<'a>) -> Self {
-        let count = count_all_deltas(data);
-        Self { data, count }
+        Self { data, count: None }
     }
 
-    pub(crate) fn count(&self) -> usize {
+    pub fn count(&self) -> Option<usize> {
         self.count
     }
 
+    pub fn count_or_compute(&self) -> usize {
+        self.count.unwrap_or_else(|| count_all_deltas(self.data))
+    }
+
     pub fn iter(&self) -> DeltaRunIter<'a> {
-        DeltaRunIter::new(self.data.cursor(), Some(self.count))
+        DeltaRunIter::new(self.data.cursor(), self.count)
+    }
+
+    pub fn fetcher(&self) -> PackedDeltaFetcher<'a> {
+        PackedDeltaFetcher::new(self.data.as_bytes(), self.count)
     }
 
     fn x_deltas(&self) -> DeltaRunIter<'a> {
-        DeltaRunIter::new(self.data.cursor(), Some(self.count / 2))
+        let count = self.count_or_compute() / 2;
+        DeltaRunIter::new(self.data.cursor(), Some(count))
     }
 
     fn y_deltas(&self) -> DeltaRunIter<'a> {
-        DeltaRunIter::new(self.data.cursor(), Some(self.count)).skip_fast(self.count / 2)
+        let count = self.count_or_compute();
+        DeltaRunIter::new(self.data.cursor(), Some(count)).skip_fast(count / 2)
     }
 }
 
@@ -503,6 +515,131 @@ pub struct DeltaRunIter<'a> {
     cursor: Cursor<'a>,
 }
 
+/// A decoding helper that adds packed deltas directly to an output slice.
+pub struct PackedDeltaFetcher<'a> {
+    data: &'a [u8],
+    pos: usize,
+    end: usize,
+    run_count: usize,
+    value_type: DeltaRunType,
+    remaining_total: Option<usize>,
+}
+
+impl<'a> PackedDeltaFetcher<'a> {
+    fn new(data: &'a [u8], count: Option<usize>) -> Self {
+        Self {
+            data,
+            pos: 0,
+            end: data.len(),
+            run_count: 0,
+            value_type: DeltaRunType::I8,
+            remaining_total: count,
+        }
+    }
+
+    #[inline(always)]
+    fn ensure_run(&mut self) -> Result<(), ReadError> {
+        if self.run_count > 0 {
+            return Ok(());
+        }
+        if self.pos >= self.end {
+            return Err(ReadError::OutOfBounds);
+        }
+        let control = self.data[self.pos];
+        self.pos += 1;
+        self.run_count = (control & DELTA_RUN_COUNT_MASK) as usize + 1;
+        self.value_type = DeltaRunType::new(control);
+        let width = self.value_type as usize;
+        let needed = self.run_count * width;
+        if self.pos + needed > self.end {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(())
+    }
+
+    pub fn skip(&mut self, mut n: usize) -> Result<(), ReadError> {
+        if let Some(remaining_total) = self.remaining_total {
+            if n > remaining_total {
+                return Err(ReadError::OutOfBounds);
+            }
+            self.remaining_total = Some(remaining_total - n);
+        }
+        while n > 0 {
+            self.ensure_run()?;
+            let take = n.min(self.run_count);
+            let width = self.value_type as usize;
+            self.pos += take * width;
+            self.run_count -= take;
+            n -= take;
+        }
+        Ok(())
+    }
+
+    pub fn add_to_f32_scaled(&mut self, out: &mut [f32], scale: f32) -> Result<(), ReadError> {
+        let mut remaining = out.len();
+        if let Some(remaining_total) = self.remaining_total {
+            if remaining > remaining_total {
+                return Err(ReadError::OutOfBounds);
+            }
+            self.remaining_total = Some(remaining_total - remaining);
+        }
+        let mut idx = 0usize;
+        while remaining > 0 {
+            self.ensure_run()?;
+            let take = remaining.min(self.run_count);
+            match self.value_type {
+                DeltaRunType::Zero => {
+                    // nothing to add
+                    idx += take;
+                }
+                DeltaRunType::I8 => {
+                    let bytes = &self.data[self.pos..self.pos + take];
+                    for &b in bytes {
+                        out[idx] += b as i8 as f32 * scale;
+                        idx += 1;
+                    }
+                    self.pos += take;
+                }
+                DeltaRunType::I16 => {
+                    let bytes = &self.data[self.pos..self.pos + take * 2];
+                    for chunk in bytes.chunks_exact(2) {
+                        let delta = i16::from_be_bytes([chunk[0], chunk[1]]) as f32;
+                        out[idx] += delta * scale;
+                        idx += 1;
+                    }
+                    self.pos += take * 2;
+                }
+                DeltaRunType::I32 => {
+                    let bytes = &self.data[self.pos..self.pos + take * 4];
+                    for chunk in bytes.chunks_exact(4) {
+                        let delta =
+                            i32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as f32;
+                        out[idx] += delta * scale;
+                        idx += 1;
+                    }
+                    self.pos += take * 4;
+                }
+            }
+            self.run_count -= take;
+            remaining -= take;
+        }
+        Ok(())
+    }
+}
+
+/// Counts the number of deltas available in the given data, avoiding
+/// excessive reads.
+fn count_all_deltas(data: FontData) -> usize {
+    let mut count = 0;
+    let mut offset = 0;
+    while let Ok(control) = data.read_at::<u8>(offset) {
+        let run_count = (control & DELTA_RUN_COUNT_MASK) as usize + 1;
+        count += run_count;
+        offset += run_count * DeltaRunType::new(control) as usize + 1;
+    }
+    count
+}
+
 impl<'a> DeltaRunIter<'a> {
     fn new(cursor: Cursor<'a>, limit: Option<usize>) -> Self {
         DeltaRunIter {
@@ -514,29 +651,49 @@ impl<'a> DeltaRunIter<'a> {
     }
 
     pub(crate) fn end(mut self) -> Cursor<'a> {
-        while self.next().is_some() {}
+        if let Some(limit) = self.limit {
+            return self.skip_fast(limit).cursor;
+        }
+        // No limit: jump over runs without decoding values.
+        if self.remaining_in_run != 0 {
+            if self.value_type != DeltaRunType::Zero {
+                self.cursor
+                    .advance_by(self.remaining_in_run as usize * self.value_type as usize);
+            }
+            self.remaining_in_run = 0;
+        }
+        while self.read_next_control().is_some() {
+            if self.value_type != DeltaRunType::Zero {
+                self.cursor
+                    .advance_by(self.remaining_in_run as usize * self.value_type as usize);
+            }
+            self.remaining_in_run = 0;
+        }
         self.cursor
     }
 
     /// Skips `n` deltas without reading the actual delta values.
-    fn skip_fast(mut self, n: usize) -> Self {
+    #[inline(always)]
+    pub fn skip_fast(mut self, n: usize) -> Self {
         let mut wanted = n;
+        let mut remaining = self.remaining_in_run as usize;
+        let mut value_type = self.value_type;
         loop {
-            let remaining = self.remaining_in_run as usize;
             if wanted > remaining {
-                // Haven't seen enough deltas yet; consume the remaining
-                // data bytes and move to the next run
-                self.cursor.advance_by(remaining * self.value_type as usize);
+                // Consume the rest of this run and move to the next.
+                self.cursor.advance_by(remaining * value_type as usize);
                 wanted -= remaining;
                 if self.read_next_control().is_none() {
                     self.limit = Some(0);
                     break;
                 }
+                remaining = self.remaining_in_run as usize;
+                value_type = self.value_type;
                 continue;
             }
-            let consumed = wanted.min(remaining);
+            let consumed = wanted;
             self.remaining_in_run -= consumed as u8;
-            self.cursor.advance_by(consumed * self.value_type as usize);
+            self.cursor.advance_by(consumed * value_type as usize);
             if let Some(limit) = self.limit.as_mut() {
                 *limit = limit.saturating_sub(n);
             }
@@ -545,6 +702,7 @@ impl<'a> DeltaRunIter<'a> {
         self
     }
 
+    #[inline(always)]
     fn read_next_control(&mut self) -> Option<()> {
         self.remaining_in_run = 0;
         let control: u8 = self.cursor.read().ok()?;
@@ -557,6 +715,7 @@ impl<'a> DeltaRunIter<'a> {
 impl Iterator for DeltaRunIter<'_> {
     type Item = i32;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(limit) = self.limit {
             if limit == 0 {
@@ -572,22 +731,9 @@ impl Iterator for DeltaRunIter<'_> {
             DeltaRunType::Zero => Some(0),
             DeltaRunType::I8 => self.cursor.read::<i8>().ok().map(|v| v as i32),
             DeltaRunType::I16 => self.cursor.read::<i16>().ok().map(|v| v as i32),
-            DeltaRunType::I32 => self.cursor.read().ok(),
+            DeltaRunType::I32 => self.cursor.read::<i32>().ok(),
         }
     }
-}
-
-/// Counts the number of deltas available in the given data, avoiding
-/// excessive reads.
-fn count_all_deltas(data: FontData) -> usize {
-    let mut count = 0;
-    let mut offset = 0;
-    while let Ok(control) = data.read_at::<u8>(offset) {
-        let run_count = (control & DELTA_RUN_COUNT_MASK) as usize + 1;
-        count += run_count;
-        offset += run_count * DeltaRunType::new(control) as usize + 1;
-    }
-    count
 }
 
 /// A helper type for iterating over [`TupleVariationHeader`]s.
@@ -1299,6 +1445,12 @@ impl DeltaSetIndexMap<'_> {
             Self::Format0(fmt) => (fmt.entry_format(), fmt.map_count() as u32, fmt.map_data()),
             Self::Format1(fmt) => (fmt.entry_format(), fmt.map_count(), fmt.map_data()),
         };
+        if map_count == 0 {
+            return Ok(DeltaSetIndex {
+                outer: (index >> 16) as u16,
+                inner: index as u16,
+            });
+        }
         let entry_size = entry_format.entry_size();
         let data = FontData::new(data);
         // "if an index into the mapping array is used that is greater than or equal to
@@ -1401,6 +1553,11 @@ pub struct FloatItemDelta(f64);
 
 impl FloatItemDelta {
     pub const ZERO: Self = Self(0.0);
+
+    /// Returns the (unrounded) delta value as a 64-bit float.
+    pub fn to_f64(self) -> f64 {
+        self.0
+    }
 }
 
 /// Trait for applying floating point item deltas to target values.
@@ -1725,7 +1882,7 @@ mod tests {
         static INPUT: FontData = FontData::new(&[0x83, 0x40, 0x01, 0x02, 0x01, 0x81, 0x80]);
 
         let deltas = PackedDeltas::consume_all(INPUT);
-        assert_eq!(deltas.count, 7);
+        assert_eq!(deltas.count_or_compute(), 7);
         assert_eq!(
             deltas.iter().collect::<Vec<_>>(),
             &[0, 0, 0, 0, 258, -127, -128]
@@ -1748,8 +1905,191 @@ mod tests {
         static EXPECTED: &[i32] = &[10, -105, 0, -58, 0, 0, 0, 0, 0, 0, 0, 0, 4130, -1228];
 
         let deltas = PackedDeltas::consume_all(INPUT);
-        assert_eq!(deltas.count, EXPECTED.len());
+        assert_eq!(deltas.count_or_compute(), EXPECTED.len());
         assert_eq!(deltas.iter().collect::<Vec<_>>(), EXPECTED);
+    }
+
+    #[test]
+    fn packed_delta_fetcher_skip_matches_iterator_suffix() {
+        static INPUT: FontData = FontData::new(&[
+            0x03, 0x0A, 0x97, 0x00, 0xC6, 0x87, 0x41, 0x10, 0x22, 0xFB, 0x34,
+        ]);
+        let deltas = PackedDeltas::consume_all(INPUT);
+        let expected = deltas.iter().collect::<Vec<_>>();
+
+        for skip in 0..=expected.len() {
+            let mut fetcher = deltas.fetcher();
+            fetcher.skip(skip).unwrap();
+            let mut out = vec![0.0; expected.len() - skip];
+            fetcher.add_to_f32_scaled(&mut out, 1.0).unwrap();
+            let got = out.into_iter().map(|v| v as i32).collect::<Vec<_>>();
+            assert_eq!(&got[..], &expected[skip..], "skip={skip}");
+        }
+
+        let mut fetcher = deltas.fetcher();
+        assert!(matches!(
+            fetcher.skip(expected.len() + 1),
+            Err(ReadError::OutOfBounds)
+        ));
+    }
+
+    #[test]
+    fn packed_delta_fetcher_scaled_add_and_exhaustion() {
+        static INPUT: FontData = FontData::new(&[
+            0x03, 0x0A, 0x97, 0x00, 0xC6, 0x87, 0x41, 0x10, 0x22, 0xFB, 0x34,
+        ]);
+        // First four deltas are [10, -105, 0, -58].
+        let deltas = PackedDeltas::new(INPUT, 4);
+        let mut fetcher = deltas.fetcher();
+        let mut out = [1.0f32; 4];
+        fetcher.add_to_f32_scaled(&mut out, 0.5).unwrap();
+        assert_eq!(out, [6.0, -51.5, 1.0, -28.0]);
+
+        // Bounded fetcher should now be exhausted.
+        let mut extra = [0.0f32; 1];
+        assert!(matches!(
+            fetcher.add_to_f32_scaled(&mut extra, 1.0),
+            Err(ReadError::OutOfBounds)
+        ));
+    }
+
+    #[test]
+    fn packed_delta_fetcher_skip_then_add_bounded() {
+        static INPUT: FontData = FontData::new(&[0x83, 0x40, 0x01, 0x02, 0x01, 0x81, 0x80]);
+        // Full decoded stream: [0, 0, 0, 0, 258, -127, -128]
+        let deltas = PackedDeltas::new(INPUT, 7);
+        let mut fetcher = deltas.fetcher();
+        fetcher.skip(3).unwrap();
+        let mut out = [0.0f32; 4];
+        fetcher.add_to_f32_scaled(&mut out, 1.0).unwrap();
+        assert_eq!(out, [0.0, 258.0, -127.0, -128.0]);
+    }
+
+    #[test]
+    fn delta_run_iter_end_exhausts_unbounded_data() {
+        static INPUT: FontData = FontData::new(&[0x83, 0x40, 0x01, 0x02, 0x01, 0x81, 0x80]);
+        let deltas = PackedDeltas::consume_all(INPUT);
+        let end = deltas.iter().end();
+        assert_eq!(end.remaining_bytes(), 0);
+    }
+
+    #[test]
+    fn delta_run_iter_end_respects_bounded_count() {
+        static INPUT: FontData = FontData::new(&[0x83, 0x40, 0x01, 0x02, 0x01, 0x81, 0x80]);
+        // Count is exactly the first run only (4 zeros), so end() should not consume past
+        // the run header byte.
+        let deltas = PackedDeltas::new(INPUT, 4);
+        let end = deltas.iter().end();
+        assert_eq!(end.remaining_bytes(), INPUT.len() - 1);
+
+        let end_via_skip = deltas.iter().skip_fast(4).cursor;
+        assert_eq!(end_via_skip.remaining_bytes(), INPUT.len() - 1);
+    }
+
+    #[test]
+    fn delta_run_iter_end_matches_manual_iteration_for_bounded_data() {
+        static INPUT: FontData = FontData::new(&[
+            0x03, 0x0A, 0x97, 0x00, 0xC6, 0x87, 0x41, 0x10, 0x22, 0xFB, 0x34,
+        ]);
+        let deltas = PackedDeltas::new(INPUT, 6);
+
+        let iter_collected = deltas.iter().collect::<Vec<_>>();
+        assert_eq!(iter_collected.len(), 6);
+
+        let end = deltas.iter().end();
+        let end_via_skip = deltas.iter().skip_fast(6).cursor;
+        assert_eq!(end.remaining_bytes(), end_via_skip.remaining_bytes());
+    }
+
+    fn lcg_next(state: &mut u32) -> u32 {
+        *state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+        *state
+    }
+
+    fn generated_delta_stream(seed: u32) -> (Vec<u8>, Vec<i32>) {
+        let mut state = seed;
+        let mut bytes = Vec::new();
+        let mut expected = Vec::new();
+        let run_count = (lcg_next(&mut state) % 6 + 1) as usize;
+        for _ in 0..run_count {
+            let run_type = (lcg_next(&mut state) % 4) as usize;
+            let len = (lcg_next(&mut state) % 8 + 1) as usize;
+            let control = match run_type {
+                0 => (len - 1) as u8,        // i8
+                1 => 0x40 | (len - 1) as u8, // i16
+                2 => 0x80 | (len - 1) as u8, // zero
+                _ => 0xC0 | (len - 1) as u8, // i32
+            };
+            bytes.push(control);
+            match run_type {
+                0 => {
+                    for _ in 0..len {
+                        let v = ((lcg_next(&mut state) % 255) as i32 - 127) as i8;
+                        bytes.push(v as u8);
+                        expected.push(v as i32);
+                    }
+                }
+                1 => {
+                    for _ in 0..len {
+                        let v = ((lcg_next(&mut state) % 65535) as i32 - 32767) as i16;
+                        bytes.extend(v.to_be_bytes());
+                        expected.push(v as i32);
+                    }
+                }
+                2 => {
+                    expected.resize(expected.len() + len, 0);
+                }
+                _ => {
+                    for _ in 0..len {
+                        let v = (lcg_next(&mut state) % 2_000_001) as i32 - 1_000_000;
+                        bytes.extend(v.to_be_bytes());
+                        expected.push(v);
+                    }
+                }
+            }
+        }
+        (bytes, expected)
+    }
+
+    #[test]
+    fn generated_packed_deltas_iter_matches_expected() {
+        for seed in 1..=64 {
+            let (bytes, expected) = generated_delta_stream(seed);
+            let data = FontData::new(&bytes);
+            let deltas = PackedDeltas::consume_all(data);
+            assert_eq!(deltas.count_or_compute(), expected.len(), "seed={seed}");
+            assert_eq!(deltas.iter().collect::<Vec<_>>(), expected, "seed={seed}");
+        }
+    }
+
+    #[test]
+    fn generated_fetcher_skip_scaled_matches_expected() {
+        for seed in 1..=64 {
+            let (bytes, expected) = generated_delta_stream(seed);
+            let data = FontData::new(&bytes);
+            let deltas = PackedDeltas::new(data, expected.len());
+            let mut fetcher = deltas.fetcher();
+            let skip = (seed as usize * 7) % (expected.len() + 1);
+            fetcher.skip(skip).unwrap();
+
+            let scale = if seed % 2 == 0 { 0.25 } else { -0.5 };
+            let mut out = vec![10.0f32; expected.len() - skip];
+            fetcher.add_to_f32_scaled(&mut out, scale).unwrap();
+            for (i, got) in out.iter().copied().enumerate() {
+                let want = 10.0 + expected[skip + i] as f32 * scale;
+                assert!(
+                    (got - want).abs() <= 1e-6,
+                    "seed={seed} i={i} got={got} want={want}"
+                );
+            }
+
+            // Bounded fetcher should be exhausted after consuming all remaining entries.
+            let mut extra = [0.0f32; 1];
+            assert!(matches!(
+                fetcher.add_to_f32_scaled(&mut extra, 1.0),
+                Err(ReadError::OutOfBounds)
+            ));
+        }
     }
 
     #[test]
@@ -1796,7 +2136,7 @@ mod tests {
             7,
         ]);
         let deltas = PackedDeltas::consume_all(INPUT);
-        assert_eq!(deltas.count, 8);
+        assert_eq!(deltas.count_or_compute(), 8);
         let x_deltas = deltas.x_deltas().collect::<Vec<_>>();
         let y_deltas = deltas.y_deltas().collect::<Vec<_>>();
         assert_eq!(x_deltas, [0, 1, 2, 3]);
@@ -1956,5 +2296,18 @@ mod tests {
             count += iter_deltas.len();
         }
         assert!(count != 0);
+    }
+
+    #[test]
+    fn delta_set_index_map_empty_is_identity() {
+        let data = BeBuffer::new()
+            .push(0u8) // format 0
+            .push(EntryFormat::empty())
+            .push(0u16); // map_count
+        let map = DeltaSetIndexMap::read(data.data().into()).unwrap();
+        assert_eq!(
+            map.get(0x0001_0002).unwrap(),
+            DeltaSetIndex { outer: 1, inner: 2 }
+        );
     }
 }

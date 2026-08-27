@@ -1,6 +1,10 @@
-use std::{env, mem};
+use std::mem;
 
-use crate::{target::TargetInfo, utilities::OnceLock, Error, ErrorKind};
+use crate::{
+    target::TargetInfo,
+    utilities::{cargo_env_var, OnceLock},
+    Error, ErrorKind,
+};
 
 #[derive(Debug)]
 struct TargetInfoParserInner {
@@ -15,16 +19,7 @@ struct TargetInfoParserInner {
 impl TargetInfoParserInner {
     fn from_cargo_environment_variables() -> Result<Self, Error> {
         // `TARGET` must be present.
-        //
-        // No need to emit `rerun-if-env-changed` for this,
-        // as it is controlled by Cargo itself.
-        #[allow(clippy::disallowed_methods)]
-        let target_name = env::var("TARGET").map_err(|err| {
-            Error::new(
-                ErrorKind::EnvVarNotFound,
-                format!("failed reading TARGET: {err}"),
-            )
-        })?;
+        let target_name = cargo_env_var("TARGET")?;
 
         // Parse the full architecture name from the target name.
         let (full_arch, _rest) = target_name.split_once('-').ok_or(Error::new(
@@ -32,20 +27,18 @@ impl TargetInfoParserInner {
             format!("target `{target_name}` only had a single component (at least two required)"),
         ))?;
 
-        let cargo_env = |name, fallback: Option<&str>| -> Result<Box<str>, Error> {
-            // No need to emit `rerun-if-env-changed` for these,
-            // as they are controlled by Cargo itself.
-            #[allow(clippy::disallowed_methods)]
-            match env::var(name) {
-                Ok(var) => Ok(var.into_boxed_str()),
-                Err(err) => match fallback {
-                    Some(fallback) => Ok(fallback.into()),
-                    None => Err(Error::new(
-                        ErrorKind::EnvVarNotFound,
-                        format!("did not find fallback information for target `{target_name}`, and failed reading {name}: {err}"),
-                    )),
-                },
-            }
+        let cargo_env = |key, fallback: Option<&str>| match cargo_env_var(key) {
+            Ok(var) => Ok(var.into_boxed_str()),
+            Err(err) => match fallback {
+                Some(fallback) => Ok(fallback.into()),
+                None => Err(Error::new(
+                    ErrorKind::EnvVarNotFound,
+                    format!(
+                        "did not find fallback information for target `{target_name}`: {}",
+                        err.message
+                    ),
+                )),
+            },
         };
 
         // Prefer to use `CARGO_ENV_*` if set, since these contain the most
@@ -175,6 +168,7 @@ fn parse_arch(full_arch: &str) -> Option<&str> {
         arch if arch.starts_with("nvptx") => "nvptx",
 
         arch if arch.starts_with("bpf") => "bpf", // bpfeb | bpfel
+        arch if arch.starts_with("sh4") => "sh4", // sh4 | sh4-unknown-linux-gnu | sh4-unknown-redox
 
         // https://github.com/bytecodealliance/wasmtime/tree/v30.0.1/pulley
         arch if arch.starts_with("pulley64") => "pulley64",
@@ -228,16 +222,19 @@ fn parse_envabi(last_component: &str) -> Option<(&str, &str)> {
             ("newlib", env_and_abi.strip_prefix("newlib").unwrap())
         }
 
+        // target that enables arm's pointer authentication
+        "pauthtest" => ("musl", "pauthtest"),
+
         // Environments
         "msvc" => ("msvc", ""),
         "ohos" => ("ohos", ""),
         "qnx700" => ("nto70", ""),
         "qnx710_iosock" => ("nto71_iosock", ""),
         "qnx710" => ("nto71", ""),
-        "qnx800" => ("nto80", ""),
         "sgx" => ("sgx", ""),
         "threads" => ("threads", ""),
         "mlibc" => ("mlibc", ""),
+        "relibc" => ("relibc", ""),
 
         // ABIs
         "abi64" => ("", "abi64"),
@@ -278,9 +275,17 @@ impl<'a> TargetInfo<'a> {
             });
         }
 
-        if target == "armv7a-vex-v5" {
+        let mut components = target.split('-');
+
+        // Insist that the target name contains at least a valid architecture.
+        let full_arch = components.next().ok_or(Error::new(
+            ErrorKind::InvalidTarget,
+            "target was empty".to_string(),
+        ))?;
+
+        if target == "armv7a-vex-v5" || target == "thumbv7a-vex-v5" {
             return Ok(Self {
-                full_arch: "armv7a",
+                full_arch,
                 arch: "arm",
                 vendor: "vex",
                 os: "vexos",
@@ -289,13 +294,6 @@ impl<'a> TargetInfo<'a> {
             });
         }
 
-        let mut components = target.split('-');
-
-        // Insist that the target name contains at least a valid architecture.
-        let full_arch = components.next().ok_or(Error::new(
-            ErrorKind::InvalidTarget,
-            "target was empty".to_string(),
-        ))?;
         let arch = parse_arch(full_arch).ok_or_else(|| {
             Error::new(
                 ErrorKind::UnknownTarget,
@@ -416,6 +414,7 @@ impl<'a> TargetInfo<'a> {
             // https://github.com/rust-lang/compiler-team/issues/850.
             "wali" => "unknown",
             "lynx" => "unknown",
+            "oe" => "unknown",
             // Some Linux distributions set their name as the target vendor,
             // so we have to assume that it can be an arbitary string.
             vendor => vendor,
@@ -445,6 +444,10 @@ impl<'a> TargetInfo<'a> {
             abi = "elfv2";
         }
 
+        if ["asan", "msan", "tsan"].contains(&abi) {
+            abi = "";
+        }
+
         Ok(Self {
             full_arch,
             arch,
@@ -458,6 +461,7 @@ impl<'a> TargetInfo<'a> {
 
 #[cfg(test)]
 #[allow(unexpected_cfgs)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use std::process::Command;
 
@@ -573,6 +577,7 @@ mod tests {
         ignore = "must enable explicitly with --cfg=rustc_target_test"
     )]
     fn parse_rustc_targets() {
+        #[allow(clippy::disallowed_methods)]
         let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
 
         let target_list = Command::new(&rustc)

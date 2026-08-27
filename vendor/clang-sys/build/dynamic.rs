@@ -140,7 +140,8 @@ fn search_libclang_directories(runtime: bool) -> Result<Vec<(PathBuf, String, Ve
         }
     }
 
-    if target_os!("freebsd") || target_os!("haiku") || target_os!("netbsd") || target_os!("openbsd") {
+    if target_os!("freebsd") || target_os!("haiku") || target_os!("netbsd") || target_os!("openbsd")
+    {
         // Some BSD distributions don't create a `libclang.so` symlink either,
         // but use a different naming scheme for versioned files (e.g.,
         // `libclang.so.7.0`).
@@ -151,6 +152,9 @@ fn search_libclang_directories(runtime: bool) -> Result<Vec<(PathBuf, String, Ve
         // The official LLVM build uses `libclang.dll` on Windows instead of
         // `clang.dll`. However, unofficial builds such as MinGW use `clang.dll`.
         files.push("libclang.dll".into());
+    } else if target_os!("cygwin") {
+        files.push("msys-clang-*.dll".into());
+        files.push("cygclang-*.dll".into());
     }
 
     // Find and validate `libclang` shared libraries and collect the versions.
@@ -263,8 +267,12 @@ pub fn link() {
         let name = filename.trim_start_matches("lib");
 
         // Strip extensions and trailing version numbers (e.g., the `.so.7.0` in
-        // `libclang.so.7.0`).
-        let name = match name.find(".dylib").or_else(|| name.find(".so")) {
+        // `libclang.so.7.0`) and also `.dll` for MinGW / MSYS.
+        let name = match name
+            .find(".dylib")
+            .or_else(|| name.find(".so"))
+            .or_else(|| name.find(".dll"))
+        {
             Some(index) => &name[0..index],
             None => name,
         };

@@ -52,7 +52,8 @@ impl EnvironmentMap {
                 _ => None,
             })
             .collect::<collections::HashMap<_, _>>();
-        let override_prefix = format!("{}{}_", BUILT_OVERRIDE_PREFIX, map["CARGO_PKG_NAME"].0);
+        let cargo_pkg_name = map["CARGO_PKG_NAME"].0.replace("-", "_");
+        let override_prefix = format!("{}{}_", BUILT_OVERRIDE_PREFIX, cargo_pkg_name);
         Self {
             map,
             override_prefix,
@@ -82,7 +83,7 @@ impl EnvironmentMap {
     {
         self.map.iter().filter_map(move |v| match f(v.0.as_str()) {
             Some(w) => {
-                v.1 .1.borrow_mut().upgrade_to_queried();
+                v.1.1.borrow_mut().upgrade_to_queried();
                 Some(w)
             }
             None => None,
@@ -221,7 +222,7 @@ impl EnvironmentMap {
             "OPT_LEVEL",
             self.get_override_var("OPT_LEVEL")
                 .unwrap_or_else(|| env::var("OPT_LEVEL").unwrap()),
-            "Value of OPT_LEVEL for the profile used during compilation."
+            "Value of `OPT_LEVEL` for the profile used during compilation."
         );
 
         write_variable!(
@@ -252,11 +253,22 @@ impl EnvironmentMap {
     pub fn write_features(&self, mut w: &fs::File) -> io::Result<()> {
         use io::Write;
 
-        let mut features = self.get_override_var("FEATURES").unwrap_or_else(|| {
-            self.filter_map_keys(|k| k.strip_prefix("CARGO_FEATURE_"))
-                .map(|f| f.to_owned())
-                .collect::<Vec<_>>()
-        });
+        let mut features: Vec<String> = self
+            .get_override_var("FEATURES")
+            .unwrap_or_else(|| {
+                Some(
+                    std::env::var("CARGO_CFG_FEATURE")
+                        .ok()?
+                        .split(',')
+                        .map(|s| s.to_owned())
+                        .collect(),
+                )
+            })
+            .unwrap_or_else(|| {
+                self.filter_map_keys(|k| k.strip_prefix("CARGO_FEATURE_"))
+                    .map(|f| f.to_owned())
+                    .collect::<Vec<_>>()
+            });
         features.sort_unstable();
 
         write_variable!(

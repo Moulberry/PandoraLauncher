@@ -37,7 +37,7 @@ features = [
 ]
 
 [target.'cfg(target_os = "windows")'.dependencies.which]
-version = "6.0.0"
+version = "8"
 
 [lints.clippy]
 dbg_macro = "deny"

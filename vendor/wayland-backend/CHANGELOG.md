@@ -1,6 +1,20 @@
 # CHANGELOG: wayland-backend
 
-## Unreleased
+## 0.3.17 -- 2026-08-14
+
+Backport from `master`.
+
+#### Bugfixes
+- client/sys: Make `ReadEventsGuard` impl `Send+Sync`, like `rs` backend
+
+## 0.3.16 -- 2026-07-22
+
+Backport from `master`.
+
+#### Bugfixes
+- client/sys: Fix deadlock if `Backend` is used in `ObjectData::destroyed`
+- client/sys: Fix some race conditions accessing udata in a thread while it is
+  being set, or the proxy is being destroyed.
 
 ## 0.3.15 -- 2026-03-30
 

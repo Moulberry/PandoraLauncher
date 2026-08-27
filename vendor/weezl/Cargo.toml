@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "weezl"
-version = "0.1.10"
+version = "0.1.12"
 authors = ["The image-rs Developers"]
 build = false
 exclude = ["benches/*.lzw"]

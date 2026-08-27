@@ -45,7 +45,7 @@ version = "1.0.86"
 
 [dependencies.collections]
 version = "0.1.0"
-path = "../collections"
+path = '..\collections'
 
 [dependencies.etagere]
 version = "0.2"
@@ -58,11 +58,11 @@ optional = true
 package = "zed-font-kit"
 
 [dependencies.gpui]
-path = "../gpui"
+path = '..\gpui'
 default-features = false
 
 [dependencies.gpui_util]
-path = "../gpui_util"
+path = '..\gpui_util'
 
 [dependencies.itertools]
 version = "0.14.0"
@@ -108,21 +108,17 @@ version = "29.0.4"
 version = "0.5"
 features = ["html_reports"]
 
-[target.'cfg(not(target_family = "wasm"))'.dependencies.pollster]
-version = "0.4.0"
-
-[target.'cfg(target_family = "wasm")'.dependencies.js-sys]
-version = "0.3"
-
-[target.'cfg(target_family = "wasm")'.dependencies.wasm-bindgen]
-version = "0.2.120"
-
-[target.'cfg(target_family = "wasm")'.dependencies.wasm-bindgen-futures]
-version = "0.4"
+[dev-dependencies.naga]
+version = "29.0.4"
+features = ["wgsl-in"]
 
 [target.'cfg(target_family = "wasm")'.dependencies.web-sys]
 version = "0.3"
 features = ["HtmlCanvasElement"]
+
+[target.'cfg(target_family = "wasm")'.dependencies.wgpu]
+version = "29.0.4"
+features = ["webgl"]
 
 [lints.clippy]
 dbg_macro = "deny"

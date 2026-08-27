@@ -1,0 +1,168 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+                      "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!-- GDBus 2.80.0 -->
+<node>
+  <interface name="org.freedesktop.DBus.Properties">
+    <method name="Get">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="out"/>
+    </method>
+    <method name="GetAll">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="a{sv}" name="properties" direction="out"/>
+    </method>
+    <method name="Set">
+      <arg type="s" name="interface_name" direction="in"/>
+      <arg type="s" name="property_name" direction="in"/>
+      <arg type="v" name="value" direction="in"/>
+    </method>
+    <signal name="PropertiesChanged">
+      <arg type="s" name="interface_name"/>
+      <arg type="a{sv}" name="changed_properties"/>
+      <arg type="as" name="invalidated_properties"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.DBus.Introspectable">
+    <method name="Introspect">
+      <arg type="s" name="xml_data" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.DBus.Peer">
+    <method name="Ping"/>
+    <method name="GetMachineId">
+      <arg type="s" name="machine_uuid" direction="out"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.PackageKit">
+    <method name="CanAuthorize">
+      <annotation name="org.freedesktop.DBus.GLib.Async" value="">
+      </annotation>
+      <arg type="s" name="action_id" direction="in">
+      </arg>
+      <arg type="u" name="result" direction="out">
+      </arg>
+    </method>
+    <method name="CreateTransaction">
+      <annotation name="org.freedesktop.DBus.GLib.Async" value="">
+      </annotation>
+      <arg type="o" name="object_path" direction="out">
+      </arg>
+    </method>
+    <method name="GetTimeSinceAction">
+      <arg type="u" name="role" direction="in">
+      </arg>
+      <arg type="u" name="seconds" direction="out">
+      </arg>
+    </method>
+    <method name="GetTransactionList">
+      <arg type="ao" name="transactions" direction="out">
+      </arg>
+    </method>
+    <method name="StateHasChanged">
+      <arg type="s" name="reason" direction="in">
+      </arg>
+    </method>
+    <method name="SuggestDaemonQuit">
+    </method>
+    <method name="GetPackageHistory">
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out0" value="QVariant">
+      </annotation>
+      <arg type="as" name="names" direction="in">
+      </arg>
+      <arg type="u" name="count" direction="in">
+      </arg>
+      <arg type="a{saa{sv}}" name="history" direction="out">
+      </arg>
+    </method>
+    <method name="GetDaemonState">
+      <arg type="s" name="state" direction="out">
+      </arg>
+    </method>
+    <method name="SetProxy">
+      <annotation name="org.freedesktop.DBus.GLib.Async" value="">
+      </annotation>
+      <arg type="s" name="proxy_http" direction="in">
+      </arg>
+      <arg type="s" name="proxy_https" direction="in">
+      </arg>
+      <arg type="s" name="proxy_ftp" direction="in">
+      </arg>
+      <arg type="s" name="proxy_socks" direction="in">
+      </arg>
+      <arg type="s" name="no_proxy" direction="in">
+      </arg>
+      <arg type="s" name="pac" direction="in">
+      </arg>
+    </method>
+    <signal name="TransactionListChanged">
+      <arg type="as" name="transactions">
+      </arg>
+    </signal>
+    <signal name="RestartSchedule">
+    </signal>
+    <signal name="RepoListChanged">
+    </signal>
+    <signal name="UpdatesChanged">
+    </signal>
+    <property type="u" name="VersionMajor" access="read">
+    </property>
+    <property type="u" name="VersionMinor" access="read">
+    </property>
+    <property type="u" name="VersionMicro" access="read">
+    </property>
+    <property type="s" name="BackendName" access="read">
+    </property>
+    <property type="s" name="BackendDescription" access="read">
+    </property>
+    <property type="s" name="BackendAuthor" access="read">
+    </property>
+    <property type="t" name="Roles" access="read">
+    </property>
+    <property type="t" name="Groups" access="read">
+    </property>
+    <property type="t" name="Filters" access="read">
+    </property>
+    <property type="as" name="MimeTypes" access="read">
+    </property>
+    <property type="b" name="Locked" access="read">
+    </property>
+    <property type="u" name="NetworkState" access="read">
+    </property>
+    <property type="s" name="DistroId" access="read">
+    </property>
+  </interface>
+  <interface name="org.freedesktop.PackageKit.Offline">
+    <method name="ClearResults">
+    </method>
+    <method name="Trigger">
+      <arg type="s" name="action" direction="in">
+      </arg>
+    </method>
+    <method name="TriggerUpgrade">
+      <arg type="s" name="action" direction="in">
+      </arg>
+    </method>
+    <method name="Cancel">
+    </method>
+    <method name="GetPrepared">
+      <arg type="as" name="package_ids" direction="out">
+      </arg>
+    </method>
+    <property type="b" name="UpdatePrepared" access="read">
+    </property>
+    <property type="b" name="UpdateTriggered" access="read">
+    </property>
+    <property type="b" name="UpgradePrepared" access="read">
+    </property>
+    <property type="b" name="UpgradeTriggered" access="read">
+    </property>
+    <property type="a{sv}" name="PreparedUpgrade" access="read">
+      <annotation name="org.qtproject.QtDBus.QtTypeName" value="QVariantMap">
+      </annotation>
+    </property>
+    <property type="s" name="TriggerAction" access="read">
+    </property>
+  </interface>
+</node>
+

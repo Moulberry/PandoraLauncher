@@ -907,8 +907,8 @@ impl<C: CodeBuffer, CgC: CodegenConstants> Stateful for DecodeState<C, CgC> {
                 }
 
                 debug_assert!(
-                    // When the table is full, we have a max code one above the mask.
-                    self.table.is_full()
+                    // When the table is full, we have a max code above the size switch.
+                    self.table.inner.len() >= MAX_ENTRIES - usize::from(self.is_tiff)
                     // When the code size is 2 we have a bit code: (0, 1, CLS, EOF). Then the
                     // computed next_code is 4 which already exceeds the bit width from the start.
                     // Then we will immediately switch code size after this code.
@@ -916,8 +916,14 @@ impl<C: CodeBuffer, CgC: CodegenConstants> Stateful for DecodeState<C, CgC> {
                     // TODO: this is the reason for some saturating and non-sharp comparisons in
                     // the code below. Maybe it makes sense to revisit turning this into a compile
                     // time choice?
-                        || (self.code_buffer.code_size() == 2 && self.next_code == 4)
-                        || self.code_buffer.max_code() - Code::from(self.is_tiff) >= self.next_code,
+                    || (self.code_buffer.code_size() == 1 && self.next_code < 4)
+                    || (self.code_buffer.code_size() == 2 && self.next_code == 4)
+                    || self.code_buffer.max_code() - Code::from(self.is_tiff) >= self.next_code,
+                    "Table: {}, code_size: {}, next_code: {}, table_condition: {}",
+                    self.table.is_full(),
+                    self.code_buffer.code_size(),
+                    self.next_code,
+                    self.code_buffer.max_code() - Code::from(self.is_tiff),
                 );
 
                 let mut burst_size = 0;

@@ -1,10 +1,10 @@
-use crate::{brotli::params::EncoderParams, Encode};
+use crate::{brotli::params::EncoderParams, EncodeV2};
 use brotli::enc::{
     backward_references::BrotliEncoderParams,
     encode::{BrotliEncoderOperation, BrotliEncoderStateStruct},
     StandardAlloc,
 };
-use compression_core::util::PartialBuffer;
+use compression_core::util::{PartialBuffer, WriteBuffer};
 use std::{fmt, io};
 
 pub struct BrotliEncoder {
@@ -21,12 +21,12 @@ impl BrotliEncoder {
 
     fn encode(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
+        input: &mut PartialBuffer<&[u8]>,
+        output: &mut WriteBuffer<'_>,
         op: BrotliEncoderOperation,
     ) -> io::Result<()> {
         let in_buf = input.unwritten();
-        let out_buf = output.unwritten_mut();
+        let out_buf = output.initialize_unwritten();
 
         let mut input_len = 0;
         let mut output_len = 0;
@@ -52,11 +52,11 @@ impl BrotliEncoder {
     }
 }
 
-impl Encode for BrotliEncoder {
+impl EncodeV2 for BrotliEncoder {
     fn encode(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
+        input: &mut PartialBuffer<&[u8]>,
+        output: &mut WriteBuffer<'_>,
     ) -> io::Result<()> {
         self.encode(
             input,
@@ -65,10 +65,7 @@ impl Encode for BrotliEncoder {
         )
     }
 
-    fn flush(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> io::Result<bool> {
+    fn flush(&mut self, output: &mut WriteBuffer<'_>) -> io::Result<bool> {
         self.encode(
             &mut PartialBuffer::new(&[][..]),
             output,
@@ -78,10 +75,7 @@ impl Encode for BrotliEncoder {
         Ok(!self.state.has_more_output())
     }
 
-    fn finish(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> io::Result<bool> {
+    fn finish(&mut self, output: &mut WriteBuffer<'_>) -> io::Result<bool> {
         self.encode(
             &mut PartialBuffer::new(&[][..]),
             output,

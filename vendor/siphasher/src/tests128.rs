@@ -15,7 +15,7 @@ use super::sip128::{Hasher128, SipHasher, SipHasher13, SipHasher24};
 // Hash just the bytes of the slice, without length prefix
 struct Bytes<'a>(&'a [u8]);
 
-impl<'a> Hash for Bytes<'a> {
+impl Hash for Bytes<'_> {
     #[allow(unused_must_use)]
     fn hash<H: Hasher>(&self, state: &mut H) {
         let Bytes(v) = *self;

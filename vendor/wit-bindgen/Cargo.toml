@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.87.0"
+rust-version = "1.85.0"
 name = "wit-bindgen"
-version = "0.51.0"
+version = "0.57.1"
 authors = ["Alex Crichton <alex@alexcrichton.com>"]
 build = "build.rs"
 autolib = false
@@ -35,13 +35,11 @@ resolver = "2"
 all-features = true
 
 [features]
-async = [
-    "std",
-    "wit-bindgen-rust-macro?/async",
-]
+async = []
 async-spawn = [
     "async",
     "dep:futures",
+    "std",
 ]
 bitflags = ["dep:bitflags"]
 default = [
@@ -50,8 +48,14 @@ default = [
     "async",
     "std",
     "bitflags",
+    "macro-string",
+]
+futures-stream = [
+    "async",
+    "dep:futures",
 ]
 inter-task-wakeup = ["async"]
+macro-string = ["wit-bindgen-rust-macro?/macro-string"]
 macros = ["dep:wit-bindgen-rust-macro"]
 realloc = []
 rustc-dep-of-std = [
@@ -70,7 +74,7 @@ optional = true
 package = "rustc-std-workspace-alloc"
 
 [dependencies.bitflags]
-version = "2.3.3"
+version = "2.11.1"
 optional = true
 
 [dependencies.core]
@@ -83,8 +87,9 @@ version = "0.3.30"
 optional = true
 
 [dependencies.wit-bindgen-rust-macro]
-version = "0.51.0"
+version = "0.57.1"
 optional = true
+default-features = false
 
 [lints.clippy]
 allow_attributes_without_reason = "warn"

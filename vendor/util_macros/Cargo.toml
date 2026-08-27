@@ -34,7 +34,7 @@ doctest = false
 proc-macro = true
 
 [dependencies.perf]
-path = "../../tooling/perf"
+path = '..\..\tooling\perf'
 
 [dependencies.quote]
 version = "1.0.9"

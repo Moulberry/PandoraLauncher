@@ -1,6 +1,6 @@
 use std::{ops::Deref, str::FromStr};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use zbus::zvariant::{self, Basic, Type};
 
 /// The application ID.
@@ -84,6 +84,77 @@ impl<'de> Deserialize<'de> for AppID {
         app_id
             .parse::<Self>()
             .map_err(|err| serde::de::Error::custom(err.to_string()))
+    }
+}
+
+/// The application ID or the desktop file name without .desktop suffix.
+///
+/// As unsandboxed applications might not be defining a strict application ID,
+/// this type allows the backend implementation to fallback to the inner string
+/// without causing an error and manually handle those applications.
+#[derive(Debug, Eq, Hash, PartialEq, Type)]
+#[zvariant(signature = "s")]
+pub struct MaybeAppID(Result<AppID, String>);
+
+impl MaybeAppID {
+    /// Returns the inner value. If the ID is valid, then `Ok` contains the
+    /// `AppID` else `Err` contains the invalid app ID as string.
+    pub fn inner(&self) -> &Result<AppID, String> {
+        &self.0
+    }
+}
+
+impl zvariant::NoneValue for MaybeAppID {
+    type NoneType = String;
+
+    fn null_value() -> String {
+        String::default()
+    }
+}
+
+impl From<AppID> for MaybeAppID {
+    fn from(value: AppID) -> Self {
+        Self(Ok(value))
+    }
+}
+
+impl From<String> for MaybeAppID {
+    fn from(value: String) -> Self {
+        Self(value.parse::<AppID>().or(Err(value)))
+    }
+}
+
+impl From<&str> for MaybeAppID {
+    fn from(value: &str) -> Self {
+        Self(value.parse::<AppID>().or(Err(String::from(value))))
+    }
+}
+
+impl Serialize for MaybeAppID {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for MaybeAppID {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let inner = String::deserialize(deserializer)?;
+        Ok(Self(inner.parse::<AppID>().or(Err(inner))))
+    }
+}
+
+impl std::fmt::Display for MaybeAppID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            Ok(app_id) => f.write_str(app_id),
+            Err(app_id) => f.write_str(app_id),
+        }
     }
 }
 

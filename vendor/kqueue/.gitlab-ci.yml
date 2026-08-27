@@ -6,13 +6,11 @@
   before_script: |
     if [[ "$(uname -s)" == "Darwin" ]]; then
       asdf plugin remove rust
-      brew install rustup-init
-      export CARGO_HOME="${PWD}/.cargo"
-      export PATH="${CARGO_HOME}/bin:${PATH}"
-      rustup-init -y --default-toolchain nightly
-      source "${CARGO_HOME}/env"
+      brew install rustup
+      export PATH="$(brew --prefix rustup)/bin:${HOME}/.cargo/bin:${PATH}"
+      rustup default nightly
       curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-      cargo binstall cargo-audit cargo-nextest cargo-llvm-cov cargo-sonar gitlab-cargo-audit
+      cargo binstall cargo-nextest cargo-llvm-cov
     fi
   variables:
     HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
@@ -36,40 +34,15 @@ workflow:
   stage: test
   coverage: '/TOTAL\s+(\d+\s+)+(\d+\.\d+\%)/'
   script:
-    - rustc --version && cargo --version  # Print version info for debugging
-    - echo -e "\e[0Ksection_start:`date +%s`:lint\r\e[0KLinting"
-    - cargo clippy --message-format=json --all-targets --all-features
-        -- -D warnings
-        > clippy.json
-    - echo -e "\e[0Ksection_end:`date +%s`:lint\r\e[0K"
-    # Coverage testing would go here. However, OpenBSD rust is not built
-    # with the required tooling for profiling builds.
-    - echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRunning cargo nextest"
-    - if [[ "$(uname -s)" = "OpenBSD" ]]; then
-        cargo nextest run --workspace --cargo-verbose --tests;
-      else
-        cargo llvm-cov nextest --workspace --cargo-verbose --tests;
-      fi
-    - echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
-    - echo -e "\e[0Ksection_start:`date +%s`:deps\r\e[0KRunning cargo audit"
-    - gitlab-cargo-audit --output-path gl-dep-report.json
-    - echo -e "\e[0Ksection_end:`date +%s`:deps\r\e[0K"
+    - ./ci/build.sh
   after_script:
-    - cargo codeclimate --clippy --codeclimate-path gl-code-quality-report.json
-    - if [[ "$(uname -s)" = "Darwin" || "$(uname -s)" = "FreeBSD" ]]; then
-        cargo llvm-cov report --cobertura --output-path target/llvm-cov-target/cobertura.xml;
-      fi
+    - ./ci/post.sh
   variables:
     RUST_BACKTRACE: full
     CARGO_INCREMENTAL: 0
   artifacts:
-    name: dhat-report
-    paths:
-      - dhat-heap.json
     reports:
       junit: target/nextest/default/junit.xml
-      codequality: gl-code-quality-report.json
-      dependency_scanning: gl-dep-report.json
       coverage_report:
         coverage_format: cobertura
         path: target/llvm-cov-target/cobertura.xml
@@ -78,33 +51,40 @@ workflow:
     key: deps
     paths:
       - target/
-      - .cargo/.crates.toml
-      - .cargo/.crates2.json
-      - .cargo/bin/
-      - .cargo/binstall/
-      - .cargo/registry/index/
-      - .cargo/registry/cache/
-      - .cargo/git/db/
 
-test:cargo:openbsd:
-  extends:
-    - .test:cargo
-  tags:
-    - openbsd
-
-test:cargo:macos:
+test:gitlab:macos:
   extends:
     - .macos_saas_runners
     - .test:cargo
 
-# test:cargo:freebsd:
-#   extends:
-#     - .test:cargo
-#   tags:
-#     - freebsd
+include: .dalligi.yml
+test:srht:openbsd:79:
+  extends: .dalligi
+  artifacts: &test_artifacts
+    reports:
+      junit: rust-kqueue/target/nextest/default/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: rust-kqueue/target/llvm-cov-target/cobertura.xml
+    expire_in: 1 month
+test:srht:netbsd:10:
+  extends: .dalligi
+  artifacts: *test_artifacts
+test:srht:freebsd:14:
+  extends: .dalligi
+  coverage: '/TOTAL\s+(\d+\s+)+(\d+\.\d+\%)/'
+  artifacts: *test_artifacts
+test:srht:freebsd:15:
+  extends: .dalligi
+  coverage: '/TOTAL\s+(\d+\s+)+(\d+\.\d+\%)/'
+  artifacts: *test_artifacts
+test:srht:freebsd:16:
+  extends: .dalligi
+  coverage: '/TOTAL\s+(\d+\s+)+(\d+\.\d+\%)/'
+  artifacts: *test_artifacts
 
 cross:cargo:
-  image: rust:1.86
+  image: rust:1.96
   stage: build
   tags:
     - gitlab-org-docker
@@ -118,10 +98,18 @@ cross:cargo:
       - TARGET: aarch64-apple-ios
       - TARGET: x86_64-apple-ios
   before_script:
+    - wget -nv -O /etc/apt/keyrings/githubcli-archive-keyring.gpg https://cli.github.com/packages/githubcli-archive-keyring.gpg
+    - chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+    - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+    - apt update
+    - apt install -y gh minisign
     - rustup component add clippy rustfmt
     - rustup target add $TARGET
-    - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-    - cargo binstall cargo-sonar
+    - gh release download -R cargo-bins/cargo-binstall -p cargo-binstall-x86_64-unknown-linux-gnu.tgz\* -p minisign.pub
+    - minisign -V -x cargo-binstall-x86_64-unknown-linux-gnu.tgz.sig -m cargo-binstall-x86_64-unknown-linux-gnu.tgz
+    - tar xzf cargo-binstall-x86_64-unknown-linux-gnu.tgz -C /usr/local/cargo/bin/
+    - cargo binstall cargo-semver-checks cargo-sonar gitlab-cargo-audit
+    - gh attestation verify /usr/local/cargo/bin/gitlab-cargo-audit -R dcoles/gitlab-cargo-audit
   script:
     - rustc --version && cargo --version  # Print version info for debugging
     - cargo fmt --check
@@ -129,11 +117,15 @@ cross:cargo:
     - cargo clippy --target $TARGET --message-format=json --all-targets --all-features
         -- -D warnings
         > clippy.json
+    - cargo semver-checks --target $TARGET
   after_script:
     - cargo codeclimate --clippy --codeclimate-path gl-code-quality-report.json
+    - gitlab-cargo-audit --output-path gl-dep-report.json
   artifacts:
     reports:
       codequality: gl-code-quality-report.json
+      dependency_scanning: gl-dep-report.json
+    expire_in: 1 month
   cache:
     key: deps-$TARGET-cross
     paths:
@@ -164,8 +156,7 @@ perf:criterion:
   parallel:
     matrix:
       - OS:
-        - openbsd
-        # - freebsd
+        - freebsd
   artifacts:
     name: criterion-report
     paths:

@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.70"
 name = "socket2"
-version = "0.6.3"
+version = "0.6.5"
 authors = [
     "Alex Crichton <alex@alexcrichton.com>",
     "Thomas de Zeeuw <thomasdezeeuw@gmail.com>",

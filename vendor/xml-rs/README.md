@@ -15,7 +15,7 @@ to
 
 ```toml
 [dependencies]
-xml = "1.1"
+xml = "1.4"
 ```
 
 In most cases there shouldn't be any more code [changes](https://github.com/kornelski/xml-rs#upgrading-from-08-to-10) needed.

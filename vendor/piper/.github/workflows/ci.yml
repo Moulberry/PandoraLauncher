@@ -25,6 +25,16 @@ defaults:
     shell: bash
 
 jobs:
+  fmt:
+    uses: smol-rs/.github/.github/workflows/fmt.yml@main
+  security_audit:
+    uses: smol-rs/.github/.github/workflows/security_audit.yml@main
+    permissions:
+      checks: write
+      contents: read
+      issues: write
+    secrets: inherit
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -62,14 +72,6 @@ jobs:
         run: rustup update stable
       - run: cargo clippy --all --all-features --all-targets
 
-  fmt:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust
-        run: rustup update stable
-      - run: cargo fmt --all --check
-
   miri:
     runs-on: ubuntu-latest
     steps:
@@ -80,16 +82,3 @@ jobs:
         env:
           MIRIFLAGS: -Zmiri-strict-provenance -Zmiri-symbolic-alignment-check -Zmiri-disable-isolation
           RUSTFLAGS: ${{ env.RUSTFLAGS }} -Z randomize-layout
-
-  security_audit:
-    permissions:
-      checks: write
-      contents: read
-      issues: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # https://github.com/rustsec/audit-check/issues/2
-      - uses: rustsec/audit-check@master
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}

@@ -76,7 +76,7 @@ pub use self::encryption::oaep::{
 };
 pub use self::encryption::pkcs1::{Pkcs1PrivateDecryptingKey, Pkcs1PublicEncryptingKey};
 pub use self::encryption::{EncryptionAlgorithmId, PrivateDecryptingKey, PublicEncryptingKey};
-pub use self::key::{KeyPair, KeySize, PublicKey, PublicKeyComponents};
+pub use self::key::{KeyPair, KeyPairComponents, KeySize, PublicKey, PublicKeyComponents};
 #[allow(clippy::module_name_repetitions)]
 pub use self::signature::RsaParameters;
 

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.56"
+rust-version = "1.71"
 name = "pin-project"
-version = "1.1.10"
+version = "1.1.13"
 build = false
 exclude = [
     "/.*",
@@ -42,11 +42,11 @@ categories = [
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/taiki-e/pin-project"
 
-[package.metadata.cargo_check_external_types]
-allowed_external_types = ["pin_project_internal::*"]
-
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
+
+[package.metadata.cargo_check_external_types]
+allowed_external_types = ["pin_project_internal::*"]
 
 [lib]
 name = "pin_project"
@@ -138,7 +138,7 @@ name = "unsafe_unpin"
 path = "tests/unsafe_unpin.rs"
 
 [dependencies.pin-project-internal]
-version = "=1.1.10"
+version = "=1.1.13"
 
 [dev-dependencies.rustversion]
 version = "1"
@@ -170,6 +170,10 @@ priority = 1
 level = "allow"
 priority = 1
 
+[lints.clippy.collapsible_match]
+level = "allow"
+priority = 1
+
 [lints.clippy.declare_interior_mutable_const]
 level = "allow"
 priority = 1
@@ -183,10 +187,6 @@ level = "allow"
 priority = 1
 
 [lints.clippy.incompatible_msrv]
-level = "allow"
-priority = 1
-
-[lints.clippy.lint_groups_priority]
 level = "allow"
 priority = 1
 
@@ -250,10 +250,6 @@ priority = 1
 level = "allow"
 priority = 1
 
-[lints.clippy.unreadable_literal]
-level = "allow"
-priority = 1
-
 [lints.rust]
 deprecated_safe = "warn"
 improper_ctypes = "warn"
@@ -263,6 +259,7 @@ rust_2018_idioms = "warn"
 single_use_lifetimes = "warn"
 unnameable_types = "warn"
 unreachable_pub = "warn"
+unsafe_op_in_unsafe_fn = "warn"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

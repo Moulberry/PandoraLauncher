@@ -550,7 +550,7 @@ fn dst() {
 
     let mut x = Struct1 { f: 0_u8 };
     let x: Pin<&mut Struct1<dyn core::fmt::Debug>> = Pin::new(&mut x);
-    let _: &mut (dyn core::fmt::Debug) = x.project().f;
+    let _: &mut dyn core::fmt::Debug = x.project().f;
 
     #[pin_project]
     struct Struct2<T: ?Sized> {

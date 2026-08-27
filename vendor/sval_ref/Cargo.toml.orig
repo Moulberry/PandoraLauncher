@@ -1,7 +1,7 @@
 [package]
 name = "sval_ref"
-version = "2.15.0"
-authors = ["Ashley Mannix <ashleymannix@live.com.au>"]
+version = "2.21.1"
+authors = ["Ashley Mannix <hey@kodraus.com>"]
 edition = "2021"
 license = "Apache-2.0 OR MIT"
 documentation = "https://docs.rs/sval_ref"
@@ -16,9 +16,9 @@ std = ["alloc", "sval/std"]
 alloc = ["sval/alloc"]
 
 [dependencies.sval]
-version = "2.15.0"
+version = "2.21.1"
 path = "../"
 
 [dev-dependencies.sval_test]
-version = "2.15.0"
+version = "2.21.1"
 path = "../test"

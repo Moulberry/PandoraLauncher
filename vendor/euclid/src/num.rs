@@ -93,29 +93,6 @@ macro_rules! num_int {
     };
 }
 
-macro_rules! num_float {
-    ($ty:ty) => {
-        impl Round for $ty {
-            #[inline]
-            fn round(self) -> $ty {
-                (self + 0.5).floor()
-            }
-        }
-        impl Floor for $ty {
-            #[inline]
-            fn floor(self) -> $ty {
-                num_traits::Float::floor(self)
-            }
-        }
-        impl Ceil for $ty {
-            #[inline]
-            fn ceil(self) -> $ty {
-                num_traits::Float::ceil(self)
-            }
-        }
-    };
-}
-
 num_int!(i16);
 num_int!(u16);
 num_int!(i32);
@@ -124,5 +101,36 @@ num_int!(i64);
 num_int!(u64);
 num_int!(isize);
 num_int!(usize);
-num_float!(f32);
-num_float!(f64);
+
+#[cfg(any(feature = "std", feature = "libm"))]
+pub mod float {
+    use super::Ceil;
+    use super::Floor;
+    use super::Round;
+
+    macro_rules! num_float {
+        ($ty:ty) => {
+            impl Round for $ty {
+                #[inline]
+                fn round(self) -> $ty {
+                    (self + 0.5).floor()
+                }
+            }
+            impl Floor for $ty {
+                #[inline]
+                fn floor(self) -> $ty {
+                    num_traits::Float::floor(self)
+                }
+            }
+            impl Ceil for $ty {
+                #[inline]
+                fn ceil(self) -> $ty {
+                    num_traits::Float::ceil(self)
+                }
+            }
+        };
+    }
+
+    num_float!(f32);
+    num_float!(f64);
+}

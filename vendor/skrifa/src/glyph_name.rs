@@ -2,11 +2,11 @@
 
 use core::ops::Range;
 use raw::{
-    tables::{
-        cff::Cff,
-        post::Post,
-        postscript::{Charset, CharsetIter, StringId as Sid},
+    ps::{
+        cff::charset::{Charset, Iter as CharsetIter},
+        string::Sid,
     },
+    tables::{cff::Cff, post::Post},
     types::GlyphId,
     FontRef, TableProvider,
 };
@@ -161,7 +161,7 @@ impl GlyphName {
 
     fn from_cff_sid(cff: &Cff, sid: Sid) -> Option<Self> {
         cff.string(sid)
-            .and_then(|s| core::str::from_utf8(s.bytes()).ok())
+            .and_then(|s| core::str::from_utf8(s).ok())
             .map(|s| s.as_bytes())
             .map(Self::from_bytes)
     }

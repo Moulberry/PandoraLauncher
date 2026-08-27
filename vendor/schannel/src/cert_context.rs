@@ -527,7 +527,7 @@ impl<'a> AcquirePrivateKeyOptions<'a> {
                 return Err(io::Error::last_os_error());
             }
             assert_ne!(free, 0);
-            if spec & Cryptography::CERT_NCRYPT_KEY_SPEC != 0 {
+            if spec == Cryptography::CERT_NCRYPT_KEY_SPEC {
                 Ok(PrivateKey::NcryptKey(NcryptKey::from_inner(handle)))
             } else {
                 Ok(PrivateKey::CryptProv(CryptProv::from_inner(handle)))

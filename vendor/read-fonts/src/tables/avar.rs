@@ -91,7 +91,7 @@ impl SegmentMaps<'_> {
             // coord == 0: choose the one with smaller |to|.
             let ti = to_(&maps[i]);
             let tj = to_(&maps[j]);
-            return if ti.abs() <= tj.abs() { ti } else { tj };
+            return if ti.abs() < tj.abs() { ti } else { tj };
         }
 
         // Not an exact match: find the segment for interpolation.
@@ -260,5 +260,32 @@ mod tests {
         assert!(avar.axis_index_map_offset().is_some());
         assert!(avar.var_store_offset().is_some());
         assert!(avar.var_store().is_some());
+    }
+
+    #[test]
+    fn piecewise_linear_zero_tie_break_matches_harfbuzz() {
+        let maps = [
+            AxisValueMap {
+                from_coordinate: F2Dot14::NEG_ONE.into(),
+                to_coordinate: F2Dot14::NEG_ONE.into(),
+            },
+            AxisValueMap {
+                from_coordinate: F2Dot14::ZERO.into(),
+                to_coordinate: F2Dot14::from_f32(-0.25).into(),
+            },
+            AxisValueMap {
+                from_coordinate: F2Dot14::ZERO.into(),
+                to_coordinate: F2Dot14::from_f32(0.25).into(),
+            },
+            AxisValueMap {
+                from_coordinate: F2Dot14::ONE.into(),
+                to_coordinate: F2Dot14::ONE.into(),
+            },
+        ];
+        let segment_map = SegmentMaps {
+            position_map_count: (maps.len() as u16).into(),
+            axis_value_maps: &maps,
+        };
+        assert_eq!(segment_map.apply(Fixed::ZERO), Fixed::from_f64(0.25));
     }
 }

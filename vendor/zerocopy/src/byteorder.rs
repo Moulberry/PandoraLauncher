@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0 OR MIT
+//
 // Copyright 2019 The Fuchsia Authors
 //
 // Licensed under a BSD-style license <LICENSE-BSD>, Apache License, Version 2.0
@@ -27,6 +29,7 @@
 //!
 //! Type aliases are provided for common byte orders in the [`big_endian`],
 //! [`little_endian`], [`network_endian`], and [`native_endian`] submodules.
+//! Note that network-endian is a synonym for big-endian.
 //!
 //! # Example
 //!
@@ -84,7 +87,7 @@ use super::*;
 pub trait ByteOrder:
     Copy + Clone + Debug + Display + Eq + PartialEq + Ord + PartialOrd + Hash + private::Sealed
 {
-    #[doc(hidden)]
+    /// A value-level representation of byte order.
     const ORDER: Order;
 }
 
@@ -95,10 +98,12 @@ mod private {
     impl Sealed for super::LittleEndian {}
 }
 
-#[allow(missing_copy_implementations, missing_debug_implementations)]
-#[doc(hidden)]
+/// A value-level representation of [`ByteOrder`].
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Order {
+    /// A value-level representation of [`BigEndian`].
     BigEndian,
+    /// A value-level representation of [`LittleEndian`].
     LittleEndian,
 }
 
@@ -161,6 +166,42 @@ pub type BE = BigEndian;
 /// A type alias for [`LittleEndian`].
 pub type LE = LittleEndian;
 
+macro_rules! impl_dbg_trait {
+    ($name:ident, $native:ident) => {
+        impl<O: ByteOrder> Debug for $name<O> {
+            #[inline]
+            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+                // This results in a format like "U16(42)".
+                f.debug_tuple(stringify!($name)).field(&self.get()).finish()
+            }
+        }
+    };
+}
+
+macro_rules! impl_dbg_traits {
+    ($name:ident, $native:ident, "floating point number") => {
+        #[cfg(not(no_fp_fmt_parse))]
+        impl_dbg_trait!($name, $native);
+
+        #[cfg(no_fp_fmt_parse)]
+        impl<O: ByteOrder> Debug for $name<O> {
+            #[inline]
+            fn fmt(&self, _f: &mut Formatter<'_>) -> fmt::Result {
+                panic!("floating point support is turned off");
+            }
+        }
+    };
+    ($name:ident, $native:ident, "unsigned integer") => {
+        impl_dbg_traits!($name, $native, @all_types);
+    };
+    ($name:ident, $native:ident, "signed integer") => {
+        impl_dbg_traits!($name, $native, @all_types);
+    };
+    ($name:ident, $native:ident, @all_types) => {
+        impl_dbg_trait!($name, $native);
+    };
+}
+
 macro_rules! impl_fmt_trait {
     ($name:ident, $native:ident, $trait:ident) => {
         impl<O: ByteOrder> $trait for $name<O> {
@@ -174,6 +215,7 @@ macro_rules! impl_fmt_trait {
 
 macro_rules! impl_fmt_traits {
     ($name:ident, $native:ident, "floating point number") => {
+        #[cfg(not(no_fp_fmt_parse))]
         impl_fmt_trait!($name, $native, Display);
     };
     ($name:ident, $native:ident, "unsigned integer") => {
@@ -494,6 +536,7 @@ example of how it can be used for parsing UDP packets.
         // layout as its only non-zero field, which is a `u8` array. `u8` arrays
         // are `Immutable`, `TryFromBytes`, `FromZeros`, `FromBytes`,
         // `IntoBytes`, and `Unaligned`.
+        #[allow(clippy::multiple_unsafe_ops_per_block)]
         const _: () = unsafe {
             impl_or_verify!(O => Immutable for $name<O>);
             impl_or_verify!(O => TryFromBytes for $name<O>);
@@ -684,16 +727,9 @@ example of how it can be used for parsing UDP packets.
             }
         }
 
+        impl_dbg_traits!($name, $native, $number_kind);
         impl_fmt_traits!($name, $native, $number_kind);
         impl_ops_traits!($name, $native, $number_kind);
-
-        impl<O: ByteOrder> Debug for $name<O> {
-            #[inline]
-            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-                // This results in a format like "U16(42)".
-                f.debug_tuple(stringify!($name)).field(&self.get()).finish()
-            }
-        }
     };
 }
 
@@ -1370,7 +1406,6 @@ mod tests {
             FNT: Fn(T::Native, T) -> T,
             FNN: Fn(T::Native, T::Native) -> T::Native,
             FNNChecked: Fn(T::Native, T::Native) -> Option<T::Native>,
-
             FATT: Fn(&mut T, T),
             FATN: Fn(&mut T, T::Native),
             FANT: Fn(&mut T::Native, T),
@@ -1526,5 +1561,37 @@ mod tests {
         assert_eq!(format!("{:?}", val), "U16(10)");
         assert_eq!(format!("{:03?}", val), "U16(010)");
         assert_eq!(format!("{:x?}", val), "U16(a)");
+    }
+
+    #[test]
+    fn test_byteorder_traits_coverage() {
+        let val_be = U16::<BigEndian>::from_bytes([0, 1]);
+        let val_le = U16::<LittleEndian>::from_bytes([1, 0]);
+
+        assert_eq!(val_be.get(), 1);
+        assert_eq!(val_le.get(), 1);
+
+        // Debug
+        assert_eq!(format!("{:?}", val_be), "U16(1)");
+        assert_eq!(format!("{:?}", val_le), "U16(1)");
+
+        // PartialOrd, Ord with same type
+        assert!(val_be >= val_be);
+        assert!(val_be <= val_be);
+        assert_eq!(val_be.cmp(&val_be), core::cmp::Ordering::Equal);
+
+        // PartialOrd with native
+        assert!(val_be == 1u16);
+        assert!(val_be >= 1u16);
+
+        // Default
+        let default_be: U16<BigEndian> = Default::default();
+        assert_eq!(default_be.get(), 0);
+
+        // I16
+        let val_be_i16 = I16::<BigEndian>::from_bytes([0, 1]);
+        assert_eq!(val_be_i16.get(), 1);
+        assert_eq!(format!("{:?}", val_be_i16), "I16(1)");
+        assert_eq!(val_be_i16.cmp(&val_be_i16), core::cmp::Ordering::Equal);
     }
 }

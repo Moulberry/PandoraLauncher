@@ -50,6 +50,13 @@ impl Time {
         }
     }
 
+    pub(crate) fn now(&self) -> Instant {
+        match *self {
+            Time::Empty => Instant::now(),
+            Time::Timer(ref t) => t.now(),
+        }
+    }
+
     pub(crate) fn reset(&self, sleep: &mut Pin<Box<dyn Sleep>>, new_deadline: Instant) {
         match *self {
             Time::Empty => {
@@ -70,7 +77,7 @@ impl Time {
                 Time::Timer(..) => Some(dur),
             },
             Dur::Configured(Some(dur)) => match self {
-                Time::Empty => panic!("timeout `{}` set, but no timer set", name,),
+                Time::Empty => panic!("timeout `{name}` set, but no timer set",),
                 Time::Timer(..) => Some(dur),
             },
             Dur::Default(None) | Dur::Configured(None) => None,

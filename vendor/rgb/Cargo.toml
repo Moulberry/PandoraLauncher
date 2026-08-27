@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.64"
 name = "rgb"
-version = "0.8.52"
+version = "0.8.53"
 authors = [
     "Kornel Lesiński <kornel@geekhood.net>",
     "James Forster <james.forsterer@gmail.com>",

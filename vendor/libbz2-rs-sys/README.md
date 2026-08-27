@@ -17,7 +17,7 @@ libbzip2-rs can be used in both Rust and C projects.
 
 ### Rust projects
 
-By far the easiest way to use libbzip2-rs is through the [bzip2](https://crates.io/crates/bzip2) crate, by simply enabling the `libbz2-rs-sys` feature gate. This will enable the `libbz2-rs-sys` backend.
+By far the easiest way to use libbzip2-rs is through the [bzip2](https://crates.io/crates/bzip2) crate which uses the `libbz2-rs-sys` backend by default.
 
 You can also directly use the C api exported by the `libbz2-rs-sys` crate.
 

@@ -73,8 +73,8 @@ pub trait Interface: Any + Send + Sync {
 
     /// Set a property value.
     ///
-    /// Return [`DispatchResult::NotFound`] if the property doesn't exist, or
-    /// [`DispatchResult::RequiresMut`] if `set_mut` should be used instead. The default
+    /// Return [`DispatchResult2::NotFound`] if the property doesn't exist, or
+    /// [`DispatchResult2::RequiresMut`] if `set_mut` should be used instead. The default
     /// implementation just returns `RequiresMut`.
     fn set<'call>(
         &'call self,
@@ -84,7 +84,7 @@ pub trait Interface: Any + Send + Sync {
         connection: &'call Connection,
         header: Option<&'call message::Header<'_>>,
         emitter: &'call SignalEmitter<'_>,
-    ) -> DispatchResult<'call> {
+    ) -> DispatchResult2<'call> {
         let _ = (
             property_name,
             value,
@@ -93,7 +93,7 @@ pub trait Interface: Any + Send + Sync {
             header,
             emitter,
         );
-        DispatchResult::RequiresMut
+        DispatchResult2::RequiresMut
     }
 
     /// Set a property value.
@@ -113,8 +113,8 @@ pub trait Interface: Any + Send + Sync {
 
     /// Call a method.
     ///
-    /// Return [`DispatchResult::NotFound`] if the method doesn't exist, or
-    /// [`DispatchResult::RequiresMut`] if `call_mut` should be used instead.
+    /// Return [`DispatchResult2::NotFound`] if the method doesn't exist, or
+    /// [`DispatchResult2::RequiresMut`] if `call_mut` should be used instead.
     ///
     /// It is valid, though inefficient, for this to always return `RequiresMut`.
     fn call<'call>(
@@ -123,7 +123,7 @@ pub trait Interface: Any + Send + Sync {
         connection: &'call Connection,
         msg: &'call Message,
         name: MemberName<'call>,
-    ) -> DispatchResult<'call>;
+    ) -> DispatchResult2<'call>;
 
     /// Call a `&mut self` method.
     ///
@@ -134,7 +134,7 @@ pub trait Interface: Any + Send + Sync {
         connection: &'call Connection,
         msg: &'call Message,
         name: MemberName<'call>,
-    ) -> DispatchResult<'call>;
+    ) -> DispatchResult2<'call>;
 
     /// Write introspection XML to the writer, with the given indentation level.
     fn introspect_to_writer(&self, writer: &mut dyn Write, level: usize);

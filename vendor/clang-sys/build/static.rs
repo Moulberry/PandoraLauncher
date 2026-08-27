@@ -41,7 +41,7 @@ fn get_library_name(path: &Path) -> Option<String> {
 
 /// Gets the LLVM static libraries required to link to `libclang`.
 fn get_llvm_libraries() -> Vec<String> {
-    common::run_llvm_config(&["--libs"])
+    common::run_llvm_config(&["--libs", "--link-static"])
         .unwrap()
         .split_whitespace()
         .filter_map(|p| {

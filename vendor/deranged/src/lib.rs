@@ -1,9 +1,8 @@
 //! `deranged` is a proof-of-concept implementation of ranged integers.
 
-#![cfg_attr(docsrs, feature(doc_auto_cfg, doc_cfg_hide))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![no_std]
 #![doc(test(attr(deny(warnings))))]
-#![cfg_attr(docsrs, doc(cfg_hide(docsrs)))]
 
 #[cfg(all(feature = "alloc", any(feature = "serde", feature = "quickcheck")))]
 extern crate alloc;
@@ -36,7 +35,8 @@ use core::str::FromStr;
 /// int!(-5, 5);   // RangedI8<-5, 5>
 /// int!(-5u, 5);  // compile error (-5 cannot be unsigned)
 /// ```
-#[cfg(all(docsrs, feature = "macros"))]
+#[cfg(docsrs)]
+#[doc(cfg(feature = "macros"))]
 #[macro_export]
 macro_rules! int {
     ($min:literal, $max:literal) => {};
@@ -58,7 +58,8 @@ macro_rules! int {
 /// opt_int!(-5, 5);   // OptionRangedI8<-5, 5>
 /// opt_int!(-5u, 5);  // compile error (-5 cannot be unsigned)
 /// ```
-#[cfg(all(docsrs, feature = "macros"))]
+#[cfg(docsrs)]
+#[doc(cfg(feature = "macros"))]
 #[macro_export]
 macro_rules! opt_int {
     ($min:literal, $max:literal) => {};
@@ -170,18 +171,6 @@ macro_rules! article {
     };
 }
 
-/// `Option::unwrap_unchecked`, but usable in `const` contexts.
-macro_rules! unsafe_unwrap_unchecked {
-    ($e:expr) => {{
-        let opt = $e;
-        debug_assert!(opt.is_some());
-        match $e {
-            Some(value) => value,
-            None => core::hint::unreachable_unchecked(),
-        }
-    }};
-}
-
 /// Output the provided code if and only if the list does not include `rand_09`.
 #[allow(unused_macro_rules)]
 macro_rules! if_not_manual_rand_09 {
@@ -194,19 +183,42 @@ macro_rules! if_not_manual_rand_09 {
     };
 }
 
+/// Output the provided code if and only if the list does not include `rand_010`.
+#[allow(unused_macro_rules)]
+macro_rules! if_not_manual_rand_010 {
+    ([rand_010 $($rest:ident)*] $($output:tt)*) => {};
+    ([] $($output:tt)*) => {
+        $($output)*
+    };
+    ([$first:ident $($rest:ident)*] $($output:tt)*) => {
+        if_not_manual_rand_010!([$($rest)*] $($output)*);
+    };
+}
+
 /// Implement a ranged integer type.
 macro_rules! impl_ranged {
     ($(
         $type:ident {
             mod_name: $mod_name:ident
+            alias: $alias:ident
             internal: $internal:ident
             signed: $is_signed:ident
             unsigned: $unsigned_type:ident
             optional: $optional_type:ident
+            optional_alias: $optional_alias:ident
             from: [$($from:ident($from_internal:ident))+]
             $(manual: [$($skips:ident)+])?
         }
     )*) => {$(
+        #[doc = concat!("Equivalent to `", stringify!($type), "`")]
+        #[expect(non_camel_case_types, reason = "symmetry with primitives")]
+        pub type $alias<const MIN: $internal, const MAX: $internal> = $type<MIN, MAX>;
+
+        #[doc = concat!("Equivalent to `", stringify!($optional_type), "`")]
+        #[expect(non_camel_case_types, reason = "closest visually to `Option<T>`")]
+        pub type $optional_alias<const MIN: $internal, const MAX: $internal>
+            = $optional_type<MIN, MAX>;
+
         #[doc = concat!(
             article!($is_signed),
             " `",
@@ -317,7 +329,7 @@ macro_rules! impl_ranged {
             ///
             #[doc = concat!("The returned value is identical to [`", stringify!($type), "::get`].")]
             /// Unlike `get`, no hints are output to the compiler indicating the range that the
-            /// value is in. Depending on the scenario, this may with be helpful or harmful too
+            /// value is in. Depending on the scenario, this may with be helpful or harmful to
             /// optimization.
             #[inline(always)]
             pub const fn get_without_hint(self) -> $internal {
@@ -424,6 +436,27 @@ macro_rules! impl_ranged {
                 $type::<NEW_MIN, NEW_MAX>::new(self.get())
             }
 
+            /// Narrow the range that the value may be in. **Fails to compile** if the new range is
+            /// not a subset of the current range.
+            ///
+            /// # Safety
+            ///
+            /// The value must in the range `NEW_MIN..=NEW_MAX`.
+            #[inline(always)]
+            pub const unsafe fn narrow_unchecked<
+                const NEW_MIN: $internal,
+                const NEW_MAX: $internal,
+            >(self) -> $type<NEW_MIN, NEW_MAX> {
+                const {
+                    assert!(MIN <= MAX);
+                    assert!(NEW_MIN <= NEW_MAX);
+                    assert!(NEW_MIN >= MIN);
+                    assert!(NEW_MAX <= MAX);
+                }
+                // Safety: The caller must ensure that the value is in the new range.
+                unsafe { $type::new_unchecked(self.get()) }
+            }
+
             /// Converts a string slice in a given base to an integer.
             ///
             /// The string is expected to be an optional `+` or `-` sign followed by digits. Leading
@@ -491,7 +524,7 @@ macro_rules! impl_ranged {
                 const { assert!(MIN <= MAX); }
                 // Safety: The caller must ensure that the result is in range.
                 unsafe {
-                    Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_add(rhs)))
+                    Self::new_unchecked(self.get().unchecked_add(rhs))
                 }
             }
 
@@ -517,7 +550,7 @@ macro_rules! impl_ranged {
                 const { assert!(MIN <= MAX); }
                 // Safety: The caller must ensure that the result is in range.
                 unsafe {
-                    Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_sub(rhs)))
+                    Self::new_unchecked(self.get().unchecked_sub(rhs))
                 }
             }
 
@@ -543,7 +576,7 @@ macro_rules! impl_ranged {
                 const { assert!(MIN <= MAX); }
                 // Safety: The caller must ensure that the result is in range.
                 unsafe {
-                    Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_mul(rhs)))
+                    Self::new_unchecked(self.get().unchecked_mul(rhs))
                 }
             }
 
@@ -571,7 +604,7 @@ macro_rules! impl_ranged {
                 // Safety: The caller must ensure that the result is in range and that `rhs` is not
                 // zero.
                 unsafe {
-                    Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_div(rhs)))
+                    Self::new_unchecked(self.get().checked_div(rhs).unwrap_unchecked())
                 }
             }
 
@@ -600,7 +633,7 @@ macro_rules! impl_ranged {
                 // zero.
                 unsafe {
                     Self::new_unchecked(
-                        unsafe_unwrap_unchecked!(self.get().checked_div_euclid(rhs))
+                        self.get().checked_div_euclid(rhs).unwrap_unchecked()
                     )
                 }
             }
@@ -645,7 +678,7 @@ macro_rules! impl_ranged {
                 // Safety: The caller must ensure that the result is in range and that `rhs` is not
                 // zero.
                 unsafe {
-                    Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_rem(rhs)))
+                    Self::new_unchecked(self.get().checked_rem(rhs).unwrap_unchecked())
                 }
             }
 
@@ -674,7 +707,7 @@ macro_rules! impl_ranged {
                 // zero.
                 unsafe {
                     Self::new_unchecked(
-                        unsafe_unwrap_unchecked!(self.get().checked_rem_euclid(rhs))
+                        self.get().checked_rem_euclid(rhs).unwrap_unchecked()
                     )
                 }
             }
@@ -699,7 +732,8 @@ macro_rules! impl_ranged {
             pub const unsafe fn unchecked_neg(self) -> Self {
                 const { assert!(MIN <= MAX); }
                 // Safety: The caller must ensure that the result is in range.
-                unsafe { Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_neg())) }
+                // TODO(MSRV 1.93) use `unchecked_neg`
+                unsafe { Self::new_unchecked(self.get().checked_neg().unwrap_unchecked()) }
             }
 
             /// Negation. Computes `self.neg()`, **failing to compile** if the result is not
@@ -743,7 +777,8 @@ macro_rules! impl_ranged {
                 const { assert!(MIN <= MAX); }
                 // Safety: The caller must ensure that the result is in range.
                 unsafe {
-                    Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_shl(rhs)))
+                    // TOD(MSRV 1.93) use `unchecked_shl`
+                    Self::new_unchecked(self.get().checked_shl(rhs).unwrap_unchecked())
                 }
             }
 
@@ -768,7 +803,8 @@ macro_rules! impl_ranged {
                 const { assert!(MIN <= MAX); }
                 // Safety: The caller must ensure that the result is in range.
                 unsafe {
-                    Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_shr(rhs)))
+                    // TODO(MSRV 1.93) use `unchecked_shr`
+                    Self::new_unchecked(self.get().checked_shr(rhs).unwrap_unchecked())
                 }
             }
 
@@ -794,7 +830,7 @@ macro_rules! impl_ranged {
             pub const unsafe fn unchecked_abs(self) -> Self {
                 const { assert!(MIN <= MAX); }
                 // Safety: The caller must ensure that the result is in range.
-                unsafe { Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_abs())) }
+                unsafe { Self::new_unchecked(self.get().checked_abs().unwrap_unchecked()) }
             }
 
             /// Absolute value. Computes `self.abs()`, **failing to compile** if the result is not
@@ -834,7 +870,7 @@ macro_rules! impl_ranged {
                 const { assert!(MIN <= MAX); }
                 // Safety: The caller must ensure that the result is in range.
                 unsafe {
-                    Self::new_unchecked(unsafe_unwrap_unchecked!(self.get().checked_pow(exp)))
+                    Self::new_unchecked(self.get().checked_pow(exp).unwrap_unchecked())
                 }
             }
 
@@ -1118,7 +1154,7 @@ macro_rules! impl_ranged {
             )]
             /// Unlike `get_primitive`, no hints are output to the compiler indicating the range
             /// that the value is in. Depending on the scenario, this may with be helpful or harmful
-            /// too optimization.
+            /// to optimization.
             #[inline(always)]
             pub const fn get_primitive_without_hint(self) -> Option<$internal> {
                 const { assert!(MIN <= MAX); }
@@ -1604,6 +1640,22 @@ macro_rules! impl_ranged {
             }
         }
 
+        if_not_manual_rand_010! {
+            [$($($skips)+)?]
+            #[cfg(feature = "rand010")]
+            impl<
+                const MIN: $internal,
+                const MAX: $internal,
+            > rand010::distr::Distribution<$type<MIN, MAX>> for rand010::distr::StandardUniform {
+                #[inline]
+                fn sample<R: rand010::Rng + ?Sized>(&self, rng: &mut R) -> $type<MIN, MAX> {
+                    const { assert!(MIN <= MAX); }
+                    use rand010::RngExt as _;
+                    $type::new(rng.random_range(MIN..=MAX)).expect("rand failed to generate a valid value")
+                }
+            }
+        }
+
         #[cfg(feature = "rand08")]
         impl<
             const MIN: $internal,
@@ -1626,6 +1678,24 @@ macro_rules! impl_ranged {
             #[inline]
             fn sample<R: rand09::Rng + ?Sized>(&self, rng: &mut R) -> $optional_type<MIN, MAX> {
                 const { assert!(MIN <= MAX); }
+                if rng.random() {
+                    $optional_type::None
+                } else {
+                    $optional_type::Some(rng.random::<$type<MIN, MAX>>())
+                }
+            }
+        }
+
+        #[cfg(feature = "rand010")]
+        impl<
+            const MIN: $internal,
+            const MAX: $internal,
+        > rand010::distr::Distribution<$optional_type<MIN, MAX>>
+        for rand010::distr::StandardUniform {
+            #[inline]
+            fn sample<R: rand010::Rng + ?Sized>(&self, rng: &mut R) -> $optional_type<MIN, MAX> {
+                const { assert!(MIN <= MAX); }
+                use rand010::RngExt as _;
                 if rng.random() {
                     $optional_type::None
                 } else {
@@ -1692,10 +1762,12 @@ macro_rules! impl_ranged {
 impl_ranged! {
     RangedU8 {
         mod_name: ranged_u8
+        alias: ru8
         internal: u8
         signed: false
         unsigned: u8
         optional: OptionRangedU8
+        optional_alias: Option_ru8
         from: [
             RangedU16(u16)
             RangedU32(u32)
@@ -1712,10 +1784,12 @@ impl_ranged! {
     }
     RangedU16 {
         mod_name: ranged_u16
+        alias: ru16
         internal: u16
         signed: false
         unsigned: u16
         optional: OptionRangedU16
+        optional_alias: Option_ru16
         from: [
             RangedU8(u8)
             RangedU32(u32)
@@ -1732,10 +1806,12 @@ impl_ranged! {
     }
     RangedU32 {
         mod_name: ranged_u32
+        alias: ru32
         internal: u32
         signed: false
         unsigned: u32
         optional: OptionRangedU32
+        optional_alias: Option_ru32
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1752,10 +1828,12 @@ impl_ranged! {
     }
     RangedU64 {
         mod_name: ranged_u64
+        alias: ru64
         internal: u64
         signed: false
         unsigned: u64
         optional: OptionRangedU64
+        optional_alias: Option_ru64
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1772,10 +1850,12 @@ impl_ranged! {
     }
     RangedU128 {
         mod_name: ranged_u128
+        alias: ru128
         internal: u128
         signed: false
         unsigned: u128
         optional: OptionRangedU128
+        optional_alias: Option_ru128
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1792,10 +1872,12 @@ impl_ranged! {
     }
     RangedUsize {
         mod_name: ranged_usize
+        alias: rusize
         internal: usize
         signed: false
         unsigned: usize
         optional: OptionRangedUsize
+        optional_alias: Option_rusize
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1809,14 +1891,16 @@ impl_ranged! {
             RangedI128(i128)
             RangedIsize(isize)
         ]
-        manual: [rand_09]
+        manual: [rand_09 rand_010]
     }
     RangedI8 {
         mod_name: ranged_i8
+        alias: ri8
         internal: i8
         signed: true
         unsigned: u8
         optional: OptionRangedI8
+        optional_alias: Option_ri8
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1833,10 +1917,12 @@ impl_ranged! {
     }
     RangedI16 {
         mod_name: ranged_i16
+        alias: ri16
         internal: i16
         signed: true
         unsigned: u16
         optional: OptionRangedI16
+        optional_alias: Option_ri16
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1853,10 +1939,12 @@ impl_ranged! {
     }
     RangedI32 {
         mod_name: ranged_i32
+        alias: ri32
         internal: i32
         signed: true
         unsigned: u32
         optional: OptionRangedI32
+        optional_alias: Option_ri32
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1873,10 +1961,12 @@ impl_ranged! {
     }
     RangedI64 {
         mod_name: ranged_i64
+        alias: ri64
         internal: i64
         signed: true
         unsigned: u64
         optional: OptionRangedI64
+        optional_alias: Option_ri64
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1893,10 +1983,12 @@ impl_ranged! {
     }
     RangedI128 {
         mod_name: ranged_i128
+        alias: ri128
         internal: i128
         signed: true
         unsigned: u128
         optional: OptionRangedI128
+        optional_alias: Option_ri128
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1913,10 +2005,12 @@ impl_ranged! {
     }
     RangedIsize {
         mod_name: ranged_isize
+        alias: risize
         internal: isize
         signed: true
         unsigned: usize
         optional: OptionRangedIsize
+        optional_alias: Option_risize
         from: [
             RangedU8(u8)
             RangedU16(u16)
@@ -1930,7 +2024,7 @@ impl_ranged! {
             RangedI64(i64)
             RangedI128(i128)
         ]
-        manual: [rand_09]
+        manual: [rand_09 rand_010]
     }
 }
 
@@ -1970,6 +2064,64 @@ impl<const MIN: isize, const MAX: isize> rand09::distr::Distribution<RangedIsize
         const {
             assert!(MIN <= MAX);
         }
+
+        #[cfg(target_pointer_width = "16")]
+        let value = rng.random_range(MIN as i16..=MAX as i16) as isize;
+        #[cfg(target_pointer_width = "32")]
+        let value = rng.random_range(MIN as i32..=MAX as i32) as isize;
+        #[cfg(target_pointer_width = "64")]
+        let value = rng.random_range(MIN as i64..=MAX as i64) as isize;
+        #[cfg(not(any(
+            target_pointer_width = "16",
+            target_pointer_width = "32",
+            target_pointer_width = "64"
+        )))]
+        compile_error("platform has unusual (and unsupported) pointer width");
+
+        RangedIsize::new(value).expect("rand failed to generate a valid value")
+    }
+}
+
+#[cfg(feature = "rand010")]
+impl<const MIN: usize, const MAX: usize> rand010::distr::Distribution<RangedUsize<MIN, MAX>>
+    for rand010::distr::StandardUniform
+{
+    #[inline]
+    fn sample<R: rand010::Rng + ?Sized>(&self, rng: &mut R) -> RangedUsize<MIN, MAX> {
+        const {
+            assert!(MIN <= MAX);
+        }
+
+        use rand010::RngExt as _;
+
+        #[cfg(target_pointer_width = "16")]
+        let value = rng.random_range(MIN as u16..=MAX as u16) as usize;
+        #[cfg(target_pointer_width = "32")]
+        let value = rng.random_range(MIN as u32..=MAX as u32) as usize;
+        #[cfg(target_pointer_width = "64")]
+        let value = rng.random_range(MIN as u64..=MAX as u64) as usize;
+        #[cfg(not(any(
+            target_pointer_width = "16",
+            target_pointer_width = "32",
+            target_pointer_width = "64"
+        )))]
+        compile_error("platform has unusual (and unsupported) pointer width");
+
+        RangedUsize::new(value).expect("rand failed to generate a valid value")
+    }
+}
+
+#[cfg(feature = "rand010")]
+impl<const MIN: isize, const MAX: isize> rand010::distr::Distribution<RangedIsize<MIN, MAX>>
+    for rand010::distr::StandardUniform
+{
+    #[inline]
+    fn sample<R: rand010::Rng + ?Sized>(&self, rng: &mut R) -> RangedIsize<MIN, MAX> {
+        const {
+            assert!(MIN <= MAX);
+        }
+
+        use rand010::RngExt as _;
 
         #[cfg(target_pointer_width = "16")]
         let value = rng.random_range(MIN as i16..=MAX as i16) as isize;

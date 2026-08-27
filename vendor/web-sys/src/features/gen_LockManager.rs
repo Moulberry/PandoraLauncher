@@ -34,7 +34,7 @@ extern "C" {
     pub fn query(this: &LockManager) -> ::js_sys::Promise<LockManagerSnapshot>;
     #[cfg(web_sys_unstable_apis)]
     #[cfg(feature = "Lock")]
-    #[wasm_bindgen(method, js_class = "LockManager", js_name = "request")]
+    #[wasm_bindgen(method, js_class = "LockManager")]
     #[doc = "The `request()` method."]
     #[doc = ""]
     #[doc = "[MDN Documentation](https://developer.mozilla.org/en-US/docs/Web/API/LockManager/request)"]
@@ -43,10 +43,10 @@ extern "C" {
     #[doc = ""]
     #[doc = "*This API is unstable and requires `--cfg=web_sys_unstable_apis` to be activated, as"]
     #[doc = "[described in the `wasm-bindgen` guide](https://wasm-bindgen.github.io/wasm-bindgen/web-sys/unstable-apis.html)*"]
-    pub fn request_with_callback(
+    pub fn request(
         this: &LockManager,
         name: &str,
-        callback: &::js_sys::Function<fn(::js_sys::JsOption<Lock>) -> ::js_sys::Promise>,
+        callback: &::js_sys::Function<fn(::js_sys::JsNullable<Lock>) -> ::js_sys::Promise>,
     ) -> ::js_sys::Promise;
     #[cfg(web_sys_unstable_apis)]
     #[cfg(all(feature = "Lock", feature = "LockOptions",))]
@@ -59,10 +59,10 @@ extern "C" {
     #[doc = ""]
     #[doc = "*This API is unstable and requires `--cfg=web_sys_unstable_apis` to be activated, as"]
     #[doc = "[described in the `wasm-bindgen` guide](https://wasm-bindgen.github.io/wasm-bindgen/web-sys/unstable-apis.html)*"]
-    pub fn request_with_options_and_callback(
+    pub fn request_with_options(
         this: &LockManager,
         name: &str,
         options: &LockOptions,
-        callback: &::js_sys::Function<fn(::js_sys::JsOption<Lock>) -> ::js_sys::Promise>,
+        callback: &::js_sys::Function<fn(::js_sys::JsNullable<Lock>) -> ::js_sys::Promise>,
     ) -> ::js_sys::Promise;
 }

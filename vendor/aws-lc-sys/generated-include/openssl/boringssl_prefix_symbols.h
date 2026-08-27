@@ -6,7 +6,7 @@
 #define BORINGSSL_PREFIX_SYMBOLS_H	
 
 #ifndef BORINGSSL_PREFIX
-#define BORINGSSL_PREFIX aws_lc_0_42_0
+#define BORINGSSL_PREFIX aws_lc_0_44_0
 #endif // BORINGSSL_PREFIX
 
 
@@ -690,6 +690,8 @@
 #define CRYPTO_cleanup_all_ex_data BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, CRYPTO_cleanup_all_ex_data)
 #define CRYPTO_ctr128_encrypt BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, CRYPTO_ctr128_encrypt)
 #define CRYPTO_ctr128_encrypt_ctr32 BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, CRYPTO_ctr128_encrypt_ctr32)
+#define CRYPTO_cts128_decrypt BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, CRYPTO_cts128_decrypt)
+#define CRYPTO_cts128_encrypt BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, CRYPTO_cts128_encrypt)
 #define CRYPTO_fork_detect_ignore_inheritzero_FOR_TESTING BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, CRYPTO_fork_detect_ignore_inheritzero_FOR_TESTING)
 #define CRYPTO_fork_detect_ignore_wipeonfork_FOR_TESTING BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, CRYPTO_fork_detect_ignore_wipeonfork_FOR_TESTING)
 #define CRYPTO_free BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, CRYPTO_free)
@@ -1080,6 +1082,7 @@
 #define ERR_set_mark BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, ERR_set_mark)
 #define EVP_AEAD_CTX_aead BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, EVP_AEAD_CTX_aead)
 #define EVP_AEAD_CTX_cleanup BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, EVP_AEAD_CTX_cleanup)
+#define EVP_AEAD_CTX_copy BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, EVP_AEAD_CTX_copy)
 #define EVP_AEAD_CTX_deserialize_state BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, EVP_AEAD_CTX_deserialize_state)
 #define EVP_AEAD_CTX_free BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, EVP_AEAD_CTX_free)
 #define EVP_AEAD_CTX_get_aead_id BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, EVP_AEAD_CTX_get_aead_id)
@@ -3036,6 +3039,7 @@
 #define abi_test_unwind_return BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, abi_test_unwind_return)
 #define abi_test_unwind_start BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, abi_test_unwind_start)
 #define abi_test_unwind_stop BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, abi_test_unwind_stop)
+#define aead_ctx_copy_state_trivial BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, aead_ctx_copy_state_trivial)
 #define aes128gcmsiv_aes_ks BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, aes128gcmsiv_aes_ks)
 #define aes128gcmsiv_aes_ks_enc_x1 BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, aes128gcmsiv_aes_ks_enc_x1)
 #define aes128gcmsiv_dec BORINGSSL_ADD_PREFIX(BORINGSSL_PREFIX, aes128gcmsiv_dec)

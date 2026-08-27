@@ -1,4 +1,4 @@
-use annotate_snippets::{renderer::DecorStyle, AnnotationKind, Level, Patch, Renderer, Snippet};
+use annotate_snippets::{AnnotationKind, Level, Patch, Renderer, Snippet, renderer::DecorStyle};
 
 fn main() {
     let source = r#"

@@ -2,10 +2,7 @@
 //!
 //! [GDEF]: https://docs.microsoft.com/en-us/typography/opentype/spec/gdef
 
-pub use super::layout::{
-    ChainedSequenceContext, ClassDef, CoverageTable, Device, DeviceOrVariationIndex, FeatureList,
-    FeatureVariations, Lookup, LookupList, ScriptList, SequenceContext,
-};
+pub use super::layout::{ClassDef, CoverageTable, DeviceOrVariationIndex};
 
 use super::variations::ItemVariationStore;
 

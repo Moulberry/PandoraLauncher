@@ -1,6 +1,8 @@
-use super::pixel::{ComponentSlice, ComponentMap, ColorComponentMap};
+#[allow(deprecated)]
+use super::pixel::ComponentSlice;
+use super::pixel::{ComponentMap, ColorComponentMap};
 #[cfg(feature = "as-bytes")]
-use super::pixel::{ComponentBytes};
+use super::pixel::ComponentBytes;
 use crate::alt::{BGRA, ARGB, ABGR, BGR};
 use crate::{RGB, RGBA};
 use core::fmt;
@@ -83,7 +85,8 @@ macro_rules! impl_rgba {
             /// Iterate over all components (length=4)
             #[inline(always)]
             pub fn iter(&self) -> core::iter::Cloned<core::slice::Iter<'_, T>> {
-                self.as_slice().iter().cloned()
+                #[allow(deprecated)]
+                ComponentSlice::as_slice(self).iter().cloned()
             }
         }
 
@@ -168,6 +171,7 @@ macro_rules! impl_rgba {
             }
         }
 
+        #[allow(deprecated)]
         impl<T> ComponentSlice<T> for $RGBA<T> {
             #[inline(always)]
             fn as_slice(&self) -> &[T] {
@@ -184,6 +188,7 @@ macro_rules! impl_rgba {
             }
         }
 
+        #[allow(deprecated)]
         impl<T> ComponentSlice<T> for [$RGBA<T>] {
             #[inline]
             fn as_slice(&self) -> &[T] {
@@ -343,92 +348,3 @@ impl<T: fmt::Display, A: fmt::Display> fmt::Display for BGRA<T, A> {
     }
 }
 
-#[test]
-fn rgba_test() {
-    let neg = RGBA::new(1,2,3i32,1000).map(|x| -x);
-    assert_eq!(neg.r, -1);
-    assert_eq!(neg.rgb().r, -1);
-    assert_eq!(neg.g, -2);
-    assert_eq!(neg.rgb().g, -2);
-    assert_eq!(neg.b, -3);
-    assert_eq!(neg.rgb().b, -3);
-    assert_eq!(neg.a, -1000);
-    assert_eq!(neg.map_alpha(|x| x+1).a, -999);
-    assert_eq!(neg, neg.as_slice().iter().copied().collect());
-    assert!(neg < RGBA::new(0,0,0,0));
-
-    #[allow(deprecated)]
-    let neg = RGBA::new(1u8,2,3,4).map_rgb(|c| -(c as i16));
-    assert_eq!(-1i16, neg.r);
-    assert_eq!(4i16, neg.a);
-    let neg = RGBA::new(1u8,2,3,4).map_colors(|c| -(c as i16));
-    assert_eq!(-1i16, neg.r);
-    assert_eq!(4u8, neg.a);
-
-    let mut px = RGBA{r:1,g:2,b:3,a:4};
-    px.as_mut_slice()[3] = 100;
-    assert_eq!(1, px.rgb_mut().r);
-    assert_eq!(2, px.rgb_mut().g);
-    px.rgb_mut().b = 4;
-    assert_eq!(4, px.rgb_mut().b);
-    assert_eq!(100, px.a);
-
-    #[cfg(feature = "as-bytes")]
-    {
-        let v = vec![RGBA::new(1u8,2,3,4), RGBA::new(5,6,7,8)];
-        assert_eq!(&[1,2,3,4,5,6,7,8], v.as_bytes());
-    }
-}
-
-#[test]
-#[cfg(feature = "as-bytes")]
-fn abgr_test() {
-    let abgr = ABGR {r:1,g:2,b:3,a:4};
-    assert_eq!(4, abgr.as_slice()[0]);
-    use crate::AsPixels;
-    assert_eq!(abgr, [abgr].as_bytes().as_pixels()[0]);
-}
-
-#[test]
-#[allow(deprecated)]
-fn bgra_test() {
-    let neg = BGRA::new(1, 2, 3i32, 1000).map(|x| -x);
-    let _ = neg.as_slice();
-
-    #[cfg(feature = "as-bytes")]
-    {
-        let _ = [neg].as_bytes();
-    }
-    assert_eq!(neg.r, -1);
-    assert_eq!(neg.bgr().r, -1);
-    assert_eq!(neg.g, -2);
-    assert_eq!(neg.bgr().g, -2);
-    assert_eq!(neg.b, -3);
-    assert_eq!(neg.bgr().b, -3);
-    assert_eq!(neg.a, -1000);
-    assert_eq!(&[-3,-2,-1,-1000], neg.as_slice());
-    assert!(neg < BGRA::new(0, 0, 0, 0));
-
-    let neg = BGRA::new(1u8, 2u8, 3u8, 4u8).map_rgb(|c| -(c as i16));
-    assert_eq!(-1i16, neg.r);
-    assert_eq!(4i16, neg.a);
-    #[allow(deprecated)]
-    let neg = BGRA::new(1u8, 2u8, 3u8, 4u8).map_c(|c| -(c as i16));
-    assert_eq!(-1i16, neg.r);
-    assert_eq!(4u8, neg.a);
-
-    let mut px = BGRA{r:1,g:2,b:3,a:-9}.alpha(4);
-    px.as_mut_slice()[3] = 100;
-    assert_eq!(1, px.bgr_mut().r);
-    assert_eq!(2, px.bgr_mut().g);
-    px.bgr_mut().b = 4;
-    assert_eq!(4, px.bgr_mut().b);
-    assert_eq!(100, px.a);
-
-
-    #[cfg(feature = "as-bytes")]
-    {
-        let v = vec![BGRA::new(3u8, 2, 1, 4), BGRA::new(7, 6, 5, 8)];
-        assert_eq!(&[1,2,3,4,5,6,7,8], v.as_bytes());
-    }
-}

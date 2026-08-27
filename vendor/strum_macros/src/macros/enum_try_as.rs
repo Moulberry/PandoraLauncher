@@ -36,6 +36,7 @@ pub fn enum_try_as_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
                     let mut_fn_name = format_ident!("try_as_{}_mut", snakify(&variant_name.to_string()));
 
                     Some(quote! {
+                        #[automatically_derived]
                         #[must_use]
                         #[inline]
                         pub fn #move_fn_name(self) -> ::core::option::Option<(#(#types),*)> {
@@ -45,6 +46,7 @@ pub fn enum_try_as_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
                             }
                         }
 
+                        #[automatically_derived]
                         #[must_use]
                         #[inline]
                         pub const fn #ref_fn_name(&self) -> ::core::option::Option<(#(&#types),*)> {
@@ -54,6 +56,7 @@ pub fn enum_try_as_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
                             }
                         }
 
+                        #[automatically_derived]
                         #[must_use]
                         #[inline]
                         pub fn #mut_fn_name(&mut self) -> ::core::option::Option<(#(&mut #types),*)> {
@@ -65,7 +68,7 @@ pub fn enum_try_as_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
                     })
                 },
                 _ => {
-                    return None;
+                    None
                 }
             }
 

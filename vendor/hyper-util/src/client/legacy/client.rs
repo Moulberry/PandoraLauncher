@@ -6,7 +6,7 @@
 
 use std::error::Error as StdError;
 use std::fmt;
-use std::future::Future;
+use std::future::{poll_fn, Future};
 use std::pin::Pin;
 use std::task::{self, Poll};
 use std::time::Duration;
@@ -25,7 +25,6 @@ use super::connect::HttpConnector;
 use super::connect::{Alpn, Connect, Connected, Connection};
 use super::pool::{self, Ver};
 
-use crate::common::future::poll_fn;
 use crate::common::{lazy as hyper_lazy, timer, Exec, Lazy, SyncWrapper};
 
 type BoxSendFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -302,7 +301,7 @@ where
                     let hostname = uri.host().expect("authority implies host");
                     if let Some(port) = get_non_default_port(&uri) {
                         let s = format!("{hostname}:{port}");
-                        HeaderValue::from_str(&s)
+                        HeaderValue::from_maybe_shared(bytes::Bytes::from(s))
                     } else {
                         HeaderValue::from_str(hostname)
                     }
@@ -337,7 +336,7 @@ where
                         e!(SendRequest, err.into_error())
                             .with_connect_info(pooled.conn_info.clone()),
                     ))
-                }
+                };
             }
         };
 

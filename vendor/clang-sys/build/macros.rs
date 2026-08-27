@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 macro_rules! test {
-    () => (cfg!(test) && ::std::env::var("_CLANG_SYS_TEST").is_ok());
+    () => {
+        cfg!(test) && ::std::env::var("_CLANG_SYS_TEST").is_ok()
+    };
 }
 
 macro_rules! target_os {

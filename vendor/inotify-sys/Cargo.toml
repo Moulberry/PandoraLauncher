@@ -3,26 +3,48 @@
 # When uploading crates to the registry Cargo will automatically
 # "normalize" Cargo.toml files for maximal compatibility
 # with all versions of Cargo and also rewrite `path` dependencies
-# to registry (e.g., crates.io) dependencies
+# to registry (e.g., crates.io) dependencies.
 #
-# If you believe there's an error in this file please file an
-# issue against the rust-lang/cargo repository. If you're
-# editing this file be aware that the upstream Cargo.toml
-# will likely look very different (and much more reasonable)
+# If you are reading this file be aware that the original Cargo.toml
+# will likely look very different (and much more reasonable).
+# See Cargo.toml.orig for the original contents.
 
 [package]
 name = "inotify-sys"
-version = "0.1.5"
+version = "0.1.8"
 authors = ["Hanno Braun <hb@hannobraun.de>"]
-exclude = ["/.travis.yml", "/inotify-sys.sublime-project"]
+build = "build.rs"
+exclude = [
+    "/.travis.yml",
+    "/inotify-sys.sublime-project",
+]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "inotify bindings for the Rust programming language"
 documentation = "https://docs.rs/inotify-sys"
 readme = "README.md"
-keywords = ["inotify", "linux"]
-categories = ["external-ffi-bindings", "filesystem"]
+keywords = [
+    "inotify",
+    "linux",
+    "freebsd",
+    "bsd",
+]
+categories = [
+    "external-ffi-bindings",
+    "filesystem",
+]
 license = "ISC"
 repository = "https://github.com/hannobraun/inotify-sys"
+
+[features]
+freebsd-native = []
+
+[lib]
+name = "inotify_sys"
+path = "src/lib.rs"
+
 [dependencies.libc]
 version = "0.2"
-[badges.travis-ci]
-repository = "inotify-rs/inotify-sys"

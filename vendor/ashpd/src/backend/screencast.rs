@@ -5,7 +5,7 @@ use enumflags2::BitFlags;
 use serde::Serialize;
 
 use crate::{
-    AppID, PortalError, WindowIdentifierType,
+    MaybeAppID, PortalError, WindowIdentifierType,
     backend::{
         Result,
         request::{Request, RequestImpl},
@@ -36,7 +36,7 @@ pub trait ScreencastImpl: RequestImpl + SessionImpl {
         &self,
         token: HandleToken,
         session_token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         options: CreateSessionOptions,
     ) -> Result<CreateSessionResponse>;
 
@@ -44,7 +44,7 @@ pub trait ScreencastImpl: RequestImpl + SessionImpl {
     async fn select_sources(
         &self,
         session_token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         options: SelectSourcesOptions,
     ) -> Result<SelectSourcesResponse>;
 
@@ -52,7 +52,7 @@ pub trait ScreencastImpl: RequestImpl + SessionImpl {
     async fn start_cast(
         &self,
         session_token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         window_identifier: Option<WindowIdentifierType>,
         options: StartCastOptions,
     ) -> Result<Streams>;
@@ -112,7 +112,7 @@ impl ScreencastInterface {
         &self,
         handle: OwnedObjectPath,
         session_handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         options: CreateSessionOptions,
     ) -> Result<Response<CreateSessionResponse>> {
         let session_token = HandleToken::try_from(&session_handle).unwrap();
@@ -178,7 +178,7 @@ impl ScreencastInterface {
         &self,
         handle: OwnedObjectPath,
         session_handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         options: SelectSourcesOptions,
     ) -> Result<Response<SelectSourcesResponse>> {
         let session_token = HandleToken::try_from(&session_handle).unwrap();
@@ -208,7 +208,7 @@ impl ScreencastInterface {
         &self,
         handle: OwnedObjectPath,
         session_handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         options: StartCastOptions,
     ) -> Result<Response<Streams>> {

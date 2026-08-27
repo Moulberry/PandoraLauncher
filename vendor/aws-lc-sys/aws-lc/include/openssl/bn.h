@@ -975,10 +975,9 @@ OPENSSL_EXPORT unsigned BN_num_bits_word(BN_ULONG l);
 #define BN_FLG_STATIC_DATA 0x02
 
 // |BN_FLG_CONSTTIME| has been removed and intentionally omitted so code relying
-// on it will not compile unless the flag above is set. Consumers should use the
-// higher-level cryptographic algorithms exposed by other modules. Consumers
-// within the library should call the appropriate timing-sensitive algorithm
-// directly.
+// on it will not compile. External consumers should use the higher-level
+// cryptographic algorithms exposed by other modules. Consumers within the
+// library should call the appropriate timing-sensitive algorithm directly.
 
 
 #if defined(__cplusplus)

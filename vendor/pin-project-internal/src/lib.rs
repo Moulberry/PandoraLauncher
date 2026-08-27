@@ -4,13 +4,16 @@
 
 #![doc(test(
     no_crate_inject,
-    attr(
-        deny(warnings, rust_2018_idioms, single_use_lifetimes),
-        allow(dead_code, unused_variables)
-    )
+    attr(allow(
+        dead_code,
+        unused_variables,
+        clippy::undocumented_unsafe_blocks,
+        clippy::unused_trait_names,
+    ))
 ))]
 #![forbid(unsafe_code)]
 #![allow(clippy::needless_doctest_main)]
+#![allow(clippy::expl_impl_clone_on_copy)] // https://github.com/rust-lang/rust-clippy/issues/15842
 
 #[macro_use]
 mod error;
@@ -324,6 +327,7 @@ use proc_macro::TokenStream;
 ///     unpinned: U,
 /// }
 ///
+/// # #[allow(clippy::undocumented_unsafe_blocks)]
 /// unsafe impl<T: Unpin, U> UnsafeUnpin for Struct<T, U> {}
 /// ```
 ///
@@ -355,6 +359,7 @@ use proc_macro::TokenStream;
 ///
 /// ```
 /// # use std::pin::Pin;
+/// # #[allow(unreachable_pub)]
 /// pub trait PinnedDrop {
 ///     fn drop(self: Pin<&mut Self>);
 /// }
@@ -499,6 +504,7 @@ pub fn pin_project(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```
 /// # use std::pin::Pin;
+/// # #[allow(unreachable_pub)]
 /// pub trait PinnedDrop {
 ///     fn drop(self: Pin<&mut Self>);
 /// }
@@ -541,7 +547,7 @@ pub fn pin_project(args: TokenStream, input: TokenStream) -> TokenStream {
 /// # Why `#[pinned_drop]` attribute is needed?
 ///
 /// Implementing `PinnedDrop::drop` is safe, but calling it is not safe.
-/// This is because destructors can be called multiple times in safe code and
+/// This is because if calling it is safe destructors can be called multiple times in safe code and
 /// [double dropping is unsound][rust-lang/rust#62360].
 ///
 /// Ideally, it would be desirable to be able to forbid manual calls in
@@ -551,6 +557,7 @@ pub fn pin_project(args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// ```
 /// # use std::pin::Pin;
+/// # #[allow(unreachable_pub)]
 /// pub trait PinnedDrop {
 ///     unsafe fn drop(self: Pin<&mut Self>);
 /// }

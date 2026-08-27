@@ -1,37 +1,43 @@
-use crate::Decode;
-use brotli::{enc::StandardAlloc, BrotliDecompressStream, BrotliResult, BrotliState};
-use compression_core::util::PartialBuffer;
+use crate::DecodeV2;
+use brotli::{enc::StandardAlloc, BrotliDecompressStream, BrotliResult};
+use compression_core::util::{PartialBuffer, WriteBuffer};
 use std::{fmt, io};
+
+type BrotliState = brotli::BrotliState<StandardAlloc, StandardAlloc, StandardAlloc>;
 
 pub struct BrotliDecoder {
     // `BrotliState` is very large (over 2kb) which is why we're boxing it.
-    state: Box<BrotliState<StandardAlloc, StandardAlloc, StandardAlloc>>,
+    state: Box<BrotliState>,
 }
 
 impl Default for BrotliDecoder {
     fn default() -> Self {
         Self {
-            state: Box::new(BrotliState::new(
-                StandardAlloc::default(),
-                StandardAlloc::default(),
-                StandardAlloc::default(),
-            )),
+            state: Box::new(Self::new_brotli_state()),
         }
     }
 }
 
 impl BrotliDecoder {
+    fn new_brotli_state() -> BrotliState {
+        BrotliState::new(
+            StandardAlloc::default(),
+            StandardAlloc::default(),
+            StandardAlloc::default(),
+        )
+    }
+
     pub fn new() -> Self {
         Self::default()
     }
 
     fn decode(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
+        input: &mut PartialBuffer<&[u8]>,
+        output: &mut WriteBuffer<'_>,
     ) -> io::Result<BrotliResult> {
         let in_buf = input.unwritten();
-        let out_buf = output.unwritten_mut();
+        let out_buf = output.initialize_unwritten();
 
         let mut input_len = 0;
         let mut output_len = 0;
@@ -57,20 +63,16 @@ impl BrotliDecoder {
     }
 }
 
-impl Decode for BrotliDecoder {
+impl DecodeV2 for BrotliDecoder {
     fn reinit(&mut self) -> io::Result<()> {
-        self.state = Box::new(BrotliState::new(
-            StandardAlloc::default(),
-            StandardAlloc::default(),
-            StandardAlloc::default(),
-        ));
+        *self.state = Self::new_brotli_state();
         Ok(())
     }
 
     fn decode(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
+        input: &mut PartialBuffer<&[u8]>,
+        output: &mut WriteBuffer<'_>,
     ) -> io::Result<bool> {
         match self.decode(input, output)? {
             BrotliResult::ResultSuccess => Ok(true),
@@ -79,10 +81,7 @@ impl Decode for BrotliDecoder {
         }
     }
 
-    fn flush(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> io::Result<bool> {
+    fn flush(&mut self, output: &mut WriteBuffer<'_>) -> io::Result<bool> {
         match self.decode(&mut PartialBuffer::new(&[][..]), output)? {
             BrotliResult::ResultSuccess | BrotliResult::NeedsMoreInput => Ok(true),
             BrotliResult::NeedsMoreOutput => Ok(false),
@@ -90,10 +89,7 @@ impl Decode for BrotliDecoder {
         }
     }
 
-    fn finish(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> io::Result<bool> {
+    fn finish(&mut self, output: &mut WriteBuffer<'_>) -> io::Result<bool> {
         match self.decode(&mut PartialBuffer::new(&[][..]), output)? {
             BrotliResult::ResultSuccess => Ok(true),
             BrotliResult::NeedsMoreOutput => Ok(false),

@@ -5,16 +5,16 @@
 [package]
 name = "tinystr"
 description = "A small ASCII-only bounded length string representation."
-version = "0.8.1"
-keywords = ["string", "str", "small", "tiny", "no_std"]
+version = "0.8.4"
+keywords = ["small-string", "ascii", "string", "str"]
 categories = ["data-structures"]
 
 authors.workspace = true
-edition.workspace = true
+edition = "2021"
 include.workspace = true
 license.workspace = true
 repository.workspace = true
-rust-version.workspace = true
+rust-version = "1.82"
 
 [package.metadata.workspaces]
 independent = true
@@ -22,10 +22,13 @@ independent = true
 [package.metadata.docs.rs]
 all-features = true
 
+[package.metadata.cargo-all-features]
+max_combination_size = 3
+
 [dependencies]
 displaydoc = { workspace = true }
 
-serde = { workspace = true, features = ["alloc"], optional = true }
+serde_core = { workspace = true, optional = true }
 zerovec = { workspace = true, optional = true }
 databake = { workspace = true, optional = true }
 
@@ -40,10 +43,10 @@ criterion = { workspace = true }
 
 [features]
 default = ["alloc"]
-alloc = ["zerovec?/alloc"]
+alloc = ["serde_core?/alloc", "zerovec?/alloc"]
 zerovec = ["dep:zerovec"]
 databake = ["dep:databake"]
-serde = ["dep:serde"]
+serde = ["dep:serde_core"]
 # No longer does anything
 std = []
 
@@ -70,3 +73,6 @@ harness = false
 name = "serde"
 harness = false
 required-features = ["serde"]
+
+[lints]
+workspace = true

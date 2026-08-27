@@ -10,6 +10,12 @@
 #include <openssl/sha.h>
 #include <openssl/md5.h>
 
+// OpenSSL exposes the EVP_MAX_*_LENGTH constants transitively through
+// <openssl/hmac.h>; in AWS-LC they live in <openssl/cipher.h>. Include it
+// so consumers that reach them this way keep building.
+// See: https://github.com/aws/aws-lc/pull/3371
+#include <openssl/cipher.h>
+
 #if defined(__cplusplus)
 extern "C" {
 #endif

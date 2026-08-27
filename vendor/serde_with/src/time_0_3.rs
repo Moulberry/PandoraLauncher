@@ -15,6 +15,7 @@
 use crate::{
     formats::{Flexible, Format, Strict, Strictness},
     prelude::*,
+    utils::duration::{use_duration_signed_de, use_duration_signed_ser},
 };
 #[cfg(feature = "std")]
 use ::time_0_3::format_description::well_known::{
@@ -48,6 +49,77 @@ fn duration_into_duration_signed(dur: &Time03Duration) -> DurationSigned {
     )
 }
 
+fn offset_datetime_to_duration(source: &OffsetDateTime) -> DurationSigned {
+    duration_into_duration_signed(&(*source - OffsetDateTime::UNIX_EPOCH))
+}
+
+fn primitive_datetime_to_duration(source: &PrimitiveDateTime) -> DurationSigned {
+    duration_into_duration_signed(&(*source - unix_epoch_primitive()))
+}
+
+// No sub-unit precision
+use_duration_signed_ser!(
+    DurationSeconds DurationSeconds,
+    DurationMilliSeconds DurationMilliSeconds,
+    DurationMicroSeconds DurationMicroSeconds,
+    DurationNanoSeconds DurationNanoSeconds,
+    => {
+        Time03Duration; duration_into_duration_signed =>
+        {i64, STRICTNESS => STRICTNESS: Strictness}
+        {f64, STRICTNESS => STRICTNESS: Strictness}
+        #[cfg(feature = "alloc")] {String, STRICTNESS => STRICTNESS: Strictness}
+    }
+);
+
+use_duration_signed_ser!(
+    TimestampSeconds DurationSeconds,
+    TimestampMilliSeconds DurationMilliSeconds,
+    TimestampMicroSeconds DurationMicroSeconds,
+    TimestampNanoSeconds DurationNanoSeconds,
+    => {
+        OffsetDateTime; offset_datetime_to_duration =>
+        {i64, STRICTNESS => STRICTNESS: Strictness}
+        {f64, STRICTNESS => STRICTNESS: Strictness}
+        #[cfg(feature = "alloc")] {String, STRICTNESS => STRICTNESS: Strictness}
+    }
+    => {
+        PrimitiveDateTime; primitive_datetime_to_duration =>
+        {i64, STRICTNESS => STRICTNESS: Strictness}
+        {f64, STRICTNESS => STRICTNESS: Strictness}
+        #[cfg(feature = "alloc")] {String, STRICTNESS => STRICTNESS: Strictness}
+    }
+);
+
+// Duration/Timestamp WITH FRACTIONS
+use_duration_signed_ser!(
+    DurationSecondsWithFrac DurationSecondsWithFrac,
+    DurationMilliSecondsWithFrac DurationMilliSecondsWithFrac,
+    DurationMicroSecondsWithFrac DurationMicroSecondsWithFrac,
+    DurationNanoSecondsWithFrac DurationNanoSecondsWithFrac,
+    => {
+        Time03Duration; duration_into_duration_signed =>
+        {f64, STRICTNESS => STRICTNESS: Strictness}
+        #[cfg(feature = "alloc")] {String, STRICTNESS => STRICTNESS: Strictness}
+    }
+);
+
+use_duration_signed_ser!(
+    TimestampSecondsWithFrac DurationSecondsWithFrac,
+    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
+    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
+    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
+    => {
+        OffsetDateTime; offset_datetime_to_duration =>
+        {f64, STRICTNESS => STRICTNESS: Strictness}
+        #[cfg(feature = "alloc")] {String, STRICTNESS => STRICTNESS: Strictness}
+    }
+    => {
+        PrimitiveDateTime; primitive_datetime_to_duration =>
+        {f64, STRICTNESS => STRICTNESS: Strictness}
+        #[cfg(feature = "alloc")] {String, STRICTNESS => STRICTNESS: Strictness}
+    }
+);
+
 /// Convert a [`DurationSigned`] into a [`time_0_3::Duration`]
 fn duration_from_duration_signed<'de, D>(sdur: DurationSigned) -> Result<Time03Duration, D::Error>
 where
@@ -67,248 +139,6 @@ where
     Ok(dur)
 }
 
-macro_rules! use_duration_signed_ser {
-    (
-        $main_trait:ident $internal_trait:ident =>
-        {
-            $ty:ty; $converter:ident =>
-            $({
-                $format:ty, $strictness:ty =>
-                $($tbound:ident: $bound:ident $(,)?)*
-            })*
-        }
-    ) => {
-        $(
-            impl<$($tbound ,)*> SerializeAs<$ty> for $main_trait<$format, $strictness>
-            where
-                $($tbound: $bound,)*
-            {
-                fn serialize_as<S>(source: &$ty, serializer: S) -> Result<S::Ok, S::Error>
-                where
-                    S: Serializer,
-                {
-                    let dur: DurationSigned = $converter(source);
-                    $internal_trait::<$format, $strictness>::serialize_as(
-                        &dur,
-                        serializer,
-                    )
-                }
-            }
-        )*
-    };
-    (
-        $( $main_trait:ident $internal_trait:ident, )+ => $rest:tt
-    ) => {
-        $( use_duration_signed_ser!($main_trait $internal_trait => $rest); )+
-    };
-}
-
-fn offset_datetime_to_duration(source: &OffsetDateTime) -> DurationSigned {
-    duration_into_duration_signed(&(*source - OffsetDateTime::UNIX_EPOCH))
-}
-
-fn primitive_datetime_to_duration(source: &PrimitiveDateTime) -> DurationSigned {
-    duration_into_duration_signed(&(*source - unix_epoch_primitive()))
-}
-
-use_duration_signed_ser!(
-    DurationSeconds DurationSeconds,
-    DurationMilliSeconds DurationMilliSeconds,
-    DurationMicroSeconds DurationMicroSeconds,
-    DurationNanoSeconds DurationNanoSeconds,
-    => {
-        Time03Duration; duration_into_duration_signed =>
-        {i64, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_ser!(
-    DurationSeconds DurationSeconds,
-    DurationMilliSeconds DurationMilliSeconds,
-    DurationMicroSeconds DurationMicroSeconds,
-    DurationNanoSeconds DurationNanoSeconds,
-    => {
-        Time03Duration; duration_into_duration_signed =>
-        {String, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_ser!(
-    DurationSeconds DurationSeconds,
-    DurationMilliSeconds DurationMilliSeconds,
-    DurationMicroSeconds DurationMicroSeconds,
-    DurationNanoSeconds DurationNanoSeconds,
-    => {
-        Time03Duration; duration_into_duration_signed =>
-        {f64, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-use_duration_signed_ser!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        OffsetDateTime; offset_datetime_to_duration =>
-        {i64, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_ser!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        OffsetDateTime; offset_datetime_to_duration =>
-        {String, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_ser!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        OffsetDateTime; offset_datetime_to_duration =>
-        {f64, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-use_duration_signed_ser!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        PrimitiveDateTime; primitive_datetime_to_duration =>
-        {i64, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_ser!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        PrimitiveDateTime; primitive_datetime_to_duration =>
-        {String, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_ser!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        PrimitiveDateTime; primitive_datetime_to_duration =>
-        {f64, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-
-// Duration/Timestamp WITH FRACTIONS
-#[cfg(feature = "alloc")]
-use_duration_signed_ser!(
-    DurationSecondsWithFrac DurationSecondsWithFrac,
-    DurationMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    DurationMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    DurationNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        Time03Duration; duration_into_duration_signed =>
-        {String, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_ser!(
-    DurationSecondsWithFrac DurationSecondsWithFrac,
-    DurationMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    DurationMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    DurationNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        Time03Duration; duration_into_duration_signed =>
-        {f64, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_ser!(
-    TimestampSecondsWithFrac DurationSecondsWithFrac,
-    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        OffsetDateTime; offset_datetime_to_duration =>
-        {String, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_ser!(
-    TimestampSecondsWithFrac DurationSecondsWithFrac,
-    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        OffsetDateTime; offset_datetime_to_duration =>
-        {f64, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_ser!(
-    TimestampSecondsWithFrac DurationSecondsWithFrac,
-    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        PrimitiveDateTime; primitive_datetime_to_duration =>
-        {String, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_ser!(
-    TimestampSecondsWithFrac DurationSecondsWithFrac,
-    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        PrimitiveDateTime; primitive_datetime_to_duration =>
-        {f64, STRICTNESS => STRICTNESS: Strictness}
-    }
-);
-
-macro_rules! use_duration_signed_de {
-    (
-        $main_trait:ident $internal_trait:ident =>
-        {
-            $ty:ty; $converter:ident =>
-            $({
-                $format:ty, $strictness:ty =>
-                $($tbound:ident: $bound:ident)*
-            })*
-        }
-    ) =>{
-        $(
-            impl<'de, $($tbound,)*> DeserializeAs<'de, $ty> for $main_trait<$format, $strictness>
-            where
-                $($tbound: $bound,)*
-            {
-                fn deserialize_as<D>(deserializer: D) -> Result<$ty, D::Error>
-                where
-                    D: Deserializer<'de>,
-                {
-                    let dur: DurationSigned = $internal_trait::<$format, $strictness>::deserialize_as(deserializer)?;
-                    $converter::<D>(dur)
-                }
-            }
-        )*
-    };
-    (
-        $( $main_trait:ident $internal_trait:ident, )+ => $rest:tt
-    ) => {
-        $( use_duration_signed_de!($main_trait $internal_trait => $rest); )+
-    };
-}
-
 fn duration_to_offset_datetime<'de, D>(dur: DurationSigned) -> Result<OffsetDateTime, D::Error>
 where
     D: Deserializer<'de>,
@@ -325,7 +155,7 @@ where
     Ok(unix_epoch_primitive() + duration_from_duration_signed::<D>(dur)?)
 }
 
-// No sub-second precision
+// No sub-unit precision
 use_duration_signed_de!(
     DurationSeconds DurationSeconds,
     DurationMilliSeconds DurationMilliSeconds,
@@ -333,32 +163,13 @@ use_duration_signed_de!(
     DurationNanoSeconds DurationNanoSeconds,
     => {
         Time03Duration; duration_from_duration_signed =>
-        {i64, Strict =>}
         {FORMAT, Flexible => FORMAT: Format}
+        {i64, Strict =>}
+        #[cfg(feature = "alloc")] {String, Strict =>}
+        #[cfg(feature = "std")] {f64, Strict =>}
     }
 );
-#[cfg(feature = "alloc")]
-use_duration_signed_de!(
-    DurationSeconds DurationSeconds,
-    DurationMilliSeconds DurationMilliSeconds,
-    DurationMicroSeconds DurationMicroSeconds,
-    DurationNanoSeconds DurationNanoSeconds,
-    => {
-        Time03Duration; duration_from_duration_signed =>
-        {String, Strict =>}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_de!(
-    DurationSeconds DurationSeconds,
-    DurationMilliSeconds DurationMilliSeconds,
-    DurationMicroSeconds DurationMicroSeconds,
-    DurationNanoSeconds DurationNanoSeconds,
-    => {
-        Time03Duration; duration_from_duration_signed =>
-        {f64, Strict =>}
-    }
-);
+
 use_duration_signed_de!(
     TimestampSeconds DurationSeconds,
     TimestampMilliSeconds DurationMilliSeconds,
@@ -366,63 +177,17 @@ use_duration_signed_de!(
     TimestampNanoSeconds DurationNanoSeconds,
     => {
         OffsetDateTime; duration_to_offset_datetime =>
-        {i64, Strict =>}
         {FORMAT, Flexible => FORMAT: Format}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_de!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        OffsetDateTime; duration_to_offset_datetime =>
-        {String, Strict =>}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_de!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        OffsetDateTime; duration_to_offset_datetime =>
-        {f64, Strict =>}
-    }
-);
-use_duration_signed_de!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        PrimitiveDateTime; duration_to_primitive_datetime =>
         {i64, Strict =>}
+        #[cfg(feature = "alloc")] {String, Strict =>}
+        #[cfg(feature = "std")] {f64, Strict =>}
+    }
+    => {
+        PrimitiveDateTime; duration_to_primitive_datetime =>
         {FORMAT, Flexible => FORMAT: Format}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_de!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        PrimitiveDateTime; duration_to_primitive_datetime =>
-        {String, Strict =>}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_de!(
-    TimestampSeconds DurationSeconds,
-    TimestampMilliSeconds DurationMilliSeconds,
-    TimestampMicroSeconds DurationMicroSeconds,
-    TimestampNanoSeconds DurationNanoSeconds,
-    => {
-        PrimitiveDateTime; duration_to_primitive_datetime =>
-        {f64, Strict =>}
+        {i64, Strict =>}
+        #[cfg(feature = "alloc")] {String, Strict =>}
+        #[cfg(feature = "std")] {f64, Strict =>}
     }
 );
 
@@ -435,30 +200,11 @@ use_duration_signed_de!(
     => {
         Time03Duration; duration_from_duration_signed =>
         {FORMAT, Flexible => FORMAT: Format}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_de!(
-    DurationSecondsWithFrac DurationSecondsWithFrac,
-    DurationMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    DurationMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    DurationNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        Time03Duration; duration_from_duration_signed =>
-        {String, Strict =>}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_de!(
-    DurationSecondsWithFrac DurationSecondsWithFrac,
-    DurationMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    DurationMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    DurationNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        Time03Duration; duration_from_duration_signed =>
         {f64, Strict =>}
+        #[cfg(feature = "alloc")] {String, Strict =>}
     }
 );
+
 use_duration_signed_de!(
     TimestampSecondsWithFrac DurationSecondsWithFrac,
     TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
@@ -467,60 +213,14 @@ use_duration_signed_de!(
     => {
         OffsetDateTime; duration_to_offset_datetime =>
         {FORMAT, Flexible => FORMAT: Format}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_de!(
-    TimestampSecondsWithFrac DurationSecondsWithFrac,
-    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        OffsetDateTime; duration_to_offset_datetime =>
-        {String, Strict =>}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_de!(
-    TimestampSecondsWithFrac DurationSecondsWithFrac,
-    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        OffsetDateTime; duration_to_offset_datetime =>
         {f64, Strict =>}
+        #[cfg(feature = "alloc")] {String, Strict =>}
     }
-);
-use_duration_signed_de!(
-    TimestampSecondsWithFrac DurationSecondsWithFrac,
-    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
     => {
         PrimitiveDateTime; duration_to_primitive_datetime =>
         {FORMAT, Flexible => FORMAT: Format}
-    }
-);
-#[cfg(feature = "alloc")]
-use_duration_signed_de!(
-    TimestampSecondsWithFrac DurationSecondsWithFrac,
-    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        PrimitiveDateTime; duration_to_primitive_datetime =>
-        {String, Strict =>}
-    }
-);
-#[cfg(feature = "std")]
-use_duration_signed_de!(
-    TimestampSecondsWithFrac DurationSecondsWithFrac,
-    TimestampMilliSecondsWithFrac DurationMilliSecondsWithFrac,
-    TimestampMicroSecondsWithFrac DurationMicroSecondsWithFrac,
-    TimestampNanoSecondsWithFrac DurationNanoSecondsWithFrac,
-    => {
-        PrimitiveDateTime; duration_to_primitive_datetime =>
         {f64, Strict =>}
+        #[cfg(feature = "alloc")] {String, Strict =>}
     }
 );
 

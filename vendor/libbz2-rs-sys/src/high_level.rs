@@ -361,7 +361,7 @@ unsafe fn BZ2_bzWriteHelp(
 /// # Possible assignments to `bzerror`
 ///
 /// - [`BZ_CONFIG_ERROR`] if no default allocator is configured
-/// - [`BZ_SEQUENCE_ERROR`] if b was opened with [`BZ2_bzWriteOpen`]
+/// - [`BZ_SEQUENCE_ERROR`] if b was opened with [`BZ2_bzReadOpen`]
 /// - [`BZ_IO_ERROR`] if there is an error writing to the compressed file
 /// - [`BZ_OK`] otherwise
 ///
@@ -387,7 +387,7 @@ pub unsafe extern "C" fn BZ2_bzWriteClose(
 ) {
     BZ2_bzWriteCloseHelp(
         bzerror.as_mut(),
-        b.as_mut(),
+        b,
         abandon,
         nbytes_in.as_mut(),
         nbytes_out.as_mut(),
@@ -396,7 +396,7 @@ pub unsafe extern "C" fn BZ2_bzWriteClose(
 
 unsafe fn BZ2_bzWriteCloseHelp(
     bzerror: Option<&mut c_int>,
-    b: Option<&mut BZFILE>,
+    b: *mut BZFILE,
     abandon: c_int,
     nbytes_in: Option<&mut c_uint>,
     nbytes_out: Option<&mut c_uint>,
@@ -418,7 +418,7 @@ unsafe fn BZ2_bzWriteCloseHelp(
 /// # Possible assignments to `bzerror`
 ///
 /// - [`BZ_CONFIG_ERROR`] if no default allocator is configured
-/// - [`BZ_SEQUENCE_ERROR`] if b was opened with [`BZ2_bzWriteOpen`]
+/// - [`BZ_SEQUENCE_ERROR`] if b was opened with [`BZ2_bzReadOpen`]
 /// - [`BZ_IO_ERROR`] if there is an error writing to the compressed file
 /// - [`BZ_OK`] otherwise
 ///
@@ -448,7 +448,7 @@ pub unsafe extern "C" fn BZ2_bzWriteClose64(
 ) {
     BZ2_bzWriteClose64Help(
         bzerror.as_mut(),
-        b.as_mut(),
+        b,
         abandon,
         nbytes_in_lo32.as_mut(),
         nbytes_in_hi32.as_mut(),
@@ -459,13 +459,14 @@ pub unsafe extern "C" fn BZ2_bzWriteClose64(
 
 unsafe fn BZ2_bzWriteClose64Help(
     mut bzerror: Option<&mut c_int>,
-    mut b: Option<&mut BZFILE>,
+    b: *mut BZFILE,
     abandon: c_int,
     mut nbytes_in_lo32: Option<&mut c_uint>,
     mut nbytes_in_hi32: Option<&mut c_uint>,
     mut nbytes_out_lo32: Option<&mut c_uint>,
     mut nbytes_out_hi32: Option<&mut c_uint>,
 ) {
+    let mut b = b.as_mut();
     let Some(bzf) = b else {
         BZ_SETERR_RAW!(bzerror, b, ReturnCode::BZ_PARAM_ERROR);
         return;
@@ -476,7 +477,8 @@ unsafe fn BZ2_bzWriteClose64Help(
         return;
     }
 
-    if ferror(bzf.handle) != 0 {
+    #[cfg(not(miri))]
+    if !bzf.handle.is_null() && ferror(bzf.handle) != 0 {
         BZ_SETERR!(bzerror, bzf, ReturnCode::BZ_IO_ERROR);
         return;
     }
@@ -510,6 +512,7 @@ unsafe fn BZ2_bzWriteClose64Help(
                         );
                         if n1 != n2 || ferror(bzf.handle) != 0 {
                             BZ_SETERR!(bzerror, bzf, ReturnCode::BZ_IO_ERROR);
+                            return;
                         }
                     }
 
@@ -716,10 +719,9 @@ unsafe fn BZ2_bzReadOpenHelp(
 /// [`pointer::as_mut`]: https://doc.rust-lang.org/core/primitive.pointer.html#method.as_mut
 #[export_name = prefix!(BZ2_bzReadClose)]
 pub unsafe extern "C" fn BZ2_bzReadClose(bzerror: *mut c_int, b: *mut BZFILE) {
-    BZ2_bzReadCloseHelp(bzerror.as_mut(), b.as_mut())
-}
+    let mut bzerror = bzerror.as_mut();
+    let mut b = b.as_mut();
 
-unsafe fn BZ2_bzReadCloseHelp(mut bzerror: Option<&mut c_int>, mut b: Option<&mut BZFILE>) {
     BZ_SETERR_RAW!(bzerror, b, ReturnCode::BZ_OK);
 
     let Some(bzf) = b else {
@@ -976,11 +978,11 @@ unsafe fn bzopen_or_bzdopen(path: Option<&CStr>, open_mode: OpenMode, mode: &CSt
     let mode = match open_mode {
         OpenMode::Pointer => match operation {
             Operation::Reading => b"rbe\0".as_slice(),
-            Operation::Writing => b"rbe\0".as_slice(),
+            Operation::Writing => b"wbe\0".as_slice(),
         },
         OpenMode::FileDescriptor(_) => match operation {
             Operation::Reading => b"rb\0".as_slice(),
-            Operation::Writing => b"rb\0".as_slice(),
+            Operation::Writing => b"wb\0".as_slice(),
         },
     };
 
@@ -991,13 +993,13 @@ unsafe fn bzopen_or_bzdopen(path: Option<&CStr>, open_mode: OpenMode, mode: &CSt
         Operation::Writing => STDOUT!(),
     };
 
-    let fp = match open_mode {
+    let (fp, close_handle) = match open_mode {
         OpenMode::Pointer => match path {
-            None => default_file,
-            Some(path) if path.is_empty() => default_file,
-            Some(path) => fopen(path.as_ptr(), mode2),
+            None => (default_file, false),
+            Some(path) if path.is_empty() => (default_file, false),
+            Some(path) => (fopen(path.as_ptr(), mode2), true),
         },
-        OpenMode::FileDescriptor(fd) => fdopen(fd, mode2),
+        OpenMode::FileDescriptor(fd) => (fdopen(fd, mode2), true),
     };
 
     if fp.is_null() {
@@ -1023,7 +1025,7 @@ unsafe fn bzopen_or_bzdopen(path: Option<&CStr>, open_mode: OpenMode, mode: &CSt
     };
 
     if bzfp.is_null() {
-        if fp != STDIN!() && fp != STDOUT!() {
+        if close_handle {
             fclose(fp);
         }
         return ptr::null_mut();
@@ -1193,34 +1195,29 @@ pub unsafe extern "C" fn BZ2_bzflush(mut _b: *mut BZFILE) -> c_int {
 ///     - `b` is initialized with [`BZ2_bzReadOpen`] or [`BZ2_bzWriteOpen`]
 #[export_name = prefix!(BZ2_bzclose)]
 pub unsafe extern "C" fn BZ2_bzclose(b: *mut BZFILE) {
-    BZ2_bzcloseHelp(b.as_mut())
-}
-
-unsafe fn BZ2_bzcloseHelp(mut b: Option<&mut BZFILE>) {
     let mut bzerr: c_int = 0;
 
-    let operation = if let Some(bzf) = &mut b {
-        bzf.operation
-    } else {
+    if b.is_null() {
         return;
-    };
+    }
+
+    let operation = (*b).operation;
+    let handle = (*b).handle;
 
     match operation {
         Operation::Reading => {
-            BZ2_bzReadCloseHelp(Some(&mut bzerr), b.as_deref_mut());
+            BZ2_bzReadClose(&raw mut bzerr, b);
         }
         Operation::Writing => {
-            BZ2_bzWriteCloseHelp(Some(&mut bzerr), b.as_deref_mut(), false as i32, None, None);
+            BZ2_bzWriteCloseHelp(Some(&mut bzerr), b, false as i32, None, None);
             if bzerr != 0 {
-                BZ2_bzWriteCloseHelp(None, b.as_deref_mut(), true as i32, None, None);
+                BZ2_bzWriteCloseHelp(None, b, true as i32, None, None);
             }
         }
     }
 
-    if let Some(bzf) = b {
-        if bzf.handle != STDIN!() && bzf.handle != STDOUT!() {
-            fclose(bzf.handle);
-        }
+    if !handle.is_null() && handle != STDIN!() && handle != STDOUT!() {
+        fclose(handle);
     }
 }
 
@@ -1261,10 +1258,18 @@ const BZERRORSTRINGS: [&str; 16] = [
 /// [`pointer::as_mut`]: https://doc.rust-lang.org/core/primitive.pointer.html#method.as_mut
 #[export_name = prefix!(BZ2_bzerror)]
 pub unsafe extern "C" fn BZ2_bzerror(b: *const BZFILE, errnum: *mut c_int) -> *const c_char {
-    BZ2_bzerrorHelp(
-        b.as_ref().expect("Passed null pointer to BZ2_bzerror"),
-        errnum.as_mut(),
-    )
+    // The C implementation dereferences `b` unconditionally, we just return "???".
+    let errnum = errnum.as_mut();
+    match b.as_ref() {
+        Some(b) => BZ2_bzerrorHelp(b, errnum),
+        None => {
+            if let Some(errnum) = errnum {
+                *errnum = crate::BZ_PARAM_ERROR;
+            }
+            let msg = "BZ2_bzerror was passed a NULL pointer\0";
+            msg.as_ptr().cast::<c_char>()
+        }
+    }
 }
 
 fn BZ2_bzerrorHelp(b: &BZFILE, errnum: Option<&mut c_int>) -> *const c_char {
@@ -1282,6 +1287,33 @@ fn BZ2_bzerrorHelp(b: &BZFILE, errnum: Option<&mut c_int>) -> *const c_char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bz_error_file_is_null_ptr() {
+        let mut errnum = 0;
+        let ptr = unsafe { BZ2_bzerror(core::ptr::null(), &mut errnum) };
+        let cstr = unsafe { CStr::from_ptr(ptr) };
+
+        assert_eq!(
+            cstr.to_str().unwrap(),
+            "BZ2_bzerror was passed a NULL pointer"
+        )
+    }
+
+    #[test]
+    fn bz_error_errnum_is_null_ptr() {
+        let bz_file = BZFILE {
+            handle: core::ptr::null_mut(),
+            buf: [0; 5000],
+            bufN: 0,
+            strm: bz_stream::zeroed(),
+            lastErr: ReturnCode::BZ_OK,
+            operation: Operation::Reading,
+            initialisedOk: false,
+        };
+
+        unsafe { BZ2_bzerror(&bz_file, core::ptr::null_mut()) };
+    }
 
     #[test]
     fn error_messages() {
@@ -1316,7 +1348,7 @@ mod tests {
             bz_file.lastErr = return_code;
 
             let mut errnum = 0;
-            let ptr = unsafe { BZ2_bzerror(&bz_file as *const BZFILE, &mut errnum) };
+            let ptr = unsafe { BZ2_bzerror(&bz_file, &mut errnum) };
             assert!(!ptr.is_null());
             let cstr = unsafe { CStr::from_ptr(ptr) };
 
@@ -1345,6 +1377,72 @@ mod tests {
                 assert_eq!(return_code as i32, errnum);
             } else {
                 assert_eq!(0, errnum);
+            }
+        }
+    }
+
+    #[test]
+    fn bzclose_write() {
+        let Some(allocator) = Allocator::DEFAULT else {
+            return;
+        };
+
+        {
+            let bzf_ptr: *mut BZFILE = allocator.allocate_zeroed(1).unwrap();
+            let mut bzerr: c_int = 0;
+
+            unsafe {
+                (*bzf_ptr).operation = Operation::Writing;
+                (*bzf_ptr).initialisedOk = false;
+                (*bzf_ptr).handle = core::ptr::null_mut();
+                BZ2_bzWriteClose64(
+                    &raw mut bzerr,
+                    bzf_ptr,
+                    1, // abandon
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                );
+            }
+        }
+
+        {
+            let bzf_ptr: *mut BZFILE = allocator.allocate_zeroed(1).unwrap();
+
+            unsafe {
+                (*bzf_ptr).operation = Operation::Writing;
+                (*bzf_ptr).initialisedOk = false;
+                (*bzf_ptr).handle = core::ptr::null_mut();
+                BZ2_bzclose(bzf_ptr);
+            }
+        }
+    }
+
+    #[test]
+    fn bzclose_read() {
+        let Some(allocator) = Allocator::DEFAULT else {
+            return;
+        };
+
+        {
+            let bzf_ptr: *mut BZFILE = allocator.allocate_zeroed(1).unwrap();
+            let mut bzerr: c_int = 0;
+
+            unsafe {
+                (*bzf_ptr).operation = Operation::Reading;
+                (*bzf_ptr).initialisedOk = false;
+                BZ2_bzReadClose(&raw mut bzerr, bzf_ptr);
+            }
+        }
+
+        {
+            let bzf_ptr: *mut BZFILE = allocator.allocate_zeroed(1).unwrap();
+
+            unsafe {
+                (*bzf_ptr).operation = Operation::Reading;
+                (*bzf_ptr).initialisedOk = false;
+                BZ2_bzclose(bzf_ptr);
             }
         }
     }

@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.85"
 name = "read-fonts"
-version = "0.37.0"
+version = "0.41.0"
 build = false
 autolib = false
 autobins = false
@@ -38,8 +38,10 @@ features = [
 ]
 
 [features]
+agl = []
 codegen_test = []
 default = ["std"]
+experimental_font_api = []
 experimental_traverse = ["std"]
 ift = []
 libm = ["dep:core_maths"]
@@ -69,6 +71,11 @@ name = "sparse_bit_set_benchmark"
 path = "benches/sparse_bit_set_benchmark.rs"
 harness = false
 
+[[bench]]
+name = "table_lookup"
+path = "benches/table_lookup.rs"
+harness = false
+
 [dependencies.bytemuck]
 version = "1.13.1"
 
@@ -77,8 +84,16 @@ version = "0.1"
 optional = true
 
 [dependencies.font-types]
-version = "0.11.0"
+version = "0.12.0"
 features = ["bytemuck"]
+
+[dependencies.once_cell]
+version = "1.21.4"
+features = [
+    "alloc",
+    "race",
+]
+default-features = false
 
 [dependencies.serde]
 version = "1.0"
@@ -86,10 +101,11 @@ features = ["derive"]
 optional = true
 
 [dev-dependencies.criterion]
-version = "0.3.0"
+version = "0.7"
 
 [dev-dependencies.rand]
-version = "0.8.5"
+version = "0.10.1"
+features = ["thread_rng"]
 
 [dev-dependencies.serde_json]
 version = "1.0"

@@ -9,6 +9,14 @@ on:
       - master
 
 jobs:
+  fmt:
+    name: Check formatting
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - run: cargo fmt -- --check
+
   test:
     name: Test
     runs-on: ${{ matrix.os }}
@@ -31,6 +39,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust }}
+      # Cargo
+      - name: Generate lockfile and pin dependencies for MSRV
+        run: cargo generate-lockfile && cargo update -p libc --precise 0.2.163 && cargo update -p glob --precise 0.3.2 && cargo update -p libloading --precise 0.8.8
       # Test
       - name: Cargo Test (Dynamic)
         run: cargo test --verbose --features ${{ matrix.clang[1] }} -- --nocapture

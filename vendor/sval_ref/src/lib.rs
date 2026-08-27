@@ -1,7 +1,32 @@
 /*!
 A variant of [`sval::Value`] for types that store references internally.
+
+# Deriving [`ValueRef`]
+
+Add the `ref` feature to `sval_derive`:
+
+```toml
+[dependencies.sval_derive]
+version = "2.21.1"
+features = ["ref"]
+```
+
+and include the `#[sval(ref)]` attribute when deriving `Value`:
+
+```rust,ignore
+#[derive(Value)]
+#[sval(ref)]
+pub struct MyData<'a> {
+    #[sval(outer_ref)]
+    data: &'a str,
+}
+```
+
+Fields are streamed as computed by default.
+Use the `#[sval(outer_ref)]` attribute for fields with external references like `&'a str`, and the `#[sval(inner_ref)]` attribute for fields with internal references like `Data<'a>`.
 */
 
+#![doc(html_logo_url = "https://raw.githubusercontent.com/sval-rs/sval/main/asset/logo.svg")]
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 

@@ -23,6 +23,7 @@ pub struct DiffGenerator {
 
 impl DiffGenerator {
     #[must_use]
+    #[inline]
     pub fn new(fps: Rational64, source_bit_depth: usize, denoised_bit_depth: usize) -> Self {
         Self {
             frame_count: 0,
@@ -42,6 +43,7 @@ impl DiffGenerator {
     /// # Errors
     /// - If the frames do not have the same resolution
     /// - If the frames do not have the same chroma subsampling
+    #[inline]
     pub fn diff_frame<T: Pixel, U: Pixel>(
         &mut self,
         source: &Frame<T>,
@@ -56,6 +58,7 @@ impl DiffGenerator {
     /// Finalize the state of this `DiffGenerator` and return the resulting
     /// grain table segments.
     #[must_use]
+    #[inline]
     pub fn finish(mut self) -> Vec<GrainTableSegment> {
         log::debug!("Updating final parameters");
         self.grain_table.push(

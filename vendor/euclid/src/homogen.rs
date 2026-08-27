@@ -19,6 +19,8 @@ use core::fmt;
 use core::hash::Hash;
 use core::marker::PhantomData;
 use core::ops::Div;
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 #[cfg(feature = "serde")]
 use serde;
 
@@ -102,6 +104,13 @@ unsafe impl<T: Zeroable, U> Zeroable for HomogeneousVector<T, U> {}
 
 #[cfg(feature = "bytemuck")]
 unsafe impl<T: Pod, U: 'static> Pod for HomogeneousVector<T, U> {}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, U> MallocSizeOf for HomogeneousVector<T, U> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.x.size_of(ops) + self.y.size_of(ops) + self.z.size_of(ops) + self.w.size_of(ops)
+    }
+}
 
 impl<T, U> Eq for HomogeneousVector<T, U> where T: Eq {}
 
@@ -210,6 +219,7 @@ impl<T: fmt::Debug, U> fmt::Debug for HomogeneousVector<T, U> {
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod homogeneous {
     use super::HomogeneousVector;
     use crate::default::{Point2D, Point3D};

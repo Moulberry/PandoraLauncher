@@ -11,15 +11,27 @@
 
 [package]
 edition = "2021"
-rust-version = "1.70"
+rust-version = "1.71.1"
 name = "moka"
-version = "0.12.11"
-build = "build.rs"
+version = "0.12.16"
+build = false
 exclude = [
+    ".ci_extras/",
+    ".claude/",
+    ".codecov.yml",
+    ".coderabbit.yaml",
     ".devcontainer",
     ".github",
+    ".gitignore",
     ".gitpod.yml",
+    ".markdownlint.json",
     ".vscode",
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    "examples",
+    "MIGRATION-GUIDE.md",
+    "openspec/",
+    "tests/compile_tests/",
 ]
 autolib = false
 autobins = false
@@ -54,96 +66,22 @@ rustdoc-args = [
 atomic64 = []
 default = []
 future = [
-    "async-lock",
-    "event-listener",
-    "futures-util",
+    "dep:async-lock",
+    "dep:event-listener",
+    "dep:futures-util",
 ]
-logging = ["log"]
+logging = ["dep:log"]
 quanta = ["dep:quanta"]
 sync = []
-unstable-debug-counters = [
-    "future",
-    "once_cell",
-]
+unstable-debug-counters = ["future"]
 
 [lib]
 name = "moka"
 path = "src/lib.rs"
 
-[[example]]
-name = "append_value_async"
-path = "examples/append_value_async.rs"
-required-features = ["future"]
-
-[[example]]
-name = "append_value_sync"
-path = "examples/append_value_sync.rs"
-required-features = ["sync"]
-
-[[example]]
-name = "basics_async"
-path = "examples/basics_async.rs"
-required-features = ["future"]
-
-[[example]]
-name = "basics_sync"
-path = "examples/basics_sync.rs"
-required-features = ["sync"]
-
-[[example]]
-name = "bounded_counter_async"
-path = "examples/bounded_counter_async.rs"
-required-features = ["future"]
-
-[[example]]
-name = "bounded_counter_sync"
-path = "examples/bounded_counter_sync.rs"
-required-features = ["sync"]
-
-[[example]]
-name = "cascading_drop_async"
-path = "examples/cascading_drop_async.rs"
-required-features = ["future"]
-
-[[example]]
-name = "counter_async"
-path = "examples/counter_async.rs"
-required-features = ["future"]
-
-[[example]]
-name = "counter_sync"
-path = "examples/counter_sync.rs"
-required-features = ["sync"]
-
-[[example]]
-name = "eviction_listener_sync"
-path = "examples/eviction_listener_sync.rs"
-required-features = ["sync"]
-
-[[example]]
-name = "jittered_expiry_policy_sync"
-path = "examples/jittered_expiry_policy_sync.rs"
-required-features = ["sync"]
-
-[[example]]
-name = "reinsert_expired_entries_sync"
-path = "examples/reinsert_expired_entries_sync.rs"
-required-features = ["sync"]
-
-[[example]]
-name = "size_aware_eviction_sync"
-path = "examples/size_aware_eviction_sync.rs"
-required-features = ["sync"]
-
-[[example]]
-name = "try_append_value_async"
-path = "examples/try_append_value_async.rs"
-required-features = ["future"]
-
-[[example]]
-name = "try_append_value_sync"
-path = "examples/try_append_value_sync.rs"
-required-features = ["sync"]
+[[test]]
+name = "and_compute_with_race"
+path = "tests/and_compute_with_race.rs"
 
 [[test]]
 name = "entry_api_actix_rt2"
@@ -158,12 +96,24 @@ name = "entry_api_tokio"
 path = "tests/entry_api_tokio.rs"
 
 [[test]]
+name = "eviction_stall_future"
+path = "tests/eviction_stall_future.rs"
+
+[[test]]
+name = "eviction_stall_sync"
+path = "tests/eviction_stall_sync.rs"
+
+[[test]]
 name = "runtime_actix_rt2"
 path = "tests/runtime_actix_rt2.rs"
 
 [[test]]
 name = "runtime_tokio"
 path = "tests/runtime_tokio.rs"
+
+[[test]]
+name = "timer_wheel_panic_test"
+path = "tests/timer_wheel_panic_test.rs"
 
 [dependencies.async-lock]
 version = "3.3"
@@ -173,7 +123,7 @@ optional = true
 version = "0.5.15"
 
 [dependencies.crossbeam-epoch]
-version = "0.9.18"
+version = "0.9.20"
 
 [dependencies.crossbeam-utils]
 version = "0.8.21"
@@ -191,10 +141,6 @@ optional = true
 
 [dependencies.log]
 version = "0.4"
-optional = true
-
-[dependencies.once_cell]
-version = "1.7"
 optional = true
 
 [dependencies.parking_lot]
@@ -257,9 +203,6 @@ features = [
 [target."cfg(moka_loom)".dev-dependencies.loom]
 version = "0.7"
 
-[target."cfg(rustver)".build-dependencies.rustc_version]
-version = "0.4.0"
-
 [target."cfg(trybuild)".dev-dependencies.trybuild]
 version = "1.0"
 
@@ -272,7 +215,7 @@ check-cfg = [
     "cfg(kani)",
     "cfg(moka_loom)",
     "cfg(mips)",
-    "cfg(rustver)",
+    "cfg(run_flaky_tests)",
     "cfg(skip_large_mem_tests)",
     "cfg(trybuild)",
 ]

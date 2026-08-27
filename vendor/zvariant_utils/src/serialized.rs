@@ -6,6 +6,9 @@ pub enum Format {
     #[default]
     DBus,
     /// [GVariant](https://developer.gnome.org/glib/stable/glib-GVariant.html) format.
+    ///
+    /// GVariant support in `zvariant` is deprecated and will be removed in zvariant 6.0; use
+    /// the `zgvariant` crate for GVariant serialization.
     #[cfg(feature = "gvariant")]
     GVariant,
 }

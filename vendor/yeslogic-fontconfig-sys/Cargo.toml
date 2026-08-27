@@ -13,13 +13,19 @@
 edition = "2021"
 rust-version = "1.77"
 name = "yeslogic-fontconfig-sys"
-version = "6.0.0"
+version = "6.0.1"
 authors = [
     "Austin Bonander <austin.bonander@gmail.com>",
     "The Servo Project Developers",
     "YesLogic Pty. Ltd. <info@yeslogic.com>",
 ]
+build = "build.rs"
 links = "fontconfig"
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Raw bindings to Fontconfig without a vendored C library"
 homepage = "https://github.com/yeslogic/fontconfig-rs"
 documentation = "https://docs.rs/crate/yeslogic-fontconfig-sys"
@@ -34,8 +40,12 @@ categories = ["text-processing"]
 license = "MIT"
 repository = "https://github.com/yeslogic/fontconfig-rs"
 
+[features]
+dlopen = []
+
 [lib]
 name = "fontconfig_sys"
+path = "src/lib.rs"
 
 [dependencies.dlib]
 version = "0.5.0"
@@ -45,6 +55,3 @@ version = "1.9.0"
 
 [build-dependencies.pkg-config]
 version = "0.3"
-
-[features]
-dlopen = []

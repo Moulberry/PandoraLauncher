@@ -1,7 +1,11 @@
 use easy_parallel::Parallel;
-use futures_lite::{future, prelude::*};
+use futures_lite::{
+    future::{self, block_on},
+    AsyncReadExt, AsyncWriteExt,
+};
 use piper::pipe;
 
+use std::future::poll_fn;
 use std::task::{Context, Poll};
 use std::thread::sleep;
 use std::time::Duration;
@@ -46,6 +50,49 @@ fn read() {
             future::block_on(w.write_all(&[1, 2, 3, 4, 5, 6])).unwrap();
         })
         .run();
+}
+
+#[test]
+fn buf_read() {
+    use futures_lite::io::AsyncBufReadExt;
+    let (mut r, mut w) = pipe(8);
+    let ms = Duration::from_micros;
+
+    Parallel::new()
+        .add(move || {
+            let mut line = String::new();
+            future::block_on(r.read_line(&mut line)).unwrap();
+            assert_eq!(line, "hello world\n");
+            line.clear();
+
+            future::block_on(r.read_line(&mut line)).unwrap();
+            assert_eq!(line, "line2\n");
+            line.clear();
+
+            future::block_on(r.read_line(&mut line)).unwrap();
+            assert_eq!(line, "line3");
+        })
+        .add(move || {
+            sleep(ms(500));
+            future::block_on(w.write_all(b"hello world\nline2\n")).unwrap();
+            sleep(ms(100));
+            future::block_on(w.write_all(b"line3")).unwrap();
+        })
+        .run();
+}
+
+#[test]
+#[should_panic]
+fn excessive_consume() {
+    let (mut r, _) = pipe(8);
+    r.consume(1);
+}
+
+#[test]
+#[should_panic]
+fn excessive_produced() {
+    let (_, mut w) = pipe(8);
+    w.produced(9);
 }
 
 #[should_panic]
@@ -156,4 +203,27 @@ fn len() {
 fn with_cx<R, F: FnOnce(&mut Context<'_>) -> R>(f: F) -> R {
     let mut f = Some(f);
     future::block_on(future::poll_fn(|cx| Poll::Ready((f.take().unwrap())(cx))))
+}
+
+#[test]
+fn dropping_writer_does_not_lose_writes() {
+    let (mut r, mut w) = pipe(20);
+
+    const TEXT: &str = "hello world";
+    Parallel::new()
+        .add(move || {
+            block_on(async {
+                let mut bytes = Vec::with_capacity(20);
+                // Keep draining until we're out of bytes.
+                while poll_fn(|cx| r.poll_drain(cx, &mut bytes)).await.unwrap() != 0 {}
+                assert_eq!(str::from_utf8(&bytes).unwrap(), TEXT);
+            });
+        })
+        .add(move || {
+            block_on(async move {
+                w.write_all(TEXT.as_bytes()).await.unwrap();
+                drop(w);
+            });
+        })
+        .run();
 }

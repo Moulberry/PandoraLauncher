@@ -343,6 +343,7 @@ static const EVP_AEAD aead_chacha20_poly1305 = {
     NULL,  // tag_len
     NULL,  // serialize_state
     NULL,  // deserialize_state
+    aead_ctx_copy_state_trivial,  // copy
 };
 
 static const EVP_AEAD aead_xchacha20_poly1305 = {
@@ -363,6 +364,7 @@ static const EVP_AEAD aead_xchacha20_poly1305 = {
     NULL,  // tag_len
     NULL,  // serialize_state
     NULL,  // deserialize_state
+    aead_ctx_copy_state_trivial,  // copy
 };
 
 const EVP_AEAD *EVP_aead_chacha20_poly1305(void) {

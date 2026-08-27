@@ -3,8 +3,8 @@
 
 use crate::system_library::ResolvedLib;
 use crate::{
-    cargo_env, compiler_is_cl_like, emit_warning, execute_command, is_lto_flag, out_dir, target,
-    target_os, OutputLibType,
+    compiler_is_cl_like, emit_warning, execute_command, is_cross_compiling, is_lto_flag, out_dir,
+    target, target_os, OutputLibType,
 };
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -173,8 +173,7 @@ const FIPS_MODE_OFF_EXIT_CODE: i32 = 42;
 
 /// Runs the probe when the host can launch a target binary.
 pub(crate) fn run_fips_probe(exec_path: &Path, crypto_lib: &ResolvedLib) -> Result<(), String> {
-    let invocation: Option<(std::ffi::OsString, Vec<std::ffi::OsString>)> = if cargo_env("HOST")
-        == target()
+    let invocation: Option<(std::ffi::OsString, Vec<std::ffi::OsString>)> = if !is_cross_compiling()
     {
         Some((exec_path.as_os_str().to_os_string(), Vec::new()))
     } else if let Some(mut runner) = target_runner() {

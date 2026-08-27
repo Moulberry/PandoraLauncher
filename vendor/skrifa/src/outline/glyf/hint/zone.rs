@@ -801,7 +801,7 @@ mod tests {
             }
         }
 
-        fn graphics_state(&mut self, fv_x: i32, fv_y: i32) -> GraphicsState {
+        fn graphics_state(&mut self, fv_x: i32, fv_y: i32) -> GraphicsState<'_> {
             let glyph = Zone {
                 unscaled: &mut [],
                 original: &mut self.original,

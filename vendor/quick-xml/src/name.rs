@@ -40,6 +40,13 @@ pub enum NamespaceError {
     ///
     /// Contains the prefix that is tried to be bound.
     InvalidPrefixForXmlns(Vec<u8>),
+    /// A single start tag declared more `xmlns` / `xmlns:*` namespace bindings
+    /// than the configured [`NamespaceResolver::max_declarations_per_element`]
+    /// limit. Contains the configured limit.
+    ///
+    /// This bounds the heap allocated by [`NamespaceResolver::push`] (and hence
+    /// by [`NsReader`](crate::reader::NsReader)) on untrusted input.
+    TooManyDeclarations(usize),
 }
 
 impl fmt::Display for NamespaceError {
@@ -69,6 +76,14 @@ impl fmt::Display for NamespaceError {
                 f.write_str("the namespace prefix '")?;
                 write_byte_string(f, prefix)?;
                 f.write_str("' cannot be bound to 'http://www.w3.org/2000/xmlns/'")
+            }
+            Self::TooManyDeclarations(limit) => {
+                write!(
+                    f,
+                    "start tag declares more than {} namespace bindings; \
+                     raise the limit with NamespaceResolver::set_max_declarations_per_element",
+                    limit,
+                )
             }
         }
     }
@@ -453,11 +468,15 @@ impl NamespaceBinding {
     /// Get the namespace prefix, bound to this namespace declaration, or `None`,
     /// if this declaration is for default namespace (`xmlns="..."`).
     #[inline]
-    fn prefix<'b>(&self, ns_buffer: &'b [u8]) -> Option<Prefix<'b>> {
+    const fn prefix<'b>(&self, buffer: &'b [u8]) -> Option<Prefix<'b>> {
         if self.prefix_len == 0 {
             None
         } else {
-            Some(Prefix(&ns_buffer[self.start..self.start + self.prefix_len]))
+            // We use split_at to get [start..start + prefix_len]
+            // in a constant way
+            let (_, prefix) = buffer.split_at(self.start);
+            let (prefix, _) = prefix.split_at(self.prefix_len);
+            Some(Prefix(prefix))
         }
     }
 
@@ -466,12 +485,15 @@ impl NamespaceBinding {
     /// Returns `None` if namespace for this prefix was explicitly removed from
     /// scope, using `xmlns[:prefix]=""`
     #[inline]
-    fn namespace<'ns>(&self, buffer: &'ns [u8]) -> ResolveResult<'ns> {
+    const fn namespace<'ns>(&self, buffer: &'ns [u8]) -> ResolveResult<'ns> {
         if self.value_len == 0 {
             ResolveResult::Unbound
         } else {
-            let start = self.start + self.prefix_len;
-            ResolveResult::Bound(Namespace(&buffer[start..start + self.value_len]))
+            // We use split_at to get [start + prefix_len..start + prefix_len + value_len]
+            // in a constant way
+            let (_, ns) = buffer.split_at(self.start + self.prefix_len);
+            let (ns, _) = ns.split_at(self.value_len);
+            ResolveResult::Bound(Namespace(ns))
         }
     }
 }
@@ -490,7 +512,21 @@ pub struct NamespaceResolver {
     /// The number of open tags at the moment. We need to keep track of this to know which namespace
     /// declarations to remove when we encounter an `End` event.
     nesting_level: u16,
+    /// Maximum number of `xmlns` / `xmlns:*` declarations [`push`](Self::push)
+    /// will accept on a single start tag before returning
+    /// [`NamespaceError::TooManyDeclarations`]. See
+    /// [`set_max_declarations_per_element`](Self::set_max_declarations_per_element).
+    max_declarations_per_element: usize,
 }
+
+/// Default limit on the number of `xmlns` / `xmlns:*` declarations
+/// [`NamespaceResolver::push`] will accept on a single start tag.
+///
+/// Real-world XML dialects (XHTML, SVG, SOAP, RSS, RRDP, ...) declare a handful
+/// of namespaces per element; 256 is orders of magnitude above any legitimate
+/// document while bounding the heap allocated for one `<... xmlns:...>` tag to
+/// a few kilobytes regardless of input size.
+pub const DEFAULT_MAX_DECLARATIONS_PER_ELEMENT: usize = 256;
 
 impl Debug for NamespaceResolver {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -498,6 +534,10 @@ impl Debug for NamespaceResolver {
             .field("buffer", &Bytes(&self.buffer))
             .field("bindings", &self.bindings)
             .field("nesting_level", &self.nesting_level)
+            .field(
+                "max_declarations_per_element",
+                &self.max_declarations_per_element,
+            )
             .finish()
     }
 }
@@ -548,6 +588,7 @@ impl Default for NamespaceResolver {
             buffer,
             bindings,
             nesting_level: 0,
+            max_declarations_per_element: DEFAULT_MAX_DECLARATIONS_PER_ELEMENT,
         }
     }
 }
@@ -666,11 +707,18 @@ impl NamespaceResolver {
     /// [namespace bindings]: https://www.w3.org/TR/xml-names11/#dt-NSDecl
     pub fn push(&mut self, start: &BytesStart) -> Result<(), NamespaceError> {
         self.nesting_level += 1;
+        let mut count = 0usize;
         // adds new namespaces for attributes starting with 'xmlns:' and for the 'xmlns'
         // (default namespace) attribute.
         for a in start.attributes().with_checks(false) {
             if let Ok(Attribute { key: k, value: v }) = a {
                 if let Some(prefix) = k.as_namespace_binding() {
+                    if count >= self.max_declarations_per_element {
+                        return Err(NamespaceError::TooManyDeclarations(
+                            self.max_declarations_per_element,
+                        ));
+                    }
+                    count += 1;
                     self.add(prefix, Namespace(&v))?;
                 }
             } else {
@@ -678,6 +726,32 @@ impl NamespaceResolver {
             }
         }
         Ok(())
+    }
+
+    /// Returns the maximum number of `xmlns` / `xmlns:*` declarations that
+    /// [`push`](Self::push) will accept on a single start tag before returning
+    /// [`NamespaceError::TooManyDeclarations`].
+    ///
+    /// Defaults to [`DEFAULT_MAX_DECLARATIONS_PER_ELEMENT`].
+    #[inline]
+    pub const fn max_declarations_per_element(&self) -> usize {
+        self.max_declarations_per_element
+    }
+
+    /// Sets the maximum number of `xmlns` / `xmlns:*` declarations that
+    /// [`push`](Self::push) will accept on a single start tag.
+    ///
+    /// `push` is called by [`NsReader`](crate::reader::NsReader) for every
+    /// `Start`/`Empty` event *before* the event is returned to the caller, so
+    /// without this limit a start tag with many `xmlns:*` attributes drives
+    /// unbounded heap allocation that the caller cannot intercept. See
+    /// <https://github.com/tafia/quick-xml/issues/970>.
+    ///
+    /// Pass `usize::MAX` to disable the limit.
+    #[inline]
+    pub fn set_max_declarations_per_element(&mut self, limit: usize) -> &mut Self {
+        self.max_declarations_per_element = limit;
+        self
     }
 
     /// Ends a top-most scope by popping all [namespace bindings], that was added by
@@ -1134,10 +1208,6 @@ impl<'a> Iterator for NamespaceBindingsIter<'a> {
 
 impl<'a> FusedIterator for NamespaceBindingsIter<'a> {}
 
-/// The previous name for [`NamespaceBindingsIter`].
-#[deprecated = "Use NamespaceBindingsIter instead. This alias will be removed in 0.40.0"]
-pub type PrefixIter<'a> = NamespaceBindingsIter<'a>;
-
 /// Iterator on the declared namespace bindings on specified level. Returns pairs of the _(prefix, namespace)_.
 ///
 /// See [`NamespaceResolver::bindings_of`] for documentation.
@@ -1187,6 +1257,52 @@ mod namespaces {
     use super::*;
     use pretty_assertions::assert_eq;
     use ResolveResult::*;
+
+    /// Regression test for <https://github.com/tafia/quick-xml/issues/970>:
+    /// `push()` previously allocated one `NamespaceBinding` per `xmlns:*`
+    /// attribute with no upper bound, before the caller ever sees the event.
+    #[test]
+    fn push_rejects_too_many_declarations() {
+        let mut tag = String::from("e");
+        for i in 0..=DEFAULT_MAX_DECLARATIONS_PER_ELEMENT {
+            tag.push_str(&format!(" xmlns:p{}=''", i));
+        }
+        let mut resolver = NamespaceResolver::default();
+        assert_eq!(
+            resolver.push(&BytesStart::from_content(&tag, 1)),
+            Err(NamespaceError::TooManyDeclarations(
+                DEFAULT_MAX_DECLARATIONS_PER_ELEMENT
+            )),
+        );
+
+        // Exactly at the limit is accepted.
+        let mut tag = String::from("e");
+        for i in 0..DEFAULT_MAX_DECLARATIONS_PER_ELEMENT {
+            tag.push_str(&format!(" xmlns:p{}=''", i));
+        }
+        let mut resolver = NamespaceResolver::default();
+        assert_eq!(resolver.push(&BytesStart::from_content(&tag, 1)), Ok(()));
+
+        // The limit is configurable, and `usize::MAX` disables it.
+        let mut resolver = NamespaceResolver::default();
+        resolver.set_max_declarations_per_element(2);
+        assert_eq!(
+            resolver.push(&BytesStart::from_content(
+                "e xmlns:a='' xmlns:b='' xmlns:c=''",
+                1,
+            )),
+            Err(NamespaceError::TooManyDeclarations(2)),
+        );
+        let mut resolver = NamespaceResolver::default();
+        resolver.set_max_declarations_per_element(usize::MAX);
+        assert_eq!(
+            resolver.push(&BytesStart::from_content(
+                "e xmlns:a='' xmlns:b='' xmlns:c=''",
+                1,
+            )),
+            Ok(()),
+        );
+    }
 
     /// Unprefixed attribute names (resolved with `false` flag) never have a namespace
     /// according to <https://www.w3.org/TR/xml-names11/#defaulting>:

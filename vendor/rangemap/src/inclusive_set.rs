@@ -846,4 +846,71 @@ mod tests {
             xs == xs
         }
     }
+
+    // ordered-float
+
+    #[cfg(feature = "ordered-float5")]
+    mod ordered_float {
+        use super::*;
+        use ::ordered_float::NotNan;
+
+        type F64 = NotNan<f64>;
+
+        #[proptest]
+        fn test_first(set: RangeInclusiveSet<F64>) {
+            assert_eq!(set.first(), set.iter().min_by_key(|range| range.start()));
+        }
+
+        #[proptest]
+        #[allow(clippy::len_zero)]
+        fn test_len(mut map: RangeInclusiveSet<F64>) {
+            assert_eq!(map.len(), map.iter().count());
+            assert_eq!(map.is_empty(), map.len() == 0);
+            map.clear();
+            assert_eq!(map.len(), 0);
+            assert!(map.is_empty());
+            assert_eq!(map.iter().count(), 0);
+        }
+
+        #[proptest]
+        fn test_last(set: RangeInclusiveSet<F64>) {
+            assert_eq!(set.last(), set.iter().max_by_key(|range| range.end()));
+        }
+
+        #[proptest]
+        fn test_iter_reversible(set: RangeInclusiveSet<F64>) {
+            let forward: Vec<_> = set.iter().collect();
+            let mut backward: Vec<_> = set.iter().rev().collect();
+            backward.reverse();
+            assert_eq!(forward, backward);
+        }
+
+        #[proptest]
+        fn test_into_iter_reversible(set: RangeInclusiveSet<F64>) {
+            let forward: Vec<_> = set.clone().into_iter().collect();
+            let mut backward: Vec<_> = set.into_iter().rev().collect();
+            backward.reverse();
+            assert_eq!(forward, backward);
+        }
+
+        #[proptest]
+        fn test_overlapping_reversible(set: RangeInclusiveSet<F64>, range: RangeInclusive<F64>) {
+            let forward: Vec<_> = set.overlapping(&range).collect();
+            let mut backward: Vec<_> = set.overlapping(&range).rev().collect();
+            backward.reverse();
+            assert_eq!(forward, backward);
+        }
+
+        fn not_nan(x: f64) -> F64 {
+            NotNan::new(x).unwrap()
+        }
+
+        #[test]
+        fn ranges_one_ulp_apart_are_coalesced() {
+            let mut set = RangeInclusiveSet::new();
+            set.insert(not_nan(0.0)..=not_nan(1.0));
+            set.insert(not_nan(1.0).add_one()..=not_nan(2.0));
+            assert_eq!(set, RangeInclusiveSet::from([not_nan(0.0)..=not_nan(2.0)]));
+        }
+    }
 }

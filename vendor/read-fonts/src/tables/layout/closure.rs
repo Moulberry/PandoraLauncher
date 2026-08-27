@@ -1,6 +1,6 @@
 //! Support Layout Closure
 
-use types::{BigEndian, GlyphId16};
+use types::{BigEndian, GlyphId16, Offset16};
 
 use super::{
     ArrayOfOffsets, ChainedClassSequenceRule, ChainedClassSequenceRuleSet, ChainedSequenceContext,
@@ -112,7 +112,7 @@ impl ScriptList<'_> {
         if scripts.is_inverted() {
             for record in script_records {
                 let tag = record.script_tag();
-                if !scripts.contains(tag) {
+                if !scripts.contains(tag) || record.script_offset().is_null() {
                     continue;
                 }
                 let script = record.script(font_data)?;
@@ -120,7 +120,11 @@ impl ScriptList<'_> {
             }
         } else {
             for idx in scripts.iter().filter_map(|tag| self.index_for_tag(tag)) {
-                let script = script_records[idx as usize].script(font_data)?;
+                let record = script_records[idx as usize];
+                if record.script_offset().is_null() {
+                    continue;
+                }
+                let script = record.script(font_data)?;
                 script.collect_features(&mut c, languages)?;
             }
         }
@@ -148,7 +152,7 @@ impl Script<'_> {
         if languages.is_inverted() {
             for record in lang_sys_records {
                 let tag = record.lang_sys_tag();
-                if !languages.contains(tag) {
+                if !languages.contains(tag) || record.lang_sys_offset().is_null() {
                     continue;
                 }
                 let lang_sys = record.lang_sys(font_data)?;
@@ -159,7 +163,11 @@ impl Script<'_> {
                 .iter()
                 .filter_map(|tag| self.lang_sys_index_for_tag(tag))
             {
-                let lang_sys = lang_sys_records[idx as usize].lang_sys(font_data)?;
+                let record = lang_sys_records[idx as usize];
+                if record.lang_sys_offset().is_null() {
+                    continue;
+                }
+                let lang_sys = record.lang_sys(font_data)?;
                 lang_sys.collect_features(c);
             }
         }
@@ -226,6 +234,9 @@ impl FeatureList<'_> {
                     .then(|| features_records.get(i as usize))
                     .flatten()
             }) {
+                if feature_rec.feature_offset().is_null() {
+                    continue;
+                }
                 lookup_idxes.extend_unsorted(feature_rec.feature(font_data)?.collect_lookups());
             }
         } else {
@@ -233,6 +244,9 @@ impl FeatureList<'_> {
                 .iter()
                 .filter_map(|i| features_records.get(i as usize))
             {
+                if feature_rec.feature_offset().is_null() {
+                    continue;
+                }
                 lookup_idxes.extend_unsorted(feature_rec.feature(font_data)?.collect_lookups());
             }
         }
@@ -260,6 +274,9 @@ impl FeatureVariations<'_> {
                 .iter()
                 .filter(|sub_rec| feature_indices.contains(sub_rec.feature_index()))
             {
+                if sub_record.alternate_feature_offset().is_null() {
+                    continue;
+                }
                 let sub_f = sub_record.alternate_feature(subs.offset_data())?;
                 out.extend_unsorted(sub_f.lookup_list_indices().iter().map(|i| i.get()));
             }
@@ -336,16 +353,16 @@ impl<'a> LookupClosureCtx<'a> {
         self.nesting_level_left -= 1;
         match self.lookup_list {
             LayoutLookupList::Gpos(lookuplist) => {
-                lookuplist
-                    .lookups()
-                    .get(lookup_index as usize)?
-                    .closure_lookups(self, lookup_index)?;
+                match lookuplist.lookups().get(lookup_index as usize) {
+                    Err(ReadError::NullOffset) | Err(ReadError::InvalidCollectionIndex(_)) => (),
+                    lookup => lookup?.closure_lookups(self, lookup_index)?,
+                }
             }
             LayoutLookupList::Gsub(lookuplist) => {
-                lookuplist
-                    .lookups()
-                    .get(lookup_index as usize)?
-                    .closure_lookups(self, lookup_index)?;
+                match lookuplist.lookups().get(lookup_index as usize) {
+                    Err(ReadError::NullOffset) | Err(ReadError::InvalidCollectionIndex(_)) => (),
+                    lookup => lookup?.closure_lookups(self, lookup_index)?,
+                }
             }
         }
         self.nesting_level_left += 1;
@@ -435,21 +452,26 @@ where
     Ext: ExtensionLookup<'a, T> + 'a,
 {
     fn closure_lookups(&self, c: &mut LookupClosureCtx, arg: u16) -> Result<(), ReadError> {
-        for sub in self.iter() {
-            sub?.closure_lookups(c, arg)?;
+        for t in self.iter().filter_map(|table| match table {
+            Err(ReadError::NullOffset) => None,
+            other => Some(other),
+        }) {
+            t?.closure_lookups(c, arg)?;
         }
         Ok(())
     }
 }
 
-impl<'a, T, Ext> Intersect for Subtables<'a, T, Ext>
+impl<'a, T> Intersect for ArrayOfOffsets<'a, T, Offset16>
 where
-    T: Intersect + FontRead<'a> + 'a,
-    Ext: ExtensionLookup<'a, T> + 'a,
+    T: Intersect + FontRead<'a>,
 {
     fn intersects(&self, glyph_set: &IntSet<GlyphId>) -> Result<bool, ReadError> {
-        for sub in self.iter() {
-            if sub?.intersects(glyph_set)? {
+        for t in self.iter().filter_map(|table| match table {
+            Err(ReadError::NullOffset) => None,
+            other => Some(other),
+        }) {
+            if t?.intersects(glyph_set)? {
                 return Ok(true);
             }
         }
@@ -475,10 +497,15 @@ pub(crate) enum Format1Rule<'a> {
 }
 
 impl ContextFormat1<'_> {
-    pub(crate) fn coverage(&self) -> Result<CoverageTable<'_>, ReadError> {
+    pub(crate) fn coverage(&self) -> Option<Result<CoverageTable<'_>, ReadError>> {
         match self {
-            ContextFormat1::Plain(table) => table.coverage(),
-            ContextFormat1::Chain(table) => table.coverage(),
+            ContextFormat1::Plain(table) if !table.coverage_offset().is_null() => {
+                Some(table.coverage())
+            }
+            ContextFormat1::Chain(table) if !table.coverage_offset().is_null() => {
+                Some(table.coverage())
+            }
+            _ => None,
         }
     }
 
@@ -512,14 +539,14 @@ impl ContextFormat1<'_> {
 }
 
 impl Format1RuleSet<'_> {
-    pub(crate) fn rules(&self) -> impl Iterator<Item = Result<Format1Rule<'_>, ReadError>> {
+    pub(crate) fn rules(&self) -> impl Iterator<Item = Option<Result<Format1Rule<'_>, ReadError>>> {
         let (left, right) = match self {
             Self::Plain(table) => (
                 Some(
                     table
                         .seq_rules()
-                        .iter()
-                        .map(|rule| rule.map(Format1Rule::Plain)),
+                        .iter_as_nullable()
+                        .map(|rule| rule.map(|r| r.map(Format1Rule::Plain))),
                 ),
                 None,
             ),
@@ -528,8 +555,8 @@ impl Format1RuleSet<'_> {
                 Some(
                     table
                         .chained_seq_rules()
-                        .iter()
-                        .map(|rule| rule.map(Format1Rule::Chain)),
+                        .iter_as_nullable()
+                        .map(|rule| rule.map(|r| r.map(Format1Rule::Chain))),
                 ),
             ),
         };
@@ -604,17 +631,27 @@ pub(crate) enum Format2Rule<'a> {
 }
 
 impl ContextFormat2<'_> {
-    pub(crate) fn coverage(&self) -> Result<CoverageTable<'_>, ReadError> {
+    pub(crate) fn coverage(&self) -> Option<Result<CoverageTable<'_>, ReadError>> {
         match self {
-            ContextFormat2::Plain(table) => table.coverage(),
-            ContextFormat2::Chain(table) => table.coverage(),
+            ContextFormat2::Plain(table) if !table.coverage_offset().is_null() => {
+                Some(table.coverage())
+            }
+            ContextFormat2::Chain(table) if !table.coverage_offset().is_null() => {
+                Some(table.coverage())
+            }
+            _ => None,
         }
     }
 
-    pub(crate) fn input_class_def(&self) -> Result<ClassDef<'_>, ReadError> {
+    pub(crate) fn input_class_def(&self) -> Option<Result<ClassDef<'_>, ReadError>> {
         match self {
-            ContextFormat2::Plain(table_ref) => table_ref.class_def(),
-            ContextFormat2::Chain(table_ref) => table_ref.input_class_def(),
+            ContextFormat2::Plain(table_ref) if !table_ref.class_def_offset().is_null() => {
+                Some(table_ref.class_def())
+            }
+            ContextFormat2::Chain(table_ref) if !table_ref.input_class_def_offset().is_null() => {
+                Some(table_ref.input_class_def())
+            }
+            _ => None,
         }
     }
 
@@ -648,14 +685,14 @@ impl ContextFormat2<'_> {
 }
 
 impl Format2RuleSet<'_> {
-    pub(crate) fn rules(&self) -> impl Iterator<Item = Result<Format2Rule<'_>, ReadError>> {
+    pub(crate) fn rules(&self) -> impl Iterator<Item = Option<Result<Format2Rule<'_>, ReadError>>> {
         let (left, right) = match self {
             Format2RuleSet::Plain(table) => (
                 Some(
                     table
                         .class_seq_rules()
-                        .iter()
-                        .map(|rule| rule.map(Format2Rule::Plain)),
+                        .iter_as_nullable()
+                        .map(|rule| rule.map(|r| r.map(Format2Rule::Plain))),
                 ),
                 None,
             ),
@@ -664,8 +701,8 @@ impl Format2RuleSet<'_> {
                 Some(
                     table
                         .chained_class_seq_rules()
-                        .iter()
-                        .map(|rule| rule.map(Format2Rule::Chain)),
+                        .iter_as_nullable()
+                        .map(|rule| rule.map(|r| r.map(Format2Rule::Chain))),
                 ),
             ),
         };
@@ -765,11 +802,14 @@ impl ContextFormat3<'_> {
 
         for coverage in self
             .coverages()
-            .iter()
-            .chain(backtrack.into_iter().flat_map(|x| x.iter()))
-            .chain(lookahead.into_iter().flat_map(|x| x.iter()))
+            .iter_as_nullable()
+            .chain(backtrack.into_iter().flat_map(|x| x.iter_as_nullable()))
+            .chain(lookahead.into_iter().flat_map(|x| x.iter_as_nullable()))
         {
-            if !coverage?.intersects(glyphs) {
+            let Some(coverage) = coverage.transpose()? else {
+                return Ok(false);
+            };
+            if !coverage.intersects(glyphs) {
                 return Ok(false);
             }
         }
@@ -779,14 +819,19 @@ impl ContextFormat3<'_> {
 
 impl Intersect for ContextFormat1<'_> {
     fn intersects(&self, glyph_set: &IntSet<GlyphId>) -> Result<bool, ReadError> {
-        let coverage = self.coverage()?;
+        let Some(coverage) = self.coverage().transpose()? else {
+            return Ok(false);
+        };
         for rule_set in coverage
             .iter()
             .zip(self.rule_sets())
             .filter_map(|(g, rule_set)| rule_set.filter(|_| glyph_set.contains(GlyphId::from(g))))
         {
             for rule in rule_set?.rules() {
-                if rule?.intersects(glyph_set)? {
+                let Some(rule) = rule.transpose()? else {
+                    continue;
+                };
+                if rule.intersects(glyph_set)? {
                     return Ok(true);
                 }
             }
@@ -797,7 +842,9 @@ impl Intersect for ContextFormat1<'_> {
 
 impl LookupClosure for ContextFormat1<'_> {
     fn closure_lookups(&self, c: &mut LookupClosureCtx, arg: u16) -> Result<(), ReadError> {
-        let coverage = self.coverage()?;
+        let Some(coverage) = self.coverage().transpose()? else {
+            return Ok(());
+        };
         let glyph_set = c.glyphs();
 
         let intersected_idxes: IntSet<u16> = coverage
@@ -814,7 +861,10 @@ impl LookupClosure for ContextFormat1<'_> {
                 return Ok(());
             }
             for rule in rule_set?.rules() {
-                rule?.closure_lookups(c, arg)?;
+                let Some(rule) = rule.transpose()? else {
+                    continue;
+                };
+                rule.closure_lookups(c, arg)?;
             }
         }
 
@@ -824,24 +874,39 @@ impl LookupClosure for ContextFormat1<'_> {
 
 impl Intersect for ContextFormat2<'_> {
     fn intersects(&self, glyph_set: &IntSet<GlyphId>) -> Result<bool, ReadError> {
-        let coverage = self.coverage()?;
+        let Some(coverage) = self.coverage().transpose()? else {
+            return Ok(false);
+        };
         let retained_coverage_glyphs = coverage.intersect_set(glyph_set);
         if retained_coverage_glyphs.is_empty() {
             return Ok(false);
         }
 
-        let input_class_def = self.input_class_def()?;
+        let Some(input_class_def) = self.input_class_def().transpose()? else {
+            return Ok(false);
+        };
         let coverage_glyph_classes = input_class_def.intersect_classes(&retained_coverage_glyphs);
         let input_glyph_classes = input_class_def.intersect_classes(glyph_set);
 
         let backtrack_classes = match self {
             Self::Plain(_) => IntSet::empty(),
-            Self::Chain(table) => table.backtrack_class_def()?.intersect_classes(glyph_set),
+            Self::Chain(table) => {
+                if table.backtrack_class_def_offset().is_null() {
+                    IntSet::empty()
+                } else {
+                    table.backtrack_class_def()?.intersect_classes(glyph_set)
+                }
+            }
         };
-
         let lookahead_classes = match self {
             Self::Plain(_) => IntSet::empty(),
-            Self::Chain(table) => table.lookahead_class_def()?.intersect_classes(glyph_set),
+            Self::Chain(table) => {
+                if table.lookahead_class_def_offset().is_null() {
+                    IntSet::empty()
+                } else {
+                    table.lookahead_class_def()?.intersect_classes(glyph_set)
+                }
+            }
         };
 
         for rule_set in self.rule_sets().enumerate().filter_map(|(c, rule_set)| {
@@ -851,7 +916,10 @@ impl Intersect for ContextFormat2<'_> {
                 .flatten()
         }) {
             for rule in rule_set?.rules() {
-                if rule?.intersects(&input_glyph_classes, &backtrack_classes, &lookahead_classes) {
+                let Some(rule) = rule.transpose()? else {
+                    continue;
+                };
+                if rule.intersects(&input_glyph_classes, &backtrack_classes, &lookahead_classes) {
                     return Ok(true);
                 }
             }
@@ -862,25 +930,40 @@ impl Intersect for ContextFormat2<'_> {
 
 impl LookupClosure for ContextFormat2<'_> {
     fn closure_lookups(&self, c: &mut LookupClosureCtx, _arg: u16) -> Result<(), ReadError> {
+        let Some(coverage) = self.coverage().transpose()? else {
+            return Ok(());
+        };
         let glyph_set = c.glyphs();
-        let coverage = self.coverage()?;
         let retained_coverage_glyphs = coverage.intersect_set(glyph_set);
         if retained_coverage_glyphs.is_empty() {
             return Ok(());
         }
 
-        let input_class_def = self.input_class_def()?;
+        let Some(input_class_def) = self.input_class_def().transpose()? else {
+            return Ok(());
+        };
         let coverage_glyph_classes = input_class_def.intersect_classes(&retained_coverage_glyphs);
         let input_glyph_classes = input_class_def.intersect_classes(glyph_set);
 
         let backtrack_classes = match self {
             Self::Plain(_) => IntSet::empty(),
-            Self::Chain(table) => table.backtrack_class_def()?.intersect_classes(glyph_set),
+            Self::Chain(table) => {
+                if table.backtrack_class_def_offset().is_null() {
+                    IntSet::empty()
+                } else {
+                    table.backtrack_class_def()?.intersect_classes(glyph_set)
+                }
+            }
         };
-
         let lookahead_classes = match self {
             Self::Plain(_) => IntSet::empty(),
-            Self::Chain(table) => table.lookahead_class_def()?.intersect_classes(glyph_set),
+            Self::Chain(table) => {
+                if table.lookahead_class_def_offset().is_null() {
+                    IntSet::empty()
+                } else {
+                    table.lookahead_class_def()?.intersect_classes(glyph_set)
+                }
+            }
         };
 
         for rule_set in self.rule_sets().enumerate().filter_map(|(c, rule_set)| {
@@ -894,15 +977,15 @@ impl LookupClosure for ContextFormat2<'_> {
             }
 
             for rule in rule_set?.rules() {
-                let rule = rule?;
-                if c.lookup_limit_exceed()
-                    || !rule.intersects(
-                        &input_glyph_classes,
-                        &backtrack_classes,
-                        &lookahead_classes,
-                    )
-                {
+                if c.lookup_limit_exceed() {
                     return Ok(());
+                }
+                let Some(rule) = rule.transpose()? else {
+                    continue;
+                };
+
+                if !rule.intersects(&input_glyph_classes, &backtrack_classes, &lookahead_classes) {
+                    continue;
                 }
 
                 for lookup_record in rule.lookup_records() {

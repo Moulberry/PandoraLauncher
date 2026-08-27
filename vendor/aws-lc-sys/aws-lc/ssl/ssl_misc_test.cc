@@ -6,6 +6,7 @@
 #include "../crypto/test/file_util.h"
 #include "../crypto/test/test_util.h"
 #include "internal.h"
+#include "openssl/ssl.h"
 #include "ssl_common_test.h"
 
 BSSL_NAMESPACE_BEGIN
@@ -336,53 +337,55 @@ TEST(SSLTest, QuietShutdown) {
 }
 
 // Test that |SSL_OP_IGNORE_UNEXPECTED_EOF| causes an unexpected transport EOF
-// when the server closes without a close_notify to be reported as a clean shutdown,
-// |SSL_ERROR_ZERO_RETURN|, instead of |SSL_ERROR_SYSCALL|.
-TEST(SSLTest, IgnoreUnexpectedEOFClient) {
+// (the peer closing without a close_notify) to be reported as a clean shutdown,
+// |SSL_ERROR_ZERO_RETURN|, instead of |SSL_ERROR_SYSCALL|, for both the client
+// and the server.
+TEST(SSLTest, IgnoreUnexpectedEOF) {
   bssl::UniquePtr<SSL_CTX> client_ctx(SSL_CTX_new(TLS_method()));
   bssl::UniquePtr<SSL_CTX> server_ctx =
       CreateContextWithTestCertificate(TLS_method());
   ASSERT_TRUE(client_ctx);
   ASSERT_TRUE(server_ctx);
   SSL_CTX_set_options(client_ctx.get(), SSL_OP_IGNORE_UNEXPECTED_EOF);
+  SSL_CTX_set_options(server_ctx.get(), SSL_OP_IGNORE_UNEXPECTED_EOF);
+
+  // Create a fake read BIO that mimics a socket: it returns 0 on read to
+  // signal a transport EOF.
+  bssl::UniquePtr<BIO_METHOD> method(BIO_meth_new(0, nullptr));
+  ASSERT_TRUE(method);
+  ASSERT_TRUE(BIO_meth_set_create(method.get(), [](BIO *b) -> int {
+    BIO_set_init(b, 1);
+    return 1;
+  }));
+  ASSERT_TRUE(BIO_meth_set_read(method.get(),
+                                [](BIO *, char *, int) -> int { return 0; }));
+  ASSERT_TRUE(BIO_meth_set_ctrl(
+      method.get(), [](BIO *, int, long, void *) -> long { return 0; }));
+
   bssl::UniquePtr<SSL> client, server;
   ASSERT_TRUE(ConnectClientAndServer(&client, &server, client_ctx.get(),
                                      server_ctx.get()));
 
-  // Close the server's write side without sending a close_notify, so the client
-  // sees an unexpected transport EOF.
-  EXPECT_TRUE(BIO_shutdown_wr(SSL_get_wbio(server.get())));
+  BIO *eof_bio_client = BIO_new(method.get());
+  BIO *eof_bio_server = BIO_new(method.get());
+  ASSERT_TRUE(eof_bio_client);
+  ASSERT_TRUE(eof_bio_server);
 
-  // With the option set, the client reports the EOF as a clean shutdown rather
-  // than |SSL_ERROR_SYSCALL|.
+  // Dummy BIOs must mimic a socket BIO (BIO_eof == 0)
+  EXPECT_EQ(BIO_eof(eof_bio_client), 0);
+  EXPECT_EQ(BIO_eof(eof_bio_server), 0);
+
+  SSL_set0_rbio(client.get(), eof_bio_client);
+  SSL_set0_rbio(server.get(), eof_bio_server);
+
+  // With the option set, an unexpected transport EOF is reported as a clean
+  // shutdown, |SSL_ERROR_ZERO_RETURN|, rather than |SSL_ERROR_SYSCALL|.
   char buf[1];
   int ret = SSL_read(client.get(), buf, sizeof(buf));
   EXPECT_EQ(ret, 0);
   EXPECT_EQ(SSL_get_error(client.get(), ret), SSL_ERROR_ZERO_RETURN);
-}
 
-// Test that |SSL_OP_IGNORE_UNEXPECTED_EOF| behaves symmetrically on the server:
-// when the client closes without a close_notify, the server's |SSL_read| reports
-// the unexpected transport EOF as a clean shutdown with |SSL_ERROR_ZERO_RETURN|.
-TEST(SSLTest, IgnoreUnexpectedEOFServer) {
-  bssl::UniquePtr<SSL_CTX> client_ctx(SSL_CTX_new(TLS_method()));
-  bssl::UniquePtr<SSL_CTX> server_ctx =
-      CreateContextWithTestCertificate(TLS_method());
-  ASSERT_TRUE(client_ctx);
-  ASSERT_TRUE(server_ctx);
-  SSL_CTX_set_options(server_ctx.get(), SSL_OP_IGNORE_UNEXPECTED_EOF);
-  bssl::UniquePtr<SSL> client, server;
-  ASSERT_TRUE(ConnectClientAndServer(&client, &server, client_ctx.get(),
-                                     server_ctx.get()));
-
-  // Close the client's write side without sending a close_notify, so the server
-  // sees an unexpected transport EOF.
-  EXPECT_TRUE(BIO_shutdown_wr(SSL_get_wbio(client.get())));
-
-  // With the option set, the server reports the EOF as a clean shutdown rather
-  // than |SSL_ERROR_SYSCALL|.
-  char buf[1];
-  int ret = SSL_read(server.get(), buf, sizeof(buf));
+  ret = SSL_read(server.get(), buf, sizeof(buf));
   EXPECT_EQ(ret, 0);
   EXPECT_EQ(SSL_get_error(server.get(), ret), SSL_ERROR_ZERO_RETURN);
 }

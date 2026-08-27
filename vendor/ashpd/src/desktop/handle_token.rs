@@ -4,7 +4,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use zbus::{names::OwnedMemberName, zvariant::Type};
+use zbus::zvariant::Type;
 
 /// A handle token is a DBus Object Path element.
 ///
@@ -16,7 +16,7 @@ use zbus::{names::OwnedMemberName, zvariant::Type};
 /// A valid object path element must only contain the ASCII characters
 /// `[A-Z][a-z][0-9]_`
 #[derive(Serialize, Type, PartialEq, Eq, Hash, Clone)]
-pub struct HandleToken(OwnedMemberName);
+pub struct HandleToken(String);
 
 impl Display for HandleToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -48,7 +48,7 @@ impl Default for HandleToken {
             token.push(ALPHANUMERIC[idx] as char);
         }
 
-        Self(OwnedMemberName::try_from(token).unwrap())
+        Self(token)
     }
 }
 
@@ -67,12 +67,18 @@ impl std::str::FromStr for HandleToken {
     type Err = HandleInvalidCharacter;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value.is_empty() {
+            // Temporary value for backward compatibility
+            return Err(HandleInvalidCharacter('\0'));
+        }
+
         for char in value.chars() {
             if !char.is_ascii_alphanumeric() && char != '_' {
                 return Err(HandleInvalidCharacter(char));
             }
         }
-        Ok(Self(OwnedMemberName::try_from(value).unwrap()))
+
+        Ok(Self(value.to_string()))
     }
 }
 
@@ -102,7 +108,7 @@ impl TryFrom<&zbus::zvariant::OwnedObjectPath> for HandleToken {
             .split('/')
             .next_back()
             .expect("A valid request ObjectPath");
-        HandleToken::try_from(base_segment)
+        Self::try_from(base_segment)
     }
 }
 
@@ -130,11 +136,15 @@ mod test {
         let token = HandleToken::from_str("token2").unwrap();
         assert_eq!(token.to_string(), "token2".to_string());
 
+        assert!(HandleToken::from_str("2token").is_ok());
+
         assert!(HandleToken::from_str("/test").is_err());
 
         assert!(HandleToken::from_str("تجربة").is_err());
 
         assert!(HandleToken::from_str("test_token").is_ok());
+
+        assert!(HandleToken::from_str("").is_err());
 
         HandleToken::default(); // ensure we don't panic
     }

@@ -155,6 +155,47 @@ impl TryFrom<Value<'_>> for Contrast {
     }
 }
 
+/// The system's preferred motion
+#[cfg_attr(feature = "glib", derive(glib::Enum))]
+#[cfg_attr(feature = "glib", enum_type(name = "AshpdReducedMotion"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum ReducedMotion {
+    /// No preference
+    #[default]
+    NoPreference,
+    /// Reduced motion
+    ReducedMotion,
+}
+
+impl From<ReducedMotion> for OwnedValue {
+    fn from(value: ReducedMotion) -> Self {
+        match value {
+            ReducedMotion::ReducedMotion => 1,
+            _ => 0,
+        }
+        .into()
+    }
+}
+
+impl TryFrom<OwnedValue> for ReducedMotion {
+    type Error = Error;
+
+    fn try_from(value: OwnedValue) -> Result<Self, Self::Error> {
+        TryFrom::<Value>::try_from(value.into())
+    }
+}
+
+impl TryFrom<Value<'_>> for ReducedMotion {
+    type Error = Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        Ok(match u32::try_from(value)? {
+            1 => Self::ReducedMotion,
+            _ => Self::NoPreference,
+        })
+    }
+}
+
 /// Appearance namespace
 pub const APPEARANCE_NAMESPACE: &str = "org.freedesktop.appearance";
 /// Color scheme key
@@ -163,6 +204,8 @@ pub const COLOR_SCHEME_KEY: &str = "color-scheme";
 pub const ACCENT_COLOR_SCHEME_KEY: &str = "accent-color";
 /// Contrast key
 pub const CONTRAST_KEY: &str = "contrast";
+/// Reduced motion key
+pub const REDUCED_MOTION_KEY: &str = "reduced-motion";
 
 /// The interface provides read-only access to a small number of host settings
 /// required for toolkits similar to XSettings. It is not for general purpose
@@ -266,6 +309,12 @@ impl Settings {
             .await
     }
 
+    /// Retrieves the system's reduced motion preference
+    pub async fn reduced_motion(&self) -> Result<ReducedMotion, Error> {
+        self.read::<ReducedMotion>(APPEARANCE_NAMESPACE, REDUCED_MOTION_KEY)
+            .await
+    }
+
     /// Listen to changes of the system's preferred color scheme
     pub async fn receive_color_scheme_changed(
         &self,
@@ -291,6 +340,16 @@ impl Settings {
     pub async fn receive_contrast_changed(&self) -> Result<impl Stream<Item = Contrast>, Error> {
         Ok(self
             .receive_setting_changed_with_args(APPEARANCE_NAMESPACE, CONTRAST_KEY)
+            .await?
+            .filter_map(|t| ready(t.ok())))
+    }
+
+    /// Listen to changes of the system's reduced motion preference
+    pub async fn receive_reduced_motion_changed(
+        &self,
+    ) -> Result<impl Stream<Item = ReducedMotion>, Error> {
+        Ok(self
+            .receive_setting_changed_with_args(APPEARANCE_NAMESPACE, REDUCED_MOTION_KEY)
             .await?
             .filter_map(|t| ready(t.ok())))
     }

@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.60"
 name = "ctor"
-version = "1.0.6"
+version = "1.0.13"
 authors = ["Matt Mastracci <matthew@mastracci.com>"]
 build = false
 exclude = ["tests"]
@@ -73,17 +73,17 @@ name = "ctor-statics"
 path = "examples/ctor-statics.rs"
 
 [dependencies.link-section]
-version = "0.17.0"
+version = "0.19.3"
 optional = true
 default-features = false
 
 [dependencies.linktime-proc-macro]
-version = "0.1.0"
+version = "0.2.3"
 features = ["ctor"]
 optional = true
 
 [dev-dependencies.libc-print]
-version = "0.3"
+version = "0.5"
 
 [dev-dependencies.macrotest]
 version = "1"

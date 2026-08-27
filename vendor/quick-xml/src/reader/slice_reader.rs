@@ -2,16 +2,17 @@
 //! underlying byte stream. This implementation supports not using an
 //! intermediate buffer as the byte slice itself can be used to borrow from.
 
-use std::borrow::Cow;
 use std::io;
 
 #[cfg(feature = "encoding")]
+use crate::encoding::DetectedEncoding;
+#[cfg(feature = "encoding")]
 use crate::reader::EncodingRef;
 #[cfg(feature = "encoding")]
-use encoding_rs::{Encoding, UTF_8};
+use encoding_rs;
 
 use crate::errors::{Error, Result};
-use crate::events::Event;
+use crate::events::{BytesText, Event};
 use crate::name::QName;
 use crate::parser::Parser;
 use crate::reader::{BangType, ReadRefResult, ReadTextResult, Reader, Span, XmlSource};
@@ -28,7 +29,7 @@ impl<'a> Reader<&'a [u8]> {
         #[cfg(feature = "encoding")]
         {
             let mut reader = Self::from_reader(s.as_bytes());
-            reader.state.encoding = EncodingRef::Explicit(UTF_8);
+            reader.state.encoding = EncodingRef::Explicit(encoding_rs::UTF_8);
             reader
         }
 
@@ -209,11 +210,12 @@ impl<'a> Reader<&'a [u8]> {
     /// // ...then, we could read text content until close tag.
     /// // This call will correctly handle nested <html> elements.
     /// let text = reader.read_text(end.name()).unwrap();
-    /// assert_eq!(text, Cow::Borrowed(r#"
+    /// let text = text.decode().unwrap();
+    /// assert_eq!(text, r#"
     ///         <title>This is a HTML text</title>
     ///         <p>Usual XML rules does not apply inside it
     ///         <p>For example, elements not needed to be &quot;closed&quot;
-    ///     "#));
+    ///     "#);
     /// assert!(matches!(text, Cow::Borrowed(_)));
     ///
     /// // Now we can enable checks again
@@ -225,7 +227,7 @@ impl<'a> Reader<&'a [u8]> {
     ///
     /// [`Start`]: Event::Start
     /// [`decoder()`]: Self::decoder()
-    pub fn read_text(&mut self, end: QName) -> Result<Cow<'a, str>> {
+    pub fn read_text(&mut self, end: QName) -> Result<BytesText<'a>> {
         // self.reader will be changed, so store original reference
         let buffer = self.reader;
         let span = self.read_to_end(end)?;
@@ -233,7 +235,7 @@ impl<'a> Reader<&'a [u8]> {
         let len = span.end - span.start;
         // SAFETY: `span` can only contain indexes up to usize::MAX because it
         // was created from offsets from a single &[u8] slice
-        Ok(self.decoder().decode(&buffer[0..len as usize])?)
+        Ok(BytesText::wrap(&buffer[0..len as usize], self.decoder()))
     }
 }
 
@@ -253,10 +255,10 @@ impl<'a> XmlSource<'a, ()> for &'a [u8] {
 
     #[cfg(feature = "encoding")]
     #[inline]
-    fn detect_encoding(&mut self) -> io::Result<Option<&'static Encoding>> {
-        if let Some((enc, bom_len)) = crate::encoding::detect_encoding(self) {
-            *self = &self[bom_len..];
-            return Ok(Some(enc));
+    fn detect_encoding(&mut self) -> io::Result<Option<DetectedEncoding>> {
+        if let Some(detected) = crate::encoding::detect_encoding(self) {
+            *self = &self[detected.bom_len() as usize..];
+            return Ok(Some(detected));
         }
         Ok(None)
     }
@@ -409,7 +411,6 @@ mod test {
     check!(
         #[test]
         read_event_impl,
-        read_until_close,
         identity,
         0,
         ()

@@ -2107,6 +2107,7 @@ pub use self::attributes::AttributesDeserializer;
 pub use self::resolver::{EntityResolver, PredefinedEntityResolver};
 pub use self::simple_type::SimpleTypeDeserializer;
 pub use crate::errors::serialize::DeError;
+use crate::XmlVersion;
 
 use crate::{
     de::map::ElementMapAccess,
@@ -2371,16 +2372,30 @@ impl<'i, R: XmlRead<'i>, E: EntityResolver> XmlReader<'i, R, E> {
     /// Returns `true` when next event is not a text event in any form.
     #[inline(always)]
     const fn current_event_is_last_text(&self) -> bool {
-        // If next event is a text or CDATA, we should not trim trailing spaces
+        // If next event is a text-like event or a DocType (which is
+        // metadata and invisible to the data model), we should not
+        // trim trailing spaces — there is more content to drain, and
+        // any DocType between us and the next text run needs to be
+        // absorbed so `read_text` does not later see two consecutive
+        // `DeEvent::Text`. Without DocType here, an input like
+        // `<a>x<!DOCTYPE y>z</a>` produces two text events for `x`
+        // and `z`, tripping `unreachable!()` in `read_text`.
         !matches!(
             self.lookahead,
-            Ok(PayloadEvent::Text(_)) | Ok(PayloadEvent::CData(_) | PayloadEvent::GeneralRef(_))
+            Ok(PayloadEvent::Text(_)
+                | PayloadEvent::CData(_)
+                | PayloadEvent::GeneralRef(_)
+                | PayloadEvent::DocType(_))
         )
     }
 
     /// Read all consequent [`Text`] and [`CData`] events until non-text event
     /// occurs. Content of all events would be appended to `result` and returned
     /// as [`DeEvent::Text`].
+    ///
+    /// DocType events that fall between text events are absorbed by the
+    /// entity resolver and do not break the run — see
+    /// [`Self::current_event_is_last_text`] for the rationale.
     ///
     /// [`Text`]: PayloadEvent::Text
     /// [`CData`]: PayloadEvent::CData
@@ -2391,12 +2406,23 @@ impl<'i, R: XmlRead<'i>, E: EntityResolver> XmlReader<'i, R, E> {
             }
 
             match self.next_impl()? {
-                PayloadEvent::Text(e) => result.to_mut().push_str(&e.xml_content()?),
-                PayloadEvent::CData(e) => result.to_mut().push_str(&e.xml_content()?),
+                PayloadEvent::Text(e) => result
+                    .to_mut()
+                    .push_str(&e.xml_content(self.reader.xml_version())?),
+                PayloadEvent::CData(e) => result
+                    .to_mut()
+                    .push_str(&e.xml_content(self.reader.xml_version())?),
                 PayloadEvent::GeneralRef(e) => self.resolve_reference(result.to_mut(), e)?,
+                PayloadEvent::DocType(e) => {
+                    self.entity_resolver
+                        .capture(e)
+                        .map_err(|err| DeError::Custom(format!("cannot parse DTD: {}", err)))?;
+                }
 
-                // SAFETY: current_event_is_last_text checks that event is Text, CData or GeneralRef
-                _ => unreachable!("Only `Text`, `CData` or `GeneralRef` events can come here"),
+                // SAFETY: current_event_is_last_text checks that event is Text, CData, GeneralRef, or DocType
+                _ => unreachable!(
+                    "Only `Text`, `CData`, `GeneralRef` or `DocType` events can come here"
+                ),
             }
         }
         Ok(DeEvent::Text(Text::new(result)))
@@ -2408,8 +2434,10 @@ impl<'i, R: XmlRead<'i>, E: EntityResolver> XmlReader<'i, R, E> {
             return match self.next_impl()? {
                 PayloadEvent::Start(e) => Ok(DeEvent::Start(e)),
                 PayloadEvent::End(e) => Ok(DeEvent::End(e)),
-                PayloadEvent::Text(e) => self.drain_text(e.xml_content()?),
-                PayloadEvent::CData(e) => self.drain_text(e.xml_content()?),
+                PayloadEvent::Text(e) => self.drain_text(e.xml_content(self.reader.xml_version())?),
+                PayloadEvent::CData(e) => {
+                    self.drain_text(e.xml_content(self.reader.xml_version())?)
+                }
                 PayloadEvent::DocType(e) => {
                     self.entity_resolver
                         .capture(e)
@@ -3068,7 +3096,13 @@ where
         let config = reader.config_mut();
         config.expand_empty_elements = true;
 
-        Self::new(SliceReader { reader }, entity_resolver)
+        Self::new(
+            SliceReader {
+                reader,
+                version: XmlVersion::Implicit1_0,
+            },
+            entity_resolver,
+        )
     }
 }
 
@@ -3148,6 +3182,7 @@ where
             IoReader {
                 reader,
                 buf: Vec::new(),
+                version: XmlVersion::Implicit1_0,
             },
             entity_resolver,
         )
@@ -3167,6 +3202,7 @@ where
             IoReader {
                 reader,
                 buf: Vec::new(),
+                version: XmlVersion::Implicit1_0,
             },
             entity_resolver,
         )
@@ -3391,6 +3427,9 @@ pub trait XmlRead<'i> {
     /// when it cannot satisfy the lifetime.
     fn read_to_end(&mut self, name: QName) -> Result<(), DeError>;
 
+    /// Return an XML version of the source.
+    fn xml_version(&self) -> XmlVersion;
+
     /// A copy of the reader's decoder used to decode strings.
     fn decoder(&self) -> Decoder;
 
@@ -3408,6 +3447,7 @@ pub trait XmlRead<'i> {
 pub struct IoReader<R: BufRead> {
     reader: NsReader<R>,
     buf: Vec<u8>,
+    version: XmlVersion,
 }
 
 impl<R: BufRead> IoReader<R> {
@@ -3451,6 +3491,9 @@ impl<'i, R: BufRead> XmlRead<'i> for IoReader<R> {
             self.buf.clear();
 
             let event = self.reader.read_event_into(&mut self.buf)?;
+            if let Event::Decl(e) = &event {
+                self.version = e.xml_version()?;
+            }
             if let Some(event) = skip_uninterested(event) {
                 return Ok(event.into_owned());
             }
@@ -3464,6 +3507,12 @@ impl<'i, R: BufRead> XmlRead<'i> for IoReader<R> {
         }
     }
 
+    #[inline]
+    fn xml_version(&self) -> XmlVersion {
+        self.version
+    }
+
+    #[inline]
     fn decoder(&self) -> Decoder {
         self.reader.decoder()
     }
@@ -3479,6 +3528,7 @@ impl<'i, R: BufRead> XmlRead<'i> for IoReader<R> {
 /// [`Deserializer::from_str`].
 pub struct SliceReader<'de> {
     reader: NsReader<&'de [u8]>,
+    version: XmlVersion,
 }
 
 impl<'de> SliceReader<'de> {
@@ -3519,6 +3569,9 @@ impl<'de> XmlRead<'de> for SliceReader<'de> {
     fn next(&mut self) -> Result<PayloadEvent<'de>, DeError> {
         loop {
             let event = self.reader.read_event()?;
+            if let Event::Decl(e) = &event {
+                self.version = e.xml_version()?;
+            }
             if let Some(event) = skip_uninterested(event) {
                 return Ok(event);
             }
@@ -3532,6 +3585,12 @@ impl<'de> XmlRead<'de> for SliceReader<'de> {
         }
     }
 
+    #[inline]
+    fn xml_version(&self) -> XmlVersion {
+        self.version
+    }
+
+    #[inline]
     fn decoder(&self) -> Decoder {
         self.reader.decoder()
     }
@@ -4123,9 +4182,11 @@ mod tests {
         let mut reader1 = IoReader {
             reader: NsReader::from_reader(s.as_bytes()),
             buf: Vec::new(),
+            version: XmlVersion::Implicit1_0,
         };
         let mut reader2 = SliceReader {
             reader: NsReader::from_str(s),
+            version: XmlVersion::Implicit1_0,
         };
 
         loop {
@@ -4151,6 +4212,7 @@ mod tests {
 
         let mut reader = SliceReader {
             reader: NsReader::from_str(s),
+            version: XmlVersion::Implicit1_0,
         };
 
         let config = reader.reader.config_mut();

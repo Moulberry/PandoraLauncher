@@ -46,6 +46,8 @@ pub enum SubstitutionSubtables<'a> {
     Contextual(SubSubtables<'a, SubstitutionSequenceContext<'a>>),
     ChainContextual(SubSubtables<'a, SubstitutionChainContext<'a>>),
     Reverse(SubSubtables<'a, ReverseChainSingleSubstFormat1<'a>>),
+    /// An extension lookup did not have any subtables
+    EmptyExtension,
 }
 
 impl<'a> SubstitutionLookup<'a> {
@@ -91,9 +93,19 @@ impl<'a> SubstitutionLookup<'a> {
                 offsets, data,
             ))),
             7 => {
-                let first = offsets.first().ok_or(ReadError::OutOfBounds)?.get();
-                let ext: ExtensionSubstFormat1<()> = first.resolve(data)?;
-                match ext.extension_lookup_type() {
+                // look through subtable offsets to try and find a lookup type.
+                // this is robust in the case where the first subtable offset is
+                // malformed, but a later one is okay.
+                let Some(lookup_type) = offsets.iter().find_map(|off| {
+                    off.get()
+                        .resolve::<ExtensionSubstFormat1<()>>(data)
+                        .ok()
+                        .map(|ext| ext.extension_lookup_type())
+                }) else {
+                    return Ok(SubstitutionSubtables::EmptyExtension);
+                };
+
+                match lookup_type {
                     1 => Ok(SubstitutionSubtables::Single(Subtables::new_ext(
                         offsets, data,
                     ))),

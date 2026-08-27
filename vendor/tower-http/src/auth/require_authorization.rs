@@ -1,3 +1,4 @@
+#![deprecated(since = "0.6.7", note = "too basic to be useful in real applications")]
 //! Authorize requests using [`ValidateRequest`].
 //!
 //! [`Authorization`]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization

@@ -19,7 +19,9 @@ use crate::vector::{vec2, Vector2D};
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
-use num_traits::{Float, NumCast};
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
+use num_traits::NumCast;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -151,6 +153,13 @@ impl<T, U> Box2D<T, U> {
     }
 }
 
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, U> MallocSizeOf for Box2D<T, U> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.min.size_of(ops) + self.max.size_of(ops)
+    }
+}
+
 impl<T, U> Box2D<T, U>
 where
     T: PartialOrd,
@@ -180,17 +189,57 @@ where
             & (self.max.y > other.min.y)
     }
 
-    /// Returns `true` if this box2d contains the point `p`. A point is considered
-    /// in the box2d if it lies on the left or top edges, but outside if it lies
-    /// on the right or bottom edges.
+    /// Returns `true` if this [`Box2D`] contains the point `p`.
+    ///
+    /// Points on the top and left edges are inside the box, whereas
+    /// points on the bottom and right edges are outside the box.
+    /// See [`Box2D::contains_inclusive`] for a variant that also includes those
+    /// latter points.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use euclid::default::{Box2D, Point2D};
+    ///
+    /// let rect = Box2D::new(Point2D::origin(), Point2D::new(2, 2));
+    ///
+    /// assert!(rect.contains(Point2D::new(1, 1)));
+    ///
+    /// assert!(rect.contains(Point2D::new(0, 1))); // left edge
+    /// assert!(rect.contains(Point2D::new(1, 0))); // top edge
+    /// assert!(rect.contains(Point2D::origin()));
+    ///
+    /// assert!(!rect.contains(Point2D::new(2, 1))); // right edge
+    /// assert!(!rect.contains(Point2D::new(1, 2))); // bottom edge
+    /// assert!(!rect.contains(Point2D::new(2, 2)));
+    /// ```
     #[inline]
     pub fn contains(&self, p: Point2D<T, U>) -> bool {
         // Use bitwise and instead of && to avoid emitting branches.
         (self.min.x <= p.x) & (p.x < self.max.x) & (self.min.y <= p.y) & (p.y < self.max.y)
     }
 
-    /// Returns `true` if this box contains the point `p`. A point is considered
-    /// in the box2d if it lies on any edge of the box2d.
+    /// Returns `true` if this box contains the point `p`.
+    ///
+    /// This is like [`Box2D::contains`], but points on the bottom and right
+    /// edges are also inside the box.
+    ///
+    /// # Examples
+    /// ```
+    /// use euclid::default::{Box2D, Point2D};
+    ///
+    /// let rect = Box2D::new(Point2D::origin(), Point2D::new(2, 2));
+    ///
+    /// assert!(rect.contains_inclusive(Point2D::new(1, 1)));
+    ///
+    /// assert!(rect.contains_inclusive(Point2D::new(0, 1))); // left edge
+    /// assert!(rect.contains_inclusive(Point2D::new(1, 0))); // top edge
+    /// assert!(rect.contains_inclusive(Point2D::origin()));
+    ///
+    /// assert!(rect.contains_inclusive(Point2D::new(2, 1))); // right edge
+    /// assert!(rect.contains_inclusive(Point2D::new(1, 2))); // bottom edge
+    /// assert!(rect.contains_inclusive(Point2D::new(2, 2)));
+    /// ```
     #[inline]
     pub fn contains_inclusive(&self, p: Point2D<T, U>) -> bool {
         // Use bitwise and instead of && to avoid emitting branches.
@@ -358,7 +407,53 @@ impl<T, U> Box2D<T, U>
 where
     T: Copy + Zero + PartialOrd,
 {
-    /// Returns the smallest box containing all of the provided points.
+    /// Returns the smallest box enclosing all of the provided points.
+    ///
+    /// The top/bottom/left/right-most points are exactly on the box's edges.
+    /// Since [`Box2D::contains`] excludes points that are on the right-most and
+    /// bottom-most edges, not all points passed to [`Box2D::from_points`] are
+    /// contained in the returned [`Box2D`] when probed with [`Box2D::contains`], but
+    /// are when probed with [`Box2D::contains_inclusive`].
+    ///
+    /// For example:
+    ///
+    /// ```
+    /// use euclid::default::{Point2D, Box2D};
+    ///
+    /// let a = Point2D::origin();
+    /// let b = Point2D::new(1, 2);
+    /// let rect = Box2D::from_points([a, b]);
+    ///
+    /// assert_eq!(rect.width(), 1);
+    /// assert_eq!(rect.height(), 2);
+    ///
+    /// assert!(rect.contains(a));
+    /// assert!(!rect.contains(b));
+    /// assert!(rect.contains_inclusive(b));
+    /// ```
+    ///
+    /// In particular, calling [`Box2D::from_points`] with a single point
+    /// results in an empty [`Box2D`]:
+    ///
+    /// ```
+    /// use euclid::default::{Point2D, Box2D};
+    ///
+    /// let a = Point2D::new(1, 0);
+    /// let rect = Box2D::from_points([a]);
+    ///
+    /// assert!(rect.is_empty());
+    /// assert!(!rect.contains(a));
+    /// assert!(rect.contains_inclusive(a));
+    /// ```
+    ///
+    /// The [`Box2D`] enclosing no points is also empty:
+    ///
+    /// ```
+    /// use euclid::default::{Box2D, Point2D};
+    ///
+    /// let rect = Box2D::from_points(std::iter::empty::<Point2D<i32>>());
+    /// assert!(rect.is_empty());
+    /// ```
     pub fn from_points<I>(points: I) -> Self
     where
         I: IntoIterator,
@@ -375,16 +470,16 @@ where
         for point in points {
             let p = point.borrow();
             if p.x < min_x {
-                min_x = p.x
+                min_x = p.x;
             }
             if p.x > max_x {
-                max_x = p.x
+                max_x = p.x;
             }
             if p.y < min_y {
-                min_y = p.y
+                min_y = p.y;
             }
             if p.y > max_y {
-                max_y = p.y
+                max_y = p.y;
             }
         }
 
@@ -633,14 +728,6 @@ impl<T: NumCast + Copy, U> Box2D<T, U> {
     }
 }
 
-impl<T: Float, U> Box2D<T, U> {
-    /// Returns `true` if all members are finite.
-    #[inline]
-    pub fn is_finite(self) -> bool {
-        self.min.is_finite() && self.max.is_finite()
-    }
-}
-
 impl<T, U> Box2D<T, U>
 where
     T: Round,
@@ -692,6 +779,15 @@ where
     }
 }
 
+impl<T, U> From<Rect<T, U>> for Box2D<T, U>
+where
+    T: Copy + Add<T, Output = T>,
+{
+    fn from(r: Rect<T, U>) -> Self {
+        r.to_box2d()
+    }
+}
+
 impl<T: Default, U> Default for Box2D<T, U> {
     fn default() -> Self {
         Box2D {
@@ -701,7 +797,22 @@ impl<T: Default, U> Default for Box2D<T, U> {
     }
 }
 
+#[cfg(any(feature = "std", feature = "libm"))]
+mod float {
+    use super::Box2D;
+    use num_traits::Float;
+
+    impl<T: Float, U> Box2D<T, U> {
+        /// Returns `true` if all members are finite.
+        #[inline]
+        pub fn is_finite(self) -> bool {
+            self.min.is_finite() && self.max.is_finite()
+        }
+    }
+}
+
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod tests {
     use crate::default::Box2D;
     use crate::side_offsets::SideOffsets2D;

@@ -1485,12 +1485,12 @@ static OPENSSL_NOINLINE int boringssl_self_test_ml_kem(void) {
   if (ml_kem_512_decapsulate_no_self_test(shared_secret, &shared_secret_len, kDecapCiphertext,
                                           kDecapDK) ||
       !check_test(kDecapSharedSecret, shared_secret, sizeof(kDecapSharedSecret),
-                  "ML-KEM decapsulate non-rejection") ||
+                  "ML-KEM-decapsulate-non-rejection") ||
       ml_kem_512_decapsulate_no_self_test(
           shared_secret, &shared_secret_len, kDecapCiphertextRejection, kDecapDK) ||
       !check_test(kDecapSharedSecretRejection, shared_secret,
                   sizeof(kDecapSharedSecretRejection),
-                  "ML-KEM decapsulate implicit rejection")) {
+                  "ML-KEM-decapsulate-rejection")) {
     goto err;
   }
 
@@ -2763,6 +2763,82 @@ static OPENSSL_NOINLINE int boringssl_self_test_fast(void) {
       !check_test(kAESGCMDecPlaintext, output, sizeof(kAESGCMDecPlaintext),
                   "AES-GCM-decrypt KAT")) {
     AWS_LC_FIPS_failure("AES-GCM-decrypt KAT failed because EVP_AEAD_CTX_open failed");
+    goto err;
+  }
+
+  // AES-KWP (Key Wrap with Padding, RFC 5649) unwrap KAT. The key and
+  // ciphertext are ACVP-AES-KWP sample vectors (tgId 15, tcId 1411 from
+  // util/fipstools/acvp/acvptool/test/vectors/ACVP-AES-KWP.bz2); the expected
+  // plaintext is the matching answer in
+  // util/fipstools/acvp/acvptool/test/expected/ACVP-AES-KWP.bz2.
+  static const uint8_t kAESKWPUnwrapKey[16] = {
+      0x40, 0x38, 0x54, 0x84, 0xb0, 0xee, 0x1e, 0x3c,
+      0x1b, 0xa2, 0xa8, 0xc5, 0x3f, 0x62, 0xf5, 0xf5,
+  };
+  static const uint8_t kAESKWPUnwrapCiphertext[40] = {
+      0x0d, 0xed, 0xd0, 0x77, 0x34, 0x3d, 0x29, 0xce, 0x75, 0x38, 0xbe, 0x2a,
+      0xad, 0xa0, 0x75, 0x43, 0x0a, 0x8c, 0x23, 0x78, 0x35, 0xa8, 0x9d, 0x0a,
+      0x72, 0xde, 0xda, 0x7b, 0xb7, 0xa5, 0x96, 0x7b, 0x67, 0x05, 0x37, 0x32,
+      0x40, 0xf2, 0xef, 0xf8,
+  };
+  static const uint8_t kAESKWPUnwrapPlaintext[32] = {
+      0xb8, 0x1e, 0x47, 0xe3, 0x1d, 0x3b, 0xa7, 0x74, 0x5c, 0xc8, 0x6b, 0xe1,
+      0x32, 0x80, 0xa6, 0x73, 0x9e, 0xb4, 0x0c, 0x80, 0xf3, 0xcf, 0x8d, 0xc6,
+      0xf7, 0xe6, 0xa6, 0x63, 0x95, 0x76, 0x7d, 0x33,
+  };
+  if (AES_set_decrypt_key(kAESKWPUnwrapKey, 8 * sizeof(kAESKWPUnwrapKey),
+                          &aes_key) != 0) {
+    fprintf(stderr, "AES_set_decrypt_key failed.\n");
+    goto err;
+  }
+  if (!AES_unwrap_key_padded(&aes_key, output, &out_len, sizeof(output),
+                             kAESKWPUnwrapCiphertext,
+                             sizeof(kAESKWPUnwrapCiphertext)) ||
+      out_len != sizeof(kAESKWPUnwrapPlaintext)) {
+    AWS_LC_FIPS_failure(
+        "AES-KWP-unwrap KAT failed because AES_unwrap_key_padded failed");
+    goto err;
+  }
+  if (!check_test(kAESKWPUnwrapPlaintext, output,
+                  sizeof(kAESKWPUnwrapPlaintext), "AES-KWP-unwrap")) {
+    goto err;
+  }
+
+  // AES-KWP (Key Wrap with Padding, RFC 5649) wrap KAT. The key and plaintext
+  // are ACVP-AES-KWP sample vectors (tgId 3, tcId 211 from
+  // util/fipstools/acvp/acvptool/test/vectors/ACVP-AES-KWP.bz2); the expected
+  // ciphertext is the matching answer in
+  // util/fipstools/acvp/acvptool/test/expected/ACVP-AES-KWP.bz2.
+  static const uint8_t kAESKWPWrapKey[16] = {
+      0xeb, 0xdf, 0xd8, 0x55, 0xa8, 0xbf, 0xf8, 0x97,
+      0x6b, 0x0c, 0x93, 0x63, 0x9e, 0x19, 0x29, 0x16,
+  };
+  static const uint8_t kAESKWPWrapPlaintext[32] = {
+      0x03, 0x59, 0x42, 0x96, 0xaa, 0x84, 0xa6, 0x0e, 0x27, 0x72, 0xf8, 0x21,
+      0xc0, 0x42, 0xea, 0xb8, 0xe4, 0x33, 0xe7, 0xf7, 0x40, 0x0b, 0x88, 0x02,
+      0x8b, 0x5f, 0x12, 0xab, 0xe1, 0x91, 0xa9, 0xd5,
+  };
+  static const uint8_t kAESKWPWrapCiphertext[40] = {
+      0xd2, 0xe3, 0x8b, 0xdb, 0x7b, 0x1e, 0xcf, 0xcf, 0xf0, 0x85, 0xdd, 0xe6,
+      0x90, 0xc5, 0x47, 0xbf, 0xd2, 0xf1, 0xb5, 0xaa, 0x9f, 0x06, 0x33, 0xa2,
+      0xad, 0xf4, 0xe8, 0x9a, 0x70, 0x40, 0xe8, 0xe5, 0x96, 0xfe, 0x3b, 0x17,
+      0xbf, 0xd2, 0x58, 0x2e,
+  };
+  if (AES_set_encrypt_key(kAESKWPWrapKey, 8 * sizeof(kAESKWPWrapKey),
+                          &aes_key) != 0) {
+    fprintf(stderr, "AES_set_encrypt_key failed.\n");
+    goto err;
+  }
+  if (!AES_wrap_key_padded(&aes_key, output, &out_len, sizeof(output),
+                           kAESKWPWrapPlaintext,
+                           sizeof(kAESKWPWrapPlaintext)) ||
+      out_len != sizeof(kAESKWPWrapCiphertext)) {
+    AWS_LC_FIPS_failure(
+        "AES-KWP-wrap KAT failed because AES_wrap_key_padded failed");
+    goto err;
+  }
+  if (!check_test(kAESKWPWrapCiphertext, output,
+                  sizeof(kAESKWPWrapCiphertext), "AES-KWP-wrap")) {
     goto err;
   }
 

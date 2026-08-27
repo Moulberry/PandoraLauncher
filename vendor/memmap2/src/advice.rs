@@ -230,7 +230,7 @@ pub enum Advice {
     /// zeroed out if the address range is deallocated without first unwiring the pages (i.e.
     /// a munmap(2) without a preceding munlock(2) or the application quits).  This is used
     /// with `madvise()` system call.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(target_vendor = "apple")]
     ZeroWiredPages = libc::MADV_ZERO_WIRED_PAGES,
 }
 
@@ -319,7 +319,7 @@ pub enum UncheckedAdvice {
     /// Using the returned value with conceptually write to the
     /// mapped pages, i.e. borrowing the mapping while the pages
     /// are still being freed results in undefined behaviour.
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "ios"))]
+    #[cfg(any(target_os = "linux", target_vendor = "apple"))]
     Free = libc::MADV_FREE,
 
     /// **MADV_REMOVE** - Linux only (since Linux 2.6.16)
@@ -358,7 +358,7 @@ pub enum UncheckedAdvice {
     /// Using the returned value with conceptually write to the
     /// mapped pages, i.e. borrowing the mapping while the pages
     /// are still being freed results in undefined behaviour.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(target_vendor = "apple")]
     FreeReusable = libc::MADV_FREE_REUSABLE,
 
     /// **MADV_FREE_REUSE** - Darwin only
@@ -372,7 +372,7 @@ pub enum UncheckedAdvice {
     /// Using the returned value with conceptually write to the
     /// mapped pages, i.e. borrowing the mapping while the pages
     /// are still being freed results in undefined behaviour.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(target_vendor = "apple")]
     FreeReuse = libc::MADV_FREE_REUSE,
 }
 

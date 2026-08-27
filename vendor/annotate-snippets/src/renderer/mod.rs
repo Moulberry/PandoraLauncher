@@ -29,10 +29,10 @@ use alloc::string::String;
 
 use crate::Report;
 
-pub(crate) use render::normalize_whitespace;
 pub(crate) use render::ElementStyle;
 pub(crate) use render::UnderlineParts;
-pub(crate) use render::{char_width, num_overlap, LineAnnotation, LineAnnotationType};
+pub(crate) use render::normalize_whitespace;
+pub(crate) use render::{LineAnnotation, LineAnnotationType, char_width, num_overlap};
 pub(crate) use stylesheet::Stylesheet;
 
 pub use anstyle::*;

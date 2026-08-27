@@ -12,11 +12,7 @@
 [package]
 edition = "2021"
 name = "zerocopy-derive"
-version = "0.8.27"
-authors = [
-    "Joshua Liebow-Feeser <joshlf@google.com>",
-    "Jack Wrenn <jswrenn@amazon.com>",
-]
+version = "0.8.56"
 build = false
 exclude = [
     ".*",
@@ -37,10 +33,6 @@ repository = "https://github.com/google/zerocopy"
 name = "zerocopy_derive"
 path = "src/lib.rs"
 proc-macro = true
-
-[[test]]
-name = "crate_path"
-path = "tests/crate_path.rs"
 
 [[test]]
 name = "deprecated"
@@ -91,6 +83,22 @@ name = "issue_2117"
 path = "tests/issue_2117.rs"
 
 [[test]]
+name = "issue_2835"
+path = "tests/issue_2835.rs"
+
+[[test]]
+name = "issue_2880"
+path = "tests/issue_2880.rs"
+
+[[test]]
+name = "issue_2915"
+path = "tests/issue_2915.rs"
+
+[[test]]
+name = "on_error"
+path = "tests/on_error.rs"
+
+[[test]]
 name = "paths_and_modules"
 path = "tests/paths_and_modules.rs"
 
@@ -127,8 +135,8 @@ name = "struct_unaligned"
 path = "tests/struct_unaligned.rs"
 
 [[test]]
-name = "trybuild"
-path = "tests/trybuild.rs"
+name = "ui"
+path = "tests/ui.rs"
 
 [[test]]
 name = "union_from_bytes"
@@ -166,7 +174,7 @@ path = "tests/unsafe_cell.rs"
 version = "1.0.1"
 
 [dependencies.quote]
-version = "1.0.10"
+version = "1.0.40"
 
 [dependencies.syn]
 version = "2.0.46"
@@ -175,14 +183,8 @@ features = ["full"]
 [dev-dependencies.dissimilar]
 version = "1.0.9"
 
-[dev-dependencies.libc]
-version = "=0.2.163"
-
-[dev-dependencies.once_cell]
-version = "=1.9"
-
 [dev-dependencies.prettyplease]
-version = "=0.2.17"
+version = "0.2.17"
 
 [dev-dependencies.rustversion]
 version = "1.0"
@@ -190,11 +192,15 @@ version = "1.0"
 [dev-dependencies.static_assertions]
 version = "1.1"
 
-[dev-dependencies.trybuild]
-version = "=1.0.89"
-features = ["diff"]
+[dev-dependencies.syn]
+version = "2.0.46"
+features = ["visit"]
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
 priority = 0
-check-cfg = ["cfg(zerocopy_derive_union_into_bytes)"]
+check-cfg = [
+    "cfg(__ZEROCOPY_INTERNAL_USE_ONLY_NIGHTLY_FEATURES_IN_TESTS)",
+    "cfg(zerocopy_derive_union_into_bytes)",
+    "cfg(zerocopy_unstable_linux)",
+]

@@ -14,6 +14,7 @@
 *** TODO `Ident::Filename` should be `Ident::Filename(Arc<Path>)`
 *** TODO Remove `find_file_ident` and use another hashmap to map paths and fd's
 *** TODO ~Event.data~ may be negative in some cases
+*** TODO Add ~EventFilter~ to ~Event~ struct (good for removing items from coalescing vecdeque)
 
 ** Non-breaking
 
@@ -27,3 +28,4 @@
 *** TODO ~UncheckedWatcher~
 *** TODO async api
 *** TODO bulk api
+*** TODO `from_error` can falsely return errors, since not all errors fill `eventlist`

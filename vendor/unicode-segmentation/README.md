@@ -1,9 +1,10 @@
-Iterators which split strings on Grapheme Cluster or Word boundaries, according
-to the [Unicode Standard Annex #29](http://www.unicode.org/reports/tr29/) rules.
+Iterators which split strings on Grapheme Cluster, Word, or Sentence boundaries,
+according to the
+[Unicode Standard Annex #29](https://www.unicode.org/reports/tr29/) rules.
 
 [![Build Status](https://github.com/unicode-rs/unicode-segmentation/actions/workflows/rust.yml/badge.svg)](https://github.com/unicode-rs/unicode-segmentation/actions/workflows/rust.yml)
 
-[Documentation](https://unicode-rs.github.io/unicode-segmentation/unicode_segmentation/index.html)
+[Documentation](https://docs.rs/unicode-segmentation)
 
 ```rust
 use unicode_segmentation::UnicodeSegmentation;
@@ -38,10 +39,29 @@ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-unicode-segmentation = "1.10.1"
+unicode-segmentation = "1"
 ```
 
 # Change Log
+
+## 1.13.2
+
+* [#164](https://github.com/unicode-rs/unicode-segmentation/pull/164) Set explicit 1.85 MSRV
+* [#147](https://github.com/unicode-rs/unicode-segmentation/pull/147) Add ascii fast path for unicode_word_indices and unicode_words
+* [#157](https://github.com/unicode-rs/unicode-segmentation/pull/157) Support Unicode 17.0.0
+
+## 1.13.0, 1.13.1
+
+Yanked due to accidental breakage and MSRV mistag.
+
+## 1.12.0
+
+* [#131](https://github.com/unicode-rs/unicode-segmentation/pull/131) Implement Debug on all public structs
+* [#136](https://github.com/unicode-rs/unicode-segmentation/pull/136) Use stdlib alphabetic and numeric character tables
+* [#138](https://github.com/unicode-rs/unicode-segmentation/pull/138) Fix arithmetic overflow
+* [#137](https://github.com/unicode-rs/unicode-segmentation/pull/137) Fix unwrap panic in next_boundary()
+* [#140](https://github.com/unicode-rs/unicode-segmentation/pull/140) Support Unicode 16.0.0
+
 
 ## 1.11.0
 * [#124](https://github.com/unicode-rs/unicode-segmentation/pull/124) Update data to Unicode 15.1
@@ -59,12 +79,12 @@ unicode-segmentation = "1.10.1"
 * [#101](https://github.com/unicode-rs/unicode-segmentation/pull/101) Upgrade to Unicode 14.0.0
 
 ## 1.8.0
-* [#100](https://github.com/unicode-rs/unicode-segmentation/pull/100) * [#100](https://github.com/unicode-rs/unicode-segmentation/pull/100) - Increase `#[inline]` opportunities, resulting in 15-40% performance improvement.
+* [#100](https://github.com/unicode-rs/unicode-segmentation/pull/100) Increase `#[inline]` opportunities, resulting in 15-40% performance improvement.
 * [#95](https://github.com/unicode-rs/unicode-segmentation/pull/98) Implement debug for Graphemes
 * [#94](https://github.com/unicode-rs/unicode-segmentation/pull/94) Add Initial fuzzer for oss-fuzz integration
 * [#93](https://github.com/unicode-rs/unicode-segmentation/pull/93) Fix  unused imports and deprecated pattern warnings
-* [#91](https://github.com/unicode-rs/unicode-segmentation/pull/92) Made local variable immutable by moving it into loop
-* [#91](https://github.com/unicode-rs/unicode-segmentation/pull/91) Add new iterator [UnicodeWordIndices](https://unicode-rs.github.io/unicode-segmentation/unicode_segmentation/struct.UnicodeWordIndices.html) and [unicode_word_indices](https://unicode-rs.github.io/unicode-segmentation/unicode_segmentation/trait.UnicodeSegmentation.html#tymethod.unicode_word_indices)
+* [#92](https://github.com/unicode-rs/unicode-segmentation/pull/92) Made local variable immutable by moving it into loop
+* [#91](https://github.com/unicode-rs/unicode-segmentation/pull/91) Add new iterator [UnicodeWordIndices](https://docs.rs/unicode-segmentation/latest/unicode_segmentation/struct.UnicodeWordIndices.html) and [unicode_word_indices](https://docs.rs/unicode-segmentation/latest/unicode_segmentation/trait.UnicodeSegmentation.html#tymethod.unicode_word_indices)
 
 ## 1.7.1
 

@@ -1,3 +1,9 @@
+# Version 0.2.5
+
+- Add functions to allow for buffered reading and writing. (#27)
+- Fix a bug where closing the `Writer` after writing can cause the `Reader` to
+  lose bytes. (#31)
+
 # Version 0.2.4
 
 - Update doctests to be more reliable. (#19)

@@ -6,9 +6,9 @@ use alloc::string::String;
 use alloc::{vec, vec::Vec};
 use core::fmt::{self, Write};
 
-use crate::renderer::stylesheet::Stylesheet;
-use crate::renderer::ElementStyle;
 use crate::Level;
+use crate::renderer::ElementStyle;
+use crate::renderer::stylesheet::Stylesheet;
 
 #[derive(Debug)]
 pub(crate) struct StyledBuffer {
@@ -82,10 +82,8 @@ impl StyledBuffer {
     /// If `line` does not exist in our buffer, adds empty lines up to the given
     /// and fills the last line with unstyled whitespace.
     pub(crate) fn puts(&mut self, line: usize, col: usize, string: &str, style: ElementStyle) {
-        let mut n = col;
-        for c in string.chars() {
-            self.putc(line, n, c, style);
-            n += 1;
+        for (offset, c) in string.chars().enumerate() {
+            self.putc(line, col + offset, c, style);
         }
     }
 
@@ -108,11 +106,13 @@ impl StyledBuffer {
         // can't replace things that don't exist.
         if start > self.lines[line].len() || end > self.lines[line].len() {
             return;
-        }
-        let _ = self.lines[line].drain(start..(end - string.chars().count()));
-        for (i, c) in string.chars().enumerate() {
-            self.lines[line][start + i] = StyledChar::new(c, ElementStyle::LineNumber);
-        }
+        };
+        self.lines[line].splice(
+            start..end,
+            string
+                .chars()
+                .map(|c| StyledChar::new(c, ElementStyle::LineNumber)),
+        );
     }
 
     /// For given `line` inserts `string` with `style` before old content of that line,

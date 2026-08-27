@@ -1,3 +1,8 @@
+# 0.5.3
+
+* Fallback to the next resolved proxy address when connecting to a SOCKS proxy. (#67)
+* Added `to_string` and `Display` methods for `TargetAddr` (#63).
+
 # 0.5.2
 
 * Added SOCKS4 support `bind` and `connect`.

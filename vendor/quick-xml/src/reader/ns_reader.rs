@@ -4,7 +4,6 @@
 //! [qualified names]: https://www.w3.org/TR/xml-names11/#dt-qualname
 //! [expanded names]: https://www.w3.org/TR/xml-names11/#dt-expname
 
-use std::borrow::Cow;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::ops::Deref;
@@ -12,7 +11,7 @@ use std::path::Path;
 
 use crate::errors::Result;
 use crate::events::{BytesText, Event};
-use crate::name::{LocalName, NamespaceBindingsIter, NamespaceResolver, QName, ResolveResult};
+use crate::name::{NamespaceResolver, QName, ResolveResult};
 use crate::reader::{Config, Reader, Span, XmlSource};
 
 /// A low level encoding-agnostic XML event reader that performs namespace resolution.
@@ -48,91 +47,6 @@ impl<R> NsReader<R> {
     #[inline]
     pub fn config_mut(&mut self) -> &mut Config {
         self.reader.config_mut()
-    }
-
-    /// Returns all the prefixes currently declared except the default `xml` and `xmlns` namespaces.
-    ///
-    /// # Examples
-    ///
-    /// This example shows what results the returned iterator would return after
-    /// reading each event of a simple XML.
-    ///
-    /// ```
-    /// # use pretty_assertions::assert_eq;
-    /// use quick_xml::name::{Namespace, PrefixDeclaration};
-    /// use quick_xml::NsReader;
-    ///
-    /// let src = "<root>
-    ///   <a xmlns=\"a1\" xmlns:a=\"a2\">
-    ///     <b xmlns=\"b1\" xmlns:b=\"b2\">
-    ///       <c/>
-    ///     </b>
-    ///     <d/>
-    ///   </a>
-    /// </root>";
-    /// let mut reader = NsReader::from_str(src);
-    /// reader.config_mut().trim_text(true);
-    /// // No prefixes at the beginning
-    /// assert_eq!(reader.prefixes().collect::<Vec<_>>(), vec![]);
-    ///
-    /// reader.read_resolved_event()?; // <root>
-    /// // No prefixes declared on root
-    /// assert_eq!(reader.prefixes().collect::<Vec<_>>(), vec![]);
-    ///
-    /// reader.read_resolved_event()?; // <a>
-    /// // Two prefixes declared on "a"
-    /// assert_eq!(reader.prefixes().collect::<Vec<_>>(), vec![
-    ///     (PrefixDeclaration::Default, Namespace(b"a1")),
-    ///     (PrefixDeclaration::Named(b"a"), Namespace(b"a2"))
-    /// ]);
-    ///
-    /// reader.read_resolved_event()?; // <b>
-    /// // The default prefix got overridden and new "b" prefix
-    /// assert_eq!(reader.prefixes().collect::<Vec<_>>(), vec![
-    ///     (PrefixDeclaration::Named(b"a"), Namespace(b"a2")),
-    ///     (PrefixDeclaration::Default, Namespace(b"b1")),
-    ///     (PrefixDeclaration::Named(b"b"), Namespace(b"b2"))
-    /// ]);
-    ///
-    /// reader.read_resolved_event()?; // <c/>
-    /// // Still the same
-    /// assert_eq!(reader.prefixes().collect::<Vec<_>>(), vec![
-    ///     (PrefixDeclaration::Named(b"a"), Namespace(b"a2")),
-    ///     (PrefixDeclaration::Default, Namespace(b"b1")),
-    ///     (PrefixDeclaration::Named(b"b"), Namespace(b"b2"))
-    /// ]);
-    ///
-    /// reader.read_resolved_event()?; // </b>
-    /// // Still the same
-    /// assert_eq!(reader.prefixes().collect::<Vec<_>>(), vec![
-    ///     (PrefixDeclaration::Named(b"a"), Namespace(b"a2")),
-    ///     (PrefixDeclaration::Default, Namespace(b"b1")),
-    ///     (PrefixDeclaration::Named(b"b"), Namespace(b"b2"))
-    /// ]);
-    ///
-    /// reader.read_resolved_event()?; // <d/>
-    /// // </b> got closed so back to the prefixes declared on <a>
-    /// assert_eq!(reader.prefixes().collect::<Vec<_>>(), vec![
-    ///     (PrefixDeclaration::Default, Namespace(b"a1")),
-    ///     (PrefixDeclaration::Named(b"a"), Namespace(b"a2"))
-    /// ]);
-    ///
-    /// reader.read_resolved_event()?; // </a>
-    /// // Still the same
-    /// assert_eq!(reader.prefixes().collect::<Vec<_>>(), vec![
-    ///     (PrefixDeclaration::Default, Namespace(b"a1")),
-    ///     (PrefixDeclaration::Named(b"a"), Namespace(b"a2"))
-    /// ]);
-    ///
-    /// reader.read_resolved_event()?; // </root>
-    /// // <a> got closed
-    /// assert_eq!(reader.prefixes().collect::<Vec<_>>(), vec![]);
-    /// # quick_xml::Result::Ok(())
-    /// ```
-    #[inline]
-    #[deprecated = "Use `.resolver().bindings()` instead. This method will be removed in 0.40.0"]
-    pub const fn prefixes(&self) -> NamespaceBindingsIter<'_> {
-        self.ns_resolver.bindings()
     }
 }
 
@@ -208,175 +122,14 @@ impl<R> NsReader<R> {
         &self.ns_resolver
     }
 
-    /// Resolves a potentially qualified **element name** or **attribute name**
-    /// into _(namespace name, local name)_.
+    /// Returns a mutable reference to the storage of namespace bindings
+    /// associated with this reader.
     ///
-    /// _Qualified_ names have the form `local-name` or `prefix:local-name` where the `prefix`
-    /// is defined on any containing XML element via `xmlns:prefix="the:namespace:uri"`.
-    /// The namespace prefix can be defined on the same element as the name in question.
-    ///
-    /// The method returns following results depending on the `name` shape, `attribute` flag
-    /// and the presence of the default namespace on element or any of its parents:
-    ///
-    /// |attribute|`xmlns="..."`|QName              |ResolveResult          |LocalName
-    /// |---------|-------------|-------------------|-----------------------|------------
-    /// |`true`   |_(any)_      |`local-name`       |[`Unbound`]            |`local-name`
-    /// |`true`   |_(any)_      |`prefix:local-name`|[`Bound`] / [`Unknown`]|`local-name`
-    /// |`false`  |Not defined  |`local-name`       |[`Unbound`]            |`local-name`
-    /// |`false`  |Defined      |`local-name`       |[`Bound`] (to `xmlns`) |`local-name`
-    /// |`false`  |_(any)_      |`prefix:local-name`|[`Bound`] / [`Unknown`]|`local-name`
-    ///
-    /// If you want to clearly indicate that name that you resolve is an element
-    /// or an attribute name, you could use [`resolve_attribute()`] or [`resolve_element()`]
-    /// methods.
-    ///
-    /// # Lifetimes
-    ///
-    /// - `'n`: lifetime of a name. Returned local name will be bound to the same
-    ///   lifetime as the name in question.
-    /// - returned namespace name will be bound to the reader itself
-    ///
-    /// [`Bound`]: ResolveResult::Bound
-    /// [`Unbound`]: ResolveResult::Unbound
-    /// [`Unknown`]: ResolveResult::Unknown
-    /// [`resolve_attribute()`]: Self::resolve_attribute()
-    /// [`resolve_element()`]: Self::resolve_element()
+    /// Useful for configuring the resolver, e.g. to change the
+    /// [per-element namespace-declaration limit](NamespaceResolver::set_max_declarations_per_element).
     #[inline]
-    #[deprecated = "Use `.resolver().resolve()` instead. Note, that boolean argument should be inverted! This method will be removed in 0.40.0"]
-    pub fn resolve<'n>(
-        &self,
-        name: QName<'n>,
-        attribute: bool,
-    ) -> (ResolveResult<'_>, LocalName<'n>) {
-        self.ns_resolver.resolve(name, !attribute)
-    }
-
-    /// Resolves a potentially qualified **element name** into _(namespace name, local name)_.
-    ///
-    /// _Qualified_ element names have the form `prefix:local-name` where the
-    /// `prefix` is defined on any containing XML element via `xmlns:prefix="the:namespace:uri"`.
-    /// The namespace prefix can be defined on the same element as the element
-    /// in question.
-    ///
-    /// _Unqualified_ elements inherits the current _default namespace_.
-    ///
-    /// The method returns following results depending on the `name` shape and
-    /// the presence of the default namespace:
-    ///
-    /// |`xmlns="..."`|QName              |ResolveResult          |LocalName
-    /// |-------------|-------------------|-----------------------|------------
-    /// |Not defined  |`local-name`       |[`Unbound`]            |`local-name`
-    /// |Defined      |`local-name`       |[`Bound`] (default)    |`local-name`
-    /// |_any_        |`prefix:local-name`|[`Bound`] / [`Unknown`]|`local-name`
-    ///
-    /// # Lifetimes
-    ///
-    /// - `'n`: lifetime of an element name. Returned local name will be bound
-    ///   to the same lifetime as the name in question.
-    /// - returned namespace name will be bound to the reader itself
-    ///
-    /// # Examples
-    ///
-    /// This example shows how you can resolve qualified name into a namespace.
-    /// Note, that in the code like this you do not need to do that manually,
-    /// because the namespace resolution result returned by the [`read_resolved_event()`].
-    ///
-    /// ```
-    /// # use pretty_assertions::assert_eq;
-    /// use quick_xml::events::Event;
-    /// use quick_xml::name::{Namespace, QName, ResolveResult::*};
-    /// use quick_xml::reader::NsReader;
-    ///
-    /// let mut reader = NsReader::from_str("<tag xmlns='root namespace'/>");
-    ///
-    /// match reader.read_event().unwrap() {
-    ///     Event::Empty(e) => assert_eq!(
-    ///         reader.resolve_element(e.name()),
-    ///         (Bound(Namespace(b"root namespace")), QName(b"tag").into())
-    ///     ),
-    ///     _ => unreachable!(),
-    /// }
-    /// ```
-    ///
-    /// [`Bound`]: ResolveResult::Bound
-    /// [`Unbound`]: ResolveResult::Unbound
-    /// [`Unknown`]: ResolveResult::Unknown
-    /// [`read_resolved_event()`]: Self::read_resolved_event
-    #[inline]
-    #[deprecated = "Use `.resolver().resolve_element()` instead. This method will be removed in 0.40.0"]
-    pub fn resolve_element<'n>(&self, name: QName<'n>) -> (ResolveResult<'_>, LocalName<'n>) {
-        self.ns_resolver.resolve_element(name)
-    }
-
-    /// Resolves a potentially qualified **attribute name** into _(namespace name, local name)_.
-    ///
-    /// _Qualified_ attribute names have the form `prefix:local-name` where the
-    /// `prefix` is defined on any containing XML element via `xmlns:prefix="the:namespace:uri"`.
-    /// The namespace prefix can be defined on the same element as the attribute
-    /// in question.
-    ///
-    /// _Unqualified_ attribute names do *not* inherit the current _default namespace_.
-    ///
-    /// The method returns following results depending on the `name` shape and
-    /// the presence of the default namespace:
-    ///
-    /// |`xmlns="..."`|QName              |ResolveResult          |LocalName
-    /// |-------------|-------------------|-----------------------|------------
-    /// |Not defined  |`local-name`       |[`Unbound`]            |`local-name`
-    /// |Defined      |`local-name`       |[`Unbound`]            |`local-name`
-    /// |_any_        |`prefix:local-name`|[`Bound`] / [`Unknown`]|`local-name`
-    ///
-    /// # Lifetimes
-    ///
-    /// - `'n`: lifetime of an attribute name. Returned local name will be bound
-    ///   to the same lifetime as the name in question.
-    /// - returned namespace name will be bound to the reader itself
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use pretty_assertions::assert_eq;
-    /// use quick_xml::events::Event;
-    /// use quick_xml::name::{Namespace, QName, ResolveResult::*};
-    /// use quick_xml::reader::NsReader;
-    ///
-    /// let mut reader = NsReader::from_str("
-    ///     <tag one='1'
-    ///          p:two='2'
-    ///          xmlns='root namespace'
-    ///          xmlns:p='other namespace'/>
-    /// ");
-    /// reader.config_mut().trim_text(true);
-    ///
-    /// match reader.read_event().unwrap() {
-    ///     Event::Empty(e) => {
-    ///         let mut iter = e.attributes();
-    ///
-    ///         // Unlike elements, attributes without explicit namespace
-    ///         // not bound to any namespace
-    ///         let one = iter.next().unwrap().unwrap();
-    ///         assert_eq!(
-    ///             reader.resolve_attribute(one.key),
-    ///             (Unbound, QName(b"one").into())
-    ///         );
-    ///
-    ///         let two = iter.next().unwrap().unwrap();
-    ///         assert_eq!(
-    ///             reader.resolve_attribute(two.key),
-    ///             (Bound(Namespace(b"other namespace")), QName(b"two").into())
-    ///         );
-    ///     }
-    ///     _ => unreachable!(),
-    /// }
-    /// ```
-    ///
-    /// [`Bound`]: ResolveResult::Bound
-    /// [`Unbound`]: ResolveResult::Unbound
-    /// [`Unknown`]: ResolveResult::Unknown
-    #[inline]
-    #[deprecated = "Use `.resolver().resolve_attribute()` instead. This method will be removed in 0.40.0"]
-    pub fn resolve_attribute<'n>(&self, name: QName<'n>) -> (ResolveResult<'_>, LocalName<'n>) {
-        self.ns_resolver.resolve_attribute(name)
+    pub fn resolver_mut(&mut self) -> &mut NamespaceResolver {
+        &mut self.ns_resolver
     }
 }
 
@@ -981,11 +734,13 @@ impl<'i> NsReader<&'i [u8]> {
     /// // ...then, we could read text content until close tag.
     /// // This call will correctly handle nested <html> elements.
     /// let text = reader.read_text(end.name()).unwrap();
-    /// assert_eq!(text, Cow::Borrowed(r#"
+    /// let text = text.decode().unwrap();
+    /// assert_eq!(text, r#"
     ///         <title>This is a HTML text</title>
     ///         <p>Usual XML rules does not apply inside it
     ///         <p>For example, elements not needed to be &quot;closed&quot;
-    ///     "#));
+    ///     "#);
+    /// assert!(matches!(text, Cow::Borrowed(_)));
     ///
     /// // Now we can enable checks again
     /// reader.config_mut().check_end_names = true;
@@ -997,7 +752,7 @@ impl<'i> NsReader<&'i [u8]> {
     /// [`Start`]: Event::Start
     /// [`decoder()`]: Reader::decoder()
     #[inline]
-    pub fn read_text(&mut self, end: QName) -> Result<Cow<'i, str>> {
+    pub fn read_text(&mut self, end: QName) -> Result<BytesText<'i>> {
         // According to the https://www.w3.org/TR/xml11/#dt-etag, end name should
         // match literally the start name. See `Self::check_end_names` documentation
         let result = self.reader.read_text(end)?;

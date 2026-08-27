@@ -12,9 +12,10 @@
 [package]
 edition = "2021"
 name = "kqueue"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["William Orr <will@worrbase.com>"]
 build = false
+exclude = [".builds"]
 autolib = false
 autobins = false
 autoexamples = false

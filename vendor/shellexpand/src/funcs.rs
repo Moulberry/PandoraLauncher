@@ -89,7 +89,7 @@ pub fn full_with_context<SI: ?Sized, CO, C, E, P, HD>(
     input: &SI,
     home_dir: HD,
     context: C,
-) -> Result<Cow<Xstr>, LookupError<E>>
+) -> Result<Cow<'_, Xstr>, LookupError<E>>
 where
     SI: AsRef<Xstr>,
     CO: AsRef<Xstr>,
@@ -169,7 +169,7 @@ pub fn full_with_context_no_errors<SI: ?Sized, CO, C, P, HD>(
     input: &SI,
     home_dir: HD,
     mut context: C,
-) -> Cow<Xstr>
+) -> Cow<'_, Xstr>
 where
     SI: AsRef<Xstr>,
     CO: AsRef<Xstr>,
@@ -225,7 +225,7 @@ where
 /// ```
 #[cfg(feature = "tilde")]
 #[inline]
-pub fn full<SI: ?Sized>(input: &SI) -> Result<Cow<Xstr>, LookupError<VarError>>
+pub fn full<SI: ?Sized>(input: &SI) -> Result<Cow<'_, Xstr>, LookupError<VarError>>
 where
     SI: AsRef<Xstr>,
 {
@@ -280,7 +280,7 @@ macro_rules! try_lookup {
             Ok(s) => s,
             Err(e) => {
                 return Err(LookupError {
-                    var_name: $name.to_ostring(),
+                    var_name: $name.wstr_to_ostring(),
                     cause: e,
                 })
             }
@@ -367,7 +367,7 @@ fn is_valid_var_name_char(c: char) -> bool {
 pub fn env_with_context<SI: ?Sized, CO, C, E>(
     input: &SI,
     mut context: C,
-) -> Result<Cow<Xstr>, LookupError<E>>
+) -> Result<Cow<'_, Xstr>, LookupError<E>>
 where
     SI: AsRef<Xstr>,
     CO: AsRef<Xstr>,
@@ -375,7 +375,7 @@ where
 {
     let input_str = input.into_winput();
     if let Some(idx) = input_str.find('$') {
-        let mut result = OString::with_capacity(input_str.len());
+        let mut result = OString::with_capacity(input_str.wstr_len());
 
         let mut input_str = input_str.as_wstr();
         let mut next_dollar_idx = idx;
@@ -388,10 +388,10 @@ where
             }
 
             fn find_dollar(s: &Wstr) -> usize {
-                s.find('$').unwrap_or(s.len())
+                s.find('$').unwrap_or(s.wstr_len())
             }
             let mut lookup = |var_name: &Wstr| {
-                let var_name = match var_name.as_str() {
+                let var_name = match var_name.wstr_as_str() {
                     Some(var_name) => var_name,
                     // No non-UTF-8 variables can exist
                     None => return Ok(None),
@@ -399,7 +399,7 @@ where
                 context(var_name)
             };
 
-            let mut next_chars = input_str[1..].chars_approx();
+            let mut next_chars = input_str[1..].wstr_chars_approx();
             let next_char = next_chars.next();
             if next_char == Some('{') {
                 match input_str.find('}') {
@@ -432,7 +432,7 @@ where
                                     // return an error if we don't have a default and the variable is unset
                                     (Err(err), None) => {
                                         return Err(LookupError {
-                                            var_name: var_name.to_ostring(),
+                                            var_name: var_name.wstr_to_ostring(),
                                             cause: err,
                                         });
                                     }
@@ -459,7 +459,7 @@ where
                 let mut end_idx;
                 loop {
                     // Subtract the bytes length of the remainder from the length, and that's where we are
-                    end_idx = input_str.len() - next_chars.wstr_len();
+                    end_idx = input_str.wstr_len() - next_chars.wstr_len();
                     match next_chars.next() {
                         Some(c) if is_valid_var_name_char(c) => {},
                         _ => break,
@@ -531,7 +531,7 @@ where
 /// );
 /// ```
 #[inline]
-pub fn env_with_context_no_errors<SI: ?Sized, CO, C>(input: &SI, mut context: C) -> Cow<Xstr>
+pub fn env_with_context_no_errors<SI: ?Sized, CO, C>(input: &SI, mut context: C) -> Cow<'_, Xstr>
 where
     SI: AsRef<Xstr>,
     CO: AsRef<Xstr>,
@@ -578,7 +578,7 @@ where
 /// );
 /// ```
 #[inline]
-pub fn env<SI: ?Sized>(input: &SI) -> Result<Cow<Xstr>, LookupError<VarError>>
+pub fn env<SI: ?Sized>(input: &SI) -> Result<Cow<'_, Xstr>, LookupError<VarError>>
 where
     SI: AsRef<Xstr>,
 {
@@ -619,21 +619,21 @@ where
 ///    "/home/user/some/dir"
 /// );
 /// ```
-pub fn tilde_with_context<SI: ?Sized, P, HD>(input: &SI, home_dir: HD) -> Cow<Xstr>
+pub fn tilde_with_context<SI: ?Sized, P, HD>(input: &SI, home_dir: HD) -> Cow<'_, Xstr>
 where
     SI: AsRef<Xstr>,
     P: AsRef<Xstr>,
     HD: FnOnce() -> Option<P>,
 {
     let input_str = input.into_winput();
-    if let Some(input_after_tilde) = input_str.strip_prefix('~') {
+    if let Some(input_after_tilde) = input_str.wstr_strip_prefix('~') {
         if input_after_tilde.is_empty()
             || input_after_tilde.starts_with('/')
             || (cfg!(windows) && input_after_tilde.starts_with('\\'))
         {
             if let Some(hd) = home_dir() {
                 let hd = hd.into_winput();
-                let mut result = OString::with_capacity(hd.len() + input_after_tilde.len());
+                let mut result = OString::with_capacity(hd.wstr_len() + input_after_tilde.wstr_len());
                 result.push_wstr(hd.as_wstr());
                 result.push_wstr(input_after_tilde);
                 result.into_ocow()
@@ -670,7 +670,7 @@ where
 /// ```
 #[cfg(feature = "tilde")]
 #[inline]
-pub fn tilde<SI: ?Sized>(input: &SI) -> Cow<Xstr>
+pub fn tilde<SI: ?Sized>(input: &SI) -> Cow<'_, Xstr>
 where
     SI: AsRef<Xstr>,
 {

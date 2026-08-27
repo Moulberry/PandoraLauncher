@@ -7,7 +7,7 @@ error[E0367]: `Drop` impl requires `T: Unpin` but the struct it is implemented f
 note: the implementor must specify the same requirement
   --> tests/ui/pinned_drop/conditional-drop-impl.rs:9:1
    |
-9  | struct DropImpl<T> {
+ 9 | struct DropImpl<T> {
    | ^^^^^^^^^^^^^^^^^^
 
 error[E0277]: `T` cannot be unpinned
@@ -18,11 +18,11 @@ error[E0277]: `T` cannot be unpinned
    |
    = note: consider using the `pin!` macro
            consider using `Box::pin` if you need to access the pinned value outside of the current scope
-note: required for `PinnedDropImpl<T>` to implement `PinnedDrop`
+note: required for `PinnedDropImpl<T>` to implement `_pin_project::__private::PinnedDrop`
   --> tests/ui/pinned_drop/conditional-drop-impl.rs:25:16
    |
 24 | #[pinned_drop]
-   | -------------- in this procedural macro expansion
+   | -------------- in this attribute macro expansion
 25 | impl<T: Unpin> PinnedDrop for PinnedDropImpl<T> {
    |         -----  ^^^^^^^^^^     ^^^^^^^^^^^^^^^^^
    |         |

@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.71"
 name = "futures-util"
-version = "0.3.32"
+version = "0.3.34"
 build = false
 autolib = false
 autobins = false
@@ -73,7 +73,14 @@ io-compat = [
     "tokio-io",
     "libc",
 ]
-portable-atomic = ["futures-core/portable-atomic"]
+portable-atomic = [
+    "futures-core/portable-atomic",
+    "portable_atomic_crate",
+]
+portable-atomic-alloc = [
+    "portable-atomic-util/alloc",
+    "portable-atomic",
+]
 sink = ["futures-sink"]
 std = [
     "alloc",
@@ -108,33 +115,33 @@ name = "select"
 path = "benches/select.rs"
 
 [dependencies.futures-channel]
-version = "0.3.32"
+version = "0.3.34"
 features = ["std"]
 optional = true
 default-features = false
 
 [dependencies.futures-core]
-version = "0.3.32"
+version = "0.3.34"
 default-features = false
 
 [dependencies.futures-io]
-version = "0.3.32"
+version = "0.3.34"
 features = ["std"]
 optional = true
 default-features = false
 
 [dependencies.futures-macro]
-version = "=0.3.32"
+version = "=0.3.34"
 optional = true
 default-features = false
 
 [dependencies.futures-sink]
-version = "0.3.32"
+version = "0.3.34"
 optional = true
 default-features = false
 
 [dependencies.futures-task]
-version = "0.3.32"
+version = "0.3.34"
 default-features = false
 
 [dependencies.futures_01]
@@ -153,13 +160,24 @@ optional = true
 [dependencies.pin-project-lite]
 version = "0.2.6"
 
+[dependencies.portable-atomic-util]
+version = "0.2.7"
+optional = true
+default-features = false
+
+[dependencies.portable_atomic_crate]
+version = "1.13.1"
+optional = true
+default-features = false
+package = "portable-atomic"
+
 [dependencies.slab]
 version = "0.4.7"
 optional = true
 default-features = false
 
 [dependencies.spin]
-version = "0.10.0"
+version = "0.12.0"
 optional = true
 
 [dependencies.tokio-io]

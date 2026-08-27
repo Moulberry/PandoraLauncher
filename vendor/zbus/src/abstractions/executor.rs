@@ -1,8 +1,12 @@
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 use async_executor::Executor as AsyncExecutor;
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 use async_task::Task as AsyncTask;
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "tokio")]
+use std::io::Error;
+#[cfg(not(feature = "async-io"))]
+use std::marker::PhantomData;
+#[cfg(feature = "async-io")]
 use std::sync::Arc;
 use std::{
     future::Future,
@@ -11,8 +15,6 @@ use std::{
     task::{Context, Poll},
 };
 #[cfg(feature = "tokio")]
-use std::{future::pending, io::Error, marker::PhantomData};
-#[cfg(feature = "tokio")]
 use tokio::task::JoinHandle;
 
 /// A wrapper around the underlying runtime/executor.
@@ -20,16 +22,12 @@ use tokio::task::JoinHandle;
 /// This is used to run asynchronous tasks internally and allows integration with various runtimes.
 /// See [`crate::Connection::executor`] for an example of integration with external runtimes.
 ///
-/// **Note:** You can (and should) completely ignore this type when building with `tokio` feature
-/// enabled.
-#[cfg(not(feature = "tokio"))]
+/// **Note:** You can (and should) completely ignore this type when the `tokio` backend is in use.
 #[derive(Debug, Clone)]
 pub struct Executor<'a> {
-    executor: Arc<AsyncExecutor<'a>>,
-}
-#[cfg(feature = "tokio")]
-#[derive(Debug, Clone)]
-pub struct Executor<'a> {
+    #[cfg(feature = "async-io")]
+    async_io: Option<Arc<AsyncExecutor<'a>>>,
+    #[cfg(not(feature = "async-io"))]
     phantom: PhantomData<&'a ()>,
 }
 
@@ -41,87 +39,91 @@ impl Executor<'_> {
         future: impl Future<Output = T> + Send + 'static,
         #[allow(unused)] name: &str,
     ) -> Task<T> {
-        #[cfg(not(feature = "tokio"))]
-        {
-            Task(Some(self.executor.spawn(future)))
+        #[cfg(feature = "async-io")]
+        if let Some(executor) = &self.async_io {
+            return Task::from_async_io(executor.spawn(future));
         }
 
         #[cfg(feature = "tokio")]
-        {
-            #[cfg(tokio_unstable)]
-            {
-                Task(Some(
-                    tokio::task::Builder::new()
-                        .name(name)
-                        .spawn(future)
-                        // SAFETY: Looking at the code, this call always returns an `Ok`.
-                        .unwrap(),
-                ))
-            }
-            #[cfg(not(tokio_unstable))]
-            {
-                Task(Some(tokio::task::spawn(future)))
-            }
-        }
+        return Task::from_tokio(tokio_spawn(future, name));
+
+        #[cfg(all(feature = "async-io", not(feature = "tokio")))]
+        unreachable!("async-io executor is always `Some` when tokio is disabled")
     }
 
     /// Return `true` if there are no unfinished tasks.
     ///
-    /// With `tokio` feature enabled, this always returns `true`.
+    /// With the `tokio` backend in use, this always returns `true`.
     pub fn is_empty(&self) -> bool {
-        #[cfg(not(feature = "tokio"))]
-        {
-            self.executor.is_empty()
+        #[cfg(feature = "async-io")]
+        if let Some(executor) = &self.async_io {
+            return executor.is_empty();
         }
 
-        #[cfg(feature = "tokio")]
         true
     }
 
     /// Runs a single task.
     ///
-    /// With `tokio` feature enabled, its a noop and never returns.
+    /// With the `tokio` backend in use, it's a noop and never returns.
     pub async fn tick(&self) {
-        #[cfg(not(feature = "tokio"))]
-        {
-            self.executor.tick().await
+        #[cfg(feature = "async-io")]
+        if let Some(executor) = &self.async_io {
+            executor.tick().await;
+            // Skip the `tokio` branch below (only present when both backends are compiled in).
+            #[cfg(feature = "tokio")]
+            return;
         }
 
         #[cfg(feature = "tokio")]
-        {
-            pending().await
-        }
+        std::future::pending::<()>().await;
     }
 
     /// Create a new `Executor`.
     pub(crate) fn new() -> Self {
-        #[cfg(not(feature = "tokio"))]
-        {
-            Self {
-                executor: Arc::new(AsyncExecutor::new()),
-            }
+        Self {
+            #[cfg(feature = "async-io")]
+            async_io: (!super::use_tokio()).then(|| Arc::new(AsyncExecutor::new())),
+            #[cfg(not(feature = "async-io"))]
+            phantom: PhantomData,
         }
+    }
 
-        #[cfg(feature = "tokio")]
-        {
-            Self {
-                phantom: PhantomData,
-            }
-        }
+    /// Whether this executor needs an external driver thread (only the `async-io` backend does).
+    #[cfg(feature = "async-io")]
+    pub(crate) fn needs_internal_driver(&self) -> bool {
+        self.async_io.is_some()
     }
 
     /// Runs the executor until the given future completes.
     ///
-    /// With `tokio` feature enabled, it just awaits on the `future`.
+    /// With the `tokio` backend in use, it just awaits on the `future`.
     pub(crate) async fn run<T>(&self, future: impl Future<Output = T>) -> T {
-        #[cfg(not(feature = "tokio"))]
-        {
-            self.executor.run(future).await
+        #[cfg(feature = "async-io")]
+        if let Some(executor) = &self.async_io {
+            return executor.run(future).await;
         }
-        #[cfg(feature = "tokio")]
-        {
-            future.await
-        }
+
+        future.await
+    }
+}
+
+#[cfg(feature = "tokio")]
+fn tokio_spawn<T: Send + 'static>(
+    future: impl Future<Output = T> + Send + 'static,
+    #[allow(unused)] name: &str,
+) -> JoinHandle<T> {
+    #[cfg(tokio_unstable)]
+    {
+        tokio::task::Builder::new()
+            .name(name)
+            .spawn(future)
+            // SAFETY: Looking at the code, this call always returns an `Ok`.
+            .unwrap()
+    }
+    #[cfg(not(tokio_unstable))]
+    {
+        tokio::task::spawn(future)
     }
 }
 
@@ -132,28 +134,46 @@ impl Executor<'_> {
 /// * it will be cancelled, rather than detached. For detaching, use the `detach` method.
 /// * errors from the task cancellation will will be ignored. If you need to know about task errors,
 ///   convert the task to a `FallibleTask` using the `fallible` method.
-#[cfg(not(feature = "tokio"))]
 #[doc(hidden)]
 #[derive(Debug)]
-pub struct Task<T>(Option<AsyncTask<T>>);
-#[cfg(feature = "tokio")]
-#[doc(hidden)]
-#[derive(Debug)]
-pub struct Task<T>(Option<JoinHandle<T>>);
+pub struct Task<T> {
+    #[cfg(feature = "async-io")]
+    async_io: Option<AsyncTask<T>>,
+    #[cfg(feature = "tokio")]
+    tokio: Option<JoinHandle<T>>,
+}
 
 impl<T> Task<T> {
+    #[cfg(feature = "async-io")]
+    fn from_async_io(task: AsyncTask<T>) -> Self {
+        Self {
+            async_io: Some(task),
+            #[cfg(feature = "tokio")]
+            tokio: None,
+        }
+    }
+
+    #[cfg(feature = "tokio")]
+    fn from_tokio(handle: JoinHandle<T>) -> Self {
+        Self {
+            #[cfg(feature = "async-io")]
+            async_io: None,
+            tokio: Some(handle),
+        }
+    }
+
     /// Detaches the task to let it keep running in the background.
     #[allow(unused_mut)]
-    #[allow(unused)]
     pub fn detach(mut self) {
-        #[cfg(not(feature = "tokio"))]
-        {
-            self.0.take().expect("async_task::Task is none").detach()
+        #[cfg(feature = "async-io")]
+        if let Some(task) = self.async_io.take() {
+            task.detach();
         }
 
         #[cfg(feature = "tokio")]
-        {
-            self.0.take().expect("tokio::task::JoinHandle is none");
+        if let Some(handle) = self.tokio.take() {
+            // Dropping a tokio `JoinHandle` detaches it.
+            drop(handle);
         }
     }
 }
@@ -163,43 +183,46 @@ where
     T: Send + 'static,
 {
     /// Launch the given blocking function in a task.
+    ///
+    /// `blocking::unblock` needs no runtime, so async-io's pool is used unless a tokio runtime is
+    /// active.
     #[allow(unused)]
     pub(crate) fn spawn_blocking<F>(f: F, #[allow(unused)] name: &str) -> Self
     where
         F: FnOnce() -> T + Send + 'static,
     {
-        #[cfg(not(feature = "tokio"))]
-        {
-            Self(Some(blocking::unblock(f)))
+        super::select_runtime! {
+            tokio: Self::from_tokio(tokio_spawn_blocking(f, name)),
+            async_io: Self::from_async_io(blocking::unblock(f)),
         }
+    }
+}
 
-        #[cfg(feature = "tokio")]
-        {
-            #[cfg(tokio_unstable)]
-            {
-                Self(Some(
-                    tokio::task::Builder::new()
-                        .name(name)
-                        .spawn_blocking(f)
-                        // SAFETY: Looking at the code, this call always returns an `Ok`.
-                        .unwrap(),
-                ))
-            }
-            #[cfg(not(tokio_unstable))]
-            {
-                Self(Some(tokio::task::spawn_blocking(f)))
-            }
-        }
+#[cfg(feature = "tokio")]
+fn tokio_spawn_blocking<F, T>(f: F, #[allow(unused)] name: &str) -> JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    #[cfg(tokio_unstable)]
+    {
+        tokio::task::Builder::new()
+            .name(name)
+            .spawn_blocking(f)
+            // SAFETY: Looking at the code, this call always returns an `Ok`.
+            .unwrap()
+    }
+    #[cfg(not(tokio_unstable))]
+    {
+        tokio::task::spawn_blocking(f)
     }
 }
 
 impl<T> Drop for Task<T> {
     fn drop(&mut self) {
         #[cfg(feature = "tokio")]
-        {
-            if let Some(join_handle) = self.0.take() {
-                join_handle.abort();
-            }
+        if let Some(join_handle) = self.tokio.take() {
+            join_handle.abort();
         }
     }
 }
@@ -208,24 +231,16 @@ impl<T> Future for Task<T> {
     type Output = Result<T>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        #[cfg(not(feature = "tokio"))]
-        {
-            Pin::new(&mut self.get_mut().0.as_mut().expect("async_task::Task is none"))
-                .poll(cx)
-                .map(|r| Ok(r))
+        let this = self.get_mut();
+
+        #[cfg(feature = "async-io")]
+        if let Some(task) = &mut this.async_io {
+            return Pin::new(task).poll(cx).map(Ok);
         }
 
         #[cfg(feature = "tokio")]
-        {
-            Pin::new(
-                &mut self
-                    .get_mut()
-                    .0
-                    .as_mut()
-                    .expect("tokio::task::JoinHandle is none"),
-            )
-            .poll(cx)
-            .map(|r| match r {
+        if let Some(handle) = &mut this.tokio {
+            return Pin::new(handle).poll(cx).map(|r| match r {
                 Ok(v) => Ok(v),
                 Err(e) => {
                     if e.is_cancelled() {
@@ -234,7 +249,9 @@ impl<T> Future for Task<T> {
                         panic!("tokio::task::JoinHandle error: {e}")
                     }
                 }
-            })
+            });
         }
+
+        unreachable!("Task always has exactly one backend")
     }
 }

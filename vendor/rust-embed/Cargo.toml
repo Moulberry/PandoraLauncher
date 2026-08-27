@@ -11,9 +11,9 @@
 
 [package]
 edition = "2018"
-rust-version = "1.70.0"
+rust-version = "1.80.0"
 name = "rust-embed"
-version = "8.11.0"
+version = "8.12.0"
 authors = ["pyrossh"]
 build = false
 autolib = false
@@ -53,6 +53,7 @@ axum-ex = [
 ]
 compression = [
     "rust-embed-impl/compression",
+    "rust-embed-utils/compression",
     "include-flate",
 ]
 debug-embed = [
@@ -65,10 +66,7 @@ include-exclude = [
     "rust-embed-utils/include-exclude",
 ]
 interpolate-folder-path = ["rust-embed-impl/interpolate-folder-path"]
-mime-guess = [
-    "rust-embed-impl/mime-guess",
-    "rust-embed-utils/mime-guess",
-]
+mime-guess = ["rust-embed-utils/mime-guess"]
 poem-ex = [
     "poem",
     "tokio",
@@ -133,6 +131,11 @@ required-features = ["warp-ex"]
 [[test]]
 name = "allow_missing"
 path = "tests/allow_missing.rs"
+
+[[test]]
+name = "compression"
+path = "tests/compression.rs"
+required-features = ["compression"]
 
 [[test]]
 name = "custom_crate_path"
@@ -210,10 +213,10 @@ optional = true
 default-features = false
 
 [dependencies.rust-embed-impl]
-version = "8.9.0"
+version = "8.12.0"
 
 [dependencies.rust-embed-utils]
-version = "8.9.0"
+version = "8.12.0"
 
 [dependencies.salvo]
 version = "0.16"
@@ -237,4 +240,4 @@ optional = true
 default-features = false
 
 [dev-dependencies.sha2]
-version = "0.10"
+version = "0.11"

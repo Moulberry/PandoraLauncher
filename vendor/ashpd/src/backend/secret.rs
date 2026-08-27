@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use zbus::zvariant::{self, OwnedValue};
 
 use crate::{
-    AppID,
+    MaybeAppID,
     backend::{
         Result,
         request::{Request, RequestImpl},
@@ -18,7 +18,7 @@ pub trait SecretImpl: RequestImpl {
     async fn retrieve(
         &self,
         token: HandleToken,
-        app_id: AppID,
+        app_id: MaybeAppID,
         fd: std::os::fd::OwnedFd,
     ) -> Result<HashMap<String, OwnedValue>>;
 }
@@ -50,7 +50,7 @@ impl SecretInterface {
     async fn retrieve_secret(
         &self,
         handle: zvariant::OwnedObjectPath,
-        app_id: AppID,
+        app_id: MaybeAppID,
         fd: zvariant::OwnedFd,
         _options: HashMap<String, OwnedValue>,
     ) -> Result<Response<HashMap<String, OwnedValue>>> {

@@ -3,10 +3,9 @@ name = "blocking"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v1.x.y" git tag
-version = "1.6.2"
-authors = ["Stjepan Glavina <stjepang@gmail.com>"]
+version = "1.7.0"
 edition = "2021"
-rust-version = "1.63"
+rust-version = "1.68"
 description = "A thread pool for isolating blocking I/O in async programs"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/smol-rs/blocking"

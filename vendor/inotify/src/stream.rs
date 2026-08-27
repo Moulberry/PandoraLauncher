@@ -1,26 +1,26 @@
 use std::{
     io,
-    os::unix::io::{AsRawFd, RawFd},
+    os::unix::io::AsRawFd,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 
-use futures_core::{ready, Stream};
-use tokio::io::unix::AsyncFd;
+use futures_util::{ready, Stream};
+use tokio::io::{unix::AsyncFd, Interest};
 
 use crate::events::{Event, EventOwned};
 use crate::fd_guard::FdGuard;
-use crate::Inotify;
 use crate::util::read_into_buffer;
 use crate::watches::Watches;
+use crate::Inotify;
 
 /// Stream of inotify events
 ///
 /// Allows for streaming events returned by [`Inotify::into_event_stream`].
 #[derive(Debug)]
 pub struct EventStream<T> {
-    fd: AsyncFd<ArcFdGuard>,
+    fd: AsyncFd<Arc<FdGuard>>,
     buffer: T,
     buffer_pos: usize,
     unused_bytes: usize,
@@ -33,7 +33,7 @@ where
     /// Returns a new `EventStream` associated with the default reactor.
     pub(crate) fn new(fd: Arc<FdGuard>, buffer: T) -> io::Result<Self> {
         Ok(EventStream {
-            fd: AsyncFd::new(ArcFdGuard(fd))?,
+            fd: AsyncFd::with_interest(fd, Interest::READABLE)?,
             buffer,
             buffer_pos: 0,
             unused_bytes: 0,
@@ -43,13 +43,13 @@ where
     /// Returns an instance of `Watches` to add and remove watches.
     /// See [`Watches::add`] and [`Watches::remove`].
     pub fn watches(&self) -> Watches {
-        Watches::new(self.fd.get_ref().0.clone())
+        Watches::new(self.fd.get_ref().clone())
     }
 
     /// Consumes the `EventStream` instance and returns an `Inotify` using the original
     /// file descriptor that was passed from `Inotify` to create the `EventStream`.
     pub fn into_inotify(self) -> Inotify {
-        Inotify::from_file_descriptor(self.fd.into_inner().0)
+        Inotify::from_file_descriptor(self.fd.into_inner())
     }
 }
 
@@ -79,7 +79,7 @@ where
         // there, and we only take complete events out. That means we have at
         // least one event in there and can call `from_buffer` to take it out.
         let (bytes_consumed, event) = Event::from_buffer(
-            Arc::downgrade(&self_.fd.get_ref().0),
+            Arc::downgrade(self_.fd.get_ref()),
             &self_.buffer.as_ref()[self_.buffer_pos..],
         );
         self_.buffer_pos += bytes_consumed;
@@ -89,17 +89,11 @@ where
     }
 }
 
-// Newtype wrapper because AsRawFd isn't implemented for Arc<T> where T: AsRawFd.
-#[derive(Debug)]
-struct ArcFdGuard(Arc<FdGuard>);
-
-impl AsRawFd for ArcFdGuard {
-    fn as_raw_fd(&self) -> RawFd {
-        self.0.as_raw_fd()
-    }
-}
-
-fn read(fd: &AsyncFd<ArcFdGuard>, buffer: &mut [u8], cx: &mut Context) -> Poll<io::Result<usize>> {
+fn read(
+    fd: &AsyncFd<Arc<FdGuard>>,
+    buffer: &mut [u8],
+    cx: &mut Context,
+) -> Poll<io::Result<usize>> {
     let mut guard = ready!(fd.poll_read_ready(cx))?;
     let result = guard.try_io(|_| {
         let read = read_into_buffer(fd.as_raw_fd(), buffer);

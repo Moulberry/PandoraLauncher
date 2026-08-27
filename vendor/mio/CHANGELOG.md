@@ -1,3 +1,21 @@
+# 1.2.2
+
+* Add support for Solaris using event ports
+  (https://github.com/tokio-rs/mio/pull/1962).
+* Add experiment support for NuttX using `poll(2)`
+  (https://github.com/tokio-rs/mio/pull/1966).
+
+# 1.2.1
+
+* Add support for horizonOS/n3ds
+  (https://github.com/tokio-rs/mio/pull/1951).
+* On Windows set `WSA_FLAG_NO_HANDLE_INHERIT` for socket creation
+  (https://github.com/tokio-rs/mio/pull/1946).
+* Fixed a race condition in Windows' `NamedPipe::connect`
+  (https://github.com/tokio-rs/mio/pull/1954).
+* Fixed a casting issue when polling with a timeout larger than ~24.8 days on Linux
+  (https://github.com/tokio-rs/mio/pull/1948).
+
 # 1.2.0
 
 * Support was added for WASM Preview 2

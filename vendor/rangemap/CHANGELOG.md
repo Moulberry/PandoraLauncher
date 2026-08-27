@@ -1,3 +1,15 @@
+### v1.8.0 (2026-08-14)
+
+- **Features**:
+    - Add support for using `ordered_float::NotNan<f32>` and `ordered_float::NotNan<f64>` as keys of `RangeInclusiveMap` and `RangeInclusiveSet`, gated behind the `ordered-float5` feature. The successor of a float is taken to be the next representable float, so ranges that are one ULP (unit in the last place) apart will be coalesced. Thanks to [Qix-](https://github.com/Qix-) for implementing this!
+
+- **Fixes**:
+    - Fix building without the Rust standard library when the `serde1` feature is enabled. Enabling `serde1` also enabled _serde_'s default features, including its `std` feature, so this has never actually worked.
+
+- **Changes**:
+    - Switch to the version 2 feature resolver, so that features enabled by dev-dependencies no longer leak into normal builds.
+
+
 ### v1.7.1 (2025-12-19)
 
 - **Fixes**:

@@ -14,8 +14,28 @@ use crate::{
     prelude::{zerofrom::ZeroFrom, *},
     ule::MaybeAsVarULE,
 };
+#[cfg(feature = "alloc")]
+use alloc::string::String;
+use core::fmt;
 pub use zerotrie::ZeroTrieSimpleAscii;
-use zerovec::VarZeroSlice;
+use zerotrie::cursor::ZeroTrieSimpleAsciiCursor;
+use zerovec::{VarZeroSlice, vecs::Index32};
+
+/// Optimization to stop writing to a `ZeroTrie` cursor when the `ZeroTrie`
+/// is empty. See #8375
+struct EarlyExitCursor<'a, 'b>(&'b mut ZeroTrieSimpleAsciiCursor<'a>);
+
+impl fmt::Write for EarlyExitCursor<'_, '_> {
+    #[inline]
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.0.write_str(s)?;
+        if self.0.is_empty() {
+            Err(fmt::Error)
+        } else {
+            Ok(())
+        }
+    }
+}
 
 fn get_index(
     trie: ZeroTrieSimpleAscii<&'static [u8]>,
@@ -24,10 +44,12 @@ fn get_index(
 ) -> Option<usize> {
     use writeable::Writeable;
     let mut cursor = trie.cursor();
-    let _is_ascii = id.locale.write_to(&mut cursor);
+    let _is_ascii = id.locale.write_to(&mut EarlyExitCursor(&mut cursor));
     if !id.marker_attributes.is_empty() {
         cursor.step(ID_SEPARATOR);
-        id.marker_attributes.write_to(&mut cursor).ok()?;
+        id.marker_attributes
+            .write_to(&mut EarlyExitCursor(&mut cursor))
+            .ok()?;
         loop {
             if let Some(v) = cursor.take_value() {
                 break Some(v);
@@ -42,12 +64,12 @@ fn get_index(
 }
 
 #[cfg(feature = "alloc")]
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 fn iter(
     trie: &'static ZeroTrieSimpleAscii<&'static [u8]>,
 ) -> core::iter::FilterMap<
     zerotrie::ZeroTrieStringIterator<'static>,
-    fn((alloc::string::String, usize)) -> Option<DataIdentifierCow<'static>>,
+    fn((String, usize)) -> Option<DataIdentifierCow<'static>>,
 > {
     use alloc::borrow::ToOwned;
     trie.iter().filter_map(move |(s, _)| {
@@ -99,7 +121,7 @@ impl<M: DataMarker> super::DataStore<M> for Data<M> {
     #[cfg(feature = "alloc")]
     type IterReturn = core::iter::FilterMap<
         zerotrie::ZeroTrieStringIterator<'static>,
-        fn((alloc::string::String, usize)) -> Option<DataIdentifierCow<'static>>,
+        fn((String, usize)) -> Option<DataIdentifierCow<'static>>,
     >;
     #[cfg(feature = "alloc")]
     fn iter(&'static self) -> Self::IterReturn {
@@ -107,7 +129,53 @@ impl<M: DataMarker> super::DataStore<M> for Data<M> {
     }
 }
 
-/// Optimized data stored as a single VarZeroSlice to reduce token count
+/// Regular baked data: a trie for lookups and a slice of values
+#[derive(Debug)]
+pub struct DataRef<M: DataMarker> {
+    // Unsafe invariant: actual values contained MUST be valid indices into `values`
+    trie: ZeroTrieSimpleAscii<&'static [u8]>,
+    values: &'static [&'static M::DataStruct],
+}
+
+impl<M: DataMarker> DataRef<M> {
+    /// Construct from a trie and references to values
+    ///
+    /// # Safety
+    /// The actual values contained in the trie must be valid indices into `values`
+    pub const unsafe fn from_trie_and_refs_unchecked(
+        trie: ZeroTrieSimpleAscii<&'static [u8]>,
+        values: &'static [&'static M::DataStruct],
+    ) -> Self {
+        Self { trie, values }
+    }
+}
+
+impl<M: DataMarker> super::private::Sealed for DataRef<M> {}
+impl<M: DataMarker> super::DataStore<M> for DataRef<M> {
+    fn get(
+        &self,
+        id: DataIdentifierBorrowed,
+        attributes_prefix_match: bool,
+    ) -> Option<DataPayload<M>> {
+        get_index(self.trie, id, attributes_prefix_match)
+            // Safety: Allowed since `i` came from the trie and the field safety invariant
+            .map(|i| unsafe { self.values.get_unchecked(i) })
+            .copied()
+            .map(DataPayload::from_static_ref)
+    }
+
+    #[cfg(feature = "alloc")]
+    type IterReturn = core::iter::FilterMap<
+        zerotrie::ZeroTrieStringIterator<'static>,
+        fn((String, usize)) -> Option<DataIdentifierCow<'static>>,
+    >;
+    #[cfg(feature = "alloc")]
+    fn iter(&'static self) -> Self::IterReturn {
+        iter(&self.trie)
+    }
+}
+
+/// Optimized data stored as a single [`VarZeroSlice`] to reduce token count
 #[allow(missing_debug_implementations)] // Debug on this will not be too useful
 pub struct DataForVarULEs<M: DataMarker>
 where
@@ -116,7 +184,7 @@ where
 {
     // Unsafe invariant: actual values contained MUST be valid indices into `values`
     trie: ZeroTrieSimpleAscii<&'static [u8]>,
-    values: &'static VarZeroSlice<<M::DataStruct as MaybeAsVarULE>::EncodedStruct>,
+    values: &'static VarZeroSlice<<M::DataStruct as MaybeAsVarULE>::EncodedStruct, Index32>,
 }
 
 impl<M: DataMarker> super::private::Sealed for DataForVarULEs<M>
@@ -137,7 +205,7 @@ where
     /// The actual values contained in the trie must be valid indices into `values`
     pub const unsafe fn from_trie_and_values_unchecked(
         trie: ZeroTrieSimpleAscii<&'static [u8]>,
-        values: &'static VarZeroSlice<<M::DataStruct as MaybeAsVarULE>::EncodedStruct>,
+        values: &'static VarZeroSlice<<M::DataStruct as MaybeAsVarULE>::EncodedStruct, Index32>,
     ) -> Self {
         Self { trie, values }
     }
@@ -163,7 +231,7 @@ where
     #[cfg(feature = "alloc")]
     type IterReturn = core::iter::FilterMap<
         zerotrie::ZeroTrieStringIterator<'static>,
-        fn((alloc::string::String, usize)) -> Option<DataIdentifierCow<'static>>,
+        fn((String, usize)) -> Option<DataIdentifierCow<'static>>,
     >;
     #[cfg(feature = "alloc")]
     fn iter(&'static self) -> Self::IterReturn {

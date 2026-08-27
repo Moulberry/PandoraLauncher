@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "getrandom"
-version = "0.4.1"
+version = "0.4.3"
 authors = ["The Rand Project Developers"]
 build = "build.rs"
 exclude = [".*"]
@@ -87,28 +87,21 @@ optional = true
 version = "0.2.154"
 default-features = false
 
-[target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies.wasm-bindgen]
+[target.'cfg(all(target_family = "wasm", any(target_os = "unknown", target_os = "none")))'.dependencies.wasm-bindgen]
 version = "0.2.98"
 optional = true
 default-features = false
 
-[target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dev-dependencies.wasm-bindgen-test]
+[target.'cfg(all(target_family = "wasm", any(target_os = "unknown", target_os = "none")))'.dev-dependencies.wasm-bindgen-test]
 version = "0.3"
 
-[target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none"), target_feature = "atomics"))'.dependencies.js-sys]
+[target.'cfg(all(target_family = "wasm", any(target_os = "unknown", target_os = "none"), target_feature = "atomics"))'.dependencies.js-sys]
 version = "0.3.77"
 optional = true
 default-features = false
 
-[target.'cfg(all(target_arch = "wasm32", target_os = "wasi", target_env = "p2"))'.dependencies.wasip2]
-version = "1"
-default-features = false
-
-[target.'cfg(all(target_arch = "wasm32", target_os = "wasi", target_env = "p3"))'.dependencies.wasip3]
-version = "0.4"
-
 [target.'cfg(all(target_os = "uefi", getrandom_backend = "efi_rng"))'.dependencies.r-efi]
-version = "5.1"
+version = "6"
 default-features = false
 
 [target.'cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "hurd", target_os = "illumos", target_os = "cygwin", all(target_os = "horizon", target_arch = "arm")))'.dependencies.libc]

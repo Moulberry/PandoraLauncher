@@ -5,10 +5,11 @@ use crate::cc_builder::CcBuilder;
 use crate::OutputLib::{Crypto, Ssl};
 use crate::{
     allow_prebuilt_nasm, cargo_env, effective_target, emit_warning, execute_command,
-    get_crate_cflags, is_crt_static, is_fips_build, is_no_asm, is_no_pregenerated_src,
-    optional_env, optional_env_optional_crate_target, sanitizer, set_env, set_env_for_target,
-    should_build_jitter_entropy, target, target_arch, target_env, target_is_msvc, target_os,
-    test_clang_cl_command, test_nasm_command, use_prebuilt_nasm, OutputLibType,
+    get_crate_cflags, is_crt_static, is_fips_build, is_fips_crate, is_no_asm,
+    is_no_pregenerated_src, is_small, optional_env, optional_env_optional_crate_target, sanitizer,
+    set_env, set_env_for_target, should_build_jitter_entropy, target, target_arch, target_env,
+    target_is_msvc, target_os, test_clang_cl_command, test_nasm_command, use_prebuilt_nasm,
+    OutputLibType,
 };
 use std::collections::HashMap;
 use std::env;
@@ -31,6 +32,22 @@ fn strip_lto_flags(cflags: &str) -> String {
         .filter(|flag| !is_lto_flag(flag))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+const fn cmake_bool(value: bool) -> &'static str {
+    if value {
+        "ON"
+    } else {
+        "OFF"
+    }
+}
+
+const fn cmake_nasm_small_flags(value: bool) -> &'static str {
+    if value {
+        "-DOPENSSL_SMALL=1 -DMY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX=1"
+    } else {
+        ""
+    }
 }
 
 pub(crate) struct CmakeBuilder {
@@ -204,6 +221,26 @@ impl CmakeBuilder {
             } else {
                 panic!("AWS_LC_SYS_NO_ASM only allowed for debug builds!")
             }
+        }
+
+        // Always set these cache entries (ON/OFF, flags/empty): the CMake cache in
+        // OUT_DIR persists across builds, so a stale value could survive a toggle.
+        let small = is_small();
+        let small_value = cmake_bool(small);
+        cmake_cfg.define("OPENSSL_SMALL", small_value);
+        if is_fips_crate() {
+            // Only the pinned FIPS branch needs this; mainline CMakeLists
+            // derives it from OPENSSL_SMALL.
+            cmake_cfg.define("MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX", small_value);
+        }
+        if target_os() == "windows" && target_arch() == "x86_64" {
+            // Raw NASM cannot include target.h, and add_definitions does not reach it.
+            cmake_cfg.define("CMAKE_ASM_NASM_FLAGS", cmake_nasm_small_flags(small));
+        }
+        if small {
+            emit_warning(
+                "Size-optimized AWS-LC build enabled. Applying OPENSSL_SMALL and disabling AVX-512 assembly.",
+            );
         }
 
         Self::configure_sanitizer(&mut cmake_cfg);
@@ -482,6 +519,12 @@ impl CmakeBuilder {
         emit_warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         emit_warning("!!!   Using pre-built NASM binaries   !!!");
         emit_warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        if is_small() {
+            emit_warning(
+                "Prebuilt NASM objects cannot apply size-optimization definitions. \
+                 Install NASM to minimize Windows assembly code.",
+            );
+        }
 
         let script_path = self.select_prebuilt_nasm_script();
         let script_path = script_path.display().to_string();
@@ -694,6 +737,12 @@ impl crate::Builder for CmakeBuilder {
     fn build(&self) -> Result<(), String> {
         self.build_library();
 
+        crate::emit_source_library_metadata(
+            &self.artifact_output_dir(),
+            self.output_lib_type,
+            &self.build_prefix,
+        );
+
         println!(
             "cargo:rustc-link-search=native={}",
             self.artifact_output_dir().display()
@@ -713,7 +762,7 @@ impl crate::Builder for CmakeBuilder {
             );
         }
 
-        crate::emit_source_build_metadata(&self.manifest_dir);
+        crate::emit_source_build_metadata(&self.manifest_dir, &self.build_prefix);
 
         Ok(())
     }
@@ -725,7 +774,22 @@ impl crate::Builder for CmakeBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_lto_flags;
+    use super::{cmake_bool, cmake_nasm_small_flags, strip_lto_flags};
+
+    #[test]
+    fn test_cmake_bool() {
+        assert_eq!(cmake_bool(true), "ON");
+        assert_eq!(cmake_bool(false), "OFF");
+    }
+
+    #[test]
+    fn test_cmake_nasm_small_flags() {
+        assert_eq!(
+            cmake_nasm_small_flags(true),
+            "-DOPENSSL_SMALL=1 -DMY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX=1"
+        );
+        assert_eq!(cmake_nasm_small_flags(false), "");
+    }
 
     #[test]
     fn test_strip_lto_flags() {

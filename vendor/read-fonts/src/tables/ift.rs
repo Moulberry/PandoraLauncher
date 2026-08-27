@@ -166,6 +166,13 @@ impl U16Or24 {
     }
 }
 
+impl<'a> EntryData<'a> {
+    pub fn trailing_data(&self) -> &'a [u8] {
+        let range = self.trailing_data_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+}
+
 impl<'a> PatchMapFormat1<'a> {
     pub fn gid_to_entry_iter(&'a self) -> impl Iterator<Item = (GlyphId, u16)> + 'a {
         GidToEntryIter {
@@ -697,9 +704,8 @@ mod tests {
         let len = builder.offset_for("gid_9_offset");
         let data = &builder.as_slice()[..len];
 
-        let Err(err) = GlyphPatches::read(FontData::new(data), GlyphKeyedFlags::NONE) else {
-            panic!("Expected to fail.");
-        };
-        assert_eq!(ReadError::OutOfBounds, err);
+        let derp = GlyphPatches::read(FontData::new(data), GlyphKeyedFlags::NONE).unwrap();
+        // invalid data means we return an empty array
+        assert!(derp.glyph_data_offsets().is_empty())
     }
 }

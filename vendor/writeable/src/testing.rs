@@ -46,7 +46,7 @@ impl PartsWrite for TestWriter {
     }
 }
 
-#[allow(clippy::type_complexity)]
+#[doc(hidden)]
 pub fn writeable_to_parts_for_test<W: Writeable>(
     writeable: &W,
 ) -> (String, Vec<(usize, usize, Part)>) {
@@ -54,14 +54,15 @@ pub fn writeable_to_parts_for_test<W: Writeable>(
         string: alloc::string::String::new(),
         parts: Vec::new(),
     };
-    #[allow(clippy::expect_used)] // for test code
+    #[expect(clippy::expect_used)] // for test code
     writeable
         .write_to_parts(&mut writer)
         .expect("String writer infallible");
     writer.finish()
 }
 
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
+#[doc(hidden)]
 pub fn try_writeable_to_parts_for_test<W: TryWriteable>(
     writeable: &W,
 ) -> (String, Vec<(usize, usize, Part)>, Option<W::Error>) {
@@ -69,7 +70,7 @@ pub fn try_writeable_to_parts_for_test<W: TryWriteable>(
         string: alloc::string::String::new(),
         parts: Vec::new(),
     };
-    #[allow(clippy::expect_used)] // for test code
+    #[expect(clippy::expect_used)] // for test code
     let result = writeable
         .try_write_to_parts(&mut writer)
         .expect("String writer infallible");

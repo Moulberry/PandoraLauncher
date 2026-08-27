@@ -37,7 +37,7 @@ _CET_ENDBR
 
 	test	r9d,7
 	jnz	NEAR $L$mul_enter
-%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	lea	r11,[OPENSSL_ia32cap_P]
 	mov	r11d,DWORD[8+r11]
 %endif
@@ -493,7 +493,7 @@ $L$SEH_begin_bn_mul4x_mont_gather5:
 	mov	rax,rsp
 
 $L$mul4x_enter:
-%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	and	r11d,0x80108
 	cmp	r11d,0x80108
 	je	NEAR $L$mulx4x_enter
@@ -1144,7 +1144,7 @@ $L$SEH_begin_bn_power5:
 _CET_ENDBR
 	mov	rax,rsp
 
-%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	lea	r11,[OPENSSL_ia32cap_P]
 	mov	r11d,DWORD[8+r11]
 	and	r11d,0x80108
@@ -2117,7 +2117,7 @@ $L$sqr4x_sub_entry:
 	DB	0F3h,0C3h		;repret
 
 
-%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 
 ALIGN	32
 bn_mulx4x_mont_gather5:
@@ -3821,7 +3821,7 @@ ALIGN	4
 	DD	$L$SEH_begin_bn_power5 wrt ..imagebase
 	DD	$L$SEH_end_bn_power5 wrt ..imagebase
 	DD	$L$SEH_info_bn_power5 wrt ..imagebase
-%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	DD	$L$SEH_begin_bn_mulx4x_mont_gather5 wrt ..imagebase
 	DD	$L$SEH_end_bn_mulx4x_mont_gather5 wrt ..imagebase
 	DD	$L$SEH_info_bn_mulx4x_mont_gather5 wrt ..imagebase
@@ -3850,7 +3850,7 @@ $L$SEH_info_bn_power5:
 	DB	9,0,0,0
 	DD	mul_handler wrt ..imagebase
 	DD	$L$power5_prologue wrt ..imagebase,$L$power5_body wrt ..imagebase,$L$power5_epilogue wrt ..imagebase
-%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+%ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 ALIGN	4
 $L$SEH_info_bn_mulx4x_mont_gather5:
 	DB	9,0,0,0

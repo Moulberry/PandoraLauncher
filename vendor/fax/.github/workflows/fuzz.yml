@@ -1,0 +1,84 @@
+name: Fuzz
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Seconds per fuzz target'
+        required: false
+        default: '300'
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_roundtrip_g4
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: fuzz-${{ matrix.target }}
+          cache-directories: fuzz/target
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Determine duration
+        id: duration
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "seconds=300" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "seconds=${{ github.event.inputs.duration || '300' }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "seconds=60" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Seed corpus
+        run: |
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          cp fuzz/regression/* fuzz/corpus/${{ matrix.target }}/ 2>/dev/null || true
+          cp fuzz/seed_corpus/${{ matrix.target }}/* fuzz/corpus/${{ matrix.target }}/ 2>/dev/null || true
+
+      - name: Fuzz ${{ matrix.target }}
+        run: |
+          cargo +nightly fuzz run ${{ matrix.target }} \
+            -- -max_total_time=${{ steps.duration.outputs.seconds }} \
+               
+               -rss_limit_mb=2048
+
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: fuzz/artifacts/
+          retention-days: 30
+
+  regression:
+    name: Fuzz regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build
+      - name: Regression seeds
+        run: |
+          if [ -d fuzz/regression ] && [ "$(ls fuzz/regression/ 2>/dev/null | wc -l)" -gt 0 ]; then
+            cargo test --test fuzz_regression 2>/dev/null || echo "No regression test found — seeds exist but no test harness"
+          fi

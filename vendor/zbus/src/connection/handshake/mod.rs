@@ -117,13 +117,13 @@ fn sasl_auth_id() -> Result<String> {
 #[cfg(test)]
 mod tests {
     use futures_util::future::join;
-    #[cfg(not(feature = "tokio"))]
+    #[cfg(feature = "async-io")]
     use futures_util::io::{AsyncWrite, AsyncWriteExt};
     use ntest::timeout;
-    #[cfg(not(feature = "tokio"))]
+    #[cfg(feature = "async-io")]
     use std::os::unix::net::UnixStream;
     use test_log::test;
-    #[cfg(feature = "tokio")]
+    #[cfg(not(feature = "async-io"))]
     use tokio::{
         io::{AsyncWrite, AsyncWriteExt},
         net::UnixStream,
@@ -138,7 +138,7 @@ mod tests {
         let (p0, p1) = crate::utils::block_on(async { UnixStream::pair().unwrap() });
 
         // initialize both handshakes
-        #[cfg(not(feature = "tokio"))]
+        #[cfg(feature = "async-io")]
         let (p0, p1) = {
             p0.set_nonblocking(true).unwrap();
             p1.set_nonblocking(true).unwrap();

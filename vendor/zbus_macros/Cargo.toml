@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.87"
 name = "zbus_macros"
-version = "5.13.2"
+version = "5.19.0"
 authors = [
     "Marc-André Lureau <marcandre.lureau@redhat.com>",
     "Zeeshan Ali Khan <zeeshanak@gnome.org>",
@@ -38,7 +38,17 @@ categories = [
 ]
 license = "MIT"
 repository = "https://github.com/z-galaxy/zbus/"
-resolver = "2"
+
+[package.metadata.docs.rs]
+all-features = true
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-freebsd",
+    "x86_64-unknown-netbsd",
+    "aarch64-linux-android",
+]
 
 [features]
 blocking-api = []
@@ -67,7 +77,7 @@ version = "1.0.81"
 version = "1.0.36"
 
 [dependencies.syn]
-version = "2.0.64"
+version = "3.0"
 features = [
     "extra-traits",
     "full",
@@ -77,13 +87,13 @@ features = [
 ]
 
 [dependencies.zbus_names]
-version = "4.3.1"
+version = "4.3.4"
 
 [dependencies.zvariant]
-version = "5.9.2"
+version = "5.14.0"
 
 [dependencies.zvariant_utils]
-version = "3.3.0"
+version = "4.0.0"
 
 [dev-dependencies.async-io]
 version = "2.3.2"

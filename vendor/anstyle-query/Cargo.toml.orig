@@ -1,6 +1,6 @@
 [package]
 name = "anstyle-query"
-version = "1.1.4"
+version = "1.1.5"
 description = "Look up colored console capabilities"
 categories = ["command-line-interface"]
 keywords = ["cli", "color", "no-std", "terminal", "ansi"]
@@ -24,7 +24,7 @@ pre-release-replacements = [
 ]
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.60.0", features = ["Win32_System_Console", "Win32_Foundation"] }
+windows-sys = { version = ">=0.60.2, <0.62", features = ["Win32_System_Console", "Win32_Foundation"] }
 
 [lints]
 workspace = true

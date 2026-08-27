@@ -6,6 +6,7 @@ as a `dyn Value` or `dyn Stream`. It doesn't require any allocator,
 so it's possible to use in no-std environments.
 */
 
+#![doc(html_logo_url = "https://raw.githubusercontent.com/sval-rs/sval/main/asset/logo.svg")]
 #![no_std]
 #![deny(missing_docs)]
 

@@ -256,7 +256,7 @@ impl LocationProxy {
     #[doc(alias = "XdpPortal::location-updated")]
     pub async fn receive_location_updated(
         &self,
-    ) -> Result<impl Stream<Item = Location> + use<'_>, Error> {
+    ) -> Result<impl Stream<Item = Location> + use<>, Error> {
         self.0.signal("LocationUpdated").await
     }
 

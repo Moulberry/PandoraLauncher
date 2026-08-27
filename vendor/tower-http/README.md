@@ -65,15 +65,15 @@ for inclusion in Tower HTTP by you, shall be licensed as MIT, without any
 additional terms or conditions.
 
 [@EmbarkStudios]: https://github.com/EmbarkStudios
-[examples]: https://github.com/tower-rs/tower-http/tree/master/examples
+[examples]: https://github.com/tower-rs/tower-http/tree/main/examples
 [http]: https://crates.io/crates/http
-[tonic-key-value-store]: https://github.com/tower-rs/tower-http/tree/master/examples/tonic-key-value-store
-[warp-key-value-store]: https://github.com/tower-rs/tower-http/tree/master/examples/warp-key-value-store
-[axum-key-value-store]: https://github.com/tower-rs/tower-http/tree/master/examples/axum-key-value-store
+[tonic-key-value-store]: https://github.com/tower-rs/tower-http/tree/main/examples/tonic-key-value-store
+[warp-key-value-store]: https://github.com/tower-rs/tower-http/tree/main/examples/warp-key-value-store
+[axum-key-value-store]: https://github.com/tower-rs/tower-http/tree/main/examples/axum-key-value-store
 [chat]: https://discord.gg/tokio
 [docs]: https://docs.rs/tower-http
 [hyper]: https://github.com/hyperium/hyper
 [issue]: https://github.com/tower-rs/tower-http/issues/new
 [milestone]: https://github.com/tower-rs/tower-http/milestones
-[examples]: https://github.com/tower-rs/tower-http/tree/master/examples
+[examples]: https://github.com/tower-rs/tower-http/tree/main/examples
 [guides]: https://github.com/tower-rs/tower/tree/master/guides

@@ -239,7 +239,7 @@ impl InhibitProxy {
     #[doc(alias = "XdpPortal::session-state-changed")]
     pub async fn receive_state_changed(
         &self,
-    ) -> Result<impl Stream<Item = InhibitState> + use<'_>, Error> {
+    ) -> Result<impl Stream<Item = InhibitState> + use<>, Error> {
         self.0.signal("StateChanged").await
     }
 

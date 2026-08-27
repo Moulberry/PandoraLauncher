@@ -1,7 +1,7 @@
 [package]
 
 name = "open"
-version = "5.3.2"
+version = "5.4.2"
 authors = ["Sebastian Thiel <byronimo@gmail.com>"]
 license = "MIT"
 edition = "2018"
@@ -13,6 +13,12 @@ include = ["src/**/*", "LICENSE.md", "README.md", "changelog.md"]
 rust-version = "1.62"
 
 [features]
+## Restore the historical `cmd /c start` launcher on Windows. It cannot safely
+## receive untrusted paths because `cmd` interprets its arguments as shell syntax.
+##
+## Do not enable this feature when paths or URLs may be attacker-controlled.
+insecure = []
+
 ## If enabled, link to `system` on Windows and use `ShellExecuteW` intead of a command invocation
 ## when launching something in 'detached' mode.
 ## That way, it should be possible to open currently opened (for writing) files as well.
@@ -26,9 +32,6 @@ shellexecute-on-windows = ["dep:dunce"]
 test = false
 doc = false
 name = "open"
-
-[target.'cfg(all(unix, not(macos)))'.dependencies]
-pathdiff = "0.2.0"
 
 [target.'cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd", target_os = "illumos", target_os = "solaris", target_os = "aix", target_os = "hurd"))'.dependencies]
 is-wsl = "0.4.0"

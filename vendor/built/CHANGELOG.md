@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [unreleased]
+
+
+## [0.8.1]
+- Honor `CARGO_CFG_FEATURE`
+- Mangle hyphens in override-variables
+- Bump MSRV to 1.87, switch to Edition 2024
+- Bump `cargo-lock` to `11.0`
+- Bump `git2` to 0.21
+- Add `gix` as an alternative to `libgit2`
+
 ## [0.8.0]
 - Add override-variables
 - Bump MSRV to 1.81 (due to dependencies)
@@ -108,7 +119,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Changed
 - Bump `semver` to 0.10
 
-[unreleased]: https://github.com/lukaslueg/built/compare/0.8.0...master
+
+[unreleased]: https://github.com/lukaslueg/built/compare/0.8.1...master
+[0.8.1]: https://github.com/lukaslueg/built/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/lukaslueg/built/compare/0.7.7...0.8.0
 [0.7.7]: https://github.com/lukaslueg/built/compare/0.7.6...0.7.7
 [0.7.6]: https://github.com/lukaslueg/built/compare/0.7.5...0.7.6

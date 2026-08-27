@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.65.0"
 name = "winnow"
-version = "1.0.2"
+version = "1.0.4"
 build = false
 include = [
     "build.rs",
@@ -322,6 +322,7 @@ version = "0.2.0"
 [lints.clippy]
 bool_assert_comparison = "allow"
 branches_sharing_code = "allow"
+byte_char_slices = "allow"
 checked_conversions = "warn"
 collapsible_else_if = "allow"
 create_dir = "warn"

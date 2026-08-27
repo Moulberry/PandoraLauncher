@@ -184,12 +184,6 @@ where
             {
                 Ok(Field::other(content::de::Content::Char(value)))
             }
-            fn visit_unit<E>(self) -> Result<Self::Value, E>
-            where
-                E: DeError,
-            {
-                Ok(Field::other(content::de::Content::Unit))
-            }
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
             where
                 E: DeError,
@@ -198,17 +192,6 @@ where
                     Ok(Field::field_not_flat)
                 } else {
                     let value = content::de::Content::String(ToString::to_string(value));
-                    Ok(Field::other(value))
-                }
-            }
-            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
-            where
-                E: DeError,
-            {
-                if value == self.fieldname.as_bytes() {
-                    Ok(Field::field_not_flat)
-                } else {
-                    let value = content::de::Content::ByteBuf(value.to_vec());
                     Ok(Field::other(value))
                 }
             }
@@ -223,6 +206,17 @@ where
                     Ok(Field::other(value))
                 }
             }
+            fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
+            where
+                E: DeError,
+            {
+                if value == self.fieldname.as_bytes() {
+                    Ok(Field::field_not_flat)
+                } else {
+                    let value = content::de::Content::ByteBuf(value.to_vec());
+                    Ok(Field::other(value))
+                }
+            }
             fn visit_borrowed_bytes<E>(self, value: &'de [u8]) -> Result<Self::Value, E>
             where
                 E: DeError,
@@ -233,6 +227,12 @@ where
                     let value = content::de::Content::Bytes(value);
                     Ok(Field::other(value))
                 }
+            }
+            fn visit_unit<E>(self) -> Result<Self::Value, E>
+            where
+                E: DeError,
+            {
+                Ok(Field::other(content::de::Content::Unit))
             }
         }
 

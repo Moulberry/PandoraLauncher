@@ -61,6 +61,7 @@ features = [
     "deref",
     "deref_mut",
     "display",
+    "from",
     "from_str",
     "mul",
     "mul_assign",
@@ -111,7 +112,8 @@ version = "2.1"
 optional = true
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies.async-tar]
-version = "0.6"
+git = "https://github.com/zed-industries/async-tar"
+rev = "bd3ad6f89df9a9da7a8535958756d6bf465936a0"
 optional = true
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies.sha2]
@@ -123,7 +125,7 @@ version = "3.20.0"
 optional = true
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies.util]
-path = "../util"
+path = '..\util'
 optional = true
 
 [lints.clippy]

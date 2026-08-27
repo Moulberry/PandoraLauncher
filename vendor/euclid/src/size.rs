@@ -24,9 +24,14 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 #[cfg(feature = "mint")]
 use mint;
-use num_traits::{Float, NumCast, Signed};
+#[cfg(any(feature = "std", feature = "libm"))]
+use num_traits::Float;
+use num_traits::{NumCast, Signed};
+
 #[cfg(feature = "serde")]
 use serde;
 
@@ -106,6 +111,13 @@ unsafe impl<T: Zeroable, U> Zeroable for Size2D<T, U> {}
 
 #[cfg(feature = "bytemuck")]
 unsafe impl<T: Pod, U: 'static> Pod for Size2D<T, U> {}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, U> MallocSizeOf for Size2D<T, U> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.width.size_of(ops) + self.height.size_of(ops)
+    }
+}
 
 impl<T, U> Eq for Size2D<T, U> where T: Eq {}
 
@@ -400,6 +412,7 @@ impl<T: NumCast + Copy, U> Size2D<T, U> {
     }
 }
 
+#[cfg(any(feature = "std", feature = "libm"))]
 impl<T: Float, U> Size2D<T, U> {
     /// Returns `true` if all members are finite.
     #[inline]
@@ -1019,6 +1032,13 @@ unsafe impl<T: Zeroable, U> Zeroable for Size3D<T, U> {}
 #[cfg(feature = "bytemuck")]
 unsafe impl<T: Pod, U: 'static> Pod for Size3D<T, U> {}
 
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, U> MallocSizeOf for Size3D<T, U> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.width.size_of(ops) + self.height.size_of(ops) + self.depth.size_of(ops)
+    }
+}
+
 impl<T, U> Eq for Size3D<T, U> where T: Eq {}
 
 impl<T, U> PartialEq for Size3D<T, U>
@@ -1310,6 +1330,7 @@ impl<T: NumCast + Copy, U> Size3D<T, U> {
     }
 }
 
+#[cfg(any(feature = "std", feature = "libm"))]
 impl<T: Float, U> Size3D<T, U> {
     /// Returns `true` if all members are finite.
     #[inline]
@@ -1675,6 +1696,7 @@ pub const fn size3<T, U>(w: T, h: T, d: T) -> Size3D<T, U> {
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod size3d {
     mod ops {
         use crate::default::{Size2D, Size3D};

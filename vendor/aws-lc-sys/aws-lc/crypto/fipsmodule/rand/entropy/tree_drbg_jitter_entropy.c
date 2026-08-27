@@ -409,6 +409,14 @@ void tree_jitter_free_thread_drbg(struct entropy_source_t *entropy_source) {
 // extra work to use random data (from the OS source) ensures that even if some
 // output were to escape from the randomness generation, it will still be sound
 // practically.
+//
+// Windows shared builds take the zeros option: there this runs from a libcrypto
+// global destructor on |DLL_PROCESS_DETACH|, after |ExitProcess|, where
+// |CRYPTO_sysrand| faults on bcryptprimitives.dll (loaded on demand, so not
+// kept alive by libcrypto's dependency graph). Static builds run it from the
+// executable's |atexit| and are unaffected. Zeros still override every state in
+// the tree, losing only the defence in depth above, which the write-locked
+// frontend DRBGs already cover.
 
 // tree_jitter_zeroize_drbg zeroizes the DRBG state configured in
 // |tree_jitter_drbg|.
@@ -416,7 +424,11 @@ static void tree_jitter_zeroize_drbg(
   struct tree_jitter_drbg_t *tree_jitter_drbg) {
 
   uint8_t random_data[CTR_DRBG_ENTROPY_LEN];
+#if defined(OPENSSL_WINDOWS) && defined(BORINGSSL_SHARED_LIBRARY)
+  OPENSSL_memset(random_data, 0, CTR_DRBG_ENTROPY_LEN);
+#else
   CRYPTO_sysrand_if_available(random_data, CTR_DRBG_ENTROPY_LEN);
+#endif
 
   if (CTR_DRBG_reseed(&(tree_jitter_drbg->drbg), random_data, NULL, 0) != 1) {
     abort();

@@ -11,7 +11,7 @@ use super::super::{
     metrics::fixed_div,
     outline::Outline,
     style::ScriptGroup,
-    topo::{Axis, Dimension, Segment},
+    topo::{Axis, Dimension, Segment, TopoFlags},
 };
 use raw::tables::glyf::PointFlags;
 
@@ -281,7 +281,7 @@ fn link_segments_cjk(outline: &Outline, axis: &mut Axis, scale: i32) {
 ///
 /// See <https://gitlab.freedesktop.org/freetype/freetype/-/blob/57617782464411201ce7bbc93b086c1b4d7d84a5/src/autofit/aflatin.c#L1562>
 fn assign_point_uvs(outline: &mut Outline, dim: Dimension) {
-    if dim == Axis::HORIZONTAL {
+    if dim == Dimension::Horizontal {
         for point in &mut outline.points {
             point.u = point.fx;
             point.v = point.fy;
@@ -353,20 +353,12 @@ fn build_segments(outline: &mut Outline, axis: &mut Axis) -> bool {
                     state.max_on_coord = state.max_on_coord.max(point.v);
                 }
                 if point.out_dir != segment_dir || point_ix == last_ix {
-                    if prev_segment_ix.is_none()
-                        || axis.segments[segment_ix].first_ix
-                            != axis.segments[prev_segment_ix.unwrap()].last_ix
-                    {
-                        // The points are different signifying that we are
-                        // leaving an edge, so create a new segment
-                        let segment = &mut axis.segments[segment_ix];
-                        segment.last_ix = point_ix as u16;
-                        state.apply_to_segment(segment, flat_threshold);
-                        prev_segment_ix = Some(segment_ix);
-                        prev_state = state;
-                    } else {
+                    prev_segment_ix.take_if(|idx| {
+                        axis.segments[segment_ix].first_ix != axis.segments[*idx].last_ix
+                    });
+                    if let Some(prev_segment_ix) = prev_segment_ix {
                         // The points are the same, so merge the segments
-                        let prev_segment = &mut axis.segments[prev_segment_ix.unwrap()];
+                        let prev_segment = &mut axis.segments[prev_segment_ix];
                         if prev_segment.last_point(points).in_dir == point.in_dir {
                             // We have identical directions; unify segments
                             // and update constraints
@@ -405,12 +397,20 @@ fn build_segments(outline: &mut Outline, axis: &mut Axis) -> bool {
                                 let mut segment = axis.segments[segment_ix];
                                 segment.last_ix = point_ix as u16;
                                 state.apply_to_segment(&mut segment, flat_threshold);
-                                axis.segments[prev_segment_ix.unwrap()] = segment;
+                                axis.segments[prev_segment_ix] = segment;
                                 prev_state = state;
                             }
                         }
                         axis.segments.pop();
-                    }
+                    } else {
+                        // The points are different signifying that we are
+                        // leaving an edge, so create a new segment
+                        let segment = &mut axis.segments[segment_ix];
+                        segment.last_ix = point_ix as u16;
+                        state.apply_to_segment(segment, flat_threshold);
+                        prev_segment_ix = Some(segment_ix);
+                        prev_state = state;
+                    };
                     on_edge = false;
                 }
             }
@@ -452,7 +452,7 @@ fn build_segments(outline: &mut Outline, axis: &mut Axis) -> bool {
                 if is_single_point_contour {
                     segment.pos = state.min_pos as i16;
                     if !point.is_on_curve() {
-                        segment.flags |= Segment::ROUND;
+                        segment.flags |= TopoFlags::ROUND;
                     }
                     segment.min_coord = point.v as i16;
                     segment.max_coord = point.v as i16;
@@ -508,7 +508,7 @@ fn _detect_round_segments_cjk(outline: &mut Outline, axis: &mut Axis) {
     // A segment is considered round if it doesn't have successive on-curve
     // points
     for segment in &mut axis.segments {
-        segment.flags &= !Segment::ROUND;
+        segment.flags &= !TopoFlags::ROUND;
         let mut point_ix = segment.first();
         let last_ix = segment.last();
         let first_point = &points[point_ix];
@@ -526,7 +526,7 @@ fn _detect_round_segments_cjk(outline: &mut Outline, axis: &mut Axis) {
             if point_ix == last_ix {
                 // We've reached the last point without two successive
                 // on-curves so we're round
-                segment.flags |= Segment::ROUND;
+                segment.flags |= TopoFlags::ROUND;
                 break;
             }
         }
@@ -575,7 +575,7 @@ impl State {
         if (!self.min_flags.is_on_curve() || !self.max_flags.is_on_curve())
             && (self.max_on_coord - self.min_on_coord) < flat_threshold
         {
-            segment.flags |= Segment::ROUND;
+            segment.flags |= TopoFlags::ROUND;
         }
         segment.min_coord = self.min_coord as i16;
         segment.max_coord = self.max_coord as i16;
@@ -595,14 +595,14 @@ mod tests {
         let glyphs = font.outline_glyphs();
         let glyph = glyphs.get(GlyphId::new(8)).unwrap();
         let mut outline = Outline::default();
-        outline.fill(&glyph, Default::default()).unwrap();
-        let mut axis = Axis::new(Axis::HORIZONTAL, outline.orientation);
+        outline.fill(&glyph, &[], Default::default()).unwrap();
+        let mut axis = Axis::new(Dimension::Horizontal, outline.orientation);
         compute_segments(&mut outline, &mut axis, ScriptGroup::Default);
         link_segments(&outline, &mut axis, 0, ScriptGroup::Default, None);
         let segments = retain_segment_test_fields(&axis.segments);
         let expected = [
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Up,
                 pos: 55,
                 delta: 0,
@@ -614,7 +614,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Up,
                 pos: 112,
                 delta: 0,
@@ -626,7 +626,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Down,
                 pos: 168,
                 delta: 0,
@@ -638,7 +638,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Down,
                 pos: 109,
                 delta: 0,
@@ -650,7 +650,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Up,
                 pos: 453,
                 delta: 0,
@@ -662,7 +662,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 1,
+                flags: TopoFlags::ROUND,
                 dir: Direction::Up,
                 pos: 62,
                 delta: 0,
@@ -674,7 +674,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 1,
+                flags: TopoFlags::ROUND,
                 dir: Direction::Down,
                 pos: 103,
                 delta: 0,
@@ -686,7 +686,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Down,
                 pos: 507,
                 delta: 0,
@@ -707,14 +707,14 @@ mod tests {
         let glyphs = font.outline_glyphs();
         let glyph = glyphs.get(GlyphId::new(8)).unwrap();
         let mut outline = Outline::default();
-        outline.fill(&glyph, Default::default()).unwrap();
-        let mut axis = Axis::new(Axis::VERTICAL, outline.orientation);
+        outline.fill(&glyph, &[], Default::default()).unwrap();
+        let mut axis = Axis::new(Dimension::Vertical, outline.orientation);
         compute_segments(&mut outline, &mut axis, ScriptGroup::Default);
         link_segments(&outline, &mut axis, 0, ScriptGroup::Default, None);
         let segments = retain_segment_test_fields(&axis.segments);
         let expected = [
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Left,
                 pos: 0,
                 delta: 0,
@@ -726,7 +726,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Right,
                 pos: 504,
                 delta: 0,
@@ -738,7 +738,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Right,
                 pos: 109,
                 delta: 0,
@@ -750,7 +750,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Left,
                 pos: 483,
                 delta: 0,
@@ -762,7 +762,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Right,
                 pos: 647,
                 delta: 0,
@@ -774,7 +774,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Right,
                 pos: 592,
                 delta: 0,
@@ -795,14 +795,14 @@ mod tests {
         let glyphs = font.outline_glyphs();
         let glyph = glyphs.get(GlyphId::new(9)).unwrap();
         let mut outline = Outline::default();
-        outline.fill(&glyph, Default::default()).unwrap();
-        let mut axis = Axis::new(Axis::HORIZONTAL, outline.orientation);
+        outline.fill(&glyph, &[], Default::default()).unwrap();
+        let mut axis = Axis::new(Dimension::Horizontal, outline.orientation);
         compute_segments(&mut outline, &mut axis, ScriptGroup::Cjk);
         link_segments(&outline, &mut axis, 67109, ScriptGroup::Cjk, None);
         let segments = retain_segment_test_fields(&axis.segments);
         let expected = [
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Down,
                 pos: 731,
                 delta: 0,
@@ -814,7 +814,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Up,
                 pos: 670,
                 delta: 0,
@@ -826,7 +826,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Down,
                 pos: 458,
                 delta: 0,
@@ -838,7 +838,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Down,
                 pos: 911,
                 delta: 0,
@@ -850,7 +850,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Up,
                 pos: 693,
                 delta: 0,
@@ -862,7 +862,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Up,
                 pos: 849,
                 delta: 0,
@@ -874,7 +874,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Down,
                 pos: 569,
                 delta: 0,
@@ -886,7 +886,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Down,
                 pos: 201,
                 delta: 0,
@@ -898,7 +898,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Up,
                 pos: 138,
                 delta: 0,
@@ -919,14 +919,14 @@ mod tests {
         let glyphs = font.outline_glyphs();
         let glyph = glyphs.get(GlyphId::new(9)).unwrap();
         let mut outline = Outline::default();
-        outline.fill(&glyph, Default::default()).unwrap();
-        let mut axis = Axis::new(Axis::VERTICAL, outline.orientation);
+        outline.fill(&glyph, &[], Default::default()).unwrap();
+        let mut axis = Axis::new(Dimension::Vertical, outline.orientation);
         compute_segments(&mut outline, &mut axis, ScriptGroup::Cjk);
         link_segments(&outline, &mut axis, 67109, ScriptGroup::Cjk, None);
         let segments = retain_segment_test_fields(&axis.segments);
         let expected = [
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Right,
                 pos: 758,
                 delta: 0,
@@ -938,7 +938,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Left,
                 pos: 729,
                 delta: 0,
@@ -950,7 +950,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 1,
+                flags: TopoFlags::ROUND,
                 dir: Direction::Left,
                 pos: 133,
                 delta: 0,
@@ -962,7 +962,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Right,
                 pos: 757,
                 delta: 0,
@@ -974,7 +974,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 1,
+                flags: TopoFlags::ROUND,
                 dir: Direction::Right,
                 pos: 3,
                 delta: 2,
@@ -986,7 +986,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Right,
                 pos: 576,
                 delta: 0,
@@ -998,7 +998,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Left,
                 pos: 547,
                 delta: 0,
@@ -1010,7 +1010,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 0,
+                flags: TopoFlags::NORMAL,
                 dir: Direction::Left,
                 pos: 576,
                 delta: 0,
@@ -1022,7 +1022,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 1,
+                flags: TopoFlags::ROUND,
                 dir: Direction::Left,
                 pos: -78,
                 delta: 0,
@@ -1034,7 +1034,7 @@ mod tests {
                 ..Default::default()
             },
             Segment {
-                flags: 1,
+                flags: TopoFlags::ROUND,
                 dir: Direction::Left,
                 pos: 788,
                 delta: 0,

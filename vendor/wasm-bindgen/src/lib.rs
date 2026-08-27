@@ -46,6 +46,10 @@
     feature(allow_internal_unstable),
     allow(internal_features)
 )]
+#![cfg_attr(
+    all(not(debug_assertions), not(feature = "std"), target_arch = "wasm64"),
+    feature(simd_wasm64)
+)]
 #![doc(html_root_url = "https://docs.rs/wasm-bindgen/0.2")]
 
 extern crate alloc;
@@ -84,18 +88,23 @@ const _: () = {
     ///   exported function.
     #[no_mangle]
     pub extern "C" fn __wbindgen_skip_interpret_calls() {}
+
+    /// A custom data section used to detect Emscripten.
+    #[cfg(target_os = "emscripten")]
+    #[link_section = "__wasm_bindgen_emscripten_marker"]
+    static __WASM_BINDGEN_EMSCRIPTEN_MARKER: [u8; 1] = [1];
 };
 
 macro_rules! externs {
     ($(#[$attr:meta])* extern "C" { $(fn $name:ident($($args:tt)*) -> $ret:ty;)* }) => (
-        #[cfg(target_family = "wasm")]
+        #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
         $(#[$attr])*
         extern "C" {
             $(fn $name($($args)*) -> $ret;)*
         }
 
         $(
-            #[cfg(not(target_family = "wasm"))]
+            #[cfg(not(all(target_family = "wasm", not(target_os = "wasi"))))]
             #[allow(unused_variables)]
             unsafe extern "C" fn $name($($args)*) -> $ret {
                 panic!("function not implemented on non-wasm32 targets")
@@ -143,6 +152,9 @@ pub mod handler;
 
 mod cast;
 pub use crate::cast::JsCast;
+
+mod parent;
+pub use crate::parent::Parent;
 
 mod cache;
 pub use cache::intern::{intern, unintern};
@@ -1139,6 +1151,25 @@ impl<T: TryFromJsValue> TryFromJsValue for Option<T> {
     }
 }
 
+// Converts a JS `Array` whose elements all convert via `T::try_from_js_value`.
+// Rejects non-array values and arrays containing any element that fails to
+// convert. Mirrors the `Array`-shaped representation used by the static ABI
+// path in `js_value_vector_from_abi`.
+impl<T: TryFromJsValue> TryFromJsValue for Vec<T> {
+    fn try_from_js_value_ref(value: &JsValue) -> Option<Self> {
+        if !__wbindgen_is_array(value) {
+            return None;
+        }
+        let len = __wbindgen_reflect_get(value, &JsValue::from_str("length")).as_f64()? as u32;
+        let mut out = Vec::with_capacity(len as usize);
+        for i in 0..len {
+            let elem = __wbindgen_reflect_get(value, &JsValue::from_f64(i as f64));
+            out.push(T::try_from_js_value(elem).ok()?);
+        }
+        Some(out)
+    }
+}
+
 // `usize` and `isize` use the public pointer-sized JS number ABI, which is
 // `u32`/`i32` on wasm32 and `f64` on wasm64.
 impl PartialEq<usize> for JsValue {
@@ -1190,6 +1221,9 @@ impl TryFromJsValue for usize {
 extern "C" {
     #[wasm_bindgen(js_namespace = Array, js_name = isArray)]
     fn __wbindgen_is_array(v: &JsValue) -> bool;
+
+    #[wasm_bindgen(js_namespace = Reflect, js_name = get)]
+    fn __wbindgen_reflect_get(target: &JsValue, key: &JsValue) -> JsValue;
 
     #[wasm_bindgen(js_name = BigInt)]
     fn __wbindgen_bigint_from_str(s: &str) -> JsValue;
@@ -1541,9 +1575,18 @@ pub fn anyref_heap_live_count() -> u32 {
 pub trait UnwrapThrowExt<T>: Sized {
     /// Unwrap this `Option` or `Result`, but instead of panicking on failure,
     /// throw an exception to JavaScript.
-    #[cfg_attr(any(debug_assertions, not(target_family = "wasm")), track_caller)]
+    #[cfg_attr(
+        any(
+            debug_assertions,
+            not(all(target_family = "wasm", not(target_os = "wasi")))
+        ),
+        track_caller
+    )]
     fn unwrap_throw(self) -> T {
-        if cfg!(all(debug_assertions, target_family = "wasm")) {
+        if cfg!(all(
+            debug_assertions,
+            all(target_family = "wasm", not(target_os = "wasi"))
+        )) {
             let loc = core::panic::Location::caller();
             let msg = alloc::format!(
                 "called `{}::unwrap_throw()` ({}:{}:{})",
@@ -1561,7 +1604,13 @@ pub trait UnwrapThrowExt<T>: Sized {
     /// Unwrap this container's `T` value, or throw an error to JS with the
     /// given message if the `T` value is unavailable (e.g. an `Option<T>` is
     /// `None`).
-    #[cfg_attr(any(debug_assertions, not(target_family = "wasm")), track_caller)]
+    #[cfg_attr(
+        any(
+            debug_assertions,
+            not(all(target_family = "wasm", not(target_os = "wasi")))
+        ),
+        track_caller
+    )]
     fn expect_throw(self, message: &str) -> T;
 }
 
@@ -1569,7 +1618,7 @@ impl<T> UnwrapThrowExt<T> for Option<T> {
     fn unwrap_throw(self) -> T {
         const MSG: &str = "called `Option::unwrap_throw()` on a `None` value";
 
-        if cfg!(target_family = "wasm") {
+        if cfg!(all(target_family = "wasm", not(target_os = "wasi"))) {
             if let Some(val) = self {
                 val
             } else if cfg!(debug_assertions) {
@@ -1586,7 +1635,7 @@ impl<T> UnwrapThrowExt<T> for Option<T> {
     }
 
     fn expect_throw(self, message: &str) -> T {
-        if cfg!(target_family = "wasm") {
+        if cfg!(all(target_family = "wasm", not(target_os = "wasi"))) {
             if let Some(val) = self {
                 val
             } else if cfg!(debug_assertions) {
@@ -1611,7 +1660,7 @@ where
     fn unwrap_throw(self) -> T {
         const MSG: &str = "called `Result::unwrap_throw()` on an `Err` value";
 
-        if cfg!(target_family = "wasm") {
+        if cfg!(all(target_family = "wasm", not(target_os = "wasi"))) {
             match self {
                 Ok(val) => val,
                 Err(err) => {
@@ -1636,7 +1685,7 @@ where
     }
 
     fn expect_throw(self, message: &str) -> T {
-        if cfg!(target_family = "wasm") {
+        if cfg!(all(target_family = "wasm", not(target_os = "wasi"))) {
             match self {
                 Ok(val) => val,
                 Err(err) => {
@@ -1836,10 +1885,3 @@ impl<T: VectorIntoWasmAbi> From<Clamped<Vec<T>>> for JsValue {
         JsValue::from(Clamped(vector.0.into_boxed_slice()))
     }
 }
-
-#[cfg(target_os = "emscripten")]
-#[doc(hidden)]
-#[used]
-#[link_section = "__wasm_bindgen_emscripten_marker"]
-/// A custom data section used to detect Emscripten.
-pub static __WASM_BINDGEN_EMSCRIPTEN_MARKER: [u8; 1] = [1];

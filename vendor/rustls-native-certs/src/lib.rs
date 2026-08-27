@@ -19,7 +19,7 @@
 //! ```
 
 // Enable documentation for all features on docs.rs
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![cfg_attr(rustls_native_certs_docsrs, feature(doc_cfg))]
 
 use std::error::Error as StdError;
 use std::path::{Path, PathBuf};
@@ -203,7 +203,9 @@ impl CertPaths {
             //
             // See <https://docs.openssl.org/3.5/man1/openssl-rehash/#options>
             dirs: match env::var_os(ENV_CERT_DIR) {
-                Some(dirs) => env::split_paths(&dirs).collect(),
+                Some(dirs) => env::split_paths(&dirs)
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .collect(),
                 None => Vec::new(),
             },
         }
@@ -384,20 +386,20 @@ mod tests {
 
         {
             let mut file = File::create(&file_path).unwrap();
-            write!(file, "{}", &cert1).unwrap();
-            write!(file, "{}", &cert2).unwrap();
+            write!(file, "{}", cert1).unwrap();
+            write!(file, "{}", cert2).unwrap();
         }
 
         {
             // Duplicate (already in `file_path`)
             let mut file = File::create(dir_path.join("71f3bb26.0")).unwrap();
-            write!(file, "{}", &cert1).unwrap();
+            write!(file, "{}", cert1).unwrap();
         }
 
         {
             // Duplicate (already in `file_path`)
             let mut file = File::create(dir_path.join("912e7cd5.0")).unwrap();
-            write!(file, "{}", &cert2).unwrap();
+            write!(file, "{}", cert2).unwrap();
         }
 
         let result = CertPaths {

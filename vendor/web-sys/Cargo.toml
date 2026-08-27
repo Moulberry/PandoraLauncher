@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.77"
 name = "web-sys"
-version = "0.3.97"
+version = "0.3.104"
 authors = ["The wasm-bindgen Developers"]
 build = false
 include = [
@@ -381,6 +381,7 @@ CssTransition = [
     "Animation",
     "EventTarget",
 ]
+CssViewTransitionRule = ["CssRule"]
 CustomElementRegistry = []
 CustomEvent = ["Event"]
 CustomEventInit = []
@@ -1465,7 +1466,26 @@ MutationRecord = []
 NamedNodeMap = []
 NativeOsFileReadOptions = []
 NativeOsFileWriteAtomicOptions = []
+NavigateEvent = ["Event"]
+NavigateEventInit = []
+Navigation = ["EventTarget"]
+NavigationActivation = []
+NavigationApiType = []
+NavigationCurrentEntryChangeEvent = ["Event"]
+NavigationCurrentEntryChangeEventInit = []
+NavigationDestination = []
+NavigationFocusReset = []
+NavigationHistoryBehavior = []
+NavigationHistoryEntry = ["EventTarget"]
+NavigationInterceptOptions = []
+NavigationNavigateOptions = []
+NavigationOptions = []
+NavigationReloadOptions = []
+NavigationResult = []
+NavigationScrollBehavior = []
+NavigationTransition = []
 NavigationType = []
+NavigationUpdateCurrentEntryOptions = []
 Navigator = []
 NavigatorAutomationInformation = []
 NavigatorUaBrandVersion = []
@@ -1902,6 +1922,7 @@ SpeechSynthesisEvent = ["Event"]
 SpeechSynthesisEventInit = []
 SpeechSynthesisUtterance = ["EventTarget"]
 SpeechSynthesisVoice = []
+StartViewTransitionOptions = []
 StaticRange = ["AbstractRange"]
 StaticRangeInit = []
 StereoPannerNode = [
@@ -2586,6 +2607,7 @@ VideoTrack = []
 VideoTrackList = ["EventTarget"]
 VideoTransferCharacteristics = []
 ViewTransition = []
+ViewTransitionTypeSet = []
 VisibilityState = []
 VisualViewport = ["EventTarget"]
 VoidCallback = []
@@ -2797,11 +2819,11 @@ test = false
 doctest = false
 
 [dependencies.js-sys]
-version = "=0.3.97"
+version = "=0.3.104"
 default-features = false
 
 [dependencies.wasm-bindgen]
-version = "=0.2.120"
+version = "=0.2.127"
 default-features = false
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies.futures]

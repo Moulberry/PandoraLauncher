@@ -1,6 +1,6 @@
 [package]
 name = "foreign-types-macros"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["Steven Fackler <sfackler@gmail.com>"]
 edition = "2018"
 license = "MIT/Apache-2.0"
@@ -14,6 +14,6 @@ proc-macro = true
 std = []
 
 [dependencies]
-syn = { version = "2.0", features = ["full"] }
+syn = { version = "3.0", features = ["full"] }
 quote = "1.0"
 proc-macro2 = "1.0"

@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -22,7 +23,7 @@ jobs:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Test
-        run: cargo test
+        run: cargo --locked test
 
   lint:
     runs-on: ubuntu-latest
@@ -39,6 +40,6 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Check formatting
-        run: cargo fmt -- --check
+        run: cargo --locked fmt -- --check
       - name: Catch common mistakes and unwrap calls
-        run: cargo clippy -- -D warnings
+        run: cargo --locked clippy -- -D warnings

@@ -129,7 +129,7 @@ fn seen1(bytes: &[u8]) -> Option<usize> {
 
 #[inline]
 fn seen2(bytes: &[u8]) -> Option<usize> {
-    match bytes.get(0) {
+    match bytes.first() {
         // --|
         None => None,
         // --|>

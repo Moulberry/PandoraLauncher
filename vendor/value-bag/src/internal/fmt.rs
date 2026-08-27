@@ -390,7 +390,10 @@ mod seq {
 
 #[cfg(feature = "owned")]
 pub(crate) mod owned {
-    use crate::std::{boxed::Box, fmt, string::ToString};
+    use crate::std::{boxed::Box, fmt};
+
+    #[cfg(feature = "inline-str")]
+    use crate::internal::owned::inline_str::{self, InlineStr};
 
     impl fmt::Debug for crate::OwnedValueBag {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -404,15 +407,34 @@ pub(crate) mod owned {
         }
     }
 
+    #[cfg(not(feature = "inline-str"))]
+    pub(crate) enum InlineFmt {}
+
     #[derive(Clone)]
     pub(crate) struct OwnedFmt(Box<str>);
 
-    pub(crate) fn buffer_debug(v: impl fmt::Debug) -> OwnedFmt {
-        OwnedFmt(format!("{:?}", v).into())
+    pub(crate) fn buffer_debug(v: impl fmt::Debug) -> Result<InlineFmt, OwnedFmt> {
+        #[cfg(feature = "inline-str")]
+        {
+            buffer_inline(format_args!("{v:?}"))
+        }
+        #[cfg(not(feature = "inline-str"))]
+        {
+            Err(OwnedFmt(format!("{v:?}").into()))
+        }
     }
 
-    pub(crate) fn buffer_display(v: impl fmt::Display) -> OwnedFmt {
-        OwnedFmt(v.to_string().into())
+    pub(crate) fn buffer_display(v: impl fmt::Display) -> Result<InlineFmt, OwnedFmt> {
+        #[cfg(feature = "inline-str")]
+        {
+            buffer_inline(v)
+        }
+        #[cfg(not(feature = "inline-str"))]
+        {
+            use crate::std::string::ToString as _;
+
+            Err(OwnedFmt(v.to_string().into()))
+        }
     }
 
     impl fmt::Debug for OwnedFmt {
@@ -422,6 +444,48 @@ pub(crate) mod owned {
     }
 
     impl fmt::Display for OwnedFmt {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            fmt::Display::fmt(&self.0, f)
+        }
+    }
+
+    #[cfg(feature = "inline-str")]
+    #[inline]
+    fn buffer_inline(v: impl fmt::Display) -> Result<InlineFmt, OwnedFmt> {
+        // Use a slightly larger buffer in case we can compress the resulting buffer down to 22 bytes
+        // This can also save a few extra bounds checks and re-allocations
+        match InlineStr::<64>::buffer(v) {
+            Ok(inline) => {
+                if inline.len() <= inline_str::MAX_INLINE_LEN {
+                    // SAFETY: The condition above guarantees `inline` will fit in `MAX_INLINE_LEN` bytes
+                    let inline = unsafe {
+                        InlineStr::<{ inline_str::MAX_INLINE_LEN }>::copy_from_unchecked(
+                            inline.get(),
+                        )
+                    };
+
+                    Ok(InlineFmt(inline))
+                } else {
+                    Err(OwnedFmt(Box::from(inline.get())))
+                }
+            }
+            Err(spilled) => Err(OwnedFmt(spilled)),
+        }
+    }
+
+    #[cfg(feature = "inline-str")]
+    #[derive(Clone, Copy)]
+    pub(crate) struct InlineFmt(InlineStr<{ inline_str::MAX_INLINE_LEN }>);
+
+    #[cfg(feature = "inline-str")]
+    impl fmt::Debug for InlineFmt {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            fmt::Display::fmt(self, f)
+        }
+    }
+
+    #[cfg(feature = "inline-str")]
+    impl fmt::Display for InlineFmt {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             fmt::Display::fmt(&self.0, f)
         }

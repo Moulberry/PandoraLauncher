@@ -4,7 +4,8 @@ use rand09::Rng;
 use rand09::distr::{Distribution, StandardUniform};
 
 use crate::{
-    Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcDateTime, UtcOffset, Weekday,
+    Date, Month, OffsetDateTime, PlainDateTime, SignedDuration, Time, Timestamp, UtcDateTime,
+    UtcOffset, Weekday,
 };
 
 impl Distribution<Time> for StandardUniform {
@@ -42,13 +43,13 @@ impl Distribution<UtcOffset> for StandardUniform {
     }
 }
 
-impl Distribution<PrimitiveDateTime> for StandardUniform {
+impl Distribution<PlainDateTime> for StandardUniform {
     #[inline]
-    fn sample<R>(&self, rng: &mut R) -> PrimitiveDateTime
+    fn sample<R>(&self, rng: &mut R) -> PlainDateTime
     where
         R: Rng + ?Sized,
     {
-        PrimitiveDateTime::new(Self.sample(rng), Self.sample(rng))
+        PlainDateTime::new(Self.sample(rng), Self.sample(rng))
     }
 }
 
@@ -68,18 +69,28 @@ impl Distribution<OffsetDateTime> for StandardUniform {
     where
         R: Rng + ?Sized,
     {
-        let date_time: PrimitiveDateTime = Self.sample(rng);
+        let date_time: PlainDateTime = Self.sample(rng);
         date_time.assume_offset(Self.sample(rng))
     }
 }
 
-impl Distribution<Duration> for StandardUniform {
+impl Distribution<Timestamp> for StandardUniform {
     #[inline]
-    fn sample<R>(&self, rng: &mut R) -> Duration
+    fn sample<R>(&self, rng: &mut R) -> Timestamp
     where
         R: Rng + ?Sized,
     {
-        Duration::new_ranged(rng.random(), rng.random())
+        Timestamp::new_ranged(rng.random(), rng.random())
+    }
+}
+
+impl Distribution<SignedDuration> for StandardUniform {
+    #[inline]
+    fn sample<R>(&self, rng: &mut R) -> SignedDuration
+    where
+        R: Rng + ?Sized,
+    {
+        SignedDuration::new_ranged(rng.random(), rng.random())
     }
 }
 

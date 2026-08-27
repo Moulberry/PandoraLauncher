@@ -26,11 +26,8 @@
  * // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-use crate::bits::EXP_MASK;
-use num_traits::MulAdd;
-use std::ops::{Add, Mul};
 
-#[inline]
+#[inline(always)]
 pub(crate) fn is_integerf(x: f32) -> bool {
     #[cfg(any(
         all(
@@ -59,7 +56,7 @@ pub(crate) fn is_integerf(x: f32) -> bool {
     }
 }
 
-#[inline]
+#[inline(always)]
 pub(crate) fn is_odd_integerf(x: f32) -> bool {
     #[cfg(target_arch = "aarch64")]
     {
@@ -77,7 +74,7 @@ pub(crate) fn is_odd_integerf(x: f32) -> bool {
     }
 }
 
-#[inline]
+#[inline(always)]
 pub(crate) fn is_integer(n: f64) -> bool {
     #[cfg(any(
         all(
@@ -97,6 +94,7 @@ pub(crate) fn is_integer(n: f64) -> bool {
         target_arch = "aarch64"
     )))]
     {
+        use crate::bits::EXP_MASK;
         let x_u = n.to_bits();
         let x_e = (x_u & EXP_MASK) >> 52;
         let lsb = (x_u | EXP_MASK).trailing_zeros();
@@ -107,47 +105,35 @@ pub(crate) fn is_integer(n: f64) -> bool {
     }
 }
 
-#[inline]
+#[inline(always)]
 pub(crate) fn is_odd_integer(x: f64) -> bool {
-    let x_u = x.to_bits();
-    let x_e = (x_u & EXP_MASK) >> 52;
-    let lsb = (x_u | EXP_MASK).trailing_zeros();
-    const E_BIAS: u64 = (1u64 << (11 - 1u64)) - 1u64;
+    #[cfg(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "sse4.1"
+        ),
+        target_arch = "aarch64"
+    ))]
+    {
+        (x as i64 & 1) != 0
+    }
+    #[cfg(not(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "sse4.1"
+        ),
+        target_arch = "aarch64"
+    )))]
+    {
+        use crate::bits::EXP_MASK;
+        let x_u = x.to_bits();
+        let x_e = (x_u & EXP_MASK) >> 52;
+        let lsb = (x_u | EXP_MASK).trailing_zeros();
+        const E_BIAS: u64 = (1u64 << (11 - 1u64)) - 1u64;
 
-    const UNIT_EXPONENT: u64 = E_BIAS + 52;
-    x_e + lsb as u64 == UNIT_EXPONENT
-}
-
-#[cfg(any(
-    all(
-        any(target_arch = "x86", target_arch = "x86_64"),
-        target_feature = "fma"
-    ),
-    target_arch = "aarch64"
-))]
-#[inline(always)]
-pub(crate) fn mlaf<T: Copy + Mul<T, Output = T> + Add<T, Output = T> + MulAdd<T, Output = T>>(
-    acc: T,
-    a: T,
-    b: T,
-) -> T {
-    MulAdd::mul_add(a, b, acc)
-}
-
-#[inline(always)]
-#[cfg(not(any(
-    all(
-        any(target_arch = "x86", target_arch = "x86_64"),
-        target_feature = "fma"
-    ),
-    target_arch = "aarch64"
-)))]
-pub(crate) fn mlaf<T: Copy + Mul<T, Output = T> + Add<T, Output = T> + MulAdd<T, Output = T>>(
-    acc: T,
-    a: T,
-    b: T,
-) -> T {
-    acc + a * b
+        const UNIT_EXPONENT: u64 = E_BIAS + 52;
+        x_e + lsb as u64 == UNIT_EXPONENT
+    }
 }
 
 #[inline]
@@ -296,16 +282,6 @@ pub(crate) fn dd_fmlaf(a: f32, b: f32, c: f32) -> f32 {
     {
         (a as f64 * b as f64 + c as f64) as f32
     }
-}
-
-#[allow(dead_code)]
-#[inline(always)]
-pub(crate) fn c_mlaf<T: Copy + Mul<T, Output = T> + Add<T, Output = T> + MulAdd<T, Output = T>>(
-    a: T,
-    b: T,
-    c: T,
-) -> T {
-    mlaf(c, a, b)
 }
 
 /// Copies sign from `y` to `x`

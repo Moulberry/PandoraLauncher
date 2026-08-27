@@ -2,13 +2,13 @@
 //!
 //! Overlapping and adjacent ranges are automatically merged together.
 
+use alloc::collections::BTreeMap;
 use core::{
     cmp::{max, min},
     fmt::{Debug, Formatter},
     iter::Peekable,
     ops::RangeInclusive,
 };
-use std::collections::BTreeMap;
 
 use types::Fixed;
 

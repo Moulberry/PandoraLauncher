@@ -50,7 +50,7 @@ fn apply_value(
             offset += 2;
         }
     }
-    if !format.contains(ValueFormat::ANY_DEVICE_OR_VARIDX) {
+    if !format.intersects(ValueFormat::ANY_DEVICE_OR_VARIDX) {
         return Some(worked);
     }
     if let Some(vs) = &ctx.face.ot_tables.var_store {

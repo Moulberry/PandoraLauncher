@@ -3,6 +3,7 @@
 #![doc = include_str!("../docs/BUILD.md")]
 //! # ctor
 #![doc = include_str!("../docs/PREAMBLE.md")]
+#![doc = include_str!("../docs/REEXPORT.md")]
 #![doc = include_str!("../docs/GENERATED.md")]
 // Used as part of ctor collection
 #![cfg_attr(
@@ -10,7 +11,6 @@
     feature(used_with_arg)
 )]
 #![cfg_attr(all(target_vendor = "apple", linktime_asan), feature(sanitize))]
-#![cfg_attr(linktime_used_linker, doc(test(attr(feature(used_with_arg)))))]
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -46,6 +46,7 @@ crate::__ctor_parse_internal!(
     /// <https://github.com/rust-lang/rust/issues/52234>)
     #[ctor(unsafe, naked)]
     #[allow(unsafe_code)]
+    #[doc(hidden)]
     fn priority_ctor() {
         unsafe {
             crate::collect::run_constructors();
@@ -141,9 +142,56 @@ pub mod collect {
     // These sections are shared between multiple versions of the ctor crate.
 
     link_section::declarative::section!(
-        #[section(mutable, no_macro)]
+        #[section(unsafe, type = mutable, name = _CTOR0_ISIZE_FN)]
         static _CTOR0_ISIZE_FN: link_section::TypedMutableSection<Constructor>;
     );
+
+    link_section::declarative::section!(
+        #[section(unsafe, type = typed, name = _CTR0GR_ISIZE_FN)]
+        static _CTR0GR_ISIZE_FN: link_section::TypedSection<AtomicU8>;
+    );
+
+    link_section::declarative::in_section!(
+        #[in_section(unsafe, type = typed, name = _CTR0GR_ISIZE_FN)]
+        pub static GUARD_ATOMIC: AtomicU8 = AtomicU8::new(GUARD_NOT_RUN);
+    );
+
+    // TODO: We should allow explicit export_name on the ctor itself.
+    #[cfg(all(feature = "priority", target_vendor = "apple"))]
+    #[used]
+    #[doc(hidden)]
+    #[allow(unsafe_code)]
+    #[cfg_attr(clippy, allow(unknown_lints, unsafe_attr_outside_unsafe))]
+    #[export_name = concat!(
+        "ctor_ap_",
+        env!("CARGO_PKG_VERSION_MAJOR"),
+        "_",
+        env!("CARGO_PKG_VERSION_MINOR"),
+        "_",
+        env!("CARGO_PKG_VERSION_PATCH")
+    )]
+    pub static APPLE_PRIORITY_ANCHOR: fn() = crate::priority_ctor;
+
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! __keep_alive {
+        () => {
+            /// Force `ld64` to pull the archive member owning `APPLE_PRIORITY_ANCHOR`
+            /// (see https://github.com/mmastrac/linktime/issues/496).
+            const _: () = {
+                mod __ctor_force {
+                    ::core::arch::global_asm!(
+                        ".pushsection __DATA,__ctor_force,regular,no_dead_strip\n",
+                        // Pointer-align a `.quad` with the anchor
+                        ".p2align 3\n",
+                        ".quad {0}\n",
+                        ".popsection\n",
+                        sym $crate::collect::APPLE_PRIORITY_ANCHOR,
+                    );
+                }
+            };
+        };
+    }
 
     #[macro_export]
     #[doc(hidden)]
@@ -158,6 +206,7 @@ pub mod collect {
             $crate::__register_ctor!(priority = ($crate::collect::LATE), fn = $fn);
         };
         (priority = $priority:tt, fn = $fn:ident) => {
+            $crate::__keep_alive!();
             $crate::__support::in_section!(
                 #[in_section(unsafe, type = mutable, name = _CTOR0_ISIZE_FN)]
                 const _: $crate::collect::Constructor = $crate::collect::Constructor {
@@ -167,6 +216,7 @@ pub mod collect {
             );
         };
         (priority = $priority:tt, fn = (array $array:ident)) => {
+            $crate::__keep_alive!();
             $crate::__support::in_section!(
                 #[in_section(unsafe, type = mutable, name = _CTOR0_ISIZE_FN)]
                 const _: [$crate::collect::Constructor; if $array.len() == 0 { 1 } else { $array.len() }] = {
@@ -201,16 +251,6 @@ pub mod collect {
             );
         };
     }
-
-    link_section::declarative::section!(
-        #[section(typed)]
-        static _CTR0GR_ISIZE_FN: link_section::TypedSection<AtomicU8>;
-    );
-
-    link_section::declarative::in_section!(
-        #[in_section(unsafe, type = typed, name = _CTR0GR_ISIZE_FN)]
-        pub static GUARD_ATOMIC: AtomicU8 = AtomicU8::new(GUARD_NOT_RUN);
-    );
 }
 
 /// Declarative form of the `#[ctor]` macro.

@@ -84,7 +84,7 @@
 //!
 //! ```rust,no_run
 //! use ashpd::desktop::input_capture::{
-//!     Barrier, BarrierID, Capabilities, CreateSessionOptions, InputCapture,
+//!     Barrier, BarrierID, BarrierPosition, Capabilities, CreateSessionOptions, InputCapture,
 //! };
 //!
 //! #[allow(unused)]
@@ -121,10 +121,10 @@
 //!             let (x, y) = (r.x_offset(), r.y_offset());
 //!             let (width, height) = (r.width() as i32, r.height() as i32);
 //!             let barrier_pos = match pos {
-//!                 Position::Left => (x, y, x, y + height - 1), // start pos, end pos, inclusive
-//!                 Position::Right => (x + width, y, x + width, y + height - 1),
-//!                 Position::Top => (x, y, x + width - 1, y),
-//!                 Position::Bottom => (x, y + height, x + width - 1, y + height),
+//!                 Position::Left => BarrierPosition::new(x, y, x, y + height - 1), // start pos, end pos, inclusive
+//!                 Position::Right => BarrierPosition::new(x + width, y, x + width, y + height - 1),
+//!                 Position::Top => BarrierPosition::new(x, y, x + width - 1, y),
+//!                 Position::Bottom => BarrierPosition::new(x, y + height, x + width - 1, y + height),
 //!             };
 //!             Barrier::new(id, barrier_pos)
 //!         })
@@ -155,7 +155,7 @@
 //! use std::{collections::HashMap, os::unix::net::UnixStream, sync::OnceLock, time::Duration};
 //!
 //! use ashpd::desktop::input_capture::{
-//!     Barrier, BarrierID, Capabilities, CreateSessionOptions, InputCapture, ReleaseOptions,
+//!     Barrier, BarrierID, BarrierPosition, Capabilities, CreateSessionOptions, InputCapture, ReleaseOptions,
 //! };
 //! use futures_util::StreamExt;
 //! use reis::{
@@ -218,10 +218,10 @@
 //!             let (x, y) = (r.x_offset(), r.y_offset());
 //!             let (width, height) = (r.width() as i32, r.height() as i32);
 //!             let barrier_pos = match pos {
-//!                 Position::Left => (x, y, x, y + height - 1), // start pos, end pos, inclusive
-//!                 Position::Right => (x + width, y, x + width, y + height - 1),
-//!                 Position::Top => (x, y, x + width - 1, y),
-//!                 Position::Bottom => (x, y + height, x + width - 1, y + height),
+//!                 Position::Left => BarrierPosition::new(x, y, x, y + height - 1), // start pos, end pos, inclusive
+//!                 Position::Right => BarrierPosition::new(x + width, y, x + width, y + height - 1),
+//!                 Position::Top => BarrierPosition::new(x, y, x + width - 1, y),
+//!                 Position::Bottom => BarrierPosition::new(x, y + height, x + width - 1, y + height),
 //!             };
 //!             Barrier::new(id, barrier_pos)
 //!         })
@@ -303,7 +303,7 @@ use zbus::zvariant::{
     as_value::{self, optional},
 };
 
-use super::{HandleToken, Request, Session, session::SessionPortal};
+use super::{HandleToken, PersistMode, Request, Session, session::SessionPortal};
 use crate::{Error, WindowIdentifier, proxy::Proxy};
 
 #[derive(Serialize_repr, Deserialize_repr, PartialEq, Eq, Debug, Copy, Clone, Type)]
@@ -350,18 +350,49 @@ struct CreateSessionResponse {
 
 #[derive(Debug, Serialize, Type, Default)]
 #[zvariant(signature = "dict")]
+/// Specified options for a [`InputCapture::create_session2`] request.
+pub struct CreateSession2Options {
+    #[serde(with = "as_value")]
+    session_handle_token: HandleToken,
+}
+
+#[derive(Debug, Deserialize, Type)]
+#[zvariant(signature = "dict")]
+struct CreateSession2Results {
+    #[serde(with = "as_value")]
+    session_handle: OwnedObjectPath,
+}
+
+#[derive(Debug, Serialize, Type, Default)]
+#[zvariant(signature = "dict")]
 /// Specified options for a [`InputCapture::start`] request.
 pub struct StartOptions {
     #[serde(with = "as_value")]
     handle_token: HandleToken,
     #[serde(with = "as_value")]
     capabilities: BitFlags<Capabilities>,
+    #[serde(with = "optional", skip_serializing_if = "Option::is_none")]
+    restore_token: Option<String>,
+    #[serde(with = "optional", skip_serializing_if = "Option::is_none")]
+    persist_mode: Option<PersistMode>,
 }
 
 impl StartOptions {
     /// Request the specified capabilities.
     pub fn set_capabilities(mut self, capabilities: BitFlags<Capabilities>) -> Self {
         self.capabilities = capabilities;
+        self
+    }
+
+    /// Set the token to restore a previous persistent session.
+    pub fn set_restore_token(mut self, restore_token: impl Into<Option<String>>) -> Self {
+        self.restore_token = restore_token.into();
+        self
+    }
+
+    /// Set the persist mode for this session.
+    pub fn set_persist_mode(mut self, persist_mode: impl Into<Option<PersistMode>>) -> Self {
+        self.persist_mode = persist_mode.into();
         self
     }
 }
@@ -372,8 +403,10 @@ impl StartOptions {
 pub struct StartResponse {
     #[serde(with = "as_value")]
     capabilities: BitFlags<Capabilities>,
-    #[serde(with = "optional")]
+    #[serde(default, with = "optional")]
     clipboard_enabled: Option<bool>,
+    #[serde(default, with = "optional")]
+    restore_token: Option<String>,
 }
 
 impl StartResponse {
@@ -385,6 +418,11 @@ impl StartResponse {
     /// Whether the clipboard was enabled.
     pub fn is_clipboard_enabled(&self) -> bool {
         self.clipboard_enabled.unwrap_or(false)
+    }
+
+    /// The session restore token.
+    pub fn restore_token(&self) -> Option<&str> {
+        self.restore_token.as_deref()
     }
 }
 
@@ -643,6 +681,81 @@ impl Zones {
 /// A barrier ID.
 pub type BarrierID = NonZeroU32;
 
+/// Position of a barrier defined by two points (x1, y1) and (x2, y2).
+///
+/// Barriers are typically placed along screen edges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Type)]
+#[zvariant(signature = "(iiii)")]
+pub struct BarrierPosition {
+    /// x coordinate of the first point
+    x1: i32,
+    /// y coordinate of the first point
+    y1: i32,
+    /// x coordinate of the second point
+    x2: i32,
+    /// y coordinate of the second point
+    y2: i32,
+}
+
+impl BarrierPosition {
+    /// Create a new barrier position represented by the
+    /// points x1/y1 to x2/y2.
+    pub fn new(x1: i32, y1: i32, x2: i32, y2: i32) -> Self {
+        Self { x1, y1, x2, y2 }
+    }
+
+    /// Convert to a tuple (x1, y1, x2, y2).
+    pub fn as_tuple(&self) -> (i32, i32, i32, i32) {
+        (self.x1, self.y1, self.x2, self.y2)
+    }
+
+    /// The x coordinate of the first point of the barrier.
+    pub fn x1(&self) -> i32 {
+        self.x1
+    }
+
+    /// The y coordinate of the second point of the barrier.
+    pub fn y1(&self) -> i32 {
+        self.y1
+    }
+
+    /// The x coordinate of the second point of the barrier.
+    pub fn x2(&self) -> i32 {
+        self.x2
+    }
+
+    /// The y coordinate of the second point of the barrier.
+    pub fn y2(&self) -> i32 {
+        self.y2
+    }
+}
+
+impl From<(i32, i32, i32, i32)> for BarrierPosition {
+    fn from(pos: (i32, i32, i32, i32)) -> Self {
+        Self {
+            x1: pos.0,
+            y1: pos.1,
+            x2: pos.2,
+            y2: pos.3,
+        }
+    }
+}
+
+impl From<BarrierPosition> for (i32, i32, i32, i32) {
+    fn from(pos: BarrierPosition) -> Self {
+        pos.as_tuple()
+    }
+}
+
+impl Serialize for BarrierPosition {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.as_tuple().serialize(serializer)
+    }
+}
+
 #[derive(Debug, Serialize, Type)]
 #[zvariant(signature = "dict")]
 /// Input Barrier.
@@ -650,16 +763,26 @@ pub struct Barrier {
     #[serde(with = "as_value")]
     barrier_id: BarrierID,
     #[serde(with = "as_value")]
-    position: (i32, i32, i32, i32),
+    position: BarrierPosition,
 }
 
 impl Barrier {
     /// Create a new barrier.
-    pub fn new(barrier_id: BarrierID, position: (i32, i32, i32, i32)) -> Self {
+    pub fn new(barrier_id: BarrierID, position: impl Into<BarrierPosition>) -> Self {
         Self {
             barrier_id,
-            position,
+            position: position.into(),
         }
+    }
+
+    /// Get the barrier ID.
+    pub fn barrier_id(&self) -> BarrierID {
+        self.barrier_id
+    }
+
+    /// Get the barrier position.
+    pub fn position(&self) -> BarrierPosition {
+        self.position
     }
 }
 
@@ -729,31 +852,89 @@ impl InputCapture {
 
     /// Create an input capture session.
     ///
+    /// The session must be started with [`start`][`InputCapture::start`]
+    /// before using methods which take a session.
+    ///
+    /// This method was added in version 2 of the interface.
+    ///
+    /// # Example
+    ///
+    /// Use the following approach to start a session and fall back to
+    /// the legacy [`create_session`][`InputCapture::create_session`]
+    /// for portals that only implement version 1.
+    ///
+    /// ```rust,no_run
+    /// use ashpd::{
+    ///     Error,
+    ///     desktop::{
+    ///         PersistMode,
+    ///         input_capture::{Capabilities, InputCapture, StartOptions},
+    ///     },
+    /// };
+    ///
+    /// # async fn run() -> ashpd::Result<()> {
+    /// let input_capture = InputCapture::new().await?;
+    /// let opts = ashpd::desktop::input_capture::CreateSession2Options::default();
+    ///
+    /// let session = match input_capture.create_session2(opts).await {
+    ///     Ok(sess) => {
+    ///         // Version 2: explicitly start the session
+    ///         let opts = StartOptions::default()
+    ///             .set_capabilities(Capabilities::Keyboard | Capabilities::Pointer);
+    ///         input_capture.start(&sess, None, opts).await?;
+    ///         sess
+    ///     }
+    ///     Err(Error::RequiresVersion(_, _)) => {
+    ///         // Version 1: fallback to legacy API, starts implicitly
+    ///         let opts = ashpd::desktop::input_capture::CreateSessionOptions::default()
+    ///             .set_capabilities(Capabilities::Keyboard | Capabilities::Pointer);
+    ///         let (session, _capabilities) = input_capture.create_session(None, opts).await?;
+    ///         session
+    ///     }
+    ///     Err(e) => return Err(e),
+    /// };
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
     /// # Specifications
     ///
     /// See also [`CreateSession2`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.InputCapture.html#org-freedesktop-portal-inputcapture-createsession2).
     #[doc(alias = "CreateSession2")]
     pub async fn create_session2(
         &self,
-        identifier: Option<&WindowIdentifier>,
-        options: crate::desktop::CreateSessionOptions,
+        options: CreateSession2Options,
     ) -> Result<Session<Self>, Error> {
-        let identifier = Optional::from(identifier);
-        let (request, proxy) = futures_util::try_join!(
-            self.0.request_versioned(
-                &options.handle_token,
-                "CreateSession2",
-                (identifier, &options),
-                2
-            ),
-            Session::from_unique_name(self.0.connection().clone(), &options.session_handle_token),
-        )?;
-        let response: crate::desktop::session::CreateSessionResponse = request.response()?;
+        let proxy =
+            Session::from_unique_name(self.0.connection().clone(), &options.session_handle_token)
+                .await?;
+        let response = self
+            .0
+            .call_versioned::<CreateSession2Results>("CreateSession2", &options, 2)
+            .await?;
         assert_eq!(proxy.path(), &response.session_handle.as_ref());
         Ok(proxy)
     }
 
-    /// Create an input capture session.
+    /// Start the input capture session.
+    ///
+    /// This will typically result in the portal presenting a dialog letting
+    /// the user decide whether they want to allow the input of the session
+    /// to be captured, and what capabilities to support.
+    ///
+    /// This method may only be called once on a session previously created
+    /// with [`create_session2`][`InputCapture::create_session2`].
+    ///
+    /// This method was added in version 2 of the interface.
+    ///
+    /// # Arguments
+    ///
+    /// * `session` - A [`Session`], created with
+    ///   [`create_session2()`][`InputCapture::create_session2`].
+    /// * `identifier` - Identifier for the application window.
+    /// * `capabilities` - Bitmask of requested capabilities.
+    /// * `restore_token` - The token to restore a previous session.
+    /// * `persist_mode` - How this session should persist.
     ///
     /// # Specifications
     ///
@@ -937,3 +1118,26 @@ impl std::ops::Deref for InputCapture {
 
 impl crate::Sealed for InputCapture {}
 impl SessionPortal for InputCapture {}
+#[cfg(feature = "clipboard")]
+impl crate::desktop::clipboard::IsClipboardSession for InputCapture {}
+
+#[cfg(test)]
+mod tests {
+    use super::BarrierPosition;
+
+    #[test]
+    fn test_barrier_position() {
+        let pos = BarrierPosition::new(1, 2, 3, 4);
+        assert_eq!(pos.as_tuple(), (1, 2, 3, 4));
+        assert_eq!(pos.x1(), 1);
+        assert_eq!(pos.y1(), 2);
+        assert_eq!(pos.x2(), 3);
+        assert_eq!(pos.y2(), 4);
+
+        let string = serde_json::to_string(&pos).unwrap();
+        assert_eq!(string, "[1,2,3,4]");
+
+        let pos2 = BarrierPosition::from((1, 2, 3, 4));
+        assert_eq!(pos, pos2);
+    }
+}

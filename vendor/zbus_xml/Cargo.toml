@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.87"
 name = "zbus_xml"
-version = "5.1.1"
+version = "5.2.1"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
 build = false
 autolib = false
@@ -47,27 +47,33 @@ targets = [
 [lib]
 name = "zbus_xml"
 path = "src/lib.rs"
+bench = false
 
 [[test]]
 name = "tests"
 path = "tests/tests.rs"
 
-[dependencies.quick-xml]
-version = "0.39"
-features = [
-    "serialize",
-    "overlapped-lists",
-]
+[[bench]]
+name = "benchmarks"
+path = "benches/benchmarks.rs"
+harness = false
 
 [dependencies.serde]
 version = "1.0.200"
 features = ["derive"]
 
+[dependencies.winnow]
+version = "1.0"
+
 [dependencies.zbus_names]
-version = "4.3.2"
+version = "4.3.4"
 
 [dependencies.zvariant]
-version = "5.10.1"
+version = "5.13.1"
+
+[dev-dependencies.criterion]
+version = "5.0.0"
+package = "codspeed-criterion-compat"
 
 [dev-dependencies.doc-comment]
 version = "0.3.3"

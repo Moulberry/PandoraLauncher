@@ -47,8 +47,8 @@ ftree = { path = "crates/ftree"}
 futures = "0.3.31"
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component.git", rev = "bbf7650abae59e3a984d48bd120a6f9094fed1f2" }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component.git", rev = "bbf7650abae59e3a984d48bd120a6f9094fed1f2" }
+gpui-component = { git = "https://github.com/longbridge/gpui-component.git", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component.git", rev = "ff3eb1128ac1058f1bb88e777744ce1237aa3b79" }
 hex = { version = "0.4.3", features = ["serde"] }
 image = "0.25.8"
 indexmap = { version = "2.12.0", features = ["serde"] }
@@ -123,3 +123,4 @@ security-framework = "3.5.1"
 security-framework-sys = "2.15.0"
 junction = "1.3.0"
 reflink-copy = "0.1"
+udev = "0.9.3"

@@ -2,10 +2,12 @@ mod from_serde;
 
 use crate::attr::{ContainerAttrs, FieldAttrs, VariantAttrs};
 use crate::idents::{GENERATOR, SCHEMA};
+use crate::schema_exprs::SchemaExpr;
 use from_serde::FromSerde;
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, Span, TokenStream};
 use serde_derive_internals::ast as serde_ast;
 use serde_derive_internals::{Ctxt, Derive};
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 pub struct Container<'a> {
@@ -47,9 +49,14 @@ pub struct Field<'a> {
 impl<'a> Container<'a> {
     pub fn from_ast(item: &'a syn::DeriveInput) -> syn::Result<Container<'a>> {
         let ctxt = Ctxt::new();
-        let result = serde_ast::Container::from_ast(&ctxt, item, Derive::Deserialize)
-            .ok_or(())
-            .map(|serde| Self::from_serde(&ctxt, serde));
+        let result = serde_ast::Container::from_ast(
+            &ctxt,
+            item,
+            Derive::Deserialize,
+            &Ident::new("__dummy", Span::call_site()),
+        )
+        .ok_or(())
+        .map(|serde| Self::from_serde(&ctxt, serde));
 
         ctxt.check()
             .map(|()| result.expect("from_ast set no errors on Ctxt, so should have returned Ok"))
@@ -65,23 +72,23 @@ impl<'a> Container<'a> {
         None
     }
 
-    pub fn add_mutators(&self, mutators: &mut Vec<TokenStream>) {
-        self.attrs.common.add_mutators(mutators);
+    pub fn add_mutators(&self, expr: &mut SchemaExpr) {
+        self.attrs.common.add_mutators(expr);
     }
 
-    pub fn name(&'a self) -> std::borrow::Cow<'a, str> {
+    pub fn name(&'a self) -> Cow<'a, str> {
         if self.attrs.rename_format_string.is_none() {
             if let Some(remote_name) = self.serde_attrs.remote().and_then(|r| r.segments.last()) {
-                return remote_name.ident.to_string().into();
+                return Cow::Owned(remote_name.ident.to_string());
             }
         }
 
-        self.serde_attrs.name().deserialize_name().into()
+        Cow::Borrowed(&self.serde_attrs.name().deserialize_name().value)
     }
 }
 
 impl Variant<'_> {
-    pub fn name(&self) -> Name {
+    pub fn name(&self) -> Name<'_> {
         Name(self.serde_attrs.name())
     }
 
@@ -89,8 +96,8 @@ impl Variant<'_> {
         matches!(self.style, serde_ast::Style::Unit)
     }
 
-    pub fn add_mutators(&self, mutators: &mut Vec<TokenStream>) {
-        self.attrs.common.add_mutators(mutators);
+    pub fn add_mutators(&self, expr: &mut SchemaExpr) {
+        self.attrs.common.add_mutators(expr);
     }
 
     pub fn with_contract_check(&self, action: TokenStream) -> TokenStream {
@@ -103,21 +110,21 @@ impl Variant<'_> {
 }
 
 impl Field<'_> {
-    pub fn name(&self) -> Name {
+    pub fn name(&self) -> Name<'_> {
         Name(self.serde_attrs.name())
     }
 
-    pub fn add_mutators(&self, mutators: &mut Vec<TokenStream>) {
-        self.attrs.common.add_mutators(mutators);
-        self.attrs.validation.add_mutators(mutators);
+    pub fn add_mutators(&self, expr: &mut SchemaExpr) {
+        self.attrs.common.add_mutators(expr);
+        self.attrs.validation.add_mutators(expr);
 
         if self.serde_attrs.skip_deserializing() {
-            mutators.push(quote! {
+            expr.mutators.push(quote! {
                 #SCHEMA.insert("readOnly".into(), true.into());
             });
         }
         if self.serde_attrs.skip_serializing() {
-            mutators.push(quote! {
+            expr.mutators.push(quote! {
                 #SCHEMA.insert("writeOnly".into(), true.into());
             });
         }
@@ -132,7 +139,7 @@ impl Field<'_> {
     }
 }
 
-pub struct Name<'a>(&'a serde_derive_internals::attr::Name);
+pub struct Name<'a>(&'a serde_derive_internals::name::MultiName);
 
 impl quote::ToTokens for Name<'_> {
     fn to_tokens(&self, tokens: &mut TokenStream) {

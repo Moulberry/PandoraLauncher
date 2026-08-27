@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
 use std::ffi::OsString;
-use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::{execute_command, target_arch, test_nasm_command, use_prebuilt_nasm};
+use crate::{copy_writable, execute_command, target_arch, test_nasm_command, use_prebuilt_nasm};
 
 #[derive(Debug)]
 pub(crate) struct NasmBuilder {
@@ -127,7 +126,7 @@ impl NasmBuilder {
                 let base_name = obj_name.strip_suffix(".obj").unwrap_or(&obj_name);
                 let prebuilt_src = prebuilt_dir.join(format!("{base_name}.obj"));
                 if prebuilt_src.exists() {
-                    fs::copy(&prebuilt_src, &obj_path)
+                    copy_writable(&prebuilt_src, &obj_path)
                         .expect("Failed to copy prebuilt NASM object");
                 } else {
                     panic!("Prebuilt NASM object not found: {}", prebuilt_src.display());

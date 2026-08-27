@@ -243,11 +243,18 @@ impl<T, S: VecStorage<T> + ?Sized> DequeInner<T, S> {
 
     /// Clears the deque, removing all values.
     pub fn clear(&mut self) {
-        // safety: we're immediately setting a consistent empty state.
-        unsafe { self.drop_contents() }
-        self.front = 0;
-        self.back = 0;
-        self.full = false;
+        struct Guard<'a, T, S: VecStorage<T> + ?Sized>(&'a mut DequeInner<T, S>);
+        impl<'a, T, S: VecStorage<T> + ?Sized> Drop for Guard<'a, T, S> {
+            fn drop(&mut self) {
+                self.0.front = 0;
+                self.0.back = 0;
+                self.0.full = false;
+            }
+        }
+        let this = Guard(self);
+        // SAFETY: Guard will be dropped and lead to a consistent empty state even in the case of a
+        // panic leading to unwinding during the dropping of an item
+        unsafe { this.0.drop_contents() }
     }
 
     /// Drop all items in the `Deque`, leaving the state `back/front/full` unmodified.
@@ -669,6 +676,56 @@ impl<T, S: VecStorage<T> + ?Sized> DequeInner<T, S> {
         }
     }
 
+    /// Removes and returns the first element from the deque if the predicate
+    /// returns `true`, or [`None`] if the predicate returns false or the deque
+    /// is empty (the predicate will not be called in that case).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use heapless::Deque;
+    ///
+    /// let mut deque: Deque<i32, 5> = [0, 1, 2, 3, 4].try_into().unwrap();
+    /// let pred = |x: &mut i32| *x % 2 == 0;
+    ///
+    /// assert_eq!(deque.pop_front_if(pred), Some(0));
+    /// assert_eq!(deque, Deque::<i32,4>::try_from([1, 2, 3, 4]).unwrap());
+    /// assert_eq!(deque.pop_front_if(pred), None);
+    /// ```
+    pub fn pop_front_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
+        let first = self.front_mut()?;
+        if predicate(first) {
+            self.pop_front()
+        } else {
+            None
+        }
+    }
+
+    /// Removes and returns the last element from the deque if the predicate
+    /// returns `true`, or [`None`] if the predicate returns false or the deque
+    /// is empty (the predicate will not be called in that case).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use heapless::Deque;
+    ///
+    /// let mut deque: Deque<i32, 5> = [0, 1, 2, 3, 4].try_into().unwrap();
+    /// let pred = |x: &mut i32| *x % 2 == 0;
+    ///
+    /// assert_eq!(deque.pop_back_if(pred), Some(4));
+    /// assert_eq!(deque, Deque::<i32,4>::try_from([0, 1, 2, 3]).unwrap());
+    /// assert_eq!(deque.pop_back_if(pred), None);
+    /// ```
+    pub fn pop_back_if(&mut self, predicate: impl FnOnce(&mut T) -> bool) -> Option<T> {
+        let last = self.back_mut()?;
+        if predicate(last) {
+            self.pop_back()
+        } else {
+            None
+        }
+    }
+
     /// Returns a reference to the element at the given index.
     ///
     /// Index 0 is the front of the `Deque`.
@@ -869,7 +926,7 @@ impl<T, S: VecStorage<T> + ?Sized> DequeInner<T, S> {
             // as the two slices combined should be more than `len`.
             if len > front.len() {
                 let begin = len - front.len();
-                let drop_back = back.get_unchecked_mut(begin..) as *mut _;
+                let drop_back = core::ptr::from_mut(back.get_unchecked_mut(begin..));
 
                 // Self::to_physical_index returns the index `len` units _after_ the front cursor,
                 // meaning we can use it to find the decremented index for `back` for non-contiguous
@@ -882,8 +939,8 @@ impl<T, S: VecStorage<T> + ?Sized> DequeInner<T, S> {
             } else {
                 // Otherwise, we know back's entire contents need to be dropped,
                 // since the desired length never reaches into it.
-                let drop_back = back as *mut _;
-                let drop_front = front.get_unchecked_mut(len..) as *mut _;
+                let drop_back = core::ptr::from_mut(back);
+                let drop_front = core::ptr::from_mut(front.get_unchecked_mut(len..));
 
                 self.back = self.to_physical_index(len);
                 self.full = false;
@@ -1164,9 +1221,13 @@ where
     }
 }
 
-impl<T: PartialEq, const N: usize> PartialEq for Deque<T, N> {
-    fn eq(&self, other: &Self) -> bool {
-        if self.len() != other.len() {
+impl<T: PartialEq, S1, S2> PartialEq<DequeInner<T, S2>> for DequeInner<T, S1>
+where
+    S1: VecStorage<T> + ?Sized,
+    S2: VecStorage<T> + ?Sized,
+{
+    fn eq(&self, other: &DequeInner<T, S2>) -> bool {
+        if self.storage_len() != other.storage_len() {
             return false;
         }
         let (sa, sb) = self.as_slices();
@@ -1252,6 +1313,12 @@ impl<T, const NS: usize, const ND: usize> TryFrom<[T; NS]> for Deque<T, ND> {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        mem::ManuallyDrop,
+        panic::{catch_unwind, AssertUnwindSafe},
+        sync::atomic::{AtomicI32, Ordering::Relaxed},
+    };
+
     use super::Deque;
     use crate::CapacityError;
     use static_assertions::assert_not_impl_any;
@@ -1270,7 +1337,7 @@ mod tests {
     }
 
     #[test]
-    fn drop() {
+    fn test_drop() {
         droppable!();
 
         {
@@ -1575,20 +1642,23 @@ mod tests {
 
     #[test]
     fn clear() {
-        let mut q: Deque<i32, 4> = Deque::new();
+        droppable!();
+        let mut q: Deque<Droppable, 4> = Deque::new();
         assert_eq!(q.len(), 0);
 
-        q.push_back(0).unwrap();
-        q.push_back(1).unwrap();
-        q.push_back(2).unwrap();
-        q.push_back(3).unwrap();
+        q.push_back(Droppable::new()).unwrap();
+        q.push_back(Droppable::new()).unwrap();
+        q.push_back(Droppable::new()).unwrap();
+        q.push_back(Droppable::new()).unwrap();
         assert_eq!(q.len(), 4);
 
         q.clear();
         assert_eq!(q.len(), 0);
+        assert_eq!(Droppable::count(), 0);
 
-        q.push_back(0).unwrap();
+        q.push_back(Droppable::new()).unwrap();
         assert_eq!(q.len(), 1);
+        assert_eq!(Droppable::count(), 1);
     }
 
     #[test]
@@ -2194,5 +2264,69 @@ mod tests {
             assert_eq!(tester.len(), 10);
             assert_eq!(Droppable::count(), 10);
         }
+    }
+
+    #[test]
+    fn test_pop_if() {
+        let mut deq: Deque<i32, 5> = [0, 1, 2, 3, 4].try_into().unwrap();
+        let pred = |x: &mut i32| *x % 2 == 0;
+
+        assert_eq!(deq.pop_front_if(pred), Some(0));
+        assert_eq!(deq, Deque::<i32, 5>::try_from([1, 2, 3, 4]).unwrap());
+
+        assert_eq!(deq.pop_front_if(pred), None);
+        assert_eq!(deq, Deque::<i32, 5>::try_from([1, 2, 3, 4]).unwrap());
+
+        assert_eq!(deq.pop_back_if(pred), Some(4));
+        assert_eq!(deq, Deque::<i32, 5>::try_from([1, 2, 3]).unwrap());
+
+        assert_eq!(deq.pop_back_if(pred), None);
+        assert_eq!(deq, Deque::<i32, 5>::try_from([1, 2, 3]).unwrap());
+    }
+
+    #[test]
+    fn test_pop_if_empty() {
+        let mut deq = Deque::<i32, 5>::new();
+        assert_eq!(deq.pop_front_if(|_| true), None);
+        assert_eq!(deq.pop_back_if(|_| true), None);
+        assert!(deq.is_empty());
+    }
+
+    #[test]
+    fn test_use_after_free_clear() {
+        // See https://github.com/rust-embedded/heapless/issues/646
+
+        static COUNT: AtomicI32 = AtomicI32::new(0);
+
+        #[derive(Debug)]
+        #[allow(unused)]
+        struct Dropper();
+
+        impl Dropper {
+            fn new() -> Self {
+                COUNT.fetch_add(1, Relaxed);
+                Self()
+            }
+            fn count() -> i32 {
+                COUNT.load(Relaxed)
+            }
+        }
+        impl Drop for Dropper {
+            fn drop(&mut self) {
+                COUNT.fetch_sub(1, Relaxed);
+                panic!("Testing  panicking");
+            }
+        }
+
+        let mut deque = Deque::<Dropper, 5>::new();
+        deque.push_back(Dropper::new()).unwrap();
+        // Don't panic on dropping of the deque
+        let mut deque = ManuallyDrop::new(deque);
+        let mut unwind_safe_deque = AssertUnwindSafe(&mut deque);
+
+        catch_unwind(move || unwind_safe_deque.clear()).unwrap_err();
+        assert_eq!(deque.len(), 0);
+        deque.clear();
+        assert_eq!(Dropper::count(), 0);
     }
 }

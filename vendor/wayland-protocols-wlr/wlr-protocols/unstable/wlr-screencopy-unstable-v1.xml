@@ -36,6 +36,9 @@
     Once the protocol is to be declared stable, the 'z' prefix and the
     version number in the protocol and interface names are removed and the
     interface version number is reset.
+
+    Note! This protocol is deprecated and not intended for production use.
+    The ext-image-copy-capture-v1 protocol should be used instead.
   </description>
 
   <interface name="zwlr_screencopy_manager_v1" version="3">
@@ -88,7 +91,7 @@
       supported buffer type. The "buffer_done" event is sent afterwards to
       indicate that all supported buffer types have been enumerated. The client
       will then be able to send a "copy" request. If the capture is successful,
-      the compositor will send a "flags" followed by a "ready" event.
+      the compositor will send a "flags" event followed by a "ready" event.
 
       For objects version 2 or lower, wl_shm buffers are always supported, ie.
       the "buffer" event is guaranteed to be sent.
@@ -114,12 +117,12 @@
 
     <request name="copy">
       <description summary="copy the frame">
-        Copy the frame to the supplied buffer. The buffer must have a the
+        Copy the frame to the supplied buffer. The buffer must have the
         correct size, see zwlr_screencopy_frame_v1.buffer and
         zwlr_screencopy_frame_v1.linux_dmabuf. The buffer needs to have a
         supported format.
 
-        If the frame is successfully copied, a "flags" and a "ready" events are
+        If the frame is successfully copied, "flags" and "ready" events are
         sent. Otherwise, a "failed" event is sent.
       </description>
       <arg name="buffer" type="object" interface="wl_buffer"/>
@@ -147,8 +150,7 @@
     <event name="ready">
       <description summary="indicates frame is available for reading">
         Called as soon as the frame is copied, indicating it is available
-        for reading. This event includes the time at which presentation happened
-        at.
+        for reading. This event includes the time at which the presentation took place.
 
         The timestamp is expressed as tv_sec_hi, tv_sec_lo, tv_nsec triples,
         each component being an unsigned 32-bit value. Whole seconds are in

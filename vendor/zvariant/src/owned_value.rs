@@ -10,6 +10,7 @@ use crate::{
 use crate::Fd;
 
 #[cfg(feature = "gvariant")]
+#[allow(deprecated)]
 use crate::Maybe;
 
 // FIXME: Replace with a generic impl<T: TryFrom<Value>> TryFrom<OwnedValue> for T?
@@ -73,8 +74,6 @@ ov_try_from!(ObjectPath<'static>);
 ov_try_from!(OwnedObjectPath);
 ov_try_from!(Array<'static>);
 ov_try_from!(Dict<'static, 'static>);
-#[cfg(feature = "gvariant")]
-ov_try_from!(Maybe<'static>);
 ov_try_from!(Str<'static>);
 ov_try_from!(Structure<'static>);
 #[cfg(unix)]
@@ -96,10 +95,19 @@ ov_try_from_ref!(&'a Array<'a>);
 ov_try_from_ref!(&'a Dict<'a, 'a>);
 ov_try_from_ref!(&'a Str<'a>);
 ov_try_from_ref!(&'a Structure<'a>);
-#[cfg(feature = "gvariant")]
-ov_try_from_ref!(&'a Maybe<'a>);
 #[cfg(unix)]
 ov_try_from_ref!(&'a Fd<'a>);
+
+// `#[allow(deprecated)]` can't attach to a macro invocation directly, hence the wrapping
+// module.
+#[cfg(feature = "gvariant")]
+#[allow(deprecated)]
+mod maybe_owned_value_impls {
+    use super::*;
+
+    ov_try_from!(Maybe<'static>);
+    ov_try_from_ref!(&'a Maybe<'a>);
+}
 
 impl<'a, T> TryFrom<OwnedValue> for Vec<T>
 where
@@ -241,11 +249,19 @@ macro_rules! try_to_value {
 
 try_to_value!(Array<'a>);
 try_to_value!(Dict<'a, 'a>);
-#[cfg(feature = "gvariant")]
-try_to_value!(Maybe<'a>);
 try_to_value!(Structure<'a>);
 #[cfg(unix)]
 try_to_value!(Fd<'a>);
+
+// `#[allow(deprecated)]` can't attach to a macro invocation directly, hence the wrapping
+// module.
+#[cfg(feature = "gvariant")]
+#[allow(deprecated)]
+mod maybe_try_to_value_impl {
+    use super::*;
+
+    try_to_value!(Maybe<'a>);
+}
 
 impl From<OwnedValue> for Value<'_> {
     fn from(v: OwnedValue) -> Self {

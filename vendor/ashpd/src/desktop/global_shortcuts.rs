@@ -115,7 +115,7 @@ impl BindShortcuts {
     }
 }
 
-#[derive(Serialize, Type, Debug)]
+#[derive(Serialize, Type, Debug, Default)]
 #[zvariant(signature = "dict")]
 /// Specified options for a [`GlobalShortcuts::configure_shortcuts`] request.
 pub struct ConfigureShortcutsOptions {
@@ -343,9 +343,7 @@ impl GlobalShortcuts {
     ///
     /// See also [`Activated`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html#org-freedesktop-portal-globalshortcuts-activated).
     #[doc(alias = "Activated")]
-    pub async fn receive_activated(
-        &self,
-    ) -> Result<impl Stream<Item = Activated> + use<'_>, Error> {
+    pub async fn receive_activated(&self) -> Result<impl Stream<Item = Activated> + use<>, Error> {
         self.0.signal("Activated").await
     }
 
@@ -357,7 +355,7 @@ impl GlobalShortcuts {
     #[doc(alias = "Deactivated")]
     pub async fn receive_deactivated(
         &self,
-    ) -> Result<impl Stream<Item = Deactivated> + use<'_>, Error> {
+    ) -> Result<impl Stream<Item = Deactivated> + use<>, Error> {
         self.0.signal("Deactivated").await
     }
 
@@ -370,7 +368,7 @@ impl GlobalShortcuts {
     #[doc(alias = "ShortcutsChanged")]
     pub async fn receive_shortcuts_changed(
         &self,
-    ) -> Result<impl Stream<Item = ShortcutsChanged> + use<'_>, Error> {
+    ) -> Result<impl Stream<Item = ShortcutsChanged> + use<>, Error> {
         self.0.signal("ShortcutsChanged").await
     }
 }

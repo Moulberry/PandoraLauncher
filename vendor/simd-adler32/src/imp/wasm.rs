@@ -6,18 +6,36 @@ pub fn get_imp() -> Option<Adler32Imp> {
 }
 
 #[inline]
-#[cfg(target_feature = "simd128")]
+#[cfg(all(
+  target_feature = "simd128",
+  any(
+    target_arch = "wasm32",
+    all(feature = "nightly", target_arch = "wasm64")
+  )
+))]
 fn get_imp_inner() -> Option<Adler32Imp> {
   Some(imp::update)
 }
 
 #[inline]
-#[cfg(not(target_feature = "simd128"))]
+#[cfg(not(all(
+  target_feature = "simd128",
+  any(
+    target_arch = "wasm32",
+    all(feature = "nightly", target_arch = "wasm64")
+  )
+)))]
 fn get_imp_inner() -> Option<Adler32Imp> {
   None
 }
 
-#[cfg(target_feature = "simd128")]
+#[cfg(all(
+  target_feature = "simd128",
+  any(
+    target_arch = "wasm32",
+    all(feature = "nightly", target_arch = "wasm64")
+  )
+))]
 mod imp {
   const MOD: u32 = 65521;
   const NMAX: usize = 5552;
@@ -143,7 +161,7 @@ mod imp {
 
   #[inline(always)]
   fn reduce_add(v: v128) -> u32 {
-    let arr: [u32; 4] = unsafe { std::mem::transmute(v) };
+    let arr: [u32; 4] = unsafe { core::mem::transmute(v) };
     let mut sum = 0u32;
     for val in arr {
       sum = sum.wrapping_add(val);
@@ -166,7 +184,7 @@ mod imp {
 
 #[cfg(test)]
 mod tests {
-  use rand::Rng;
+  use rand::{Rng, SeedableRng, rngs::SmallRng};
 
   #[test]
   fn zeroes() {
@@ -190,8 +208,9 @@ mod tests {
 
   #[test]
   fn random() {
+    if super::get_imp().is_none() { return; } // don't do any work if we're not on this target
     let mut random = [0; 512 * 1024];
-    rand::thread_rng().fill(&mut random[..]);
+    SmallRng::from_entropy().fill(&mut random[..]);
 
     assert_sum_eq(&random[..1]);
     assert_sum_eq(&random[..100]);
@@ -209,7 +228,7 @@ mod tests {
     if let Some(update) = super::get_imp() {
       let (a, b) = update(1, 0, data);
       let left = u32::from(b) << 16 | u32::from(a);
-      let right = adler::adler32_slice(data);
+      let right = adler2::adler32_slice(data);
 
       assert_eq!(left, right, "len({})", data.len());
     }

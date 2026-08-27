@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 Thanks to [Mark Drobnak](https://github.com/AzureMarker) for the changelog.
 
+## [8.12.0] - 2026-07-08
+
+ - Fix embedded data being duplicated in binary. Thanks to redgg@xiretza.xyz.
+ - Make Way to avoid compile failure on undefined env. Thanks to Tommy Yu <y@metatoaster.com>.
+ - Remove redundant `Option`/`.unwrap()` and comment. Thanks to Tommy Yu <y@metatoaster.com>.
+ - Fix folder_path not being an Option. Thanks to Tommy Yu <y@metatoaster.com>.
+ - Fix mime guess host/target issue. Thanks to David Tolnay <dtolnay@gmail.com>.
+ - Fix rust-embed-utils is built twice when cross-compiling. Thanks to David Tolnay <dtolnay@gmail.com>.
+ - Add support to get files data compressed. Thanks to Hugues Morisset <morisset.hugues@gmail.com>.
+ - Rename symlinks and readme files to uppercase for consistency. Thanks to pyrossh.
+
 ## [8.11.0] - 2026-01-14
 
  - Fix RustEmbed::iter() signature as it was breaking the static lifetime.

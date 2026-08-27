@@ -31,10 +31,11 @@ const HINTING_MODE: HintingMode = HintingMode::Smooth {
 
 #[derive(Default)]
 pub(super) struct HintingCache {
-    // Split caches for glyf/cff because the instance type can reuse
-    // internal memory when reconfigured for the same format.
+    // Split caches because the instance type can reuse internal memory when
+    // reconfigured for the same format.
     glyf_entries: Vec<HintingEntry>,
     cff_entries: Vec<HintingEntry>,
+    other_entries: Vec<HintingEntry>,
     serial: u64,
 }
 
@@ -43,6 +44,8 @@ impl HintingCache {
         let entries = match key.outlines.format()? {
             OutlineGlyphFormat::Glyf => &mut self.glyf_entries,
             OutlineGlyphFormat::Cff | OutlineGlyphFormat::Cff2 => &mut self.cff_entries,
+            #[allow(unreachable_patterns)]
+            _ => &mut self.other_entries,
         };
         let (entry_ix, is_current) = find_hinting_entry(entries, key)?;
         let entry = entries.get_mut(entry_ix)?;
@@ -50,6 +53,9 @@ impl HintingCache {
         entry.serial = self.serial;
         if !is_current {
             entry.id = key.id;
+            entry.size = key.size;
+            entry.coords.clear();
+            entry.coords.extend_from_slice(key.coords);
             entry
                 .instance
                 .reconfigure(key.outlines, key.size, key.coords, HINTING_MODE)
@@ -61,6 +67,8 @@ impl HintingCache {
 
 struct HintingEntry {
     id: [u64; 2],
+    size: Size,
+    coords: Vec<NormalizedCoord>,
     instance: HintingInstance,
     serial: u64,
 }
@@ -69,10 +77,7 @@ fn find_hinting_entry(entries: &mut Vec<HintingEntry>, key: &HintingKey) -> Opti
     let mut found_serial = u64::MAX;
     let mut found_index = 0;
     for (ix, entry) in entries.iter().enumerate() {
-        if entry.id == key.id
-            && entry.instance.size() == key.size
-            && entry.instance.location().coords() == key.coords
-        {
+        if entry.id == key.id && entry.size == key.size && entry.coords == key.coords {
             return Some((ix, true));
         }
         if entry.serial < found_serial {
@@ -85,6 +90,8 @@ fn find_hinting_entry(entries: &mut Vec<HintingEntry>, key: &HintingKey) -> Opti
         let ix = entries.len();
         entries.push(HintingEntry {
             id: key.id,
+            size: key.size,
+            coords: key.coords.to_vec(),
             instance,
             serial: 0,
         });

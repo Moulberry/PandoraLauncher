@@ -13,9 +13,10 @@
 edition = "2018"
 rust-version = "1.65"
 name = "profiling-procmacros"
-version = "1.0.17"
+version = "1.0.18"
 authors = ["Philip Degarmo <aclysma@gmail.com>"]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -31,6 +32,13 @@ categories = ["development-tools::profiling"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/aclysma/profiling"
 
+[features]
+profile-with-optick = []
+profile-with-puffin = []
+profile-with-superluminal = []
+profile-with-tracing = []
+profile-with-tracy = []
+
 [lib]
 name = "profiling_procmacros"
 path = "src/lib.rs"
@@ -43,10 +51,3 @@ default-features = false
 [dependencies.syn]
 version = "2.0"
 features = ["full"]
-
-[features]
-profile-with-optick = []
-profile-with-puffin = []
-profile-with-superluminal = []
-profile-with-tracing = []
-profile-with-tracy = []

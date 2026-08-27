@@ -337,6 +337,9 @@ impl<K: Hash + Eq, V, S: BuildHasher> HashMap<K, V, S> {
     /// Removes a key from the map, returning a clone of the key-value pair
     /// previously corresponding to the key.
     #[inline]
+    #[allow(dead_code)] // Kept for the CHT's public-ish API surface; current
+                        // moka call sites go through `remove_entry_if_and` so the
+                        // post-CAS callback can retire the `EntryInfo`.
     pub(crate) fn remove_entry(&self, hash: u64, eq: impl FnMut(&K) -> bool) -> Option<(K, V)>
     where
         K: Clone,
@@ -1333,7 +1336,8 @@ mod tests {
             .collect();
 
         {
-            let map = HashMap::with_capacity(0);
+            let map =
+                HashMap::with_num_segments_capacity_and_hasher(4, 0, DefaultHashBuilder::default());
             assert!(map.is_empty());
             assert_eq!(map.len(), 0);
 
@@ -1435,7 +1439,11 @@ mod tests {
         );
 
         {
-            let map = Arc::new(HashMap::with_capacity(0));
+            let map = Arc::new(HashMap::with_num_segments_capacity_and_hasher(
+                4,
+                0,
+                DefaultHashBuilder::default(),
+            ));
             assert!(map.is_empty());
             assert_eq!(map.len(), 0);
 

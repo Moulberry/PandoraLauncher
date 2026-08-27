@@ -24,7 +24,7 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.65.0
+          - 1.83.0
           - stable
           - beta
     steps:

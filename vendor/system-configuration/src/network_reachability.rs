@@ -42,6 +42,19 @@ pub enum ReachabilityError {
     UnrecognizedFlags(u32),
 }
 
+impl Display for ReachabilityError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FailedToDetermineReachability => write!(f, "Failed to determine reachability"),
+            Self::UnrecognizedFlags(flags) => {
+                write!(f, "Unrecognized reachability flags: {}", flags)
+            }
+        }
+    }
+}
+
+impl Error for ReachabilityError {}
+
 /// Failure to schedule a reachability callback on a runloop.
 #[derive(Debug)]
 pub struct SchedulingError(());

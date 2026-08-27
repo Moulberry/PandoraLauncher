@@ -14,6 +14,10 @@ use crate::backend::conv::fs::oflags_for_open_how;
     target_arch = "riscv64",
     target_arch = "mips",
     target_arch = "mips32r6",
+    all(
+        target_pointer_width = "32",
+        any(target_arch = "arm", target_arch = "powerpc"),
+    )
 ))]
 use crate::backend::conv::zero;
 use crate::backend::conv::{
@@ -509,6 +513,10 @@ pub(crate) fn fstat(fd: BorrowedFd<'_>) -> io::Result<Stat> {
     unsafe {
         let mut result = MaybeUninit::<Stat>::uninit();
         ret(syscall!(__NR_fstat, fd, &mut result))?;
+
+        #[cfg(sanitize_memory)]
+        crate::msan::unpoison_maybe_uninit(&result);
+
         Ok(result.assume_init())
     }
 }

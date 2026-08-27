@@ -77,7 +77,7 @@ note: required because it appears within the type `Struct<T>`
   |
 6 | struct Struct<T: ?Sized> {
   |        ^^^^^^
-note: required by an implicit `Sized` bound in `UnsafeOverwriteGuard`
+note: required by an implicit `Sized` bound in `_::_pin_project::__private::UnsafeOverwriteGuard`
  --> src/lib.rs
   |
   |     pub struct UnsafeOverwriteGuard<T> {
@@ -85,8 +85,8 @@ note: required by an implicit `Sized` bound in `UnsafeOverwriteGuard`
   = note: this error originates in the derive macro `::pin_project::__private::__PinProjectInternalDerive` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider removing the `?Sized` bound to make the type parameter `Sized`
   |
-6   - struct Struct<T: ?Sized> {
-6   + struct Struct<T> {
+  6 - struct Struct<T: ?Sized> {
+  6 + struct Struct<T> {
     |
 
 error[E0277]: the size for values of type `T` cannot be known at compilation time
@@ -106,8 +106,8 @@ note: required by an implicit `Sized` bound in `std::ptr::read`
   |                          ^ required by the implicit `Sized` requirement on this type parameter in `read`
 help: consider removing the `?Sized` bound to make the type parameter `Sized`
   |
-6    - struct Struct<T: ?Sized> {
-6    + struct Struct<T> {
+   6 - struct Struct<T: ?Sized> {
+   6 + struct Struct<T> {
      |
 
 error[E0277]: the size for values of type `T` cannot be known at compilation time
@@ -147,7 +147,7 @@ note: required because it appears within the type `TupleStruct<T>`
    |
 11 | struct TupleStruct<T: ?Sized>(T);
    |        ^^^^^^^^^^^
-note: required by an implicit `Sized` bound in `UnsafeOverwriteGuard`
+note: required by an implicit `Sized` bound in `_::_pin_project::__private::UnsafeOverwriteGuard`
   --> src/lib.rs
    |
    |     pub struct UnsafeOverwriteGuard<T> {
@@ -155,6 +155,6 @@ note: required by an implicit `Sized` bound in `UnsafeOverwriteGuard`
    = note: this error originates in the derive macro `::pin_project::__private::__PinProjectInternalDerive` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider removing the `?Sized` bound to make the type parameter `Sized`
    |
-11  - struct TupleStruct<T: ?Sized>(T);
-11  + struct TupleStruct<T>(T);
+ 11 - struct TupleStruct<T: ?Sized>(T);
+ 11 + struct TupleStruct<T>(T);
     |

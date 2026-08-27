@@ -84,6 +84,7 @@
 #  endif
 #elif defined(__asmjs__) // Allowed but no macro defined
 #elif defined(__myriad2__) // Allowed but no macro defined
+#elif defined(__e2k__) // Allowed but no macro defined
 #else
 // Run the crypto_test binary, notably crypto/compiler_test.cc, before adding
 // a new architecture.
@@ -253,5 +254,35 @@
 #define OPENSSL_NO_ASM
 #endif
 #endif  // OPENSSL_ASM_INCOMPATIBLE
+
+// Assembler-capability flag implications.
+//
+// MY_ASSEMBLER_IS_TOO_OLD_FOR_AVX implies MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2,
+// which in turn implies MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX. The reverse does
+// not hold: an assembler can support ADX/AVX2 while lacking AVX-512, which is
+// the case OPENSSL_SMALL relies on below. CMakeLists.txt enforces this for
+// CMake builds, but it must also be enforced here for builds that pass
+// defines directly via CFLAGS (e.g., the aws-lc-sys CcBuilder path).
+#if defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_AVX) && \
+    !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2)
+#  define MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
+#endif
+
+#if defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2) && \
+    !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
+#  define MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#endif
+
+// OPENSSL_SMALL implies disabling AVX-512 code paths on x86_64. The AVX-512
+// assembly (AES-GCM, XTS, RSAZ) is the largest single contributor to binary
+// size on x86_64 (~912 KB of object code). The performance cost is borne only
+// on AVX-512-capable CPUs (Ice Lake+, Zen 4+) for bulk symmetric operations.
+// This intentionally defines only MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX, not
+// MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2, so ADX/AVX2/BMI2 code stays
+// available under OPENSSL_SMALL (#3355).
+#if defined(OPENSSL_SMALL) && defined(OPENSSL_X86_64) && \
+    !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
+#  define MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#endif
 
 #endif  // OPENSSL_HEADER_TARGET_H

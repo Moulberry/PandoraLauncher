@@ -1,13 +1,13 @@
 name: Clippy, Format & Test
 
-on: [pull_request, push, workflow_dispatch]
+on: [ pull_request, push, workflow_dispatch ]
 
 jobs:
   fmt:
     name: rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -19,29 +19,38 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain: [stable, "1.81"]
+        toolchain: [ stable, "1.87" ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.toolchain }}
       - run: cargo check --no-default-features
-      - run: cargo check --no-default-features --features cargo-lock
-      - run: cargo check --no-default-features --features dependency-tree
-      - run: cargo check --no-default-features --features git2
-      - run: cargo check --no-default-features --features semver
-      - run: cargo check --no-default-features --features chrono
       - run: cargo check --all-features
       - run: cargo check --manifest-path=example_project/Cargo.toml
+
+  check_features:
+    name: cargo check individual features
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain: [ stable, "1.87" ]
+        features: [ "cargo-lock", "dependency-tree", "git2", "gix", "gix,git2", "semver", "chrono" ]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - run: cargo check --no-default-features --features ${{ matrix.features }}
 
   semver_crate:
     name: cargo check of internal crate
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain: [stable, "1.83"]
+        toolchain: [ stable, "1.87" ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -51,7 +60,7 @@ jobs:
     name: cargo clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -63,11 +72,11 @@ jobs:
     name: cargo test
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        toolchain: [stable, nightly]
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        toolchain: [ stable, nightly ]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           targets: x86_64-unknown-none
@@ -77,12 +86,26 @@ jobs:
       - run: cargo test --no-default-features
       - run: cargo test --all-features
       - run: cargo test -- --ignored nostd_testbox
-      - run: cargo run --manifest-path=example_project/Cargo.toml
+      - run: cargo run --manifest-path=example_project/Cargo.toml --no-default-features --features gix
+      - run: cargo run --manifest-path=example_project/Cargo.toml --no-default-features --features git2
+
+  test_features:
+    name: cargo test individual features
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        features: [ "cargo-lock", "dependency-tree", "git2", "gix", "gix,git2", "semver", "chrono" ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --no-default-features
+      - run: cargo test --no-default-features --features ${{ matrix.features }}
 
   semver:
     name: Semver check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: sudo apt update && sudo apt install -y cmake
       - uses: obi1kenobi/cargo-semver-checks-action@v2

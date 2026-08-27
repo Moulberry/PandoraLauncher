@@ -5,9 +5,10 @@
 [package]
 name = "icu_collections"
 description = "Collection of API for use in ICU libraries."
+categories.workspace = true
+keywords = ["unicode", "data-structures"]
 
 authors.workspace = true
-categories.workspace = true
 edition.workspace = true
 homepage.workspace = true
 include.workspace = true
@@ -19,20 +20,23 @@ version.workspace = true
 [package.metadata.docs.rs]
 all-features = true
 
+[package.metadata.cargo-all-features]
+max_combination_size = 3
+
 [dependencies]
 displaydoc = { workspace = true }
 yoke = { workspace = true, features = ["derive"] }
 zerofrom = { workspace = true, features = ["derive"] }
 zerovec = { workspace = true, features = ["derive", "yoke"] }
 potential_utf = { workspace = true, features = ["zerovec"] }
+utf8_iter = { workspace = true }
 
-serde = { workspace = true, features = ["derive", "alloc"], optional = true }
+serde = { workspace = true, features = ["derive"], optional = true }
 databake = { workspace = true, features = ["derive"], optional = true }
 
 [dev-dependencies]
 iai = { workspace = true }
 icu = { path = "../../components/icu", default-features = false }
-icu_benchmark_macros = { path = "../../tools/benchmark/macros" }
 icu_properties = { path = "../../components/properties" }
 postcard = { workspace = true, features = ["alloc"] }
 serde = { workspace = true, features = ["derive"] }
@@ -46,7 +50,7 @@ criterion = { workspace = true }
 [features]
 serde = ["dep:serde", "zerovec/serde", "potential_utf/serde", "alloc"]
 databake = ["dep:databake", "zerovec/databake"]
-alloc = ["zerovec/alloc"]
+alloc = ["serde?/alloc", "zerovec/alloc"]
 
 [lib]
 bench = false  # This option is required for Benchmark CI
@@ -65,3 +69,6 @@ path = "benches/iai_cpt.rs"
 name = "inv_list"
 harness = false
 path = "benches/inv_list.rs"
+
+[lints]
+workspace = true

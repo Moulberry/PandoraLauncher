@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
 
+use crate::encoding;
 use crate::errors::{Error, Result};
 use crate::events::{BytesText, Event};
 use crate::name::QName;
@@ -17,13 +18,11 @@ macro_rules! impl_buffered_source {
         #[cfg(not(feature = "encoding"))]
         #[inline]
         $($async)? fn remove_utf8_bom(&mut self) -> io::Result<()> {
-            use crate::encoding::UTF8_BOM;
-
             loop {
                 break match self $(.$reader)? .fill_buf() $(.$await)? {
                     Ok(n) => {
-                        if n.starts_with(UTF8_BOM) {
-                            self $(.$reader)? .consume(UTF8_BOM.len());
+                        if n.starts_with(encoding::UTF8_BOM) {
+                            self $(.$reader)? .consume(encoding::UTF8_BOM.len());
                         }
                         Ok(())
                     },
@@ -35,12 +34,12 @@ macro_rules! impl_buffered_source {
 
         #[cfg(feature = "encoding")]
         #[inline]
-        $($async)? fn detect_encoding(&mut self) -> io::Result<Option<&'static encoding_rs::Encoding>> {
+        $($async)? fn detect_encoding(&mut self) -> io::Result<Option<encoding::DetectedEncoding>> {
             loop {
                 break match self $(.$reader)? .fill_buf() $(.$await)? {
-                    Ok(n) => if let Some((enc, bom_len)) = crate::encoding::detect_encoding(n) {
-                        self $(.$reader)? .consume(bom_len);
-                        Ok(Some(enc))
+                    Ok(n) => if let Some(detected) = encoding::detect_encoding(n) {
+                        self $(.$reader)? .consume(detected.bom_len());
+                        Ok(Some(detected))
                     } else {
                         Ok(None)
                     },
@@ -206,7 +205,7 @@ macro_rules! impl_buffered_source {
                     Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
                     Err(e) => {
                         *position += read;
-                        return Err(Error::Io(e.into()));
+                        return Err(Error::from(e));
                     }
                 };
 
@@ -251,7 +250,7 @@ macro_rules! impl_buffered_source {
                 break match self $(.$reader)? .fill_buf() $(.$await)? {
                     Ok(n) => BangType::new(n.first().cloned())?,
                     Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                    Err(e) => return Err(Error::Io(e.into())),
+                    Err(e) => return Err(Error::from(e)),
                 };
             };
 
@@ -262,7 +261,7 @@ macro_rules! impl_buffered_source {
                     Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
                     Err(e) => {
                         *position += read;
-                        return Err(Error::Io(e.into()));
+                        return Err(Error::from(e));
                     }
                 };
                 // We only parse from start because we don't want to consider
@@ -592,7 +591,6 @@ mod test {
     check!(
         #[test]
         read_event_impl,
-        read_until_close,
         identity,
         1,
         &mut Vec::new()

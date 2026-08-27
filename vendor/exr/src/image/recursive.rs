@@ -1,17 +1,20 @@
 //! A generic wrapper which can be used to represent recursive types.
 //! Supports conversion from and to tuples of the same size.
 
-/// No more recursion. Can be used within any `Recursive<NoneMore, YourValue>` type.
+/// No more recursion. Can be used within any `Recursive<NoneMore, YourValue>`
+/// type.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct NoneMore;
 
 /// A recursive type-level linked list of `Value` entries.
 /// Mainly used to represent an arbitrary number of channels.
-/// The recursive architecture removes the need to implement traits for many different tuples.
+/// The recursive architecture removes the need to implement traits for many
+/// different tuples.
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct Recursive<Inner, Value> {
     /// The remaining values of this linked list,
-    /// probably either `NoneMore` or another instance of the same `Recursive<Inner - 1, Value>`.
+    /// probably either `NoneMore` or another instance of the same
+    /// `Recursive<Inner - 1, Value>`.
     pub inner: Inner,
 
     /// The next item in this linked list.
@@ -19,8 +22,14 @@ pub struct Recursive<Inner, Value> {
 }
 
 impl<Inner, Value> Recursive<Inner, Value> {
-    /// Create a new recursive type. Equivalent to the manual constructor, but less verbose.
-    pub fn new(inner: Inner, value: Value) -> Self { Self { inner, value } }
+    /// Create a new recursive type. Equivalent to the manual constructor, but
+    /// less verbose.
+    pub fn new(inner: Inner, value: Value) -> Self {
+        Self {
+            inner,
+            value,
+        }
+    }
 }
 
 /// Convert this recursive type into a tuple.
@@ -53,25 +62,35 @@ pub trait IntoRecursive {
 
 impl IntoRecursive for NoneMore {
     type Recursive = Self;
-    fn into_recursive(self) -> Self::Recursive { self }
+
+    fn into_recursive(self) -> Self::Recursive {
+        self
+    }
 }
 
 impl<Inner: IntoRecursive, Value> IntoRecursive for Recursive<Inner, Value> {
     type Recursive = Recursive<Inner::Recursive, Value>;
-    fn into_recursive(self) -> Self::Recursive { Recursive::new(self.inner.into_recursive(), self.value) }
+
+    fn into_recursive(self) -> Self::Recursive {
+        Recursive::new(self.inner.into_recursive(), self.value)
+    }
 }
 
-// Automatically implement IntoTuple so we have to generate less code in the macros
+// Automatically implement IntoTuple so we have to generate less code in the
+// macros
 impl<I: IntoNonRecursive> IntoTuple<I::NonRecursive> for I {
     fn into_tuple(self) -> <I as IntoNonRecursive>::NonRecursive {
         self.into_non_recursive()
     }
 }
 
-//Implement traits for the empty tuple, the macro doesn't handle that
+// Implement traits for the empty tuple, the macro doesn't handle that
 impl IntoRecursive for () {
     type Recursive = NoneMore;
-    fn into_recursive(self) -> Self::Recursive { NoneMore }
+
+    fn into_recursive(self) -> Self::Recursive {
+        NoneMore
+    }
 }
 
 impl IntoNonRecursive for NoneMore {
@@ -122,8 +141,8 @@ macro_rules! gen_tuple_value {
     };
 }
 
-/// Generate the trait implementations given a sequence of type names in both directions and the indices backwards:
-/// ```nocheck
+/// Generate the trait implementations given a sequence of type names in both
+/// directions and the indices backwards: ```nocheck
 /// generate_single(A, B, C; C, B, A; 2, 1, 0)
 /// ```
 macro_rules! generate_single {

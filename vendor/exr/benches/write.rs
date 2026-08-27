@@ -2,78 +2,56 @@
 extern crate bencher;
 
 extern crate exr;
-use exr::prelude::*;
-
-use bencher::Bencher;
 use std::io::Cursor;
 
-fn write_parallel_any_channels_to_buffered(bench: &mut Bencher) {
-    let path = "tests/images/valid/custom/crowskull/crow_rle.exr";
-    let image = read_all_flat_layers_from_file(path).unwrap();
-
-    bench.iter(||{
-        let mut result = Vec::new();
-        image.write().to_buffered(Cursor::new(&mut result)).unwrap();
-        bencher::black_box(result);
-    })
-}
+use bencher::Bencher;
+use exr::prelude::*;
 
 fn write_parallel_zip1_to_buffered(bench: &mut Bencher) {
-    let path = "tests/images/valid/custom/crowskull/crow_rle.exr";
-
-    let mut image = read_first_flat_layer_from_file(path).unwrap();
-    image.layer_data.encoding.compression = Compression::ZIP1;
-
-    bench.iter(||{
-        let mut result = Vec::new();
-        image.write().to_buffered(Cursor::new(&mut result)).unwrap();
-        bencher::black_box(result);
-    })
+    bench_write_full_image_parallel(bench, Compression::ZIP1);
 }
 
-fn write_nonparallel_zip1_to_buffered(bench: &mut Bencher) {
-    let path = "tests/images/valid/custom/crowskull/crow_rle.exr";
+fn write_parallel_dwaa_to_buffered(bench: &mut Bencher) {
+    bench_write_full_image_parallel(bench, Compression::DWAA(Some(45.0)));
+}
 
-    let mut image = read_first_flat_layer_from_file(path).unwrap();
-    image.layer_data.encoding.compression = Compression::ZIP1;
+fn write_parallel_piz_to_buffered(bench: &mut Bencher) {
+    bench_write_full_image_parallel(bench, Compression::PIZ);
+}
 
-    bench.iter(||{
-        let mut result = Vec::new();
-        image.write().non_parallel().to_buffered(Cursor::new(&mut result)).unwrap();
-        bencher::black_box(result);
-    })
+fn write_parallel_pxr24_to_buffered(bench: &mut Bencher) {
+    bench_write_full_image_parallel(bench, Compression::PXR24);
 }
 
 fn write_parallel_zip16_to_buffered(bench: &mut Bencher) {
-    let path = "tests/images/valid/custom/crowskull/crow_rle.exr";
-
-    let mut image = read_first_flat_layer_from_file(path).unwrap();
-    image.layer_data.encoding.compression = Compression::ZIP16;
-
-    bench.iter(||{
-        let mut result = Vec::new();
-        image.write().to_buffered(Cursor::new(&mut result)).unwrap();
-        bencher::black_box(result);
-    })
+    bench_write_full_image_parallel(bench, Compression::ZIP16);
 }
 
 fn write_uncompressed_to_buffered(bench: &mut Bencher) {
-    let path = "tests/images/valid/custom/crowskull/crow_uncompressed.exr";
-    let image = read_all_flat_layers_from_file(path).unwrap();
-    assert!(image.layer_data.iter().all(|layer| layer.encoding.compression == Compression::Uncompressed));
+    bench_write_full_image_parallel(bench, Compression::Uncompressed);
+}
 
-    bench.iter(||{
-        let mut result = Vec::new();
+fn bench_write_full_image_parallel(bench: &mut Bencher, compression: Compression) {
+    let path = "tests/images/valid/custom/crowskull/crow_uncompressed.exr";
+    let mut image = read_all_flat_layers_from_file(path).unwrap();
+    for layer in &mut image.layer_data {
+        layer.encoding.compression = compression;
+    }
+
+    bench.iter(|| {
+        let mut result = Vec::with_capacity(2048 * 4);
         image.write().to_buffered(Cursor::new(&mut result)).unwrap();
         bencher::black_box(result);
     })
 }
 
-benchmark_group!(write,
-    write_parallel_any_channels_to_buffered,
-    write_nonparallel_zip1_to_buffered,
+benchmark_group!(
+    write,
+    write_parallel_dwaa_to_buffered,
+    write_parallel_piz_to_buffered,
     write_parallel_zip1_to_buffered,
     write_parallel_zip16_to_buffered,
+    write_parallel_pxr24_to_buffered,
     write_uncompressed_to_buffered
 );
 

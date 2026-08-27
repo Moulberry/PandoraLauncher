@@ -139,7 +139,7 @@ const _: () = {
 };
 
 // Implementing `PinnedDrop::drop` is safe, but calling it is not safe.
-// This is because destructors can be called multiple times in safe code and
+// This is because if calling it is safe destructors can be called multiple times in safe code and
 // [double dropping is unsound](https://github.com/rust-lang/rust/pull/62360).
 //
 // Ideally, it would be desirable to be able to forbid manual calls in

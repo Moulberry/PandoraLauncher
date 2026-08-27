@@ -681,7 +681,7 @@ _CET_ENDBR
 	.byte	0xf3,0xc3
 .cfi_endproc	
 .size	bn_mul4x_mont,.-bn_mul4x_mont
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 .extern	bn_sqrx8x_internal
 .hidden bn_sqrx8x_internal
 #endif
@@ -772,7 +772,7 @@ _CET_ENDBR
 	pxor	%xmm0,%xmm0
 .byte	102,72,15,110,207
 .byte	102,73,15,110,218
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	testq	%rdx,%rdx
 	jz	.Lsqr8x_nox
 
@@ -878,7 +878,7 @@ _CET_ENDBR
 	.byte	0xf3,0xc3
 .cfi_endproc	
 .size	bn_sqr8x_mont,.-bn_sqr8x_mont
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 .globl	bn_mulx4x_mont
 .hidden bn_mulx4x_mont
 .type	bn_mulx4x_mont,@function

@@ -219,8 +219,10 @@ impl<'a> SimpleGlyph<'a> {
             return Err(ReadError::InvalidArrayLen);
         }
         let mut cursor = FontData::new(self.glyph_data()).cursor();
-        // We'll need at most n_points flags, but fewer if there are repeats
-        let flags_data = cursor.read_array::<u8>(n_points.min(cursor.remaining_bytes()))?;
+        // The flag run can use two bytes per point (a flag plus its repeat
+        // count), so the encoded flags may be longer than n_points; read over
+        // all the available data and stop once every point has a flag.
+        let flags_data = cursor.read_array::<u8>(cursor.remaining_bytes())?;
         let mut flags_iter = flags_data.iter().copied();
         // Keep track of the actual number of flag bytes read so that we can
         // create a new cursor for reading coordinates
@@ -891,7 +893,7 @@ mod tests {
     }
 
     // Test helper to enumerate all TrueType glyphs in the given font
-    fn all_glyphs(font_data: &[u8]) -> impl Iterator<Item = Option<Glyph>> {
+    fn all_glyphs(font_data: &[u8]) -> impl Iterator<Item = Option<Glyph<'_>>> {
         let font = FontRef::new(font_data).unwrap();
         let loca = font.loca(None).unwrap();
         let glyf = font.glyf().unwrap();
@@ -1060,5 +1062,68 @@ mod tests {
         // Don't panic!
         let midpoint = a.midpoint(b);
         assert_eq!(midpoint.to_bits(), expected);
+    }
+
+    // SimpleGlyph should not panic on truncated data.
+    //
+    // SimpleGlyph has a variable-length array (end_pts_of_contours) followed
+    // by a scalar field (instruction_length). The MIN_SIZE validation only
+    // checks that the fixed-size fields fit, but doesn't account for the
+    // array's runtime length. This causes a panic when accessing fields
+    // that come after the array if the data is truncated.
+    #[test]
+    fn simple_glyph_truncated_data() {
+        use font_test_data::bebuffer::BeBuffer;
+
+        // Build a SimpleGlyph with number_of_contours = 100
+        // This means end_pts_of_contours should be 200 bytes,
+        // pushing instruction_length to offset 210.
+        // But we only provide 12 bytes (MIN_SIZE).
+        let buf = BeBuffer::new()
+            .push(100_i16) // number_of_contours = 100
+            .push(0_i16) // x_min
+            .push(0_i16) // y_min
+            .push(0_i16) // x_max
+            .push(0_i16) // y_max
+            .push(0_u16); // would be first element of end_pts_of_contours
+
+        // Parsing succeeds - we have MIN_SIZE (12) bytes
+        let glyph = SimpleGlyph::read(buf.data().into()).unwrap();
+        assert_eq!(glyph.number_of_contours(), 100);
+
+        // return default value instead of panicking
+        assert_eq!(glyph.instruction_length(), 0);
+    }
+
+    // The flags run can encode up to two bytes per point (a flag plus a repeat
+    // count). read_points_fast must agree with the points() iterator even when
+    // the flags section is longer than the point count.
+    #[test]
+    fn read_points_fast_long_flags() {
+        use font_test_data::bebuffer::BeBuffer;
+        // 1 contour, 3 points. Each point is its own REPEAT_FLAG entry with a
+        // repeat count of 0, so the flags section is 6 bytes for 3 points and
+        // there are no coordinate bytes. flag 0x39 = ON_CURVE | REPEAT_FLAG |
+        // X_IS_SAME_OR_POSITIVE | Y_IS_SAME_OR_POSITIVE.
+        let buf = BeBuffer::new()
+            .push(1_i16) // number_of_contours
+            .extend([0_i16; 4]) // bounding box
+            .push(2_u16) // end_pts_of_contours[0] => 3 points
+            .push(0_u16) // instruction_length
+            .extend([0x39u8, 0x00, 0x39, 0x00, 0x39, 0x00]);
+
+        let glyph = SimpleGlyph::read(buf.data().into()).unwrap();
+        assert_eq!(glyph.num_points(), 3);
+
+        let expected: Vec<_> = glyph.points().map(|p| (p.x as i32, p.y as i32)).collect();
+
+        let mut points = vec![Point::default(); 3];
+        let mut flags = vec![PointFlags::default(); 3];
+        glyph
+            .read_points_fast::<i32>(&mut points, &mut flags)
+            .unwrap();
+        let actual: Vec<_> = points.iter().map(|p| (p.x, p.y)).collect();
+
+        assert_eq!(actual, expected);
     }
 }

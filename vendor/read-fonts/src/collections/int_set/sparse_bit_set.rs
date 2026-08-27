@@ -3,7 +3,7 @@
 //!
 //! <https://w3c.github.io/IFT/Overview.html#sparse-bit-set-decoding>
 
-use std::collections::VecDeque;
+use alloc::{collections::VecDeque, vec::Vec};
 use std::error::Error;
 use std::fmt;
 
@@ -194,7 +194,7 @@ impl IntSet<u32> {
         // TODO(garretrieger): use the heuristic approach from the incxfer
         // implementation to guess the optimal size. Building the set 4 times
         // is costly.
-        let mut candidates: Vec<Vec<u8>> = vec![];
+        let mut candidates: Vec<Vec<u8>> = Vec::new();
 
         let Some(max_value) = self.last() else {
             return OutputBitStream::new(BranchFactor::Two, 0).into_bytes();
@@ -244,7 +244,7 @@ pub fn to_sparse_bit_set_with_bf<const BF: u8>(set: &IntSet<u32>) -> Vec<u8> {
         panic!("Height value exceeds the maximum for this branch factor.");
     }
     let mut os = OutputBitStream::new(branch_factor, height);
-    let mut nodes: Vec<Node> = vec![];
+    let mut nodes: Vec<Node> = Vec::new();
 
     // We build the nodes that will comprise the bit stream in reverse order
     // from the last value in the last layer up to the first layer. Then

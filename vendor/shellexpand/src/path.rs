@@ -39,10 +39,19 @@ impl<P: AsRef<Path> + ?Sized> AsRefXstrExt for P {
 }
 
 impl WstrExt for RawOsStr {
-    fn as_str(&self) -> Option<&str> { self.to_str() }
-    fn len(&self) -> usize { self.raw_len() }
-    fn to_ostring(&self) -> OsString { self.to_os_str().into_owned() }
-    fn strip_prefix(&self, c: char) -> Option<&Self> { self.strip_prefix(c) }
+    fn wstr_as_str(&self) -> Option<&str> { self.to_str() }
+    fn wstr_len(&self) -> usize {
+        // Bizarrely, while a `RawOsStr` implements `Index` with various `usize`-based
+        // indices, there doesn't seem to be a way to get the maximum index!
+        //
+        // There's `raw_len` but that may be something else.  In os_str_bytes 7.x it's
+        // behind a `conversions` method, and is the length of some converted representation.
+        //
+        // But we can (ab)use `.rfind("")` since that will always match, at the end.
+        self.rfind("").expect("empty string not found!")
+    }
+    fn wstr_to_ostring(&self) -> OsString { self.to_os_str().into_owned() }
+    fn wstr_strip_prefix(&self, c: char) -> Option<&Self> { self.strip_prefix(c) }
 }
 
 impl<'s> WstrRefExt for &'s RawOsStr {
@@ -60,7 +69,11 @@ impl<'s> WstrRefExt for &'s RawOsStr {
     /// On other Unix, at least ASCII will work right.
     /// On Windows things that use surrogates will possibly go wrong?
     /// On platforms where this is some mutant form of EBCDIC or something, this will be hopeless.
-    fn chars_approx(self) -> bstr::Chars<'s> {
+    // In os_str_ext 7.x, `as_raw_bytes` is only available with the `conversions` feature.
+    // (Because it can involve a non-cheap conversation; this is not unexpected here.)
+    // We're not upgrading to 7.x though, now because it would break our MSRV.
+    #[allow(deprecated)]
+    fn wstr_chars_approx(self) -> bstr::Chars<'s> {
         self.as_raw_bytes().chars()
     }
 

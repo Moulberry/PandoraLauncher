@@ -13,7 +13,6 @@ jobs:
     strategy:
       matrix:
         build:
-        - pinned
         - stable
         - beta
         - nightly
@@ -21,9 +20,6 @@ jobs:
         - win-msvc
         - win-gnu
         include:
-        - build: pinned
-          os: ubuntu-18.04
-          rust: 1.39.0
         - build: stable
           os: ubuntu-18.04
           rust: stable
@@ -72,8 +68,6 @@ jobs:
         override: true
         profile: minimal
         components: rustfmt
-    - name: Install rustfmt
-      run: rustup component add rustfmt
     - name: Check formatting
       run: |
         cargo fmt -- --check

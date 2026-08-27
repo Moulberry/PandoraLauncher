@@ -1,14 +1,18 @@
 //! Interact with the clipboard.
 //!
 //! The portal is mostly meant to be used along with
-//! [`RemoteDesktop`]
+//! [`RemoteDesktop`](crate::desktop::remote_desktop::RemoteDesktop) or
+//! [`InputCapture`](crate::desktop::input_capture::InputCapture).
 
 use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::{OwnedFd, OwnedObjectPath, Type, as_value, as_value::optional};
 
-use super::{Session, remote_desktop::RemoteDesktop};
+use super::{Session, SessionPortal};
 use crate::{Result, proxy::Proxy};
+
+/// A session that is compatible with the Clipboard portal
+pub trait IsClipboardSession: SessionPortal {}
 
 #[derive(Debug, Type, Serialize, Default)]
 #[zvariant(signature = "dict")]
@@ -17,6 +21,14 @@ pub struct SetSelectionOptions<'a> {
     #[serde(borrow)]
     #[serde(with = "as_value", skip_serializing_if = "<[_]>::is_empty")]
     mime_types: &'a [&'a str],
+}
+
+impl<'a> SetSelectionOptions<'a> {
+    /// Sets the mime types for the clipboard selection.
+    pub fn set_mime_types(mut self, mime_types: &'a [&'a str]) -> Self {
+        self.mime_types = mime_types;
+        self
+    }
 }
 
 #[derive(Debug, Type, Serialize, Default)]
@@ -75,9 +87,9 @@ impl Clipboard {
     ///
     /// See also [`RequestClipboard`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Clipboard.html#org-freedesktop-portal-clipboard-requestclipboard).
     #[doc(alias = "RequestClipboard")]
-    pub async fn request(
+    pub async fn request<T: IsClipboardSession>(
         &self,
-        session: &Session<RemoteDesktop>,
+        session: &Session<T>,
         options: RequestClipboardOptions,
     ) -> Result<()> {
         self.0
@@ -90,9 +102,9 @@ impl Clipboard {
     ///
     /// See also [`SetSelection`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Clipboard.html#org-freedesktop-portal-clipboard-setselection).
     #[doc(alias = "SetSelection")]
-    pub async fn set_selection<'a>(
+    pub async fn set_selection<'a, T: IsClipboardSession>(
         &self,
-        session: &Session<RemoteDesktop>,
+        session: &Session<T>,
         options: SetSelectionOptions<'a>,
     ) -> Result<()> {
         self.0
@@ -106,9 +118,9 @@ impl Clipboard {
     ///
     /// See also [`SelectionWrite`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Clipboard.html#org-freedesktop-portal-clipboard-selectionwrite).
     #[doc(alias = "SelectionWrite")]
-    pub async fn selection_write(
+    pub async fn selection_write<T: IsClipboardSession>(
         &self,
-        session: &Session<RemoteDesktop>,
+        session: &Session<T>,
         serial: u32,
     ) -> Result<OwnedFd> {
         let fd = self
@@ -122,9 +134,9 @@ impl Clipboard {
     ///
     /// See also [`SelectionWriteDone`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Clipboard.html#org-freedesktop-portal-clipboard-selectionwritedone).
     #[doc(alias = "SelectionWriteDone")]
-    pub async fn selection_write_done(
+    pub async fn selection_write_done<T: IsClipboardSession>(
         &self,
-        session: &Session<RemoteDesktop>,
+        session: &Session<T>,
         serial: u32,
         success: bool,
     ) -> Result<()> {
@@ -137,9 +149,9 @@ impl Clipboard {
     ///
     /// See also [`SelectionRead`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Clipboard.html#org-freedesktop-portal-clipboard-selectionread).
     #[doc(alias = "SelectionRead")]
-    pub async fn selection_read(
+    pub async fn selection_read<T: IsClipboardSession>(
         &self,
-        session: &Session<RemoteDesktop>,
+        session: &Session<T>,
         mime_type: &str,
     ) -> Result<OwnedFd> {
         let fd = self
@@ -154,9 +166,9 @@ impl Clipboard {
     ///
     /// See also [`SelectionOwnerChanged`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Clipboard.html#org-freedesktop-portal-clipboard-selectionownerchanged).
     #[doc(alias = "SelectionOwnerChanged")]
-    pub async fn receive_selection_owner_changed(
+    pub async fn receive_selection_owner_changed<T: IsClipboardSession>(
         &self,
-    ) -> Result<impl Stream<Item = (Session<RemoteDesktop>, SelectionOwnerChanged)>> {
+    ) -> Result<impl Stream<Item = (Session<T>, SelectionOwnerChanged)>> {
         let connection = self.connection().clone();
         Ok(self
             .0
@@ -177,9 +189,9 @@ impl Clipboard {
     ///
     /// See also [`SelectionTransfer`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Clipboard.html#org-freedesktop-portal-clipboard-selectiontransfer).
     #[doc(alias = "SelectionTransfer")]
-    pub async fn receive_selection_transfer(
+    pub async fn receive_selection_transfer<T: IsClipboardSession>(
         &self,
-    ) -> Result<impl Stream<Item = (Session<RemoteDesktop>, String, u32)>> {
+    ) -> Result<impl Stream<Item = (Session<T>, String, u32)>> {
         let connection = self.connection().clone();
         Ok(self
             .0

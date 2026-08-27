@@ -8,7 +8,7 @@ readme = "README.md"
 categories = ["asynchronous", "network-programming"]
 keywords = ["tokio", "async", "proxy", "socks", "socks5"]
 license = "MIT"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["Yilin Chen <sticnarf@gmail.com>"]
 edition = "2018"
 

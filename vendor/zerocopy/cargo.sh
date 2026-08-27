@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+#
 # Copyright 2024 The Fuchsia Authors
 #
 # Licensed under a BSD-style license <LICENSE-BSD>, Apache License, Version 2.0
@@ -8,7 +10,16 @@
 
 set -eo pipefail
 
-# Build `cargo-zerocopy` without any RUSTFLAGS set in the environment
-env -u RUSTFLAGS cargo +stable build --manifest-path tools/Cargo.toml -p cargo-zerocopy -q
-# Thin wrapper around the `cargo-zerocopy` binary in `tools/cargo-zerocopy`
-./tools/target/debug/cargo-zerocopy $@
+ZEROCOPY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+REPO_DIR="$(dirname "$ZEROCOPY_DIR")"
+
+# Build `cargo-zerocopy` without any RUSTFLAGS or CARGO_TARGET_DIR set in the
+# environment. Build it from the repository root so that Zerocopy's vendoring
+# config does not apply to the unvendored tools workspace.
+(
+  cd "$REPO_DIR"
+  env -u RUSTFLAGS -u CARGO_TARGET_DIR cargo +stable build --manifest-path tools/cargo-zerocopy/Cargo.toml -p cargo-zerocopy -q
+)
+
+cd "$ZEROCOPY_DIR"
+exec "$REPO_DIR/tools/target/debug/cargo-zerocopy" "$@"

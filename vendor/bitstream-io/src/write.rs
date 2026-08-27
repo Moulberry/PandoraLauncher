@@ -11,7 +11,7 @@
 #![warn(missing_docs)]
 
 #[cfg(not(feature = "std"))]
-use core2::io;
+use no_std_io2::io;
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
@@ -2236,7 +2236,6 @@ mod bit_recorder {
     /// recorder.playback(&mut writer);
     /// assert_eq!(writer.into_writer(), [0b10110111]);
     /// ```
-    #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
     pub struct BitRecorder<N, E: Endianness> {
         writer: BitWriter<Vec<u8>, E>,
         phantom: PhantomData<N>,

@@ -64,7 +64,7 @@ impl EventQueue {
         EventQueue {
             events: Vec::with_capacity(cap),
             edge_data: Vec::with_capacity(cap),
-            first: 0,
+            first: INVALID_EVENT_ID,
             sorted: false,
         }
     }
@@ -271,12 +271,6 @@ impl EventQueue {
         }
 
         self.events[prev as usize].next_event = idx;
-    }
-
-    pub(crate) fn clear(&mut self) {
-        self.events.clear();
-        self.first = INVALID_EVENT_ID;
-        self.sorted = false;
     }
 
     /// Returns the ID of the first event in the queue.

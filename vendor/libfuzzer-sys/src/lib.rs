@@ -391,6 +391,9 @@ macro_rules! fuzz_target {
 /// useful. Note that the two approaches are not mutually exclusive; you can use
 /// whichever is easier for your problem domain or both!
 ///
+/// > **Tip:** [The `mutatis` crate](https://docs.rs/mutatis) provides
+/// > abstractions and combinators for writing custom mutators.
+///
 /// ## Implementation Contract
 ///
 /// The original, unmodified input is given in `data[..size]`.
@@ -409,17 +412,17 @@ macro_rules! fuzz_target {
 /// ```no_run
 /// #![no_main]
 ///
-/// use rand::{rngs::StdRng, Rng, SeedableRng};
+/// use rand::{rngs::SmallRng, RngExt, SeedableRng};
 ///
 /// libfuzzer_sys::fuzz_mutator!(|data: &mut [u8], size: usize, max_size: usize, seed: u32| {
-///     let mut rng = StdRng::seed_from_u64(seed as u64);
+///     let mut rng = SmallRng::seed_from_u64(seed as u64);
 ///
 /// #   let first_mutation = |_, _, _, _| todo!();
 /// #   let second_mutation = |_, _, _, _| todo!();
 /// #   let third_mutation = |_, _, _, _| todo!();
 /// #   let fourth_mutation = |_, _, _, _| todo!();
 ///     // Choose which of our four supported kinds of mutations we want to make.
-///     match rng.gen_range(0..4) {
+///     match rng.random_range(0..4) {
 ///         0 => first_mutation(rng, data, size, max_size),
 ///         1 => second_mutation(rng, data, size, max_size),
 ///         2 => third_mutation(rng, data, size, max_size),
@@ -632,7 +635,7 @@ pub fn fuzzer_mutate(data: &mut [u8], size: usize, max_size: usize) -> usize {
 /// #![no_main]
 ///
 /// use libfuzzer_sys::{fuzz_crossover, fuzz_mutator, fuzz_target, fuzzer_mutate};
-/// use rand::{rngs::StdRng, Rng, SeedableRng};
+/// use rand::{rngs::SmallRng, RngExt, SeedableRng};
 /// use std::mem::size_of;
 ///
 /// fuzz_target!(|data: &[u8]| {
@@ -651,11 +654,11 @@ pub fn fuzzer_mutate(data: &mut [u8], size: usize, max_size: usize) -> usize {
 /// // Inject some ...potentially problematic values to make the example close
 /// // more quickly.
 /// fuzz_mutator!(|data: &mut [u8], size: usize, max_size: usize, seed: u32| {
-///     let mut gen = StdRng::seed_from_u64(seed.into());
+///     let mut rng = SmallRng::seed_from_u64(seed.into());
 ///
 ///     let (_, floats, _) = unsafe { data[..size].align_to_mut::<f64>() };
 ///
-///     let x = gen.gen_range(0..=1000);
+///     let x = rng.random_range(0..=1000);
 ///     if x == 0 && !floats.is_empty() {
 ///         floats[0] = f64::INFINITY;
 ///     } else if x == 1000 && floats.len() > 1 {

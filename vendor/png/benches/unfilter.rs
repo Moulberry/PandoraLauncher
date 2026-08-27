@@ -29,12 +29,12 @@ fn bench_unfilter(c: &mut Criterion, filter: Filter, bpp: u8) {
     let mut group = c.benchmark_group("unfilter");
 
     fn get_random_bytes<R: Rng>(rng: &mut R, n: usize) -> Vec<u8> {
-        use rand::Fill;
+        use rand::TryRngCore;
         let mut result = vec![0u8; n];
-        result.as_mut_slice().try_fill(rng).unwrap();
+        rng.try_fill_bytes(result.as_mut_slice()).unwrap();
         result
     }
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let row_size = 4096 * (bpp as usize);
     let two_rows = get_random_bytes(&mut rng, row_size * 2);
 

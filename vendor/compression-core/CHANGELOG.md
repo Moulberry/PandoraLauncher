@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.32](https://github.com/Nullus157/async-compression/compare/compression-core-v0.4.31...compression-core-v0.4.32) - 2026-04-21
+
+### Other
+
+- Include license files in published crates ([#467](https://github.com/Nullus157/async-compression/pull/467))
+
+## [0.4.31](https://github.com/Nullus157/async-compression/compare/compression-core-v0.4.30...compression-core-v0.4.31) - 2025-11-21
+
+### Added
+
+- Add uninitialized output buffer support ([#414](https://github.com/Nullus157/async-compression/pull/414))
+
+## [0.4.30](https://github.com/Nullus157/async-compression/compare/compression-core-v0.4.29...compression-core-v0.4.30) - 2025-11-06
+
+### Other
+
+- Simplify `WriteBuffer`: Rm `unwritten_initialized_mut` ([#413](https://github.com/Nullus157/async-compression/pull/413))
+- Implement new traits `DecodeV2`/`EncodeV2` ([#398](https://github.com/Nullus157/async-compression/pull/398))
+- Disable nightly feature `doc_auto_cfg` on docsrs ([#392](https://github.com/Nullus157/async-compression/pull/392))
+
 ## [0.4.29](https://github.com/Nullus157/async-compression/compare/compression-core-v0.4.28...compression-core-v0.4.29) - 2025-08-28
 
 ### Other

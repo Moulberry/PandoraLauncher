@@ -44,6 +44,24 @@ pub struct EmbeddedFile {
   pub metadata: Metadata,
 }
 
+/// A file embedded into the binary compressed
+#[cfg(feature = "compression")]
+pub struct EmbeddedCompressedFile {
+  pub data: &'static include_flate::IFlate,
+  pub metadata: Metadata,
+}
+
+#[cfg(feature = "compression")]
+impl EmbeddedCompressedFile {
+  /// Returns the HTTP `Content-Encoding` header value for this file's compression algorithm.
+  pub fn content_encoding(&self) -> &'static str {
+    match self.data.algo() {
+      include_flate::CompressionMethod::Deflate => "deflate",
+      include_flate::CompressionMethod::Zstd => "zstd",
+    }
+  }
+}
+
 /// Metadata about an embedded file
 #[derive(Clone)]
 pub struct Metadata {
@@ -52,6 +70,37 @@ pub struct Metadata {
   created: Option<u64>,
   #[cfg(feature = "mime-guess")]
   mimetype: Cow<'static, str>,
+}
+
+/// Constructs a [`Metadata`] from tokens emitted by the derive macro.
+///
+/// The derive macro (`rust-embed-impl`) is a proc-macro and is therefore always
+/// compiled for the *host*, where its `mime-guess` feature is resolved
+/// independently of the *target* that the generated code is compiled into. It
+/// must not branch on its own `#[cfg(feature = "mime-guess")]`, since that
+/// reflects the host rather than the target. Instead it unconditionally emits a
+/// `__mimetype_of!(...)` call as the final argument and defers to this macro,
+/// which *is* compiled for the target. This variant (target has `mime-guess`)
+/// forwards the argument, expanding the proc macro to the real mimetype.
+#[cfg(feature = "mime-guess")]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __rust_embed_metadata {
+  ($hash:expr, $last_modified:expr, $created:expr, $mimetype:expr $(,)?) => {
+    $crate::Metadata::__rust_embed_new($hash, $last_modified, $created, $mimetype)
+  };
+}
+
+/// See the `mime-guess` variant above. This variant (target lacks `mime-guess`)
+/// drops the final argument, so the `__mimetype_of!` call it contains is never
+/// expanded.
+#[cfg(not(feature = "mime-guess"))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __rust_embed_metadata {
+  ($hash:expr, $last_modified:expr, $created:expr, $mimetype:expr $(,)?) => {
+    $crate::Metadata::__rust_embed_new($hash, $last_modified, $created)
+  };
 }
 
 impl Metadata {

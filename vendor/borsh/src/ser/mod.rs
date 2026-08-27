@@ -369,6 +369,15 @@ where
     }
 }
 
+#[cfg(feature = "uuid")]
+impl BorshSerialize for uuid::Uuid {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
+        BorshSerialize::serialize(&self.as_bytes(), writer)?;
+
+        Ok(())
+    }
+}
+
 impl<T> BorshSerialize for VecDeque<T>
 where
     T: BorshSerialize,
@@ -413,8 +422,8 @@ pub mod hashes {
     use crate::__private::maybestd::vec::Vec;
     use crate::error::check_zst;
     use crate::{
-        BorshSerialize,
         __private::maybestd::collections::{HashMap, HashSet},
+        BorshSerialize,
     };
     use core::convert::TryFrom;
     use core::hash::BuildHasher;
@@ -432,7 +441,7 @@ pub mod hashes {
             check_zst::<K>()?;
 
             let mut vec = self.iter().collect::<Vec<_>>();
-            vec.sort_by(|(a, _), (b, _)| a.cmp(b));
+            vec.sort_by_key(|(a, _)| *a);
             u32::try_from(vec.len())
                 .map_err(|_| ErrorKind::InvalidData)?
                 .serialize(writer)?;
@@ -506,16 +515,15 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshSerialize for std::net::SocketAddr {
+impl BorshSerialize for core::net::SocketAddr {
     #[inline]
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
         match *self {
-            std::net::SocketAddr::V4(ref addr) => {
+            core::net::SocketAddr::V4(ref addr) => {
                 0u8.serialize(writer)?;
                 addr.serialize(writer)
             }
-            std::net::SocketAddr::V6(ref addr) => {
+            core::net::SocketAddr::V6(ref addr) => {
                 1u8.serialize(writer)?;
                 addr.serialize(writer)
             }
@@ -523,8 +531,7 @@ impl BorshSerialize for std::net::SocketAddr {
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshSerialize for std::net::SocketAddrV4 {
+impl BorshSerialize for core::net::SocketAddrV4 {
     #[inline]
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
         self.ip().serialize(writer)?;
@@ -532,8 +539,7 @@ impl BorshSerialize for std::net::SocketAddrV4 {
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshSerialize for std::net::SocketAddrV6 {
+impl BorshSerialize for core::net::SocketAddrV6 {
     #[inline]
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
         self.ip().serialize(writer)?;
@@ -541,32 +547,29 @@ impl BorshSerialize for std::net::SocketAddrV6 {
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshSerialize for std::net::Ipv4Addr {
+impl BorshSerialize for core::net::Ipv4Addr {
     #[inline]
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
         writer.write_all(&self.octets())
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshSerialize for std::net::Ipv6Addr {
+impl BorshSerialize for core::net::Ipv6Addr {
     #[inline]
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
         writer.write_all(&self.octets())
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshSerialize for std::net::IpAddr {
+impl BorshSerialize for core::net::IpAddr {
     #[inline]
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
         match self {
-            std::net::IpAddr::V4(ipv4) => {
+            core::net::IpAddr::V4(ipv4) => {
                 writer.write_all(&0u8.to_le_bytes())?;
                 ipv4.serialize(writer)
             }
-            std::net::IpAddr::V6(ipv6) => {
+            core::net::IpAddr::V6(ipv6) => {
                 writer.write_all(&1u8.to_le_bytes())?;
                 ipv6.serialize(writer)
             }
@@ -721,7 +724,7 @@ where
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
         match self.try_borrow() {
             Ok(ref value) => value.serialize(writer),
-            Err(_) => Err(Error::new(ErrorKind::Other, "already mutably borrowed")),
+            Err(_) => Err(Error::other("already mutably borrowed")),
         }
     }
 }

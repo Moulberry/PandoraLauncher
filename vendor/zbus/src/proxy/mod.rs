@@ -13,7 +13,7 @@ use std::{
     sync::{Arc, OnceLock, RwLock, RwLockReadGuard},
     task::{Context, Poll},
 };
-use tracing::{Instrument, debug, info_span, instrument, trace};
+use tracing::{Instrument, debug, info_span, instrument, trace, warn};
 
 use zbus_names::{BusName, InterfaceName, MemberName, UniqueName};
 use zvariant::{ObjectPath, OwnedValue, Str, Value};
@@ -298,6 +298,10 @@ impl PropertiesCache {
                         (prop_changes, interface, uncached_properties)
                     }
                     Err(e) => {
+                        warn!(
+                            "Failed to populate properties cache via GetAll: {e}. \
+                             Property change streams will not produce values."
+                        );
                         ready.notify(usize::MAX);
                         *caching_result = CachingResult::Cached { result: Err(e) };
 
@@ -683,10 +687,7 @@ impl<'a> Proxy<'a> {
     /// Use PropertiesCache::ready() to wait for the cache to be populated and to get any errors
     /// encountered in the population.
     pub(crate) fn get_property_cache(&self) -> Option<&Arc<PropertiesCache>> {
-        let cache = match &self.inner.property_cache {
-            Some(cache) => cache,
-            None => return None,
-        };
+        let cache = self.inner.property_cache.as_ref()?;
         let (cache, _) = &cache.get_or_init(|| {
             let proxy = self.owned_properties_proxy();
             let interface = self.interface().to_owned();
@@ -1503,10 +1504,10 @@ mod tests {
             let server_fut = async move {
                 use std::time::Duration;
 
-                #[cfg(not(feature = "tokio"))]
+                #[cfg(feature = "async-io")]
                 use async_io::Timer;
 
-                #[cfg(feature = "tokio")]
+                #[cfg(all(feature = "tokio", not(feature = "async-io")))]
                 use tokio::time::sleep;
 
                 let iface_ref = conn
@@ -1523,10 +1524,10 @@ mod tests {
                             .unwrap();
                     }
 
-                    #[cfg(not(feature = "tokio"))]
+                    #[cfg(feature = "async-io")]
                     Timer::after(Duration::from_millis(5)).await;
 
-                    #[cfg(feature = "tokio")]
+                    #[cfg(all(feature = "tokio", not(feature = "async-io")))]
                     sleep(Duration::from_millis(5)).await;
                 }
             };

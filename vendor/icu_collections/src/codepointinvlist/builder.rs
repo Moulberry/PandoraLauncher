@@ -7,13 +7,13 @@ use alloc::vec::Vec;
 use core::{char, cmp::Ordering, ops::RangeBounds};
 use potential_utf::PotentialCodePoint;
 
-use crate::codepointinvlist::{utils::deconstruct_range, CodePointInversionList};
-use zerovec::{ule::AsULE, ZeroVec};
+use crate::codepointinvlist::{CodePointInversionList, utils::deconstruct_range};
+use zerovec::{ZeroVec, ule::AsULE};
 
 /// A builder for [`CodePointInversionList`].
 ///
 /// Provides exposure to builder functions and conversion to [`CodePointInversionList`]
-#[derive(Default)]
+#[derive(Default, Clone, Debug)]
 pub struct CodePointInversionListBuilder {
     // A sorted list of even length, with values <= char::MAX + 1
     intervals: Vec<u32>,
@@ -32,7 +32,7 @@ impl CodePointInversionListBuilder {
             .into_iter()
             .map(PotentialCodePoint::from_u24)
             .collect();
-        #[allow(clippy::unwrap_used)] // by invariant
+        #[expect(clippy::unwrap_used)] // by invariant
         CodePointInversionList::try_from_inversion_list(inv_list).unwrap()
     }
 
@@ -47,11 +47,11 @@ impl CodePointInversionListBuilder {
         let end_res = self.intervals.binary_search(&end);
         let mut start_ind = start_res.unwrap_or_else(|x| x);
         let mut end_ind = end_res.unwrap_or_else(|x| x);
-        let start_pos_check = (start_ind % 2 == 0) == add;
-        let end_pos_check = (end_ind % 2 == 0) == add;
+        let start_pos_check = start_ind.is_multiple_of(2) == add;
+        let end_pos_check = end_ind.is_multiple_of(2) == add;
         let start_eq_end = start_ind == end_ind;
 
-        #[allow(clippy::indexing_slicing)] // all indices are binary search results
+        #[expect(clippy::indexing_slicing)] // all indices are binary search results
         if start_eq_end && start_pos_check && end_res.is_err() {
             self.intervals.splice(start_ind..end_ind, [start, end]);
         } else {
@@ -182,7 +182,7 @@ impl CodePointInversionListBuilder {
     /// ```
     #[allow(unused_assignments)]
     pub fn add_set(&mut self, set: &CodePointInversionList) {
-        #[allow(clippy::indexing_slicing)] // chunks
+        #[expect(clippy::indexing_slicing)] // chunks
         set.as_inversion_list()
             .as_ule_slice()
             .chunks(2)
@@ -203,7 +203,7 @@ impl CodePointInversionListBuilder {
             return;
         }
         if let Some(&last) = self.intervals.last() {
-            #[allow(clippy::indexing_slicing)]
+            #[expect(clippy::indexing_slicing)]
             // by invariant, if we have a last we have a (different) first
             if start <= self.intervals[0] && end >= last {
                 self.intervals.clear();
@@ -267,7 +267,7 @@ impl CodePointInversionListBuilder {
     /// builder.remove_set(&set); // removes 'A'..='E'
     /// let check = builder.build();
     /// assert_eq!(check.iter_chars().next(), Some('F'));
-    #[allow(clippy::indexing_slicing)] // chunks
+    #[expect(clippy::indexing_slicing)] // chunks
     pub fn remove_set(&mut self, set: &CodePointInversionList) {
         set.as_inversion_list()
             .as_ule_slice()
@@ -350,7 +350,7 @@ impl CodePointInversionListBuilder {
     /// assert!(check.contains('A'));
     /// assert!(!check.contains('G'));
     /// ```
-    #[allow(clippy::indexing_slicing)] // chunks
+    #[expect(clippy::indexing_slicing)] // chunks
     pub fn retain_set(&mut self, set: &CodePointInversionList) {
         let mut prev = 0;
         for pair in set.as_inversion_list().as_ule_slice().chunks(2) {
@@ -414,7 +414,7 @@ impl CodePointInversionListBuilder {
     ///     0x0,
     ///     0x41,
     ///     0x46,
-    ///     (std::char::MAX as u32) + 1,
+    ///     (char::MAX as u32) + 1,
     /// ])
     /// .unwrap();
     /// builder.add_set(&set);
@@ -424,7 +424,7 @@ impl CodePointInversionListBuilder {
     /// ```
     pub fn complement(&mut self) {
         if !self.intervals.is_empty() {
-            #[allow(clippy::indexing_slicing)] // by invariant
+            #[expect(clippy::indexing_slicing)] // by invariant
             if self.intervals[0] == 0 {
                 self.intervals.drain(0..1);
             } else {
@@ -532,7 +532,6 @@ impl CodePointInversionListBuilder {
 #[cfg(test)]
 mod tests {
     use super::{CodePointInversionList, CodePointInversionListBuilder};
-    use core::char;
 
     fn generate_tester(ex: &[u32]) -> CodePointInversionListBuilder {
         let check = CodePointInversionList::try_from_u32_inversion_list_slice(ex).unwrap();

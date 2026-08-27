@@ -76,7 +76,7 @@ impl CodeGen {
         writeln!(out, "impl base::XidNew for {} {{", rs_typ)?;
         writeln!(
             out,
-            "    unsafe fn new(res_id: u32) -> Self {{ {} {{ res_id }} }}",
+            "    fn new(res_id: u32) -> Self {{ {} {{ res_id }} }}",
             rs_typ
         )?;
         writeln!(out, "}}")?;

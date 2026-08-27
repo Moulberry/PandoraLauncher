@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.71"
 name = "futures"
-version = "0.3.32"
+version = "0.3.34"
 build = false
 autolib = false
 autobins = false
@@ -130,6 +130,10 @@ path = "tests/bilock.rs"
 [[test]]
 name = "compat"
 path = "tests/compat.rs"
+
+[[test]]
+name = "compat_miri"
+path = "tests/compat_miri.rs"
 
 [[test]]
 name = "eager_drop"
@@ -340,33 +344,33 @@ name = "try_join"
 path = "tests/try_join.rs"
 
 [dependencies.futures-channel]
-version = "0.3.32"
+version = "0.3.34"
 features = ["sink"]
 default-features = false
 
 [dependencies.futures-core]
-version = "0.3.32"
+version = "0.3.34"
 default-features = false
 
 [dependencies.futures-executor]
-version = "0.3.32"
+version = "0.3.34"
 optional = true
 default-features = false
 
 [dependencies.futures-io]
-version = "0.3.32"
+version = "0.3.34"
 default-features = false
 
 [dependencies.futures-sink]
-version = "0.3.32"
+version = "0.3.34"
 default-features = false
 
 [dependencies.futures-task]
-version = "0.3.32"
+version = "0.3.34"
 default-features = false
 
 [dependencies.futures-util]
-version = "0.3.32"
+version = "0.3.34"
 features = ["sink"]
 default-features = false
 

@@ -230,11 +230,13 @@ pub(crate) struct Lexer {
     inside_token: bool,
     eof_handled: bool,
     reparse_depth: u8,
+    last_was_cr: bool,
     #[cfg(test)]
     skip_errors: bool,
 
     max_entity_expansion_depth: u8,
     max_entity_expansion_length: usize,
+    pub(crate) ignore_end_of_stream: bool,
 }
 
 impl Position for Lexer {
@@ -256,11 +258,13 @@ impl Lexer {
             inside_token: false,
             eof_handled: false,
             reparse_depth: 0,
+            last_was_cr: false,
             #[cfg(test)]
             skip_errors: false,
 
             max_entity_expansion_depth: config.max_entity_expansion_depth,
             max_entity_expansion_length: config.max_entity_expansion_length,
+            ignore_end_of_stream: config.ignore_end_of_stream,
         }
     }
 
@@ -311,7 +315,17 @@ impl Lexer {
         }
         // if char_queue is empty, all circular reparsing is done
         self.reparse_depth = 0;
-        while let Some(c) = self.reader.next_char_from(b)? {
+        while let Some(mut c) = self.reader.next_char_from(b)? {
+            if self.last_was_cr && c == '\n' {
+                self.last_was_cr = false;
+                continue;
+            }
+            self.last_was_cr = false;
+            if c == '\r' {
+                self.last_was_cr = true;
+                c = '\n';
+            }
+
             if c == '\n' {
                 self.head_pos.new_line();
             } else {
@@ -333,7 +347,9 @@ impl Lexer {
         self.eof_handled = true;
         self.pos = self.head_pos;
         match self.st {
-            State::InsideCdata | State::CDataClosing(_) => Err(self.error(SyntaxError::UnclosedCdata)),
+            State::InsideCdata | State::CDataClosing(_) if !self.ignore_end_of_stream =>
+                Err(self.error(SyntaxError::UnclosedCdata)),
+            State::InsideCdata | State::CDataClosing(_) |
             State::TagStarted | State::CommentOrCDataOrDoctypeStarted |
             State::CommentStarted | State::CDataStarted(_)| State::DoctypeStarted(_) |
             State::CommentClosing(_) |

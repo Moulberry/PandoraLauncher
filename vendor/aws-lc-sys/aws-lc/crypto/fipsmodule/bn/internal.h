@@ -307,7 +307,7 @@ OPENSSL_INLINE int bn_mul4x_mont_capable(size_t num) {
 }
 int bn_mul4x_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
                   const BN_ULONG *np, const BN_ULONG *n0, size_t num);
-#if !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
+#if !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2)
 OPENSSL_INLINE int bn_mulx4x_mont_capable(size_t num) {
   return bn_mul4x_mont_capable(num) && bn_mulx_adx_capable();
 }
@@ -318,7 +318,7 @@ OPENSSL_INLINE int bn_sqr8x_mont_capable(size_t num) {
 }
 int bn_sqr8x_mont(BN_ULONG *rp, const BN_ULONG *ap, BN_ULONG mulx_adx_capable,
                   const BN_ULONG *np, const BN_ULONG *n0, size_t num);
-#endif // !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
+#endif // !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2)
 #elif defined(OPENSSL_ARM)
   OPENSSL_INLINE int bn_mul8x_mont_neon_capable(size_t num) {
     return (num & 7) == 0 && CRYPTO_is_NEON_capable();

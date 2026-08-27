@@ -1,3 +1,4 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 #![allow(clippy::unusual_byte_groupings)]
 #![deny(rust_2018_idioms)]
 #![doc = include_str!("../README.md")]

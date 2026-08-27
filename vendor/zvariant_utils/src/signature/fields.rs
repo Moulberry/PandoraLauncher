@@ -38,6 +38,16 @@ impl Fields {
         }
     }
 
+    /// The field signature at index `i`, or `None` if `i >= self.len()`.
+    ///
+    /// Constant-time positional access.
+    pub fn get(&self, i: usize) -> Option<&Signature> {
+        match self {
+            Self::Static { fields } => fields.get(i).copied(),
+            Self::Dynamic { fields } => fields.get(i),
+        }
+    }
+
     /// The number of fields.
     pub const fn len(&self) -> usize {
         match self {

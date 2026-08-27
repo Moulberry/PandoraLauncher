@@ -12,8 +12,21 @@
 [package]
 edition = "2018"
 name = "combine"
-version = "4.6.7"
+version = "4.6.8"
 authors = ["Markus Westerlind <marwes91@gmail.com>"]
+build = false
+include = [
+    "Cargo.toml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "src/**/*.rs",
+]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Fast parser combinators on arbitrary streams with zero-copy support."
 documentation = "https://docs.rs/combine"
 readme = "README.md"
@@ -37,59 +50,48 @@ rustdoc-args = [
     "docsrs",
 ]
 
-[profile.bench]
-lto = true
-codegen-units = 1
+[features]
+alloc = []
+default = ["std"]
+futures-03 = [
+    "pin-project",
+    "std",
+    "futures-core-03",
+    "futures-io-03",
+    "pin-project-lite",
+]
+mp4 = []
+pin-project = ["pin-project-lite"]
+std = [
+    "memchr/std",
+    "bytes",
+    "alloc",
+]
+tokio = [
+    "tokio-dep",
+    "tokio-util/io",
+    "futures-core-03",
+    "pin-project-lite",
+]
+tokio-02 = [
+    "pin-project",
+    "std",
+    "tokio-02-dep",
+    "futures-core-03",
+    "pin-project-lite",
+    "bytes_05",
+]
+tokio-03 = [
+    "pin-project",
+    "std",
+    "tokio-03-dep",
+    "futures-core-03",
+    "pin-project-lite",
+]
 
 [lib]
 name = "combine"
 path = "src/lib.rs"
-
-[[example]]
-name = "async"
-required-features = [
-    "std",
-    "tokio",
-]
-
-[[example]]
-name = "date"
-
-[[example]]
-name = "number"
-
-[[example]]
-name = "readme"
-
-[[example]]
-name = "ini"
-
-[[test]]
-name = "async"
-required-features = [
-    "tokio-02",
-    "futures-io-03",
-]
-
-[[bench]]
-name = "json"
-harness = false
-required-features = ["std"]
-
-[[bench]]
-name = "http"
-harness = false
-required-features = ["std"]
-
-[[bench]]
-name = "mp4"
-harness = false
-required-features = ["mp4"]
-
-[[bench]]
-name = "buffers"
-harness = false
-required-features = ["std"]
 
 [dependencies.bytes]
 version = "1"
@@ -160,7 +162,7 @@ version = "0.5"
 package = "bytes"
 
 [dev-dependencies.criterion]
-version = "0.3"
+version = "0.7"
 default-features = false
 
 [dev-dependencies.futures-03-dep]
@@ -171,17 +173,17 @@ package = "futures"
 version = "1.0"
 
 [dev-dependencies.partial-io]
-version = "0.3"
+version = "0.5"
 features = [
     "tokio",
-    "quickcheck",
+    "quickcheck1",
 ]
 
 [dev-dependencies.quick-error]
-version = "1.0"
+version = "2.0"
 
 [dev-dependencies.quickcheck]
-version = "0.6"
+version = "1"
 
 [dev-dependencies.tokio-02-dep]
 version = "0.2"
@@ -213,41 +215,6 @@ features = [
 ]
 package = "tokio"
 
-[features]
-alloc = []
-default = ["std"]
-futures-03 = [
-    "pin-project",
-    "std",
-    "futures-core-03",
-    "futures-io-03",
-    "pin-project-lite",
-]
-mp4 = []
-pin-project = ["pin-project-lite"]
-std = [
-    "memchr/std",
-    "bytes",
-    "alloc",
-]
-tokio = [
-    "tokio-dep",
-    "tokio-util/io",
-    "futures-core-03",
-    "pin-project-lite",
-]
-tokio-02 = [
-    "pin-project",
-    "std",
-    "tokio-02-dep",
-    "futures-core-03",
-    "pin-project-lite",
-    "bytes_05",
-]
-tokio-03 = [
-    "pin-project",
-    "std",
-    "tokio-03-dep",
-    "futures-core-03",
-    "pin-project-lite",
-]
+[profile.bench]
+lto = true
+codegen-units = 1

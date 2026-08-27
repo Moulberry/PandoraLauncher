@@ -5,8 +5,8 @@ use alloc::string::String;
 use alloc::{vec, vec::Vec};
 use core::ops::Range;
 
-use crate::renderer::source_map::{as_substr, TrimmedPatch};
 use crate::Level;
+use crate::renderer::source_map::{TrimmedPatch, as_substr};
 
 pub(crate) const ERROR_TXT: &str = "error";
 pub(crate) const HELP_TXT: &str = "help";

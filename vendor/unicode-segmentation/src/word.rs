@@ -27,26 +27,33 @@ use crate::tables::word::WordCat;
 /// [`UnicodeSegmentation`]: trait.UnicodeSegmentation.html
 #[derive(Debug)]
 pub struct UnicodeWords<'a> {
-    inner: Filter<UWordBounds<'a>, fn(&&str) -> bool>,
+    inner: WordsIter<'a>,
 }
 
 impl<'a> Iterator for UnicodeWords<'a> {
     type Item = &'a str;
-
     #[inline]
-    fn next(&mut self) -> Option<&'a str> {
-        self.inner.next()
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.inner {
+            WordsIter::Ascii(i) => i.next(),
+            WordsIter::Unicode(i) => i.next(),
+        }
     }
-
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
+        match &self.inner {
+            WordsIter::Ascii(i) => i.size_hint(),
+            WordsIter::Unicode(i) => i.size_hint(),
+        }
     }
 }
 impl<'a> DoubleEndedIterator for UnicodeWords<'a> {
     #[inline]
-    fn next_back(&mut self) -> Option<&'a str> {
-        self.inner.next_back()
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match &mut self.inner {
+            WordsIter::Ascii(i) => i.next_back(),
+            WordsIter::Unicode(i) => i.next_back(),
+        }
     }
 }
 
@@ -65,27 +72,33 @@ impl<'a> DoubleEndedIterator for UnicodeWords<'a> {
 /// [`UnicodeSegmentation`]: trait.UnicodeSegmentation.html
 #[derive(Debug)]
 pub struct UnicodeWordIndices<'a> {
-    #[allow(clippy::type_complexity)]
-    inner: Filter<UWordBoundIndices<'a>, fn(&(usize, &str)) -> bool>,
+    inner: IndicesIter<'a>,
 }
 
 impl<'a> Iterator for UnicodeWordIndices<'a> {
     type Item = (usize, &'a str);
-
     #[inline]
-    fn next(&mut self) -> Option<(usize, &'a str)> {
-        self.inner.next()
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.inner {
+            IndicesIter::Ascii(i) => i.next(),
+            IndicesIter::Unicode(i) => i.next(),
+        }
     }
-
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
+        match &self.inner {
+            IndicesIter::Ascii(i) => i.size_hint(),
+            IndicesIter::Unicode(i) => i.size_hint(),
+        }
     }
 }
 impl<'a> DoubleEndedIterator for UnicodeWordIndices<'a> {
     #[inline]
-    fn next_back(&mut self) -> Option<(usize, &'a str)> {
-        self.inner.next_back()
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match &mut self.inner {
+            IndicesIter::Ascii(i) => i.next_back(),
+            IndicesIter::Unicode(i) => i.next_back(),
+        }
     }
 }
 
@@ -456,6 +469,12 @@ impl<'a> DoubleEndedIterator for UWordBounds<'a> {
         let mut savestate = Start;
         let mut cat = wd::WC_Any;
 
+        // WB3c is context-sensitive (ZWJ + Extended_Pictographic),
+        // while WB4 collapses Extend/Format and would otherwise hide that context.
+        // We therefore keep this context outside the main state machine:
+        // whether the nearest non-(Extend|Format) char to the right is emoji.
+        let mut right_significant_is_emoji: bool = false;
+
         let mut skipped_format_extend = false;
 
         for (curr, ch) in self.string.char_indices().rev() {
@@ -474,6 +493,18 @@ impl<'a> DoubleEndedIterator for UWordBounds<'a> {
             // (1) If we encounter a single quote in the Start state, we have to check for a
             //     Hebrew Letter immediately before it.
             // (2) Format and Extend char handling takes some gymnastics.
+
+            // Reverse-direction WB3c check: when we encounter ZWJ and the nearest
+            // significant right-side char is emoji, do not break here.
+            if cat == wd::WC_ZWJ && state != Zwj && right_significant_is_emoji {
+                continue;
+            }
+
+            // Keep the right-side WB3c context up to date as we move left.
+            // Ignore Extend/Format here to mirror WB4 collapsing behavior.
+            if cat != wd::WC_Extend && cat != wd::WC_Format {
+                right_significant_is_emoji = is_emoji(ch);
+            }
 
             if cat == wd::WC_Extend || cat == wd::WC_Format || (cat == wd::WC_ZWJ && state != Zwj) {
                 // WB3c has more priority so we should not
@@ -498,11 +529,10 @@ impl<'a> DoubleEndedIterator for UWordBounds<'a> {
             // Don't use `continue` in this match without updating `catb`
             state = match state {
                 Start | FormatExtend(AcceptAny) => match cat {
-                    _ if is_emoji(ch) => Zwj,
-                    wd::WC_ALetter => Letter, // rule WB5, WB7, WB10, WB13b
-                    wd::WC_Hebrew_Letter => HLetter, // rule WB5, WB7, WB7c, WB10, WB13b
-                    wd::WC_Numeric => Numeric, // rule WB8, WB9, WB11, WB13b
-                    wd::WC_Katakana => Katakana, // rule WB13, WB13b
+                    wd::WC_ALetter => Letter,            // rule WB5, WB7, WB10, WB13b
+                    wd::WC_Hebrew_Letter => HLetter,     // rule WB5, WB7, WB7c, WB10, WB13b
+                    wd::WC_Numeric => Numeric,           // rule WB8, WB9, WB11, WB13b
+                    wd::WC_Katakana => Katakana,         // rule WB13, WB13b
                     wd::WC_ExtendNumLet => ExtendNumLet, // rule WB13a
                     wd::WC_Regional_Indicator => Regional(RegionalState::Unknown), // rule WB13c
                     // rule WB4:
@@ -525,6 +555,7 @@ impl<'a> DoubleEndedIterator for UWordBounds<'a> {
                         }
                         break; // rule WB3a
                     }
+                    _ if is_emoji(ch) => Zwj,
                     _ => break, // rule WB999
                 },
                 Zwj => match cat {
@@ -717,6 +748,246 @@ impl<'a> UWordBounds<'a> {
     }
 }
 
+/// ASCII‑fast‑path word‑boundary iterator for strings that contain only ASCII characters.
+///
+/// Since we handle only ASCII characters, we can use a much simpler set of
+/// word break values than the full Unicode algorithm.
+/// https://www.unicode.org/reports/tr29/#Table_Word_Break_Property_Values
+///
+/// | Word_Break value | ASCII code points that belong to it                             |
+/// | -----------------| --------------------------------------------------------------- |
+/// | CR               | U+000D (CR)                                                     |
+/// | LF               | U+000A (LF)                                                     |
+/// | Newline          | U+000B (VT), U+000C (FF)                                        |
+/// | Single_Quote     | U+0027 (')                                                      |
+/// | Double_Quote     | U+0022 (")                                                      |
+/// | MidNumLet        | U+002E (.) FULL STOP                                            |
+/// | MidLetter        | U+003A (:) COLON                                                |
+/// | MidNum           | U+002C (,), U+003B (;)                                          |
+/// | Numeric          | U+0030 – U+0039 (0 … 9)                                         |
+/// | ALetter          | U+0041 – U+005A (A … Z), U+0061 – U+007A (a … z)                |
+/// | ExtendNumLet     | U+005F (_) underscore                                           |
+/// | WSegSpace        | U+0020 (SPACE)                                                  |
+///
+/// The macro MidNumLetQ boils down to: U+002E (.) FULL STOP and U+0027 (')
+/// AHLetter is the same as ALetter, so we don't need to distinguish it.
+///
+/// Any other single ASCII byte is its own boundary (the default WB999).
+#[derive(Debug)]
+struct AsciiWordBoundIter<'a> {
+    rest: &'a str,
+    offset: usize,
+}
+
+impl<'a> AsciiWordBoundIter<'a> {
+    pub fn new(s: &'a str) -> Self {
+        AsciiWordBoundIter { rest: s, offset: 0 }
+    }
+
+    #[inline]
+    fn is_core(b: u8) -> bool {
+        b.is_ascii_alphanumeric() || b == b'_'
+    }
+
+    #[inline]
+    fn is_infix(b: u8, prev: u8, next: u8) -> bool {
+        match b {
+            // Numeric separators such as "1,000" or "3.14" (WB11/WB12)
+            //
+            // "Numeric (MidNum | MidNumLetQ) Numeric"
+            b'.' | b',' | b';' | b'\'' if prev.is_ascii_digit() && next.is_ascii_digit() => true,
+
+            // Dot or colon inside an alphabetic word ("e.g.", "http://") (WB6/WB7)
+            //
+            // "(MidLetter | MidNumLetQ) AHLetter (MidLetter | MidNumLetQ)"
+            // MidLetter  = b':'
+            // MidNumLetQ = b'.' | b'\''
+            b'\'' | b'.' | b':' if prev.is_ascii_alphabetic() && next.is_ascii_alphabetic() => true,
+            _ => false,
+        }
+    }
+}
+
+impl<'a> Iterator for AsciiWordBoundIter<'a> {
+    type Item = (usize, &'a str);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.rest.is_empty() {
+            return None;
+        }
+
+        let bytes = self.rest.as_bytes();
+        let len = bytes.len();
+
+        // 1) Keep horizontal whitespace together.
+        // Spec: WB3d joins adjacent *WSegSpace* into a single segment.
+        if bytes[0] == b' ' {
+            let mut i = 1;
+            while i < len && bytes[i] == b' ' {
+                i += 1;
+            }
+            let word = &self.rest[..i];
+            let pos = self.offset;
+            self.rest = &self.rest[i..];
+            self.offset += i;
+            return Some((pos, word));
+        }
+
+        // 2) Core-run (letters/digits/underscore + infix)
+        // Spec: ALetter × ALetter, Numeric × Numeric etc. (WB5–WB13b)
+        if Self::is_core(bytes[0]) {
+            let mut i = 1;
+            while i < len {
+                let b = bytes[i];
+                if Self::is_core(b)
+                    || (i + 1 < len && Self::is_infix(b, bytes[i - 1], bytes[i + 1]))
+                {
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            let word = &self.rest[..i];
+            let pos = self.offset;
+            self.rest = &self.rest[i..];
+            self.offset += i;
+            return Some((pos, word));
+        }
+
+        // 3) Do not break within CRLF.
+        // Spec: WB3 treats CR+LF as a single non‑breaking pair.
+        if bytes[0] == b'\r' && len >= 2 && bytes[1] == b'\n' {
+            let word = &self.rest[..2];
+            let pos = self.offset;
+            self.rest = &self.rest[2..];
+            self.offset += 2;
+            Some((pos, word))
+        } else {
+            // 4) Otherwise, break everywhere
+            // Spec: the catch‑all rule WB999.
+            let word = &self.rest[..1];
+            let pos = self.offset;
+            self.rest = &self.rest[1..];
+            self.offset += 1;
+            Some((pos, word))
+        }
+    }
+}
+
+impl<'a> DoubleEndedIterator for AsciiWordBoundIter<'a> {
+    fn next_back(&mut self) -> Option<(usize, &'a str)> {
+        let rest = self.rest;
+        if rest.is_empty() {
+            return None;
+        }
+        let bytes = rest.as_bytes();
+        let len = bytes.len();
+
+        // 1) Group runs of spaces
+        // Spec: WB3d joins adjacent *WSegSpace* into a single segment.
+        if bytes[len - 1] == b' ' {
+            // find start of this last run of spaces
+            let mut start = len - 1;
+            while start > 0 && bytes[start - 1] == b' ' {
+                start -= 1;
+            }
+            let word = &rest[start..];
+            let pos = self.offset + start;
+            self.rest = &rest[..start];
+            return Some((pos, word));
+        }
+
+        // 2) Trailing Core-run (letters/digits/underscore + infix)
+        // Spec: ALetter × ALetter, Numeric × Numeric etc. (WB5–WB13b)
+        if Self::is_core(bytes[len - 1]) {
+            // scan backwards as long as we see `is_core` or an `is_infix`
+            let mut start = len - 1;
+            while start > 0 {
+                let b = bytes[start - 1];
+                let prev = if start >= 2 { bytes[start - 2] } else { b };
+                let next = bytes[start]; // the byte we just included
+                if Self::is_core(b) || Self::is_infix(b, prev, next) {
+                    start -= 1;
+                } else {
+                    break;
+                }
+            }
+            let word = &rest[start..];
+            let pos = self.offset + start;
+            self.rest = &rest[..start];
+            return Some((pos, word));
+        }
+
+        // 3) Non-core: CR+LF as one token, otherwise single char
+        // Spec: WB3 treats CR+LF as a single non‑breaking pair.
+        if len >= 2 && bytes[len - 2] == b'\r' && bytes[len - 1] == b'\n' {
+            let start = len - 2;
+            let word = &rest[start..];
+            let pos = self.offset + start;
+            self.rest = &rest[..start];
+            return Some((pos, word));
+        }
+
+        // 4) Fallback – every other byte is its own segment
+        // Spec: the catch‑all rule WB999.
+        let start = len - 1;
+        let word = &rest[start..];
+        let pos = self.offset + start;
+        self.rest = &rest[..start];
+        Some((pos, word))
+    }
+}
+
+#[inline]
+fn ascii_word_ok(t: &(usize, &str)) -> bool {
+    has_ascii_alphanumeric(&t.1)
+}
+#[inline]
+fn unicode_word_ok(t: &(usize, &str)) -> bool {
+    has_alphanumeric(&t.1)
+}
+
+type AsciiWordsIter<'a> = Filter<
+    core::iter::Map<AsciiWordBoundIter<'a>, fn((usize, &'a str)) -> &'a str>,
+    fn(&&'a str) -> bool,
+>;
+type UnicodeWordsIter<'a> = Filter<UWordBounds<'a>, fn(&&'a str) -> bool>;
+type AsciiIndicesIter<'a> = Filter<AsciiWordBoundIter<'a>, fn(&(usize, &'a str)) -> bool>;
+type UnicodeIndicesIter<'a> = Filter<UWordBoundIndices<'a>, fn(&(usize, &'a str)) -> bool>;
+
+#[derive(Debug)]
+enum WordsIter<'a> {
+    Ascii(AsciiWordsIter<'a>),
+    Unicode(UnicodeWordsIter<'a>),
+}
+
+#[derive(Debug)]
+enum IndicesIter<'a> {
+    Ascii(AsciiIndicesIter<'a>),
+    Unicode(UnicodeIndicesIter<'a>),
+}
+
+#[inline]
+pub fn new_unicode_words(s: &str) -> UnicodeWords<'_> {
+    let inner = if s.is_ascii() {
+        WordsIter::Ascii(new_unicode_words_ascii(s))
+    } else {
+        WordsIter::Unicode(new_unicode_words_general(s))
+    };
+    UnicodeWords { inner }
+}
+
+#[inline]
+pub fn new_unicode_word_indices(s: &str) -> UnicodeWordIndices<'_> {
+    let inner = if s.is_ascii() {
+        IndicesIter::Ascii(new_ascii_word_bound_indices(s).filter(ascii_word_ok))
+    } else {
+        IndicesIter::Unicode(new_word_bound_indices(s).filter(unicode_word_ok))
+    };
+    UnicodeWordIndices { inner }
+}
+
 #[inline]
 pub fn new_word_bounds(s: &str) -> UWordBounds<'_> {
     UWordBounds {
@@ -735,6 +1006,11 @@ pub fn new_word_bound_indices(s: &str) -> UWordBoundIndices<'_> {
 }
 
 #[inline]
+fn new_ascii_word_bound_indices(s: &str) -> AsciiWordBoundIter<'_> {
+    AsciiWordBoundIter::new(s)
+}
+
+#[inline]
 fn has_alphanumeric(s: &&str) -> bool {
     use crate::tables::util::is_alphanumeric;
 
@@ -742,27 +1018,38 @@ fn has_alphanumeric(s: &&str) -> bool {
 }
 
 #[inline]
-pub fn new_unicode_words(s: &str) -> UnicodeWords<'_> {
-    use super::UnicodeSegmentation;
+fn has_ascii_alphanumeric(s: &&str) -> bool {
+    s.chars().any(|c| c.is_ascii_alphanumeric())
+}
 
-    UnicodeWords {
-        inner: s.split_word_bounds().filter(has_alphanumeric),
-    }
+#[inline(always)]
+fn strip_pos((_, w): (usize, &str)) -> &str {
+    w
 }
 
 #[inline]
-pub fn new_unicode_word_indices(s: &str) -> UnicodeWordIndices<'_> {
-    use super::UnicodeSegmentation;
+fn new_unicode_words_ascii<'a>(s: &'a str) -> AsciiWordsIter<'a> {
+    new_ascii_word_bound_indices(s)
+        .map(strip_pos as fn(_) -> _)
+        .filter(has_ascii_alphanumeric)
+}
 
-    UnicodeWordIndices {
-        inner: s
-            .split_word_bound_indices()
-            .filter(|(_, c)| has_alphanumeric(c)),
-    }
+#[inline]
+fn new_unicode_words_general<'a>(s: &'a str) -> UnicodeWordsIter<'a> {
+    new_word_bounds(s).filter(has_alphanumeric)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::word::{
+        new_ascii_word_bound_indices, new_unicode_words_ascii, new_word_bound_indices,
+    };
+    use std::string::String;
+    use std::vec;
+    use std::vec::Vec;
+
+    use proptest::prelude::*;
+
     #[test]
     fn test_syriac_abbr_mark() {
         use crate::tables::word as wd;
@@ -775,5 +1062,71 @@ mod tests {
         use crate::tables::word as wd;
         let (_, _, cat) = wd::word_category('\u{6dd}');
         assert_eq!(cat, wd::WC_Numeric);
+    }
+
+    #[test]
+    fn test_ascii_word_bound_indices_various_cases() {
+        let s = "Hello, world!";
+        let words: Vec<(usize, &str)> = new_ascii_word_bound_indices(s).collect();
+        let expected = vec![
+            (0, "Hello"), // simple letters
+            (5, ","),
+            (6, " "),     // space after comma
+            (7, "world"), // skip comma+space, stop at '!'
+            (12, "!"),    // punctuation at the end
+        ];
+        assert_eq!(words, expected);
+    }
+
+    #[test]
+    fn test_ascii_word_indices_various_cases() {
+        let s = "Hello, world! can't e.g. var1 123,456 foo_bar example.com 127.0.0.1:9090";
+        let words: Vec<&str> = new_unicode_words_ascii(s).collect();
+        let expected = vec![
+            ("Hello"), // simple letters
+            ("world"), // skip comma+space, stop at '!'
+            ("can't"), // apostrophe joins letters
+            ("e.g"),
+            ("var1"),
+            ("123,456"), // digits+comma+digits
+            ("foo_bar"),
+            ("example.com"),
+            ("127.0.0.1"),
+            ("9090"), // port number
+        ];
+        assert_eq!(words, expected);
+    }
+
+    /// Strategy that yields every code-point from NUL (0) to DEL (127).
+    fn ascii_char() -> impl Strategy<Value = char> {
+        (0u8..=127).prop_map(|b| b as char)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(10000))]
+        /// Fast path must equal general path for any ASCII input.
+        #[test]
+        fn proptest_ascii_matches_unicode_word_indices(
+            // Vec<char> → String, length 0‒99
+            s in proptest::collection::vec(ascii_char(), 0..100)
+                   .prop_map(|v| v.into_iter().collect::<String>())
+        ) {
+            let fast: Vec<(usize, &str)> = new_ascii_word_bound_indices(&s).collect();
+            let uni:  Vec<(usize, &str)> = new_word_bound_indices(&s).collect();
+
+            prop_assert_eq!(fast, uni);
+        }
+
+        /// Fast path must equal general path for any ASCII input, forwards and backwards.
+        #[test]
+        fn proptest_ascii_matches_unicode_word_indices_rev(
+            // Vec<char> → String, length 0‒99
+            s in proptest::collection::vec(ascii_char(), 0..100)
+                   .prop_map(|v| v.into_iter().collect::<String>())
+        ) {
+            let fast_rev: Vec<(usize, &str)> = new_ascii_word_bound_indices(&s).rev().collect();
+            let uni_rev : Vec<(usize, &str)> = new_word_bound_indices(&s).rev().collect();
+            prop_assert_eq!(fast_rev, uni_rev);
+        }
     }
 }

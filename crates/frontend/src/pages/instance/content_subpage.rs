@@ -302,21 +302,23 @@ impl Render for InstanceContentSubpage {
             }))
             .child(DropdownButton::new("addcontent")
                 .success()
-                .compact()
                 .small()
                 .button(match source {
                     PreferredAddContentSource::Modrinth => {
                         Button::new("addmr")
+                            .compact()
                             .label(t::instance::content::install::from_modrinth())
                             .on_click(cx.listener(InstanceContentSubpage::add_from_modrinth))
                     },
                     PreferredAddContentSource::CurseForge => {
                         Button::new("addcf")
+                            .compact()
                             .label(t::instance::content::install::from_curseforge())
                             .on_click(cx.listener(InstanceContentSubpage::add_from_curseforge))
                     },
                     PreferredAddContentSource::File => {
                         Button::new("addfile")
+                            .compact()
                             .label(t::instance::content::install::from_file())
                             .on_click(cx.listener(InstanceContentSubpage::add_from_file))
                     },

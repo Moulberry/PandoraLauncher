@@ -1,4 +1,5 @@
 #[cfg(feature = "gvariant")]
+#[allow(deprecated)]
 use crate::Maybe;
 use crate::{
     Array, Dict, Error, NoneValue, ObjectPath, Optional, OwnedObjectPath, Signature, Str,
@@ -110,12 +111,17 @@ value_try_from!(Array, Array<'a>);
 value_try_from_ref!(Array, Array<'a>);
 value_try_from_ref_try_clone!(Array, Array<'a>);
 
+// `#[allow(deprecated)]` can't attach to a macro invocation directly, hence the wrapping
+// module.
 #[cfg(feature = "gvariant")]
-value_try_from!(Maybe, Maybe<'a>);
-#[cfg(feature = "gvariant")]
-value_try_from_ref!(Maybe, Maybe<'a>);
-#[cfg(feature = "gvariant")]
-value_try_from_ref_try_clone!(Maybe, Maybe<'a>);
+#[allow(deprecated)]
+mod maybe_value_impls {
+    use super::*;
+
+    value_try_from!(Maybe, Maybe<'a>);
+    value_try_from_ref!(Maybe, Maybe<'a>);
+    value_try_from_ref_try_clone!(Maybe, Maybe<'a>);
+}
 
 #[cfg(unix)]
 value_try_from!(Fd, Fd<'a>);

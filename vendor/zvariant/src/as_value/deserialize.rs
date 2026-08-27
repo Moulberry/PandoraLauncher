@@ -30,6 +30,13 @@ impl<'de, T: Type + serde::Deserialize<'de>> serde::Deserialize<'de> for Deseria
     where
         D: Deserializer<'de>,
     {
+        // `Value`/`OwnedValue` (and any other type whose signature is already `v`) deserialize
+        // themselves from a variant, so the extra unwrapping below would expect a
+        // variant-of-variant. Just delegate to their own `Deserialize` impl in that case.
+        if T::SIGNATURE == &Signature::Variant {
+            return Ok(Deserialize(T::deserialize(deserializer)?, PhantomData));
+        }
+
         const FIELDS: &[&str] = &["signature", "value"];
         Ok(Deserialize(
             deserializer.deserialize_struct(

@@ -1,0 +1,133 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+"https://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+ <interface name="org.freedesktop.DBus.Peer">
+  <method name="Ping"/>
+  <method name="GetMachineId">
+   <arg type="s" name="machine_uuid" direction="out"/>
+  </method>
+ </interface>
+ <interface name="org.freedesktop.DBus.Introspectable">
+  <method name="Introspect">
+   <arg name="xml_data" type="s" direction="out"/>
+  </method>
+ </interface>
+ <interface name="org.freedesktop.DBus.Properties">
+  <method name="Get">
+   <arg name="interface_name" direction="in" type="s"/>
+   <arg name="property_name" direction="in" type="s"/>
+   <arg name="value" direction="out" type="v"/>
+  </method>
+  <method name="GetAll">
+   <arg name="interface_name" direction="in" type="s"/>
+   <arg name="props" direction="out" type="a{sv}"/>
+  </method>
+  <method name="Set">
+   <arg name="interface_name" direction="in" type="s"/>
+   <arg name="property_name" direction="in" type="s"/>
+   <arg name="value" direction="in" type="v"/>
+  </method>
+  <signal name="PropertiesChanged">
+   <arg type="s" name="interface_name"/>
+   <arg type="a{sv}" name="changed_properties"/>
+   <arg type="as" name="invalidated_properties"/>
+  </signal>
+ </interface>
+ <interface name="org.freedesktop.network1.Manager">
+  <property name="OperationalState" type="s" access="read">
+  </property>
+  <property name="CarrierState" type="s" access="read">
+  </property>
+  <property name="AddressState" type="s" access="read">
+  </property>
+  <property name="IPv4AddressState" type="s" access="read">
+  </property>
+  <property name="IPv6AddressState" type="s" access="read">
+  </property>
+  <property name="OnlineState" type="s" access="read">
+  </property>
+  <property name="NamespaceId" type="t" access="read">
+   <annotation name="org.freedesktop.DBus.Property.EmitsChangedSignal" value="const"/>
+  </property>
+  <method name="ListLinks">
+   <arg type="a(iso)" name="links" direction="out"/>
+  </method>
+  <method name="GetLinkByName">
+   <arg type="s" name="name" direction="in"/>
+   <arg type="i" name="ifindex" direction="out"/>
+   <arg type="o" name="path" direction="out"/>
+  </method>
+  <method name="GetLinkByIndex">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="s" name="name" direction="out"/>
+   <arg type="o" name="path" direction="out"/>
+  </method>
+  <method name="SetLinkNTP">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="as" name="servers" direction="in"/>
+  </method>
+  <method name="SetLinkDNS">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="a(iay)" name="addresses" direction="in"/>
+  </method>
+  <method name="SetLinkDNSEx">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="a(iayqs)" name="addresses" direction="in"/>
+  </method>
+  <method name="SetLinkDomains">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="a(sb)" name="domains" direction="in"/>
+  </method>
+  <method name="SetLinkDefaultRoute">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="b" name="enable" direction="in"/>
+  </method>
+  <method name="SetLinkLLMNR">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="s" name="mode" direction="in"/>
+  </method>
+  <method name="SetLinkMulticastDNS">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="s" name="mode" direction="in"/>
+  </method>
+  <method name="SetLinkDNSOverTLS">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="s" name="mode" direction="in"/>
+  </method>
+  <method name="SetLinkDNSSEC">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="s" name="mode" direction="in"/>
+  </method>
+  <method name="SetLinkDNSSECNegativeTrustAnchors">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="as" name="names" direction="in"/>
+  </method>
+  <method name="RevertLinkNTP">
+   <arg type="i" name="ifindex" direction="in"/>
+  </method>
+  <method name="RevertLinkDNS">
+   <arg type="i" name="ifindex" direction="in"/>
+  </method>
+  <method name="RenewLink">
+   <arg type="i" name="ifindex" direction="in"/>
+  </method>
+  <method name="ForceRenewLink">
+   <arg type="i" name="ifindex" direction="in"/>
+  </method>
+  <method name="ReconfigureLink">
+   <arg type="i" name="ifindex" direction="in"/>
+  </method>
+  <method name="Reload">
+  </method>
+  <method name="DescribeLink">
+   <arg type="i" name="ifindex" direction="in"/>
+   <arg type="s" name="json" direction="out"/>
+  </method>
+  <method name="Describe">
+   <arg type="s" name="json" direction="out"/>
+  </method>
+ </interface>
+ <node name="network"/>
+ <node name="link"/>
+</node>
+

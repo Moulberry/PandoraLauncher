@@ -31,6 +31,7 @@ pub fn enum_variant_names_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
         .collect::<syn::Result<Vec<LitStr>>>()?;
 
     Ok(quote! {
+        #[automatically_derived]
         impl #impl_generics #strum_module_path::VariantNames for #name #ty_generics #where_clause {
             const VARIANTS: &'static [&'static str] = &[ #(#names),* ];
         }

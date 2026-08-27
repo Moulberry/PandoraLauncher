@@ -297,7 +297,7 @@ impl<'a, W: Write> Encoder<'a, W> {
         self.info.bit_depth = depth;
     }
 
-    /// Set compression parameters, see [Compression] for the available options.
+    /// Set compression parameters, see [`Compression`] for the available options.
     pub fn set_compression(&mut self, compression: Compression) {
         self.set_deflate_compression(DeflateCompression::from_simple(compression));
         self.set_filter(Filter::from_simple(compression));
@@ -305,7 +305,9 @@ impl<'a, W: Write> Encoder<'a, W> {
 
     /// Provides in-depth customization of DEFLATE compression options.
     ///
-    /// For a simpler selection of compression options see [Self::set_compression].
+    /// For a simpler selection of compression options see [`set_compression`].
+    ///
+    /// [`set_compression`]: Self::set_compression
     pub fn set_deflate_compression(&mut self, compression: DeflateCompression) {
         self.options.compression = compression;
     }

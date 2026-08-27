@@ -1,4 +1,6 @@
-use crate::legacy::internal::pixel::{ComponentMap, ColorComponentMap, ComponentSlice};
+use crate::legacy::internal::pixel::{ComponentMap, ColorComponentMap};
+#[allow(deprecated)]
+use crate::legacy::internal::pixel::ComponentSlice;
 use core::slice;
 
 pub use crate::formats::gray::Gray_v08 as Gray;
@@ -170,6 +172,7 @@ impl<T: Copy, A: Copy, B> ColorComponentMap<GrayAlpha<B, A>, T, B> for GrayAlpha
     }
 }
 
+#[allow(deprecated)]
 impl<T> ComponentSlice<T> for GrayAlpha<T> {
     #[inline(always)]
     fn as_slice(&self) -> &[T] {
@@ -186,6 +189,7 @@ impl<T> ComponentSlice<T> for GrayAlpha<T> {
     }
 }
 
+#[allow(deprecated)]
 impl<T> ComponentSlice<T> for [GrayAlpha<T>] {
     #[inline]
     fn as_slice(&self) -> &[T] {
@@ -202,6 +206,7 @@ impl<T> ComponentSlice<T> for [GrayAlpha<T>] {
     }
 }
 
+#[allow(deprecated)]
 impl<T> ComponentSlice<T> for Gray<T> {
     #[inline(always)]
     #[allow(deprecated)]
@@ -216,6 +221,7 @@ impl<T> ComponentSlice<T> for Gray<T> {
     }
 }
 
+#[allow(deprecated)]
 impl<T> ComponentSlice<T> for [Gray<T>] {
     #[inline]
     fn as_slice(&self) -> &[T] {
@@ -248,54 +254,4 @@ impl<T: Copy> From<Gray<T>> for GrayAlpha<T, u16> {
     fn from(other: Gray<T>) -> Self {
         Self(other.0, 0xFFFF)
     }
-}
-
-#[test]
-#[allow(deprecated)]
-fn gray() {
-    let rgb: crate::RGB<_> = Gray(1).into();
-    assert_eq!(rgb.r, 1);
-    assert_eq!(rgb.g, 1);
-    assert_eq!(rgb.b, 1);
-
-    let rgba: crate::RGBA<_> = Gray(1u8).into();
-    assert_eq!(rgba.r, 1);
-    assert_eq!(rgba.g, 1);
-    assert_eq!(rgba.b, 1);
-    assert_eq!(rgba.a, 255);
-
-    let g: GRAY8 = 200.into();
-    let g = g.map(|c| c / 2);
-    #[cfg(not(feature = "unstable-experimental"))]
-    assert_eq!(110, *g + 10);
-    #[cfg(not(feature = "unstable-experimental"))]
-    assert_eq!(110, 10 + Gray(100).as_ref());
-
-    let ga: GRAYA8 = GrayAlpha(1, 2);
-    assert_eq!(ga.gray(), Gray::new(1));
-    let mut g2 = ga.clone();
-    *g2.gray_mut() = Gray(3);
-    assert_eq!(g2.map_gray(|g| g + 1), GRAYA8::new(4, 2));
-    assert_eq!(g2.map(|g| g + 1), GrayAlpha(4, 3));
-    assert_eq!(g2.0, 3);
-    assert_eq!(g2.as_slice(), &[3, 2]);
-    assert_eq!(g2.as_mut_slice(), &[3, 2]);
-    assert_eq!(g2.with_alpha(13), GrayAlpha(3, 13));
-    assert_eq!(g2.map_alpha(|x| x + 3), GrayAlpha(3, 5));
-
-    assert_eq!((&[Gray(1u16), Gray(2)][..]).as_slice(), &[1, 2]);
-    assert_eq!((&[GrayAlpha(1u16, 2), GrayAlpha(3, 4)][..]).as_slice(), &[1, 2, 3, 4]);
-
-    let rgba: crate::RGBA<_> = ga.into();
-    assert_eq!(rgba.r, 1);
-    assert_eq!(rgba.g, 1);
-    assert_eq!(rgba.b, 1);
-    assert_eq!(rgba.a, 2);
-
-    let ga: GRAYA16 = GrayAlpha(1, 2);
-    let rgba: crate::RGBA<u16, u16> = ga.into();
-    assert_eq!(rgba.r, 1);
-    assert_eq!(rgba.g, 1);
-    assert_eq!(rgba.b, 1);
-    assert_eq!(rgba.a, 2);
 }

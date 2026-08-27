@@ -457,7 +457,7 @@ impl UsbProxy {
     #[doc(alias = "DeviceEvents")]
     pub async fn receive_device_events(
         &self,
-    ) -> Result<impl Stream<Item = UsbDeviceEvent> + use<'_>, Error> {
+    ) -> Result<impl Stream<Item = UsbDeviceEvent> + use<>, Error> {
         self.0.signal("DeviceEvents").await
     }
 }

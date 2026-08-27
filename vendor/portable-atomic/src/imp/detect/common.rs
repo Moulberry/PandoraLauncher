@@ -40,10 +40,37 @@ pub(crate) fn detect() -> CpuInfo {
     // Note: detect_false cfg is intended to make it easy for developers to test
     // cases where features usually available is not available, and is not a public API.
     if !cfg!(portable_atomic_test_detect_false) {
-        _detect(&mut info);
+        info = _detect(info);
     }
-    CACHE.store(info.0, Ordering::Relaxed);
-    info
+    if cfg!(any(
+        all(
+            target_arch = "x86_64",
+            not(any(target_feature = "cmpxchg16b", portable_atomic_target_feature = "cmpxchg16b")),
+        ),
+        all(
+            target_arch = "powerpc64",
+            not(any(
+                target_feature = "quadword-atomics",
+                portable_atomic_target_feature = "quadword-atomics",
+            )),
+        ),
+        all(
+            any(target_arch = "riscv32", target_arch = "riscv64"),
+            not(any(target_feature = "zacas", portable_atomic_target_feature = "zacas")),
+        ),
+    )) {
+        // Use CAS if the detection result affects lock-freeness.
+        match CACHE.compare_exchange(0, info.0, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => info,
+            Err(info) => {
+                debug_assert_ne!(info, 0);
+                CpuInfo(info)
+            }
+        }
+    } else {
+        CACHE.store(info.0, Ordering::Relaxed);
+        info
+    }
 }
 
 macro_rules! flags {
@@ -91,72 +118,114 @@ macro_rules! flags {
     };
 }
 
-// rustc definitions: https://github.com/rust-lang/rust/blob/e6af292f91f21f12ac1aab6825efb7e1e3381cbb/compiler/rustc_target/src/target_features.rs
+// rustc definitions: https://github.com/rust-lang/rust/blob/ddaf12390d3ffb7d5ba74491a48f3cd528e5d777/compiler/rustc_target/src/target_features.rs
 
-// LLVM definitions: https://github.com/llvm/llvm-project/blob/llvmorg-20.1.0/llvm/lib/Target/AArch64/AArch64Features.td
+// LLVM definitions: https://github.com/llvm/llvm-project/blob/llvmorg-22.1.0-rc1/llvm/lib/Target/AArch64/AArch64Features.td
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
 flags! {
+    // The Armv8.1 architecture extension
+    // https://developer.arm.com/documentation/109697/2025_06/Feature-descriptions/The-Armv8-1-architecture-extension
     // FEAT_LSE, Large System Extensions
-    // https://developer.arm.com/documentation/109697/2024_12/Feature-descriptions/The-Armv8-1-architecture-extension
     // > This feature is supported in AArch64 state only.
     // > FEAT_LSE is OPTIONAL from Armv8.0.
     // > FEAT_LSE is mandatory from Armv8.1.
     lse("lse", any(target_feature /* 1.61+ */, portable_atomic_target_feature)),
+
+    // The Armv8.3 architecture extension
+    // https://developer.arm.com/documentation/109697/2025_06/Feature-descriptions/The-Armv8-3-architecture-extension
+    // FEAT_LRCPC, Load-Acquire RCpc instructions
+    // > These instructions are added to the A64 instruction set only.
+    // > FEAT_LRCPC is OPTIONAL from Armv8.2.
+    // > FEAT_LRCPC is mandatory from Armv8.3.
+    #[cfg(test)] // test-only
+    rcpc("rcpc", any(target_feature /* 1.61+ */)),
+
+    // The Armv8.4 architecture extension
+    // https://developer.arm.com/documentation/109697/2025_06/Feature-descriptions/The-Armv8-4-architecture-extension
     // FEAT_LSE2, Large System Extensions version 2
-    // https://developer.arm.com/documentation/109697/2024_12/Feature-descriptions/The-Armv8-4-architecture-extension
     // > This feature is supported in AArch64 state only.
     // > FEAT_LSE2 is OPTIONAL from Armv8.2.
     // > FEAT_LSE2 is mandatory from Armv8.4.
     #[cfg_attr(not(test), allow(dead_code))]
     lse2("lse2", any(target_feature /* nightly */, portable_atomic_target_feature)),
+    // FEAT_LRCPC2, Load-Acquire RCpc instructions version 2
+    // > These instructions are added to the A64 instruction set only.
+    // > FEAT_LRCPC2 is OPTIONAL from Armv8.2.
+    // > FEAT_LRCPC2 is mandatory from Armv8.4.
+    // > If FEAT_LRCPC2 is implemented, then FEAT_LRCPC is implemented.
+    #[cfg(test)] // test-only
+    rcpc2("rcpc2", any(target_feature /* 1.61+ */)),
+
+    // The Armv8.9 architecture extension
+    // https://developer.arm.com/documentation/109697/2025_06/Feature-descriptions/The-Armv8-9-architecture-extension
     // FEAT_LRCPC3, Load-Acquire RCpc instructions version 3
-    // https://developer.arm.com/documentation/109697/2024_12/Feature-descriptions/The-Armv8-9-architecture-extension
     // > This feature is supported in AArch64 state only.
     // > FEAT_LRCPC3 is OPTIONAL from Armv8.2.
     // > If FEAT_LRCPC3 is implemented, then FEAT_LRCPC2 is implemented.
     #[cfg_attr(not(test), allow(dead_code))]
     rcpc3("rcpc3", any(target_feature /* nightly */, portable_atomic_target_feature)),
+
+    // The Armv9.4 architecture extension
+    // https://developer.arm.com/documentation/109697/2025_06/Feature-descriptions/The-Armv9-4-architecture-extension
     // FEAT_LSE128, 128-bit Atomics
-    // https://developer.arm.com/documentation/109697/2024_12/Feature-descriptions/The-Armv9-4-architecture-extension
     // > This feature is supported in AArch64 state only.
     // > FEAT_LSE128 is OPTIONAL from Armv9.3.
     // > If FEAT_LSE128 is implemented, then FEAT_LSE is implemented.
     #[cfg_attr(not(test), allow(dead_code))]
     lse128("lse128", any(target_feature /* nightly */, portable_atomic_target_feature)),
+
+    // The Armv9.6 architecture extension
+    // https://developer.arm.com/documentation/109697/2025_06/Feature-descriptions/The-Armv9-6-architecture-extension
+    // FEAT_LS64WB, LS64 for Write-back cacheable memory
+    // > This feature is supported in AArch64 state only.
+    // > FEAT_LS64WB is OPTIONAL from Armv9.2.
+    // > If FEAT_LS64WB is implemented, then FEAT_LS64_ACCDATA is implemented.
+    #[cfg(test)] // test-only
+    ls64wb("ls64wb", any(/* no corresponding target feature */)),
     // FEAT_LSFE, Large System Float Extension
-    // https://developer.arm.com/documentation/109697/2024_12/Feature-descriptions/The-Armv9-6-architecture-extension
     // > This feature is supported in AArch64 state only.
     // > FEAT_LSFE is OPTIONAL from Armv9.3.
     // > If FEAT_LSFE is implemented, then FEAT_FP is implemented.
-    #[cfg(test)]
+    #[cfg(test)] // test-only
     lsfe("lsfe", any(target_feature /* N/A */, portable_atomic_target_feature)),
 
     #[cfg(test)] // test-only
     cpuid("cpuid", any(/* no corresponding target feature */)),
 }
 
-// LLVM definitions: https://github.com/llvm/llvm-project/blob/llvmorg-20.1.0/llvm/lib/Target/PowerPC/PPC.td
+// LLVM definitions: https://github.com/llvm/llvm-project/blob/llvmorg-22.1.0-rc1/llvm/lib/Target/ARM/ARMFeatures.td
+#[cfg(target_arch = "arm")]
+flags! {
+    #[cfg(test)] // test-only
+    lpae("lpae", any(/* no corresponding target feature */)),
+}
+
+// LLVM definitions: https://github.com/llvm/llvm-project/blob/llvmorg-22.1.0-rc1/llvm/lib/Target/PowerPC/PPC.td
 #[cfg(target_arch = "powerpc64")]
 flags! {
     // lqarx and stqcx.
     quadword_atomics("quadword-atomics", any(target_feature /* nightly */, portable_atomic_target_feature)),
 }
 
-// LLVM definitions: https://github.com/llvm/llvm-project/blob/llvmorg-20.1.0/llvm/lib/Target/RISCV/RISCVFeatures.td
+// LLVM definitions: https://github.com/llvm/llvm-project/blob/llvmorg-22.1.0-rc1/llvm/lib/Target/RISCV/RISCVFeatures.td
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 flags! {
     // amocas.{w,d,q}
-    zacas("zacas", any(target_feature /* nightly */, portable_atomic_target_feature)),
+    zacas("zacas", any(target_feature /* 1.94+ */, portable_atomic_target_feature)),
+    #[cfg(test)] // test-only
+    zabha("zabha", any(target_feature /* 1.94+ */, portable_atomic_target_feature)),
+    #[cfg(test)] // test-only
+    zalasr("zalasr", any(/* no corresponding target feature */)),
 }
 
-// LLVM definitions: https://github.com/llvm/llvm-project/blob/llvmorg-20.1.0/llvm/lib/Target/X86/X86.td
+// LLVM definitions: https://github.com/llvm/llvm-project/blob/llvmorg-22.1.0-rc1/llvm/lib/Target/X86/X86.td
 #[cfg(target_arch = "x86_64")]
 flags! {
+    // avx
+    #[cfg(target_feature = "sse")]
+    avx("avx", any(target_feature)),
     // cmpxchg16b
     cmpxchg16b("cmpxchg16b", any(target_feature /* 1.69+ */, portable_atomic_target_feature)),
-    // atomic vmovdqa
-    #[cfg(target_feature = "sse")]
-    vmovdqa_atomic("vmovdqa-atomic", any(/* no corresponding target feature */)),
 }
 
 #[allow(
@@ -177,7 +246,7 @@ mod tests_common {
         let mut flags = vec![("init", CpuInfoFlag::Init)];
         flags.extend(CpuInfo::ALL_FLAGS.iter().map(|&(name, flag, _)| (name, flag)));
         let flag_set = flags.iter().map(|(_, flag)| flag).collect::<BTreeSet<_>>();
-        let name_set = flags.iter().map(|(_, flag)| flag).collect::<BTreeSet<_>>();
+        let name_set = flags.iter().map(|(name, _)| name).collect::<BTreeSet<_>>();
         if flag_set.len() != flags.len() {
             panic!("CpuInfo flag values must be unique")
         }

@@ -28,6 +28,9 @@ use crate::{
     }}
 };
 
+#[cfg(target_os = "linux")]
+mod linux_gpu;
+
 #[derive(Clone)]
 pub struct Launcher {
     meta: Arc<MetadataManager>,
@@ -2149,9 +2152,14 @@ impl LaunchContext {
             }
         }
 
+        log::info!("Here!");
+
         #[cfg(target_os = "linux")] {
             if self.configuration.linux_wrapper.map(|w| w.use_discrete_gpu).unwrap_or(true) {
-                command.env("DRI_PRIME", "1");
+                if let Err(err) = linux_gpu::use_discrete_gpu(&mut command) {
+                    log::error!("Error while setting up environment variables for discrete gpu: {err:?}");
+                    command.env("DRI_PRIME", "1");
+                }
             }
             if self.configuration.linux_wrapper.map(|w| w.disable_gl_threaded_optimizations).unwrap_or(false) {
                 command.env("__GL_THREADED_OPTIMIZATIONS", "0");

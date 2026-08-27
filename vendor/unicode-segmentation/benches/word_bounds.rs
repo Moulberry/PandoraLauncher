@@ -27,7 +27,7 @@ fn bench_all(c: &mut Criterion) {
     for file in FILES {
         group.bench_with_input(
             BenchmarkId::new("grapheme", file),
-            &fs::read_to_string(format!("benches/texts/{}.txt", file)).unwrap(),
+            &fs::read_to_string(format!("benches/texts/{file}.txt",)).unwrap(),
             |b, content| b.iter(|| grapheme(content)),
         );
     }

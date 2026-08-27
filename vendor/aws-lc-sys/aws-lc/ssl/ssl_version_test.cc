@@ -369,6 +369,20 @@ TEST_P(SSLVersionTest, GetPeerCertificate) {
   ASSERT_TRUE(peer);
   ASSERT_EQ(X509_cmp(cert_.get(), peer.get()), 0);
 
+  // |SSL_get0_peer_certificate| returns the same certificate without taking a
+  // reference (the caller must not free it).
+  X509 *peer0 = SSL_get0_peer_certificate(client_.get());
+  ASSERT_TRUE(peer0);
+  ASSERT_EQ(X509_cmp(cert_.get(), peer0), 0);
+  // Calling it again returns the same object, confirming no ownership transfer.
+  ASSERT_EQ(peer0, SSL_get0_peer_certificate(client_.get()));
+
+  // |SSL_get1_peer_certificate| returns the same certificate and takes a
+  // reference the caller must release.
+  bssl::UniquePtr<X509> peer1(SSL_get1_peer_certificate(client_.get()));
+  ASSERT_TRUE(peer1);
+  ASSERT_EQ(peer0, peer1.get());
+
   // However, for historical reasons, the X509 chain includes the leaf on the
   // client, but does not on the server.
   EXPECT_EQ(sk_X509_num(SSL_get_peer_cert_chain(client_.get())), 1u);
@@ -390,6 +404,8 @@ TEST_P(SSLVersionTest, NoPeerCertificate) {
   // Server should not see a peer certificate.
   bssl::UniquePtr<X509> peer(SSL_get_peer_certificate(server_.get()));
   ASSERT_FALSE(peer);
+  ASSERT_FALSE(SSL_get0_peer_certificate(server_.get()));
+  ASSERT_FALSE(SSL_get1_peer_certificate(server_.get()));
   ASSERT_FALSE(SSL_get0_peer_certificates(server_.get()));
 }
 

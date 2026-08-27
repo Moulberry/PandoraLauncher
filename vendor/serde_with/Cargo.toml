@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.88"
 name = "serde_with"
-version = "3.20.0"
+version = "3.22.0"
 authors = [
     "Jonas Bushart",
     "Marcin Kaźmierczak",
@@ -53,6 +53,7 @@ all-features = true
 rustdoc-args = [
     "--cfg=docsrs",
     "-Zunstable-options",
+    "--generate-link-to-definition",
     "--generate-macro-expansion",
     "--extern-html-root-url=core=https://doc.rust-lang.org",
     "--extern-html-root-url=alloc=https://doc.rust-lang.org",
@@ -93,6 +94,7 @@ alloc = [
     "bs58?/alloc",
     "chrono_0_4?/alloc",
     "hex?/alloc",
+    "jiff_0_2?/alloc",
     "serde_json?/alloc",
     "time_0_3?/alloc",
 ]
@@ -144,6 +146,7 @@ indexmap_2 = [
     "dep:indexmap_2",
     "alloc",
 ]
+jiff_0_2 = ["dep:jiff_0_2"]
 json = [
     "dep:serde_json",
     "alloc",
@@ -176,6 +179,11 @@ std = [
     "chrono_0_4?/std",
     "indexmap_1?/std",
     "indexmap_2?/std",
+    "jiff_0_2?/std",
+    "jiff_0_2?/tz-system",
+    "jiff_0_2?/tzdb-bundle-platform",
+    "jiff_0_2?/tzdb-concatenated",
+    "jiff_0_2?/tzdb-zoneinfo",
     "time_0_3?/serde-well-known",
     "time_0_3?/std",
     "schemars_0_9?/std",
@@ -269,6 +277,14 @@ name = "indexmap_2"
 path = "tests/indexmap_2.rs"
 required-features = [
     "indexmap_2",
+    "macros",
+]
+
+[[test]]
+name = "jiff_0_2"
+path = "tests/jiff_0_2.rs"
+required-features = [
+    "jiff_0_2",
     "macros",
 ]
 
@@ -423,6 +439,12 @@ optional = true
 default-features = false
 package = "indexmap"
 
+[dependencies.jiff_0_2]
+version = "0.2.0"
+optional = true
+default-features = false
+package = "jiff"
+
 [dependencies.schemars_0_8]
 version = "0.8.16"
 optional = true
@@ -452,7 +474,7 @@ optional = true
 default-features = false
 
 [dependencies.serde_with_macros]
-version = "=3.20.0"
+version = "=3.22.0"
 optional = true
 
 [dependencies.smallvec_1]
@@ -534,6 +556,7 @@ version = "0.10.3"
 [lints.clippy]
 cloned_instead_of_copied = "warn"
 default_trait_access = "warn"
+disallowed_methods = "warn"
 doc_markdown = "warn"
 explicit_auto_deref = "allow"
 manual-unwrap-or-default = "allow"
@@ -546,6 +569,7 @@ trivial_casts = "warn"
 trivial_numeric_casts = "warn"
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
+unused_qualifications = "warn"
 variant_size_differences = "warn"
 
 [lints.rust.rust_2018_idioms]

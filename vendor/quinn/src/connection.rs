@@ -5,7 +5,10 @@ use std::{
     io,
     net::{IpAddr, SocketAddr},
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     task::{Context, Poll, Waker, ready},
 };
 
@@ -901,7 +904,6 @@ impl ConnectionRef {
                 blocked_readers: FxHashMap::default(),
                 stopped: FxHashMap::default(),
                 error: None,
-                ref_count: 0,
                 io_poller: socket.clone().create_io_poller(),
                 socket,
                 runtime,
@@ -919,23 +921,25 @@ impl ConnectionRef {
 
 impl Clone for ConnectionRef {
     fn clone(&self) -> Self {
-        self.state.lock("clone").ref_count += 1;
+        self.shared.ref_count.fetch_add(1, Ordering::Relaxed);
         Self(self.0.clone())
     }
 }
 
 impl Drop for ConnectionRef {
     fn drop(&mut self) {
+        if self.shared.ref_count.fetch_sub(1, Ordering::Relaxed) > 1 {
+            return;
+        }
+
         let conn = &mut *self.state.lock("drop");
-        if let Some(x) = conn.ref_count.checked_sub(1) {
-            conn.ref_count = x;
-            if x == 0 && !conn.inner.is_closed() {
-                // If the driver is alive, it's just it and us, so we'd better shut it down. If it's
-                // not, we can't do any harm. If there were any streams being opened, then either
-                // the connection will be closed for an unrelated reason or a fresh reference will
-                // be constructed for the newly opened stream.
-                conn.implicit_close(&self.shared);
-            }
+
+        if !conn.inner.is_closed() {
+            // If the driver is alive, it's just it and us, so we'd better shut it down. If it's
+            // not, we can't do any harm. If there were any streams being opened, then either
+            // the connection will be closed for an unrelated reason or a fresh reference will
+            // be constructed for the newly opened stream.
+            conn.implicit_close(&self.shared);
         }
     }
 }
@@ -963,6 +967,8 @@ pub(crate) struct Shared {
     datagram_received: Notify,
     datagrams_unblocked: Notify,
     closed: Notify,
+    /// Number of live handles that can used to initiate or handle I/O; excludes the driver
+    ref_count: AtomicUsize,
 }
 
 pub(crate) struct State {
@@ -981,8 +987,6 @@ pub(crate) struct State {
     pub(crate) stopped: FxHashMap<StreamId, Arc<Notify>>,
     /// Always set to Some before the connection becomes drained
     pub(crate) error: Option<ConnectionError>,
-    /// Number of live handles that can be used to initiate or handle I/O; excludes the driver
-    ref_count: usize,
     socket: Arc<dyn AsyncUdpSocket>,
     io_poller: Pin<Box<dyn UdpPoller>>,
     runtime: Arc<dyn Runtime>,
@@ -1153,37 +1157,33 @@ impl State {
         }
     }
 
-    fn drive_timer(&mut self, cx: &mut Context) -> bool {
-        // Check whether we need to (re)set the timer. If so, we must poll again to ensure the
-        // timer is registered with the runtime (and check whether it's already
-        // expired).
-        match self.inner.poll_timeout() {
-            Some(deadline) => {
-                if let Some(delay) = &mut self.timer {
-                    // There is no need to reset the tokio timer if the deadline
-                    // did not change
-                    if self
-                        .timer_deadline
-                        .map(|current_deadline| current_deadline != deadline)
-                        .unwrap_or(true)
-                    {
-                        delay.as_mut().reset(deadline);
-                    }
-                } else {
-                    self.timer = Some(self.runtime.new_timer(deadline));
-                }
-                // Store the actual expiration time of the timer
-                self.timer_deadline = Some(deadline);
-            }
-            None => {
-                self.timer_deadline = None;
-                return false;
-            }
+    fn drive_timer(&mut self, cx: &mut Context<'_>) -> bool {
+        let Some(deadline) = self.inner.poll_timeout() else {
+            self.timer_deadline = None;
+            return false;
+        };
+
+        // Use the clock rather than the async timer to detect expiry: Sleep::poll
+        // respects Tokio's cooperative budget and can return Pending for elapsed
+        // deadlines.
+        let now = self.runtime.now();
+        if now >= deadline {
+            self.inner.handle_timeout(now);
+            self.timer_deadline = None;
+            return true;
         }
 
-        if self.timer_deadline.is_none() {
-            return false;
+        match &mut self.timer {
+            // Avoid resetting the timer when the deadline is unchanged.
+            Some(delay) if self.timer_deadline != Some(deadline) => {
+                delay.as_mut().reset(deadline);
+            }
+            None => {
+                self.timer = Some(self.runtime.new_timer(deadline));
+            }
+            _ => {}
         }
+        self.timer_deadline = Some(deadline);
 
         let delay = self
             .timer
@@ -1191,13 +1191,10 @@ impl State {
             .expect("timer must exist in this state")
             .as_mut();
         if delay.poll(cx).is_pending() {
-            // Since there wasn't a timeout event, there is nothing new
-            // for the connection to do
             return false;
         }
 
-        // A timer expired, so the caller needs to check for
-        // new transmits, which might cause new timers to be set.
+        // The deadline elapsed in the window between the clock check and poll.
         self.inner.handle_timeout(self.runtime.now());
         self.timer_deadline = None;
         true

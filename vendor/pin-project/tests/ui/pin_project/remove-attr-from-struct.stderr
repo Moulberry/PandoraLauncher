@@ -11,12 +11,16 @@ error: cannot find attribute `pin` in this scope
    |
 20 |     #[pin] //~ ERROR cannot find attribute `pin` in this scope
    |       ^^^
+   |
+   = note: `pin` is an attribute that can be used by the derive macro `__PinProjectInternalDerive`, you might be missing a `derive` attribute
 
 error: cannot find attribute `pin` in this scope
   --> tests/ui/pin_project/remove-attr-from-struct.rs:13:7
    |
 13 |     #[pin] //~ ERROR cannot find attribute `pin` in this scope
    |       ^^^
+   |
+   = note: `pin` is an attribute that can be used by the derive macro `__PinProjectInternalDerive`, you might be missing a `derive` attribute
 
 error[E0277]: `PhantomPinned` cannot be unpinned
   --> tests/ui/pin_project/remove-attr-from-struct.rs:37:16
@@ -34,7 +38,7 @@ note: required because it appears within the type `A`
 note: required by a bound in `is_unpin`
   --> tests/ui/pin_project/remove-attr-from-struct.rs:8:16
    |
-8  | fn is_unpin<T: Unpin>() {}
+ 8 | fn is_unpin<T: Unpin>() {}
    |                ^^^^^ required by this bound in `is_unpin`
 
 error[E0277]: `PhantomPinned` cannot be unpinned
@@ -53,7 +57,7 @@ note: required because it appears within the type `B`
 note: required by a bound in `is_unpin`
   --> tests/ui/pin_project/remove-attr-from-struct.rs:8:16
    |
-8  | fn is_unpin<T: Unpin>() {}
+ 8 | fn is_unpin<T: Unpin>() {}
    |                ^^^^^ required by this bound in `is_unpin`
 
 error[E0277]: `PhantomPinned` cannot be unpinned

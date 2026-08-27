@@ -6,6 +6,8 @@ use std::io;
 use std::ops::Range;
 
 use crate::encoding::Decoder;
+#[cfg(feature = "encoding")]
+use crate::encoding::DetectedEncoding;
 use crate::errors::{Error, IllFormedError, SyntaxError};
 use crate::events::{BytesRef, Event};
 use crate::parser::{DtdParser, ElementParser, Parser, PiParser};
@@ -267,7 +269,7 @@ macro_rules! read_event_impl {
                     #[cfg(feature = "encoding")]
                     if let Some(encoding) = $reader.detect_encoding() $(.$await)? ? {
                         if $self.state.encoding.can_be_refined() {
-                            $self.state.encoding = crate::reader::EncodingRef::BomDetected(encoding);
+                            $self.state.encoding = crate::reader::EncodingRef::BomDetected(encoding.encoding());
                         }
                     }
 
@@ -316,7 +318,7 @@ macro_rules! read_event_impl {
                             $self.state.last_error_offset = start;
                             Err(Error::IllFormed(IllFormedError::UnclosedReference))
                         }
-                        ReadRefResult::Err(e) => Err(Error::Io(e.into())),
+                        ReadRefResult::Err(e) => Err(Error::from(e)),
                     }
                 }
                 ParseState::InsideText => { // Go to InsideMarkup or Done state
@@ -360,7 +362,7 @@ macro_rules! read_event_impl {
                                 Ok(Event::Text(event))
                             }
                         }
-                        ReadTextResult::Err(e) => Err(Error::Io(e.into())),
+                        ReadTextResult::Err(e) => Err(Error::from(e)),
                     }
                 },
                 // Go to InsideText state in next two arms
@@ -473,7 +475,7 @@ macro_rules! read_until_close {
                 $self.state.last_error_offset = start;
                 Err(Error::Syntax(SyntaxError::UnclosedTag))
             }
-            Err(e) => Err(Error::Io(e.into())),
+            Err(e) => Err(Error::from(e)),
         }
     }};
 }
@@ -1057,7 +1059,7 @@ trait XmlSource<'r, B> {
 
     /// Determines encoding from the start of input and removes BOM if it is present
     #[cfg(feature = "encoding")]
-    fn detect_encoding(&mut self) -> io::Result<Option<&'static Encoding>>;
+    fn detect_encoding(&mut self) -> io::Result<Option<DetectedEncoding>>;
 
     /// Read input until start of markup (the `<`) is found, start of general entity
     /// reference (the `&`) is found or end of input is reached.
@@ -1167,7 +1169,7 @@ impl BangType {
     /// - `buf`: buffer with data consumed on previous iterations
     /// - `chunk`: data read on current iteration and not yet consumed from reader
     #[inline(always)]
-    fn feed<'b>(&mut self, buf: &[u8], chunk: &'b [u8]) -> Option<usize> {
+    fn feed(&mut self, buf: &[u8], chunk: &[u8]) -> Option<usize> {
         match self {
             Self::Comment => {
                 for i in memchr::memchr_iter(b'>', chunk) {
@@ -1235,7 +1237,6 @@ mod test {
         (
             #[$test:meta]
             $read_event:ident,
-            $read_until_close:ident,
             // constructor of the XML source on which internal functions will be called
             $source:path,
             $skip:literal,

@@ -152,6 +152,9 @@ impl ModalRoot {
             let progress = v_flex().gap_2().children(progress_entries);
 
             if is_finishing {
+                if self.modal_action.has_requested_cancel() {
+                    window.remove_window();
+                }
                 let dismiss = Button::new("ok")
                     .with_variant(ButtonVariant::Secondary)
                     .label(t::common::ok())
@@ -188,6 +191,11 @@ impl ModalRoot {
                 cancel.cancel();
             })
             .window_control_area(WindowControlArea::Drag)
+            .on_any_mouse_down(|_, window, cx| {
+                if window.default_prevented() {
+                    cx.stop_propagation();
+                }
+            })
             .on_mouse_down_out({
                 let should_move = self.should_move.clone();
                 move |_, _, _| {
@@ -377,12 +385,17 @@ pub fn show_modal(
     modal_action: ModalAction,
 ) {
     let min_size = Size::new(px(448.0), px(96.0));
-    let bounds = window.display(cx).map(|d| d.bounds()).unwrap_or_else(|| window.bounds());
+    let (bounds, display_id) = if let Some(display) = window.display(cx) {
+        (display.bounds(), Some(display.id()))
+    } else {
+        (window.bounds(), None)
+    };
     _ = cx.open_window(WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: bounds.center() - min_size.center(),
             size: min_size
         })),
+        display_id,
         titlebar: None,
         focus: true,
         show: true,

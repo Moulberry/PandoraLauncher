@@ -29,12 +29,21 @@ pub fn expand(attr: TokenStream, input: TokenStream) -> Result<TokenStream, Diag
     // if struct is encountered, add `derive` attribute and let everything happen there (workaround
     // to help parsing cfg_attr correctly).
     let item = syn::parse2::<syn::Item>(input)?;
-    if let syn::Item::Struct(s) = item {
+    if let syn::Item::Struct(mut s) = item {
         let opts: BindgenAttrs = syn::parse2(attr.clone())?;
         let wasm_bindgen = opts
             .wasm_bindgen()
             .cloned()
             .unwrap_or_else(|| syn::parse_quote! { ::wasm_bindgen });
+
+        // Inject `parent: <wasm_bindgen>::Parent<Parent>` when the struct
+        // declares `#[wasm_bindgen(extends = Parent)]`, so users never write
+        // the field themselves. Also rejects user-declared `Parent<T>` fields.
+        let extends_path = opts.attrs.iter().find_map(|(_, a)| match a {
+            parser::BindgenAttr::Extends(_, path) => Some(path.clone()),
+            _ => None,
+        });
+        parser::inject_parent_field(&mut s, extends_path.as_ref(), &wasm_bindgen)?;
 
         let item = quote! {
             #[derive(#wasm_bindgen::__rt::BindgenedStruct)]
@@ -125,6 +134,7 @@ pub fn expand_class_marker(
 struct ClassMarker {
     class: syn::Ident,
     js_class: String,
+    js_namespace: Option<Vec<String>>,
     wasm_bindgen: syn::Path,
     wasm_bindgen_futures: syn::Path,
     js_sys: syn::Path,
@@ -140,6 +150,7 @@ impl Parse for ClassMarker {
             .map(String::from)
             .unwrap_or(js_class);
 
+        let mut js_namespace: Option<Vec<String>> = None;
         let mut wasm_bindgen = None;
         let mut wasm_bindgen_futures = None;
         let mut js_sys = None;
@@ -148,7 +159,20 @@ impl Parse for ClassMarker {
             if input.parse::<Option<Token![,]>>()?.is_some() {
                 let ident = input.parse::<syn::Ident>()?;
 
-                if ident == "wasm_bindgen" {
+                if ident == "js_namespace" {
+                    if js_namespace.is_some() {
+                        return Err(syn::Error::new(
+                            ident.span(),
+                            "found duplicate `js_namespace`",
+                        ));
+                    }
+                    input.parse::<Token![=]>()?;
+                    let content;
+                    syn::bracketed!(content in input);
+                    let segs: syn::punctuated::Punctuated<syn::LitStr, Token![,]> = content
+                        .parse_terminated(|p: ParseStream| p.parse::<syn::LitStr>(), Token![,])?;
+                    js_namespace = Some(segs.into_iter().map(|s| s.value()).collect());
+                } else if ident == "wasm_bindgen" {
                     if wasm_bindgen.is_some() {
                         return Err(syn::Error::new(
                             ident.span(),
@@ -178,7 +202,7 @@ impl Parse for ClassMarker {
                 } else {
                     return Err(syn::Error::new(
                         ident.span(),
-                        "expected `wasm_bindgen`, `wasm_bindgen_futures`, or `js_sys`",
+                        "expected `js_namespace`, `wasm_bindgen`, `wasm_bindgen_futures`, or `js_sys`",
                     ));
                 }
             } else {
@@ -189,6 +213,7 @@ impl Parse for ClassMarker {
         Ok(ClassMarker {
             class,
             js_class,
+            js_namespace,
             wasm_bindgen: wasm_bindgen.unwrap_or_else(|| syn::parse_quote! { wasm_bindgen }),
             wasm_bindgen_futures: wasm_bindgen_futures
                 .unwrap_or_else(|| syn::parse_quote! { wasm_bindgen_futures }),

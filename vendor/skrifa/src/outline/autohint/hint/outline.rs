@@ -17,8 +17,10 @@
 use super::super::{
     metrics::{fixed_div, fixed_mul, Scale},
     outline::{Outline, Point},
+    recorder::HintsRecorder,
     style::ScriptGroup,
     topo::{Axis, Dimension},
+    ScaleFlags,
 };
 use core::cmp::Ordering;
 use raw::tables::glyf::PointMarker;
@@ -38,8 +40,8 @@ pub(crate) fn align_edge_points(
     // Snapping is configurable for CJK
     // See <https://gitlab.freedesktop.org/freetype/freetype/-/blob/57617782464411201ce7bbc93b086c1b4d7d84a5/src/autofit/afcjk.c#L2195>
     let snap = group == ScriptGroup::Default
-        || ((axis.dim == Axis::HORIZONTAL && scale.flags & Scale::HORIZONTAL_SNAP != 0)
-            || (axis.dim == Axis::VERTICAL && scale.flags & Scale::VERTICAL_SNAP != 0));
+        || (axis.dim == Dimension::Horizontal && scale.flags.contains(ScaleFlags::HORIZONTAL_SNAP))
+        || (axis.dim == Dimension::Vertical && scale.flags.contains(ScaleFlags::VERTICAL_SNAP));
     for segment in segments {
         let Some(edge) = segment.edge(edges) else {
             continue;
@@ -49,7 +51,7 @@ pub(crate) fn align_edge_points(
         let last_ix = segment.last();
         loop {
             let point = points.get_mut(point_ix)?;
-            if axis.dim == Axis::HORIZONTAL {
+            if axis.dim == Dimension::Horizontal {
                 if snap {
                     point.x = edge.pos;
                 } else {
@@ -76,18 +78,22 @@ pub(crate) fn align_edge_points(
 /// Align the strong points; equivalent to the TrueType `IP` instruction.
 ///
 /// See <https://gitlab.freedesktop.org/freetype/freetype/-/blob/57617782464411201ce7bbc93b086c1b4d7d84a5/src/autofit/afhints.c#L1399>
-pub(crate) fn align_strong_points(outline: &mut Outline, axis: &mut Axis) -> Option<()> {
+pub(crate) fn align_strong_points(
+    outline: &mut Outline,
+    axis: &mut Axis,
+    mut recorder: Option<&mut HintsRecorder>,
+) -> Option<()> {
     if axis.edges.is_empty() {
         return Some(());
     }
     let dim = axis.dim;
-    let touch_flag = if dim == Axis::HORIZONTAL {
+    let touch_flag = if dim == Dimension::Horizontal {
         PointMarker::TOUCHED_X
     } else {
         PointMarker::TOUCHED_Y
     };
     let points = outline.points.as_mut_slice();
-    'points: for point in points {
+    'points: for (point_ix, point) in points.iter_mut().enumerate() {
         // Skip points that are already touched; do weak interpolation in the
         // next pass
         if point
@@ -96,7 +102,7 @@ pub(crate) fn align_strong_points(outline: &mut Outline, axis: &mut Axis) -> Opt
         {
             continue;
         }
-        let (u, ou) = if dim == Axis::VERTICAL {
+        let (u, ou) = if dim == Dimension::Vertical {
             (point.fy, point.oy)
         } else {
             (point.fx, point.ox)
@@ -106,6 +112,9 @@ pub(crate) fn align_strong_points(outline: &mut Outline, axis: &mut Axis) -> Opt
         let edge = edges.first()?;
         let delta = edge.fpos as i32 - u;
         if delta >= 0 {
+            if let Some(recorder) = recorder.as_mut() {
+                recorder.record_ip_before(dim, point_ix);
+            }
             store_point(point, dim, edge.pos - (edge.opos - ou));
             continue;
         }
@@ -113,6 +122,9 @@ pub(crate) fn align_strong_points(outline: &mut Outline, axis: &mut Axis) -> Opt
         let edge = edges.last()?;
         let delta = u - edge.fpos as i32;
         if delta >= 0 {
+            if let Some(recorder) = recorder.as_mut() {
+                recorder.record_ip_after(dim, point_ix);
+            }
             store_point(point, dim, edge.pos + (ou - edge.opos));
             continue;
         }
@@ -129,6 +141,9 @@ pub(crate) fn align_strong_points(outline: &mut Outline, axis: &mut Axis) -> Opt
                 .find(|(_ix, edge)| edge.fpos as i32 >= u)
             {
                 if edge.fpos as i32 == u {
+                    if let Some(recorder) = recorder.as_mut() {
+                        recorder.record_ip_on(dim, point_ix, min_ix);
+                    }
                     store_point(point, dim, edge.pos);
                     continue 'points;
                 }
@@ -148,6 +163,9 @@ pub(crate) fn align_strong_points(outline: &mut Outline, axis: &mut Axis) -> Opt
                     Ordering::Greater => min_ix = mid_ix + 1,
                     Ordering::Equal => {
                         // We are on an edge
+                        if let Some(recorder) = recorder.as_mut() {
+                            recorder.record_ip_on(dim, point_ix, mid_ix);
+                        }
                         store_point(point, dim, edge.pos);
                         continue 'points;
                     }
@@ -171,6 +189,9 @@ pub(crate) fn align_strong_points(outline: &mut Outline, axis: &mut Axis) -> Opt
             } else {
                 edge_before.scale
             };
+            if let Some(recorder) = recorder.as_mut() {
+                recorder.record_ip_between(dim, point_ix, before_ix, min_ix);
+            }
             store_point(point, dim, before_pos + fixed_mul(u - before_fpos, scale));
         }
     }
@@ -181,7 +202,7 @@ pub(crate) fn align_strong_points(outline: &mut Outline, axis: &mut Axis) -> Opt
 ///
 /// See <https://gitlab.freedesktop.org/freetype/freetype/-/blob/57617782464411201ce7bbc93b086c1b4d7d84a5/src/autofit/afhints.c#L1673>
 pub(crate) fn align_weak_points(outline: &mut Outline, dim: Dimension) -> Option<()> {
-    let touch_marker = if dim == Axis::HORIZONTAL {
+    let touch_marker = if dim == Dimension::Horizontal {
         for point in &mut outline.points {
             point.u = point.x;
             point.v = point.ox;
@@ -257,7 +278,7 @@ pub(crate) fn align_weak_points(outline: &mut Outline, dim: Dimension) -> Option
         }
     }
     // Save interpolated values
-    if dim == Axis::HORIZONTAL {
+    if dim == Dimension::Horizontal {
         for point in &mut outline.points {
             point.x = point.u;
         }
@@ -271,7 +292,7 @@ pub(crate) fn align_weak_points(outline: &mut Outline, dim: Dimension) -> Option
 
 #[inline(always)]
 fn store_point(point: &mut Point, dim: Dimension, u: i32) {
-    if dim == Axis::HORIZONTAL {
+    if dim == Dimension::Horizontal {
         point.x = u;
         point.flags.set_marker(PointMarker::TOUCHED_X);
     } else {
@@ -360,6 +381,7 @@ mod tests {
     use super::{
         super::super::{
             metrics::{compute_unscaled_style_metrics, Scale},
+            recorder::{EdgeAction, HintAction, HintsRecorder, PointAction},
             shape::{Shaper, ShaperMode},
             style,
         },
@@ -435,6 +457,56 @@ mod tests {
             }),
         };
         assert_eq!(metrics, expected_metrics);
+    }
+
+    #[test]
+    fn recorder_collects_edge_and_point_actions() {
+        let font = FontRef::new(font_test_data::NOTOSERIFHEBREW_AUTOHINT_METRICS).unwrap();
+        let shaper = Shaper::new(&font, ShaperMode::Nominal);
+        let glyph = font.outline_glyphs().get(GlyphId::new(9)).unwrap();
+        let mut outline = Outline::default();
+        outline.fill(&glyph, &[], Default::default()).unwrap();
+        let metrics = compute_unscaled_style_metrics(
+            &shaper,
+            &[],
+            &style::STYLE_CLASSES[style::StyleClass::HEBR],
+            Default::default(),
+        );
+        let scale = Scale::new(
+            16.0,
+            font.head().unwrap().units_per_em() as i32,
+            Style::Normal,
+            Default::default(),
+            metrics.style_class().script.group,
+        );
+        let mut recorder = HintsRecorder::default();
+
+        super::super::hint_outline_with_recorder(
+            &mut outline,
+            &metrics,
+            &scale,
+            None,
+            &mut recorder,
+        );
+
+        assert!(recorder
+            .actions
+            .iter()
+            .any(|record| matches!(record, HintAction::Edge(edge) if edge.blue.is_some())));
+        assert!(recorder.actions.iter().any(|record| {
+            matches!(
+                record,
+                HintAction::Edge(edge)
+                    if matches!(edge.action, EdgeAction::Blue | EdgeAction::BlueAnchor | EdgeAction::Anchor | EdgeAction::Stem | EdgeAction::Adjust)
+            )
+        }));
+        assert!(recorder.actions.iter().any(|record| {
+            matches!(
+                record,
+                HintAction::Point(point)
+                    if matches!(point.action, PointAction::IpBefore | PointAction::IpAfter | PointAction::IpOn | PointAction::IpBetween)
+            )
+        }));
     }
 
     #[test]
@@ -646,8 +718,8 @@ mod tests {
         let glyphs = font.outline_glyphs();
         let glyph = glyphs.get(gid).unwrap();
         let mut outline = Outline::default();
-        outline.fill(&glyph, coords).unwrap();
-        let metrics = compute_unscaled_style_metrics(&shaper, coords, style);
+        outline.fill(&glyph, coords, Default::default()).unwrap();
+        let metrics = compute_unscaled_style_metrics(&shaper, coords, style, Default::default());
         let scale = Scale::new(
             size,
             font.head().unwrap().units_per_em() as i32,

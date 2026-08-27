@@ -214,15 +214,17 @@
 //! }
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/async-trait/0.1.89")]
+#![doc(html_root_url = "https://docs.rs/async-trait/0.1.92")]
 #![allow(
     clippy::default_trait_access,
     clippy::doc_markdown,
     clippy::elidable_lifetime_names,
+    clippy::expl_impl_clone_on_copy, // https://github.com/rust-lang/rust-clippy/issues/15842
     clippy::explicit_auto_deref,
     clippy::if_not_else,
     clippy::items_after_statements,
     clippy::match_like_matches_macro,
+    clippy::match_same_arms,
     clippy::module_name_repetitions,
     clippy::needless_lifetimes,
     clippy::shadow_unrelated,

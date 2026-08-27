@@ -1,8 +1,8 @@
 [package]
 name = "rust-embed-utils"
-version = "8.11.0"
+version = "8.12.0"
 description = "Utilities for rust-embed"
-readme = "readme.md"
+readme = "README.md"
 documentation = "https://docs.rs/rust-embed"
 repository = "https://pyrossh.dev/repos/rust-embed"
 license = "MIT"
@@ -13,7 +13,8 @@ edition = "2018"
 
 [dependencies]
 walkdir = "2.3.1"
-sha2 = "0.10.5"
+sha2 = "0.11"
+include-flate = { version = "0.3.3", optional = true }
 mime_guess = { version = "2.0.4", optional = true }
 
 [dependencies.globset]
@@ -24,3 +25,4 @@ optional = true
 debug-embed = []
 mime-guess = ["mime_guess"]
 include-exclude = ["globset"]
+compression = ["include-flate"]

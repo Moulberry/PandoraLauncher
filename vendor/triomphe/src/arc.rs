@@ -12,16 +12,15 @@ use core::marker::PhantomData;
 use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::Deref;
 use core::panic::{RefUnwindSafe, UnwindSafe};
-use core::ptr::{self, NonNull};
+use core::ptr::{self, addr_of_mut, NonNull};
 use core::sync::atomic;
 use core::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, Release};
-
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "stable_deref_trait")]
 use stable_deref_trait::{CloneStableDeref, StableDeref};
 
-use crate::{abort, ArcBorrow, HeaderSlice, OffsetArc, UniqueArc};
+use crate::{abort, AllocError, ArcBorrow, HeaderSlice, OffsetArc, UniqueArc};
 
 /// A soft limit on the amount of references that may be made to an `Arc`.
 ///
@@ -93,6 +92,34 @@ impl<T> Arc<T> {
         }
     }
 
+    /// Construct an `Arc<T>`, returning an error if allocation fails.
+    ///
+    /// Unlike [`Arc::new`], this does not abort the process on allocation
+    /// failure; instead it returns [`AllocError`].
+    #[inline]
+    pub fn try_new(data: T) -> Result<Self, AllocError> {
+        // `try_allocate_for_layout` takes the layout of the *value* (`T`) and
+        // internally reconstructs the layout of `ArcInner<T>`, so we pass the
+        // layout of `T` here, not of `ArcInner<T>`. This mirrors the existing
+        // `From<Box<T>>` impl.
+        //
+        // Safety: the closure only changes the type of the pointer.
+        let inner = unsafe {
+            Self::try_allocate_for_layout(Layout::new::<T>(), |mem| mem as *mut ArcInner<T>)?
+        };
+
+        unsafe {
+            // Safety: `inner` is freshly allocated, so the `data` field is
+            // valid for writes and not yet initialized.
+            ptr::write(addr_of_mut!((*inner.as_ptr()).data), data);
+        }
+
+        Ok(Arc {
+            p: inner,
+            phantom: PhantomData,
+        })
+    }
+
     /// Temporarily converts |self| into a bonafide OffsetArc and exposes it to the
     /// provided callback. The refcount is not modified.
     #[inline(always)]
@@ -106,27 +133,6 @@ impl<T> Arc<T> {
 
         // Expose the transient Arc to the callback, which may clone it if it wants.
         f(&transient)
-    }
-
-    /// Converts an `Arc` into a `OffsetArc`. This consumes the `Arc`, so the refcount
-    /// is not modified.
-    #[inline]
-    pub fn into_raw_offset(a: Self) -> OffsetArc<T> {
-        unsafe {
-            OffsetArc {
-                ptr: ptr::NonNull::new_unchecked(Arc::into_raw(a) as *mut T),
-                phantom: PhantomData,
-            }
-        }
-    }
-
-    /// Converts a `OffsetArc` into an `Arc`. This consumes the `OffsetArc`, so the refcount
-    /// is not modified.
-    #[inline]
-    pub fn from_raw_offset(a: OffsetArc<T>) -> Self {
-        let a = ManuallyDrop::new(a);
-        let ptr = a.ptr.as_ptr();
-        unsafe { Arc::from_raw(ptr) }
     }
 
     /// Returns the inner value, if the [`Arc`] has exactly one strong reference.
@@ -266,6 +272,27 @@ impl<T: ?Sized> Arc<T> {
         Arc::from_raw_inner(arc_inner_ptr as *mut ArcInner<T>)
     }
 
+    /// Converts a `OffsetArc` into an `Arc`. This consumes the `OffsetArc`, so the refcount
+    /// is not modified.
+    #[inline]
+    pub fn from_raw_offset(a: OffsetArc<T>) -> Self {
+        let a = ManuallyDrop::new(a);
+        let ptr = a.ptr.as_ptr();
+        unsafe { Arc::from_raw(ptr) }
+    }
+
+    /// Converts an `Arc` into a `OffsetArc`. This consumes the `Arc`, so the refcount
+    /// is not modified.
+    #[inline]
+    pub fn into_raw_offset(a: Self) -> OffsetArc<T> {
+        unsafe {
+            OffsetArc {
+                ptr: ptr::NonNull::new_unchecked(Arc::into_raw(a) as *mut T),
+                phantom: PhantomData,
+            }
+        }
+    }
+
     /// Returns the raw pointer.
     ///
     /// Same as into_raw except `self` isn't consumed.
@@ -356,6 +383,10 @@ impl<T: ?Sized> Arc<T> {
     /// The function `mem_to_arcinner` is called with the data pointer
     /// and must return back a (potentially fat)-pointer for the `ArcInner<T>`.
     ///
+    /// This function initializes the reference count, but the caller is
+    /// responsible for initializing `inner_ptr.data` after `inner_ptr` is
+    /// returned from this function.
+    ///
     /// ## Safety
     ///
     /// `mem_to_arcinner` must return the same pointer, the only things that can change are
@@ -363,30 +394,32 @@ impl<T: ?Sized> Arc<T> {
     /// - its metadata
     ///
     /// `value_layout` must be correct for `T`.
-    #[allow(unused_unsafe)]
     pub(super) unsafe fn allocate_for_layout(
         value_layout: Layout,
         mem_to_arcinner: impl FnOnce(*mut u8) -> *mut ArcInner<T>,
     ) -> NonNull<ArcInner<T>> {
-        let layout = Layout::new::<ArcInner<()>>()
+        // Recompute the full layout so that we can preserve the historical
+        // "layout too big" panic and the `handle_alloc_error` abort.
+        //
+        // Safety: same conditions as `try_allocate_for_layout`.
+        let full_layout = Layout::new::<ArcInner<()>>()
             .extend(value_layout)
-            .unwrap()
+            .expect("layout too big")
             .0
             .pad_to_align();
 
-        // Safety: we propagate safety requirements to the caller
-        unsafe {
-            Arc::try_allocate_for_layout(value_layout, mem_to_arcinner)
-                .unwrap_or_else(|_| handle_alloc_error(layout))
+        match unsafe { Self::try_allocate_for_layout(value_layout, mem_to_arcinner) } {
+            Ok(p) => p,
+            // The layout was already validated above, so the only way the
+            // fallible version can fail here is an actual allocation failure.
+            Err(AllocError) => handle_alloc_error(full_layout),
         }
     }
 
-    /// Allocates an `ArcInner<T>` with sufficient space for
-    /// a possibly-unsized inner value where the value has the layout provided,
-    /// returning an error if allocation fails.
+    /// Fallible version of [`Arc::allocate_for_layout`].
     ///
-    /// The function `mem_to_arcinner` is called with the data pointer
-    /// and must return back a (potentially fat)-pointer for the `ArcInner<T>`.
+    /// Returns `Err(AllocError)` on either layout overflow or allocation
+    /// failure, instead of panicking or aborting.
     ///
     /// ## Safety
     ///
@@ -395,40 +428,90 @@ impl<T: ?Sized> Arc<T> {
     /// - its metadata
     ///
     /// `value_layout` must be correct for `T`.
-    #[allow(unused_unsafe)]
-    unsafe fn try_allocate_for_layout(
+    pub(super) unsafe fn try_allocate_for_layout(
         value_layout: Layout,
         mem_to_arcinner: impl FnOnce(*mut u8) -> *mut ArcInner<T>,
-    ) -> Result<NonNull<ArcInner<T>>, ()> {
-        let layout = Layout::new::<ArcInner<()>>()
+    ) -> Result<NonNull<ArcInner<T>>, AllocError> {
+        // Safety
+
+        // 1. Caller ensures that value_layout is the layout of T
+        // 2. ArcInner is repr(C)
+        // 3. Thus, full_layout is layout of ArcInner<T>
+        let full_layout = Layout::new::<ArcInner<()>>()
             .extend(value_layout)
-            .unwrap()
+            .map_err(|_| AllocError)?
             .0
             .pad_to_align();
 
-        let ptr = NonNull::new(alloc::alloc::alloc(layout)).ok_or(())?;
-
-        // Initialize the ArcInner
-        let inner = mem_to_arcinner(ptr.as_ptr());
-        debug_assert_eq!(unsafe { Layout::for_value(&*inner) }, layout);
-
         unsafe {
-            ptr::write(&mut (*inner).count, atomic::AtomicUsize::new(1));
+            // ArcInner never has a zero size
+            let ptr = alloc::alloc::alloc(full_layout);
+            if ptr.is_null() {
+                Err(AllocError)
+            } else {
+                // Form the ArcInner pointer by adding type/metadata
+                // mem_to_arcinner keeps the same pointer (caller safety condition)
+                let inner_ptr = mem_to_arcinner(ptr);
+                // Initialize the reference count
+                ptr::write(
+                    addr_of_mut!((*inner_ptr).count),
+                    atomic::AtomicUsize::new(1),
+                );
+                // Pointer stays non-null
+                Ok(NonNull::new_unchecked(inner_ptr))
+            }
         }
-
-        // Safety: `ptr` is checked to be non-null,
-        //         `inner` is the same as `ptr` (per the safety requirements of this function)
-        unsafe { Ok(NonNull::new_unchecked(inner)) }
     }
 }
 
 impl<H, T> Arc<HeaderSlice<H, [T]>> {
+    /// Allocates the arc inner for a slice DST type.
+    ///
+    /// The `len` argument provides the length of the tail. This function initializes the
+    /// reference count, but the caller is responsible for initializing the data inside
+    /// `inner_ptr.data` where `inner_ptr` is the pointer returned by this function.
     pub(super) fn allocate_for_header_and_slice(
         len: usize,
     ) -> NonNull<ArcInner<HeaderSlice<H, [T]>>> {
-        let layout = Layout::new::<H>()
-            .extend(Layout::array::<T>(len).unwrap())
-            .unwrap()
+        // Recompute the full `ArcInner` layout so that we can preserve the
+        // historical "Requested size too big" / "layout too big" panics and
+        // pass the actually-attempted layout to `handle_alloc_error`.
+        let value_layout = Layout::array::<T>(len)
+            .and_then(|tail_layout| {
+                let header_layout = Layout::new::<H>();
+                header_layout.extend(tail_layout)
+            })
+            .expect("Requested size too big")
+            .0
+            .pad_to_align();
+        let full_layout = Layout::new::<ArcInner<()>>()
+            .extend(value_layout)
+            .expect("layout too big")
+            .0
+            .pad_to_align();
+
+        match Self::try_allocate_for_header_and_slice(len) {
+            Ok(p) => p,
+            // The layout was already validated above, so the only way the
+            // fallible version can fail here is an actual allocation failure.
+            Err(AllocError) => handle_alloc_error(full_layout),
+        }
+    }
+
+    /// Fallible version of [`Arc::allocate_for_header_and_slice`].
+    ///
+    /// Returns `Err(AllocError)` on either layout overflow or allocation
+    /// failure, instead of panicking or aborting.
+    #[allow(clippy::type_complexity)]
+    pub(super) fn try_allocate_for_header_and_slice(
+        len: usize,
+    ) -> Result<NonNull<ArcInner<HeaderSlice<H, [T]>>>, AllocError> {
+        let layout = Layout::array::<T>(len)
+            .and_then(|tail_layout| {
+                let header_layout = Layout::new::<H>();
+                header_layout.extend(tail_layout)
+            })
+            .map_err(|_| AllocError)?
             .0
             .pad_to_align();
 
@@ -436,7 +519,7 @@ impl<H, T> Arc<HeaderSlice<H, [T]>> {
             // Safety:
             // - the provided closure does not change the pointer (except for meta & type)
             // - the provided layout is valid for `HeaderSlice<H, [T]>`
-            Arc::allocate_for_layout(layout, |mem| {
+            Arc::try_allocate_for_layout(layout, |mem| {
                 // Synthesize the fat pointer. We do this by claiming we have a direct
                 // pointer to a [T], and then changing the type of the borrow. The key
                 // point here is that the length portion of the fat pointer applies
@@ -456,6 +539,13 @@ impl<T> Arc<MaybeUninit<T>> {
         Arc::new(MaybeUninit::<T>::uninit())
     }
 
+    /// Fallible version of [`Arc::new_uninit`].
+    ///
+    /// Returns `Err(AllocError)` instead of aborting on allocation failure.
+    pub fn try_new_uninit() -> Result<Self, AllocError> {
+        Arc::try_new(MaybeUninit::<T>::uninit())
+    }
+
     /// Calls `MaybeUninit::write` on the value contained.
     ///
     /// ## Panics
@@ -471,8 +561,9 @@ impl<T> Arc<MaybeUninit<T>> {
     }
 
     /// Obtain a mutable pointer to the stored `MaybeUninit<T>`.
+    #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut MaybeUninit<T> {
-        unsafe { &mut (*self.ptr()).data }
+        unsafe { core::ptr::addr_of_mut!((*self.ptr()).data) }
     }
 
     /// # Safety
@@ -488,6 +579,13 @@ impl<T> Arc<[MaybeUninit<T>]> {
     /// Create an Arc contains an array `[MaybeUninit<T>]` of `len`.
     pub fn new_uninit_slice(len: usize) -> Self {
         UniqueArc::new_uninit_slice(len).shareable()
+    }
+
+    /// Fallible version of [`Arc::new_uninit_slice`].
+    ///
+    /// Returns `Err(AllocError)` instead of aborting on allocation failure.
+    pub fn try_new_uninit_slice(len: usize) -> Result<Self, AllocError> {
+        Ok(UniqueArc::try_new_uninit_slice(len)?.shareable())
     }
 
     /// Obtain a mutable slice to the stored `[MaybeUninit<T>]`.
@@ -922,6 +1020,32 @@ mod tests {
     use unsize::{CoerceUnsize, Coercion};
 
     #[test]
+    fn try_new() {
+        let x = Arc::try_new(100usize).unwrap();
+        assert_eq!(*x, 100);
+    }
+
+    #[test]
+    fn try_new_uninit() {
+        let mut arc: Arc<MaybeUninit<u32>> = Arc::try_new_uninit().unwrap();
+        let arc = unsafe {
+            arc.as_mut_ptr().write(MaybeUninit::new(999));
+            arc.assume_init()
+        };
+        assert_eq!(*arc, 999);
+    }
+
+    #[test]
+    fn try_new_uninit_slice() {
+        let mut arc: Arc<[MaybeUninit<u32>]> = Arc::try_new_uninit_slice(5).unwrap();
+        for (uninit, index) in Arc::get_mut(&mut arc).unwrap().iter_mut().zip(0..5) {
+            uninit.write(index);
+        }
+        let arc = unsafe { arc.assume_init() };
+        assert_eq!(*arc, [0, 1, 2, 3, 4]);
+    }
+
+    #[test]
     fn try_unwrap() {
         let x = Arc::new(100usize);
         let y = x.clone();
@@ -1226,6 +1350,26 @@ mod tests {
         });
         t1.join().unwrap();
         t2.join().unwrap();
+    }
+
+    #[test]
+    fn test_as_mut_ptr_sound() {
+        // See https://github.com/Manishearth/triomphe/issues/134
+        //
+        // This tests that obtaining a mutable pointer from a non-unique `Arc` is sound
+        // and does not trigger UB in Miri (e.g. via intermediate `&mut` retagging).
+        //
+        // DANGER: While obtaining the `*mut` pointer is sound, writing to it or
+        // dereferencing it while other shared references (like `shared` below)
+        // are active is still UB. The caller must ensure proper synchronization
+        // and uniqueness before mutating through the pointer.
+        let mut arc1: Arc<MaybeUninit<u64>> = Arc::new_uninit();
+        let arc2 = arc1.clone();
+        let shared: &MaybeUninit<u64> = &*arc2;
+
+        let _ptr: *mut MaybeUninit<u64> = arc1.as_mut_ptr();
+
+        let _copy: MaybeUninit<u64> = *shared;
     }
 
     #[allow(dead_code)]

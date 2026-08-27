@@ -10,7 +10,7 @@ use std::{
 use bytes::{Bytes, BytesMut};
 use frame::StreamMetaVec;
 
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 use thiserror::Error;
 use tracing::{debug, error, trace, trace_span, warn};
 
@@ -1145,11 +1145,7 @@ impl Connection {
                     self.spaces[SpaceId::Data].pending.new_cids.push(frame);
                 });
                 // Update Timer::PushNewCid
-                if self
-                    .timers
-                    .get(Timer::PushNewCid)
-                    .map_or(true, |x| x <= now)
-                {
+                if self.timers.get(Timer::PushNewCid).is_none_or(|x| x <= now) {
                     self.reset_cid_retirement();
                 }
             }
@@ -1444,10 +1440,7 @@ impl Connection {
         }
         let new_largest = {
             let space = &mut self.spaces[space];
-            if space
-                .largest_acked_packet
-                .map_or(true, |pn| ack.largest > pn)
-            {
+            if space.largest_acked_packet.is_none_or(|pn| ack.largest > pn) {
                 space.largest_acked_packet = Some(ack.largest);
                 if let Some(info) = space.sent_packets.get(&ack.largest) {
                     // This should always succeed, but a misbehaving peer might ACK a packet we
@@ -1518,7 +1511,7 @@ impl Connection {
                     Duration::from_micros(ack.delay << self.peer_params.ack_delay_exponent.0),
                 )
             };
-            let rtt = instant_saturating_sub(now, self.spaces[space].largest_acked_packet_sent);
+            let rtt = now.saturating_duration_since(self.spaces[space].largest_acked_packet_sent);
             self.path.rtt.update(ack_delay, rtt);
             if self.path.first_packet_after_rtt_sample.is_none() {
                 self.path.first_packet_after_rtt_sample =
@@ -1670,8 +1663,6 @@ impl Connection {
         let rtt = self.path.rtt.conservative();
         let loss_delay = cmp::max(rtt.mul_f32(self.config.time_threshold), TIMER_GRANULARITY);
 
-        // Packets sent before this time are deemed lost.
-        let lost_send_time = now.checked_sub(loss_delay).unwrap();
         let largest_acked_packet = self.spaces[pn_space].largest_acked_packet.unwrap();
         let packet_threshold = self.config.packet_threshold as u64;
         let mut size_of_lost_packets = 0u64;
@@ -1694,8 +1685,11 @@ impl Connection {
                 persistent_congestion_start = None;
             }
 
-            if info.time_sent <= lost_send_time || largest_acked_packet >= packet + packet_threshold
-            {
+            // Packets sent before now - loss_delay are deemed lost.
+            // However, we avoid this subtraction as it can panic and there's no
+            // saturating equivalent of this substraction operation with a Duration.
+            let packet_too_old = now.saturating_duration_since(info.time_sent) >= loss_delay;
+            if packet_too_old || largest_acked_packet >= packet + packet_threshold {
                 if Some(packet) == in_flight_mtu_probe {
                     // Lost MTU probes are not included in `lost_packets`, because they should not
                     // trigger a congestion control response
@@ -1751,7 +1745,7 @@ impl Connection {
                 self.config.qlog_sink.emit_packet_lost(
                     packet,
                     &info,
-                    lost_send_time,
+                    loss_delay,
                     pn_space,
                     now,
                     self.orig_rem_cid,
@@ -1834,7 +1828,7 @@ impl Connection {
                 None => continue,
             };
             let pto = last_ack_eliciting + duration;
-            if result.map_or(true, |(earliest_pto, _)| pto < earliest_pto) {
+            if result.is_none_or(|(earliest_pto, _)| pto < earliest_pto) {
                 result = Some((pto, space));
             }
         }
@@ -2105,7 +2099,9 @@ impl Connection {
 
         space
             .crypto_stream
-            .insert(crypto.offset, crypto.data.clone(), payload_len);
+            .insert(crypto.offset, crypto.data.clone(), payload_len)
+            .map_err(|_| TransportError::INTERNAL_ERROR("too many gaps in crypto stream buffer"))?;
+
         while let Some(chunk) = space.crypto_stream.read(usize::MAX, true) {
             trace!("consumed {} CRYPTO bytes", chunk.bytes.len());
             if self.crypto.read_handshake(&chunk.bytes)? {
@@ -2903,22 +2899,7 @@ impl Connection {
                     match self.rem_cids.insert(frame) {
                         Ok(None) => {}
                         Ok(Some((retired, reset_token))) => {
-                            let pending_retired =
-                                &mut self.spaces[SpaceId::Data].pending.retire_cids;
-                            /// Ensure `pending_retired` cannot grow without bound. Limit is
-                            /// somewhat arbitrary but very permissive.
-                            const MAX_PENDING_RETIRED_CIDS: u64 = CidQueue::LEN as u64 * 10;
-                            // We don't bother counting in-flight frames because those are bounded
-                            // by congestion control.
-                            if (pending_retired.len() as u64)
-                                .saturating_add(retired.end.saturating_sub(retired.start))
-                                > MAX_PENDING_RETIRED_CIDS
-                            {
-                                return Err(TransportError::CONNECTION_ID_LIMIT_ERROR(
-                                    "queued too many retired CIDs",
-                                ));
-                            }
-                            pending_retired.extend(retired);
+                            self.spaces[SpaceId::Data].pending.retire_cids(retired)?;
                             self.set_reset_token(reset_token);
                         }
                         Err(InsertError::ExceedsLimit) => {
@@ -2931,8 +2912,7 @@ impl Connection {
                             // was retired all at once via retire_prior_to.
                             self.spaces[SpaceId::Data]
                                 .pending
-                                .retire_cids
-                                .push(frame.sequence);
+                                .retire_cids(frame.sequence..frame.sequence.saturating_add(1))?;
                             continue;
                         }
                     };
@@ -3624,7 +3604,7 @@ impl Connection {
             .filter(|&&t| !matches!(t, Timer::KeepAlive | Timer::PushNewCid | Timer::KeyDiscard))
             .filter_map(|&t| Some((t, self.timers.get(t)?)))
             .min_by_key(|&(_, time)| time)
-            .map_or(true, |(timer, _)| timer == Timer::Idle)
+            .is_none_or(|(timer, _)| timer == Timer::Idle)
     }
 
     /// Whether explicit congestion notification is in use on outgoing packets.
@@ -3676,11 +3656,7 @@ impl Connection {
                 .as_ref()
                 .is_some_and(|(_, x)| x.challenge_pending)
             || !self.path_responses.is_empty()
-            || self
-                .datagrams
-                .outgoing
-                .front()
-                .is_some_and(|x| x.size(true) <= max_size)
+            || self.datagrams.outgoing.can_send_1rtt(max_size)
     }
 
     /// Update counters to account for a packet becoming acknowledged, lost, or abandoned
@@ -4000,10 +3976,6 @@ pub enum Event {
     DatagramReceived,
     /// One or more application datagrams have been sent after blocking
     DatagramsUnblocked,
-}
-
-fn instant_saturating_sub(x: Instant, y: Instant) -> Duration {
-    if x > y { x - y } else { Duration::ZERO }
 }
 
 fn get_max_ack_delay(params: &TransportParameters) -> Duration {

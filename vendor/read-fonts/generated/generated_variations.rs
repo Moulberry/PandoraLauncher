@@ -5,45 +5,13 @@
 #[allow(unused_imports)]
 use crate::codegen_prelude::*;
 
-/// [TupleVariationHeader](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#tuplevariationheader)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct TupleVariationHeaderMarker {
-    peak_tuple_byte_len: usize,
-    intermediate_start_tuple_byte_len: usize,
-    intermediate_end_tuple_byte_len: usize,
-}
-
-impl TupleVariationHeaderMarker {
-    pub fn variation_data_size_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn tuple_index_byte_range(&self) -> Range<usize> {
-        let start = self.variation_data_size_byte_range().end;
-        start..start + TupleIndex::RAW_BYTE_LEN
-    }
-
-    pub fn peak_tuple_byte_range(&self) -> Range<usize> {
-        let start = self.tuple_index_byte_range().end;
-        start..start + self.peak_tuple_byte_len
-    }
-
-    pub fn intermediate_start_tuple_byte_range(&self) -> Range<usize> {
-        let start = self.peak_tuple_byte_range().end;
-        start..start + self.intermediate_start_tuple_byte_len
-    }
-
-    pub fn intermediate_end_tuple_byte_range(&self) -> Range<usize> {
-        let start = self.intermediate_start_tuple_byte_range().end;
-        start..start + self.intermediate_end_tuple_byte_len
-    }
-}
-
-impl MinByteRange for TupleVariationHeaderMarker {
+impl<'a> MinByteRange<'a> for TupleVariationHeader<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.intermediate_end_tuple_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
@@ -54,28 +22,12 @@ impl ReadArgs for TupleVariationHeader<'_> {
 impl<'a> FontReadWithArgs<'a> for TupleVariationHeader<'a> {
     fn read_with_args(data: FontData<'a>, args: &u16) -> Result<Self, ReadError> {
         let axis_count = *args;
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let tuple_index: TupleIndex = cursor.read()?;
-        let peak_tuple_byte_len = (TupleIndex::tuple_len(tuple_index, axis_count, 0_usize))
-            .checked_mul(F2Dot14::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(peak_tuple_byte_len);
-        let intermediate_start_tuple_byte_len =
-            (TupleIndex::tuple_len(tuple_index, axis_count, 1_usize))
-                .checked_mul(F2Dot14::RAW_BYTE_LEN)
-                .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(intermediate_start_tuple_byte_len);
-        let intermediate_end_tuple_byte_len =
-            (TupleIndex::tuple_len(tuple_index, axis_count, 1_usize))
-                .checked_mul(F2Dot14::RAW_BYTE_LEN)
-                .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(intermediate_end_tuple_byte_len);
-        cursor.finish(TupleVariationHeaderMarker {
-            peak_tuple_byte_len,
-            intermediate_start_tuple_byte_len,
-            intermediate_end_tuple_byte_len,
-        })
+
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data, axis_count })
     }
 }
 
@@ -91,22 +43,88 @@ impl<'a> TupleVariationHeader<'a> {
 }
 
 /// [TupleVariationHeader](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#tuplevariationheader)
-pub type TupleVariationHeader<'a> = TableRef<'a, TupleVariationHeaderMarker>;
+#[derive(Clone)]
+pub struct TupleVariationHeader<'a> {
+    data: FontData<'a>,
+    axis_count: u16,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> TupleVariationHeader<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + TupleIndex::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// The size in bytes of the serialized data for this tuple
     /// variation table.
     pub fn variation_data_size(&self) -> u16 {
-        let range = self.shape.variation_data_size_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.variation_data_size_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// A packed field. The high 4 bits are flags (see below). The low
     /// 12 bits are an index into a shared tuple records array.
     pub fn tuple_index(&self) -> TupleIndex {
-        let range = self.shape.tuple_index_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.tuple_index_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
+    }
+
+    pub(crate) fn axis_count(&self) -> u16 {
+        self.axis_count
+    }
+
+    pub fn variation_data_size_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn tuple_index_byte_range(&self) -> Range<usize> {
+        let start = self.variation_data_size_byte_range().end;
+        let end = start + TupleIndex::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn peak_tuple_byte_range(&self) -> Range<usize> {
+        let tuple_index = self.tuple_index();
+        let axis_count = self.axis_count();
+        let start = self.tuple_index_byte_range().end;
+        let end = start
+            + (TupleIndex::tuple_len(tuple_index, axis_count, 0_usize))
+                .saturating_mul(F2Dot14::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn intermediate_start_tuple_byte_range(&self) -> Range<usize> {
+        let tuple_index = self.tuple_index();
+        let axis_count = self.axis_count();
+        let start = self.peak_tuple_byte_range().end;
+        let end = start
+            + (TupleIndex::tuple_len(tuple_index, axis_count, 1_usize))
+                .saturating_mul(F2Dot14::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn intermediate_end_tuple_byte_range(&self) -> Range<usize> {
+        let tuple_index = self.tuple_index();
+        let axis_count = self.axis_count();
+        let start = self.intermediate_start_tuple_byte_range().end;
+        let end = start
+            + (TupleIndex::tuple_len(tuple_index, axis_count, 1_usize))
+                .saturating_mul(F2Dot14::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    TupleVariationHeader::MIN_SIZE
+));
+
+impl Default for TupleVariationHeader<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+            axis_count: Default::default(),
+        }
     }
 }
 
@@ -167,9 +185,7 @@ impl ComputeSize for Tuple<'_> {
     #[allow(clippy::needless_question_mark)]
     fn compute_size(args: &u16) -> Result<usize, ReadError> {
         let axis_count = *args;
-        Ok((axis_count as usize)
-            .checked_mul(F2Dot14::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?)
+        Ok((transforms::to_usize(axis_count)).saturating_mul(F2Dot14::RAW_BYTE_LEN))
     }
 }
 
@@ -178,7 +194,7 @@ impl<'a> FontReadWithArgs<'a> for Tuple<'a> {
         let mut cursor = data.cursor();
         let axis_count = *args;
         Ok(Self {
-            values: cursor.read_array(axis_count as usize)?,
+            values: cursor.read_array(transforms::to_usize(axis_count))?,
         })
     }
 }
@@ -209,87 +225,103 @@ impl<'a> SomeRecord<'a> for Tuple<'a> {
     }
 }
 
-impl Format<u8> for DeltaSetIndexMapFormat0Marker {
+impl Format<u8> for DeltaSetIndexMapFormat0<'_> {
     const FORMAT: u8 = 0;
 }
 
-/// The [DeltaSetIndexMap](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#associating-target-items-to-variation-data) table format 0
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct DeltaSetIndexMapFormat0Marker {
-    map_data_byte_len: usize,
-}
-
-impl DeltaSetIndexMapFormat0Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u8::RAW_BYTE_LEN
-    }
-
-    pub fn entry_format_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + EntryFormat::RAW_BYTE_LEN
-    }
-
-    pub fn map_count_byte_range(&self) -> Range<usize> {
-        let start = self.entry_format_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn map_data_byte_range(&self) -> Range<usize> {
-        let start = self.map_count_byte_range().end;
-        start..start + self.map_data_byte_len
-    }
-}
-
-impl MinByteRange for DeltaSetIndexMapFormat0Marker {
+impl<'a> MinByteRange<'a> for DeltaSetIndexMapFormat0<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.map_data_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for DeltaSetIndexMapFormat0<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u8>();
-        let entry_format: EntryFormat = cursor.read()?;
-        let map_count: u16 = cursor.read()?;
-        let map_data_byte_len = (EntryFormat::map_size(entry_format, map_count))
-            .checked_mul(u8::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(map_data_byte_len);
-        cursor.finish(DeltaSetIndexMapFormat0Marker { map_data_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [DeltaSetIndexMap](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#associating-target-items-to-variation-data) table format 0
-pub type DeltaSetIndexMapFormat0<'a> = TableRef<'a, DeltaSetIndexMapFormat0Marker>;
+#[derive(Clone)]
+pub struct DeltaSetIndexMapFormat0<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> DeltaSetIndexMapFormat0<'a> {
+    pub const MIN_SIZE: usize = (u8::RAW_BYTE_LEN + EntryFormat::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// DeltaSetIndexMap format: set to 0.
     pub fn format(&self) -> u8 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// A packed field that describes the compressed representation of
     /// delta-set indices. See details below.
     pub fn entry_format(&self) -> EntryFormat {
-        let range = self.shape.entry_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.entry_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of mapping entries.
     pub fn map_count(&self) -> u16 {
-        let range = self.shape.map_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.map_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The delta-set index mapping data. See details below.
     pub fn map_data(&self) -> &'a [u8] {
-        let range = self.shape.map_data_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.map_data_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u8::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn entry_format_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + EntryFormat::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn map_count_byte_range(&self) -> Range<usize> {
+        let start = self.entry_format_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn map_data_byte_range(&self) -> Range<usize> {
+        let entry_format = self.entry_format();
+        let map_count = self.map_count();
+        let start = self.map_count_byte_range().end;
+        let end = start
+            + (EntryFormat::map_size(entry_format, map_count)).saturating_mul(u8::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    DeltaSetIndexMapFormat0::MIN_SIZE
+));
+
+impl Default for DeltaSetIndexMapFormat0<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -317,87 +349,103 @@ impl<'a> std::fmt::Debug for DeltaSetIndexMapFormat0<'a> {
     }
 }
 
-impl Format<u8> for DeltaSetIndexMapFormat1Marker {
+impl Format<u8> for DeltaSetIndexMapFormat1<'_> {
     const FORMAT: u8 = 1;
 }
 
-/// The [DeltaSetIndexMap](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#associating-target-items-to-variation-data) table format 1
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct DeltaSetIndexMapFormat1Marker {
-    map_data_byte_len: usize,
-}
-
-impl DeltaSetIndexMapFormat1Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u8::RAW_BYTE_LEN
-    }
-
-    pub fn entry_format_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + EntryFormat::RAW_BYTE_LEN
-    }
-
-    pub fn map_count_byte_range(&self) -> Range<usize> {
-        let start = self.entry_format_byte_range().end;
-        start..start + u32::RAW_BYTE_LEN
-    }
-
-    pub fn map_data_byte_range(&self) -> Range<usize> {
-        let start = self.map_count_byte_range().end;
-        start..start + self.map_data_byte_len
-    }
-}
-
-impl MinByteRange for DeltaSetIndexMapFormat1Marker {
+impl<'a> MinByteRange<'a> for DeltaSetIndexMapFormat1<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.map_data_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for DeltaSetIndexMapFormat1<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u8>();
-        let entry_format: EntryFormat = cursor.read()?;
-        let map_count: u32 = cursor.read()?;
-        let map_data_byte_len = (EntryFormat::map_size(entry_format, map_count))
-            .checked_mul(u8::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(map_data_byte_len);
-        cursor.finish(DeltaSetIndexMapFormat1Marker { map_data_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [DeltaSetIndexMap](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#associating-target-items-to-variation-data) table format 1
-pub type DeltaSetIndexMapFormat1<'a> = TableRef<'a, DeltaSetIndexMapFormat1Marker>;
+#[derive(Clone)]
+pub struct DeltaSetIndexMapFormat1<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> DeltaSetIndexMapFormat1<'a> {
+    pub const MIN_SIZE: usize = (u8::RAW_BYTE_LEN + EntryFormat::RAW_BYTE_LEN + u32::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// DeltaSetIndexMap format: set to 1.
     pub fn format(&self) -> u8 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// A packed field that describes the compressed representation of
     /// delta-set indices. See details below.
     pub fn entry_format(&self) -> EntryFormat {
-        let range = self.shape.entry_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.entry_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of mapping entries.
     pub fn map_count(&self) -> u32 {
-        let range = self.shape.map_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.map_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The delta-set index mapping data. See details below.
     pub fn map_data(&self) -> &'a [u8] {
-        let range = self.shape.map_data_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.map_data_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u8::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn entry_format_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + EntryFormat::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn map_count_byte_range(&self) -> Range<usize> {
+        let start = self.entry_format_byte_range().end;
+        let end = start + u32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn map_data_byte_range(&self) -> Range<usize> {
+        let entry_format = self.entry_format();
+        let map_count = self.map_count();
+        let start = self.map_count_byte_range().end;
+        let end = start
+            + (EntryFormat::map_size(entry_format, map_count)).saturating_mul(u8::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    DeltaSetIndexMapFormat1::MIN_SIZE
+));
+
+impl Default for DeltaSetIndexMapFormat1<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_format_1_u8_table_data(),
+        }
     }
 }
 
@@ -430,6 +478,12 @@ impl<'a> std::fmt::Debug for DeltaSetIndexMapFormat1<'a> {
 pub enum DeltaSetIndexMap<'a> {
     Format0(DeltaSetIndexMapFormat0<'a>),
     Format1(DeltaSetIndexMapFormat1<'a>),
+}
+
+impl Default for DeltaSetIndexMap<'_> {
+    fn default() -> Self {
+        Self::Format0(Default::default())
+    }
 }
 
 impl<'a> DeltaSetIndexMap<'a> {
@@ -471,18 +525,24 @@ impl<'a> FontRead<'a> for DeltaSetIndexMap<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
         let format: u8 = data.read_at(0usize)?;
         match format {
-            DeltaSetIndexMapFormat0Marker::FORMAT => Ok(Self::Format0(FontRead::read(data)?)),
-            DeltaSetIndexMapFormat1Marker::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
+            DeltaSetIndexMapFormat0::FORMAT => Ok(Self::Format0(FontRead::read(data)?)),
+            DeltaSetIndexMapFormat1::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
             other => Err(ReadError::InvalidFormat(other.into())),
         }
     }
 }
 
-impl MinByteRange for DeltaSetIndexMap<'_> {
+impl<'a> MinByteRange<'a> for DeltaSetIndexMap<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         match self {
             Self::Format0(item) => item.min_byte_range(),
             Self::Format1(item) => item.min_byte_range(),
+        }
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        match self {
+            Self::Format0(item) => item.min_table_bytes(),
+            Self::Format1(item) => item.min_table_bytes(),
         }
     }
 }
@@ -825,74 +885,91 @@ impl<'a> From<EntryFormat> for FieldType<'a> {
     }
 }
 
-/// The [VariationRegionList](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#variation-regions) table
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct VariationRegionListMarker {
-    variation_regions_byte_len: usize,
-}
-
-impl VariationRegionListMarker {
-    pub fn axis_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn region_count_byte_range(&self) -> Range<usize> {
-        let start = self.axis_count_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn variation_regions_byte_range(&self) -> Range<usize> {
-        let start = self.region_count_byte_range().end;
-        start..start + self.variation_regions_byte_len
-    }
-}
-
-impl MinByteRange for VariationRegionListMarker {
+impl<'a> MinByteRange<'a> for VariationRegionList<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.variation_regions_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for VariationRegionList<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let axis_count: u16 = cursor.read()?;
-        let region_count: u16 = cursor.read()?;
-        let variation_regions_byte_len = (region_count as usize)
-            .checked_mul(<VariationRegion as ComputeSize>::compute_size(&axis_count)?)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(variation_regions_byte_len);
-        cursor.finish(VariationRegionListMarker {
-            variation_regions_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [VariationRegionList](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#variation-regions) table
-pub type VariationRegionList<'a> = TableRef<'a, VariationRegionListMarker>;
+#[derive(Clone)]
+pub struct VariationRegionList<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> VariationRegionList<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// The number of variation axes for this font. This must be the
     /// same number as axisCount in the 'fvar' table.
     pub fn axis_count(&self) -> u16 {
-        let range = self.shape.axis_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.axis_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of variation region tables in the variation region
     /// list. Must be less than 32,768.
     pub fn region_count(&self) -> u16 {
-        let range = self.shape.region_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.region_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of variation regions.
     pub fn variation_regions(&self) -> ComputedArray<'a, VariationRegion<'a>> {
-        let range = self.shape.variation_regions_byte_range();
-        self.data.read_with_args(range, &self.axis_count()).unwrap()
+        let range = self.variation_regions_byte_range();
+        self.data
+            .read_with_args(range, &self.axis_count())
+            .unwrap_or_default()
+    }
+
+    pub fn axis_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn region_count_byte_range(&self) -> Range<usize> {
+        let start = self.axis_count_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn variation_regions_byte_range(&self) -> Range<usize> {
+        let region_count = self.region_count();
+        let start = self.region_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(region_count)).saturating_mul(
+                <VariationRegion as ComputeSize>::compute_size(&self.axis_count()).unwrap_or(0),
+            );
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    VariationRegionList::MIN_SIZE
+));
+
+impl Default for VariationRegionList<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -950,9 +1027,7 @@ impl ComputeSize for VariationRegion<'_> {
     #[allow(clippy::needless_question_mark)]
     fn compute_size(args: &u16) -> Result<usize, ReadError> {
         let axis_count = *args;
-        Ok((axis_count as usize)
-            .checked_mul(RegionAxisCoordinates::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?)
+        Ok((transforms::to_usize(axis_count)).saturating_mul(RegionAxisCoordinates::RAW_BYTE_LEN))
     }
 }
 
@@ -961,7 +1036,7 @@ impl<'a> FontReadWithArgs<'a> for VariationRegion<'a> {
         let mut cursor = data.cursor();
         let axis_count = *args;
         Ok(Self {
-            region_axes: cursor.read_array(axis_count as usize)?,
+            region_axes: cursor.read_array(transforms::to_usize(axis_count))?,
         })
     }
 }
@@ -1050,73 +1125,48 @@ impl<'a> SomeRecord<'a> for RegionAxisCoordinates {
     }
 }
 
-/// The [ItemVariationStore](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#item-variation-store-header-and-item-variation-data-subtables) table
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ItemVariationStoreMarker {
-    item_variation_data_offsets_byte_len: usize,
-}
-
-impl ItemVariationStoreMarker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn variation_region_list_offset_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + Offset32::RAW_BYTE_LEN
-    }
-
-    pub fn item_variation_data_count_byte_range(&self) -> Range<usize> {
-        let start = self.variation_region_list_offset_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn item_variation_data_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.item_variation_data_count_byte_range().end;
-        start..start + self.item_variation_data_offsets_byte_len
-    }
-}
-
-impl MinByteRange for ItemVariationStoreMarker {
+impl<'a> MinByteRange<'a> for ItemVariationStore<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.item_variation_data_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ItemVariationStore<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<Offset32>();
-        let item_variation_data_count: u16 = cursor.read()?;
-        let item_variation_data_offsets_byte_len = (item_variation_data_count as usize)
-            .checked_mul(Offset32::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(item_variation_data_offsets_byte_len);
-        cursor.finish(ItemVariationStoreMarker {
-            item_variation_data_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [ItemVariationStore](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#item-variation-store-header-and-item-variation-data-subtables) table
-pub type ItemVariationStore<'a> = TableRef<'a, ItemVariationStoreMarker>;
+#[derive(Clone)]
+pub struct ItemVariationStore<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ItemVariationStore<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + Offset32::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format— set to 1
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Offset in bytes from the start of the item variation store to
     /// the variation region list.
     pub fn variation_region_list_offset(&self) -> Offset32 {
-        let range = self.shape.variation_region_list_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.variation_region_list_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`variation_region_list_offset`][Self::variation_region_list_offset].
@@ -1127,15 +1177,15 @@ impl<'a> ItemVariationStore<'a> {
 
     /// The number of item variation data subtables.
     pub fn item_variation_data_count(&self) -> u16 {
-        let range = self.shape.item_variation_data_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.item_variation_data_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Offsets in bytes from the start of the item variation store to
     /// each item variation data subtable.
     pub fn item_variation_data_offsets(&self) -> &'a [BigEndian<Nullable<Offset32>>] {
-        let range = self.shape.item_variation_data_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.item_variation_data_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`item_variation_data_offsets`][Self::item_variation_data_offsets].
@@ -1145,6 +1195,45 @@ impl<'a> ItemVariationStore<'a> {
         let data = self.data;
         let offsets = self.item_variation_data_offsets();
         ArrayOfNullableOffsets::new(offsets, data, ())
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn variation_region_list_offset_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + Offset32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn item_variation_data_count_byte_range(&self) -> Range<usize> {
+        let start = self.variation_region_list_offset_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn item_variation_data_offsets_byte_range(&self) -> Range<usize> {
+        let item_variation_data_count = self.item_variation_data_count();
+        let start = self.item_variation_data_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(item_variation_data_count))
+                .saturating_mul(Offset32::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ItemVariationStore::MIN_SIZE
+));
+
+impl Default for ItemVariationStore<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -1167,20 +1256,10 @@ impl<'a> SomeTable<'a> for ItemVariationStore<'a> {
                 "item_variation_data_count",
                 self.item_variation_data_count(),
             )),
-            3usize => Some({
-                let data = self.data;
-                Field::new(
-                    "item_variation_data_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<ItemVariationData>(),
-                        self.item_variation_data_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<ItemVariationData>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            3usize => Some(Field::new(
+                "item_variation_data_offsets",
+                FieldType::from(self.item_variation_data()),
+            )),
             _ => None,
         }
     }
@@ -1194,103 +1273,115 @@ impl<'a> std::fmt::Debug for ItemVariationStore<'a> {
     }
 }
 
-/// The [ItemVariationData](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#item-variation-store-header-and-item-variation-data-subtables) subtable
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ItemVariationDataMarker {
-    region_indexes_byte_len: usize,
-    delta_sets_byte_len: usize,
-}
-
-impl ItemVariationDataMarker {
-    pub fn item_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn word_delta_count_byte_range(&self) -> Range<usize> {
-        let start = self.item_count_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn region_index_count_byte_range(&self) -> Range<usize> {
-        let start = self.word_delta_count_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn region_indexes_byte_range(&self) -> Range<usize> {
-        let start = self.region_index_count_byte_range().end;
-        start..start + self.region_indexes_byte_len
-    }
-
-    pub fn delta_sets_byte_range(&self) -> Range<usize> {
-        let start = self.region_indexes_byte_range().end;
-        start..start + self.delta_sets_byte_len
-    }
-}
-
-impl MinByteRange for ItemVariationDataMarker {
+impl<'a> MinByteRange<'a> for ItemVariationData<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.delta_sets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ItemVariationData<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let item_count: u16 = cursor.read()?;
-        let word_delta_count: u16 = cursor.read()?;
-        let region_index_count: u16 = cursor.read()?;
-        let region_indexes_byte_len = (region_index_count as usize)
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(region_indexes_byte_len);
-        let delta_sets_byte_len =
-            (ItemVariationData::delta_sets_len(item_count, word_delta_count, region_index_count))
-                .checked_mul(u8::RAW_BYTE_LEN)
-                .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(delta_sets_byte_len);
-        cursor.finish(ItemVariationDataMarker {
-            region_indexes_byte_len,
-            delta_sets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [ItemVariationData](https://learn.microsoft.com/en-us/typography/opentype/spec/otvarcommonformats#item-variation-store-header-and-item-variation-data-subtables) subtable
-pub type ItemVariationData<'a> = TableRef<'a, ItemVariationDataMarker>;
+#[derive(Clone)]
+pub struct ItemVariationData<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ItemVariationData<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// The number of delta sets for distinct items.
     pub fn item_count(&self) -> u16 {
-        let range = self.shape.item_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.item_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// A packed field: the high bit is a flag—see details below.
     pub fn word_delta_count(&self) -> u16 {
-        let range = self.shape.word_delta_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.word_delta_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of variation regions referenced.
     pub fn region_index_count(&self) -> u16 {
-        let range = self.shape.region_index_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.region_index_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of indices into the variation region list for the regions
     /// referenced by this item variation data table.
     pub fn region_indexes(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.region_indexes_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.region_indexes_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Delta-set rows.
     pub fn delta_sets(&self) -> &'a [u8] {
-        let range = self.shape.delta_sets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.delta_sets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn item_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn word_delta_count_byte_range(&self) -> Range<usize> {
+        let start = self.item_count_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn region_index_count_byte_range(&self) -> Range<usize> {
+        let start = self.word_delta_count_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn region_indexes_byte_range(&self) -> Range<usize> {
+        let region_index_count = self.region_index_count();
+        let start = self.region_index_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(region_index_count)).saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn delta_sets_byte_range(&self) -> Range<usize> {
+        let item_count = self.item_count();
+        let word_delta_count = self.word_delta_count();
+        let region_index_count = self.region_index_count();
+        let start = self.region_indexes_byte_range().end;
+        let end = start
+            + (ItemVariationData::delta_sets_len(item_count, word_delta_count, region_index_count))
+                .saturating_mul(u8::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ItemVariationData::MIN_SIZE
+));
+
+impl Default for ItemVariationData<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 

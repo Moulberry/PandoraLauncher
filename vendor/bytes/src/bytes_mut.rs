@@ -79,6 +79,15 @@ struct Shared {
     ref_count: AtomicUsize,
 }
 
+impl Shared {
+    fn init_to_raw(b: Box<MaybeUninit<Self>>, v: Self) -> *mut Self {
+        let shared = Box::into_raw(b).cast::<Self>();
+        // SAFETY: The Box has the right layout.
+        unsafe { shared.write(v) };
+        shared
+    }
+}
+
 // Assert that the alignment of `Shared` is divisible by 2.
 // This is a necessary invariant since we depend on allocating `Shared` a
 // shared object to implicitly carry the `KIND_ARC` flag in its pointer.
@@ -324,6 +333,10 @@ impl BytesMut {
             self.capacity(),
         );
         unsafe {
+            // SAFETY: `shallow_clone` increments the reference count (or
+            // promotes to shared) and returns a bitwise copy of the handle.
+            // The caller immediately adjusts both handles so they represent
+            // disjoint regions.
             let mut other = self.shallow_clone();
             // SAFETY: We've checked that `at` <= `self.capacity()` above.
             other.advance_unchecked(at);
@@ -400,6 +413,10 @@ impl BytesMut {
         );
 
         unsafe {
+            // SAFETY: `shallow_clone` increments the reference count (or
+            // promotes to shared) and returns a bitwise copy of the handle.
+            // The caller immediately adjusts both handles so they represent
+            // disjoint regions.
             let mut other = self.shallow_clone();
             // SAFETY: We've checked that `at` <= `self.len()` and we know that `self.len()` <=
             // `self.capacity()`.
@@ -550,6 +567,8 @@ impl BytesMut {
     /// large as the distance that it's shifted by. If the current view is empty
     /// and the original buffer is large enough to fit the requested additional
     /// capacity, then reallocations will never happen.
+    ///
+    /// This method does not preserve data stored in the unused capacity.
     ///
     /// # Examples
     ///
@@ -801,6 +820,8 @@ impl BytesMut {
     /// references through other `BytesMut`s or `Bytes` which point to the same underlying
     /// storage.
     ///
+    /// This method does not preserve data stored in the unused capacity.
+    ///
     /// # Examples
     ///
     /// ```
@@ -880,7 +901,43 @@ impl BytesMut {
         }
     }
 
-    /// Absorbs a `BytesMut` that was previously split off.
+    /// Clones the elements in the given `range` within this `BytesMut` and
+    /// appends them to the end.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `range` is out of bounds for this `BytesMut`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bytes::BytesMut;
+    ///
+    /// let mut buf = BytesMut::with_capacity(0);
+    /// buf.extend_from_slice(b"aaabbb_");
+    /// buf.extend_from_within(3..6);
+    ///
+    /// assert_eq!(b"aaabbb_bbb", &buf[..]);
+    /// ```
+    pub fn extend_from_within(&mut self, range: impl core::ops::RangeBounds<usize>) {
+        let (begin, end) = crate::range(range, self.len());
+
+        let cnt = end - begin;
+        self.reserve(cnt);
+
+        // SAFETY: range is already checked
+        let src = unsafe { self.as_ptr().add(begin) };
+        let dst = self.spare_capacity_mut();
+
+        // SAFETY: range doesn't overlap with spare capacity
+        unsafe { ptr::copy_nonoverlapping(src, dst.as_mut_ptr().cast(), cnt) }
+
+        // SAFETY: capacity is already reserved and filled with data
+        unsafe { self.advance_mut(cnt) }
+    }
+
+    /// Absorbs a `BytesMut` that was previously split off if they are
+    /// contiguous, otherwise appends its bytes to this `BytesMut`.
     ///
     /// If the two `BytesMut` objects were previously contiguous and not mutated
     /// in a way that causes re-allocation i.e., if `other` was created by
@@ -993,7 +1050,35 @@ impl BytesMut {
         self.cap -= count;
     }
 
-    fn try_unsplit(&mut self, other: BytesMut) -> Result<(), BytesMut> {
+    /// Absorbs a `BytesMut` that was previously split off.
+    ///
+    /// If the two `BytesMut` objects were previously contiguous, i.e., if
+    /// `other` was created by calling `split_off` on this `BytesMut`, then
+    /// this is an `O(1)` operation that just decreases a reference
+    /// count and sets a few indices. Otherwise this method returns an error
+    /// containing the original `other`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bytes::BytesMut;
+    ///
+    /// let mut buf = BytesMut::with_capacity(64);
+    /// buf.extend_from_slice(b"aaabbbcccddd");
+    ///
+    /// let mut split_1 = buf.split_off(3);
+    /// let split_2 = split_1.split_off(3);
+    /// assert_eq!(b"aaa", &buf[..]);
+    /// assert_eq!(b"bbb", &split_1[..]);
+    /// assert_eq!(b"cccddd", &split_2[..]);
+    ///
+    /// let split_2 = buf.try_unsplit(split_2).unwrap_err();
+    ///
+    /// buf.try_unsplit(split_1).unwrap();
+    /// buf.try_unsplit(split_2).unwrap();
+    /// assert_eq!(b"aaabbbcccddd", &buf[..]);
+    /// ```
+    pub fn try_unsplit(&mut self, other: BytesMut) -> Result<(), BytesMut> {
         if other.capacity() == 0 {
             return Ok(());
         }
@@ -1036,13 +1121,18 @@ impl BytesMut {
         // updated and since the buffer hasn't been promoted to an
         // `Arc`, those three fields still are the components of the
         // vector.
-        let shared = Box::new(Shared {
-            vec: rebuild_vec(self.ptr.as_ptr(), self.len, self.cap, off),
-            original_capacity_repr,
-            ref_count: AtomicUsize::new(ref_cnt),
-        });
-
-        let shared = Box::into_raw(shared);
+        //
+        // Explicitly allocate before invoking rebuild_vec() so that
+        // the vector is not dropped if Box::new() panics.
+        let shared = Box::new(MaybeUninit::<Shared>::uninit());
+        let shared = Shared::init_to_raw(
+            shared,
+            Shared {
+                vec: rebuild_vec(self.ptr.as_ptr(), self.len, self.cap, off),
+                original_capacity_repr,
+                ref_count: AtomicUsize::new(ref_cnt),
+            },
+        );
 
         // The pointer should be aligned, so this assert should
         // always succeed.
@@ -1810,8 +1900,8 @@ unsafe fn shared_v_clone(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> By
     Bytes::with_vtable(ptr, len, data, &SHARED_VTABLE)
 }
 
-unsafe fn shared_v_to_vec(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> Vec<u8> {
-    let shared: *mut Shared = data.load(Ordering::Relaxed).cast();
+unsafe fn shared_v_to_vec(shared: *mut (), ptr: *const u8, len: usize) -> Vec<u8> {
+    let shared: *mut Shared = shared.cast();
 
     if (*shared).is_unique() {
         let shared = &mut *shared;
@@ -1832,8 +1922,8 @@ unsafe fn shared_v_to_vec(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> V
     }
 }
 
-unsafe fn shared_v_to_mut(data: &AtomicPtr<()>, ptr: *const u8, len: usize) -> BytesMut {
-    let shared: *mut Shared = data.load(Ordering::Relaxed).cast();
+unsafe fn shared_v_to_mut(shared: *mut (), ptr: *const u8, len: usize) -> BytesMut {
+    let shared: *mut Shared = shared.cast();
 
     if (*shared).is_unique() {
         let shared = &mut *shared;
@@ -1867,10 +1957,8 @@ unsafe fn shared_v_is_unique(data: &AtomicPtr<()>) -> bool {
     ref_count == 1
 }
 
-unsafe fn shared_v_drop(data: &mut AtomicPtr<()>, _ptr: *const u8, _len: usize) {
-    data.with_mut(|shared| {
-        release_shared(*shared as *mut Shared);
-    });
+unsafe fn shared_v_drop(shared: *mut (), _ptr: *const u8, _len: usize) {
+    release_shared(shared.cast());
 }
 
 // compile-fails

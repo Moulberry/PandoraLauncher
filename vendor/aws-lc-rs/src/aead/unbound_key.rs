@@ -196,6 +196,52 @@ impl UnboundKey {
 
     #[inline]
     #[allow(clippy::needless_pass_by_value)]
+    pub(crate) fn seal_out_of_place_scatter(
+        &self,
+        nonce: Nonce,
+        aad: &[u8],
+        in_plaintext: &[u8],
+        out_ciphertext: &mut [u8],
+        extra_in: &[u8],
+        extra_out_and_tag: &mut [u8],
+    ) -> Result<(), Unspecified> {
+        self.check_per_nonce_max_bytes(in_plaintext.len() + extra_in.len())?;
+        if out_ciphertext.len() != in_plaintext.len()
+            || extra_out_and_tag.len() != extra_in.len() + self.algorithm().tag_len()
+        {
+            return Err(Unspecified);
+        }
+
+        let nonce = nonce.as_ref();
+        // Set to a value the AEAD never reports on success, so the assertion below
+        // catches a missing write as well as a short one.
+        let mut out_tag_len = 0;
+
+        if 1 != unsafe {
+            EVP_AEAD_CTX_seal_scatter(
+                self.ctx.as_ref().as_const_ptr(),
+                out_ciphertext.as_mut_ptr(),
+                extra_out_and_tag.as_mut_ptr(),
+                &mut out_tag_len,
+                extra_out_and_tag.len(),
+                nonce.as_ptr(),
+                nonce.len(),
+                in_plaintext.as_ptr(),
+                in_plaintext.len(),
+                extra_in.as_ptr(),
+                extra_in.len(),
+                aad.as_ptr(),
+                aad.len(),
+            )
+        } {
+            return Err(Unspecified);
+        }
+        debug_assert_eq!(out_tag_len, extra_out_and_tag.len());
+        Ok(())
+    }
+
+    #[inline]
+    #[allow(clippy::needless_pass_by_value)]
     pub(crate) fn seal_in_place_separate_scatter(
         &self,
         nonce: Nonce,

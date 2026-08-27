@@ -69,12 +69,17 @@ extern crate std;
 #[macro_use]
 extern crate core as std;
 
+// Always depend on alloc. Perhaps make this a feature if someone really needs
+// heapless read-fonts.
+extern crate alloc;
+
 pub mod array;
-#[cfg(feature = "std")]
 pub mod collections;
 mod font_data;
+pub mod model;
 mod offset;
 mod offset_array;
+pub mod ps;
 mod read;
 mod table_provider;
 mod table_ref;
@@ -90,7 +95,7 @@ pub use offset::{Offset, ResolveNullableOffset, ResolveOffset};
 pub use offset_array::{ArrayOfNullableOffsets, ArrayOfOffsets};
 pub use read::{ComputeSize, FontRead, FontReadWithArgs, ReadArgs, ReadError, VarSize};
 pub use table_provider::{TableProvider, TopLevelTable};
-pub use table_ref::{MinByteRange, TableRef};
+pub use table_ref::MinByteRange;
 
 /// Public re-export of the font-types crate.
 pub extern crate font_types as types;
@@ -104,10 +109,10 @@ pub(crate) mod codegen_prelude {
     pub use crate::offset_array::{ArrayOfNullableOffsets, ArrayOfOffsets};
     //pub(crate) use crate::read::sealed;
     pub use crate::read::{
-        ComputeSize, FontRead, FontReadWithArgs, Format, ReadArgs, ReadError, VarSize,
+        ComputeSize, Discriminant, FontRead, FontReadWithArgs, Format, ReadArgs, ReadError, VarSize,
     };
     pub use crate::table_provider::TopLevelTable;
-    pub use crate::table_ref::{MinByteRange, TableRef};
+    pub use crate::table_ref::MinByteRange;
     pub use std::ops::Range;
 
     pub use types::*;
@@ -115,18 +120,12 @@ pub(crate) mod codegen_prelude {
     #[cfg(feature = "experimental_traverse")]
     pub use crate::traversal::{self, Field, FieldType, RecordResolver, SomeRecord, SomeTable};
 
-    // used in generated traversal code to get type names of offset fields, which
-    // may include generics
-    #[cfg(feature = "experimental_traverse")]
-    pub(crate) fn better_type_name<T>() -> &'static str {
-        let raw_name = std::any::type_name::<T>();
-        let last = raw_name.rsplit("::").next().unwrap_or(raw_name);
-        // this happens if we end up getting a type name like TableRef<'a, module::SomeMarker>
-        last.trim_end_matches("Marker>")
-    }
-
     /// named transforms used in 'count', e.g
     pub(crate) mod transforms {
+        pub fn to_usize<T: TryInto<usize>>(value: T) -> usize {
+            value.try_into().unwrap_or_default()
+        }
+
         pub fn subtract<T: TryInto<usize>, U: TryInto<usize>>(lhs: T, rhs: U) -> usize {
             lhs.try_into()
                 .unwrap_or_default()
@@ -184,6 +183,38 @@ pub(crate) mod codegen_prelude {
                 .saturating_add(2)
         }
     }
+
+    #[macro_export]
+    macro_rules! basic_table_impls {
+        (impl_the_methods) => {
+            /// Resolve the provided offset from the start of this table.
+            pub fn resolve_offset<O: Offset, R: FontRead<'a>>(
+                &self,
+                offset: O,
+            ) -> Result<R, ReadError> {
+                offset.resolve(self.data)
+            }
+
+            /// Return a reference to this table's raw data.
+            ///
+            /// We use this in the compile crate to resolve offsets.
+            pub fn offset_data(&self) -> FontData<'a> {
+                self.data
+            }
+
+            /// Return a reference to the table's 'Shape' struct.
+            ///
+            /// This is a low level implementation detail, but it can be useful in
+            /// some cases where you want to know things about a table's layout, such
+            /// as the byte offsets of specific fields.
+            #[deprecated(note = "just use the base type directly")]
+            pub fn shape(&self) -> &Self {
+                &self
+            }
+        };
+    }
+
+    pub(crate) use crate::basic_table_impls;
 }
 
 include!("../generated/font.rs");
@@ -238,7 +269,7 @@ impl<'a> CollectionRef<'a> {
 
     /// Returns the number of fonts in the collection.
     pub fn len(&self) -> u32 {
-        self.header.num_fonts()
+        self.header.table_directory_offsets().len() as u32
     }
 
     /// Returns true if the collection is empty.

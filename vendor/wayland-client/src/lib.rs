@@ -147,8 +147,8 @@
 //! It can happen that you'll need to interact with Wayland states accross FFI. A typical example would be if
 //! you need to use the [`raw-window-handle`](https://docs.rs/raw-window-handle/) crate.
 //!
-//! In this case, you'll need to do it in two steps, by explicitly working with `wayland-backend`, adding
-//! it to your dependencies and enabling its `client_system` feature.
+//! In this case, you'll need enable the `system` feature to use the `libwayland` backend of
+//! `wayland-backend`.
 //!
 //! - If you need to send pointers to FFI, you can retrive the `*mut wl_proxy` pointers from the proxies by
 //!   first getting the [`ObjectId`] using the [`Proxy::id()`] method, and then
@@ -165,7 +165,7 @@
 #![forbid(improper_ctypes, unsafe_op_in_unsafe_fn)]
 #![cfg_attr(unstable_coverage, feature(coverage_attribute))]
 // Doc feature labels can be tested locally by running RUSTDOCFLAGS="--cfg=docsrs" cargo +nightly doc -p <crate>
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 use std::{
     fmt,

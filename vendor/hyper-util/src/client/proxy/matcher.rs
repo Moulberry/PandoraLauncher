@@ -331,6 +331,8 @@ fn get_first_env(names: &[&str]) -> String {
 }
 
 fn parse_env_uri(val: &str) -> Option<Intercept> {
+    use std::borrow::Cow;
+
     let uri = val.parse::<http::Uri>().ok()?;
     let mut builder = http::Uri::builder();
     let mut is_httpish = false;
@@ -358,13 +360,19 @@ fn parse_env_uri(val: &str) -> Option<Intercept> {
     let authority = uri.authority()?;
 
     if let Some((userinfo, host_port)) = authority.as_str().split_once('@') {
-        let (user, pass) = userinfo.split_once(':')?;
+        let (user, pass) = match userinfo.split_once(':') {
+            Some((user, pass)) => (user, Some(pass)),
+            None => (userinfo, None),
+        };
         let user = percent_decode_str(user).decode_utf8_lossy();
-        let pass = percent_decode_str(pass).decode_utf8_lossy();
+        let pass = pass.map(|pass| percent_decode_str(pass).decode_utf8_lossy());
         if is_httpish {
-            auth = Auth::Basic(encode_basic_auth(&user, Some(&pass)));
+            auth = Auth::Basic(encode_basic_auth(&user, pass.as_deref()));
         } else {
-            auth = Auth::Raw(user.into(), pass.into());
+            auth = Auth::Raw(
+                user.into_owned(),
+                pass.map_or_else(String::new, Cow::into_owned),
+            );
         }
         builder = builder.authority(host_port);
     } else {
@@ -507,9 +515,15 @@ impl DomainMatcher {
     fn contains(&self, domain: &str) -> bool {
         let domain_len = domain.len();
         for d in &self.0 {
-            if d == domain || d.strip_prefix('.') == Some(domain) {
+            if d.eq_ignore_ascii_case(domain)
+                || d.strip_prefix('.')
+                    .map_or(false, |s| s.eq_ignore_ascii_case(domain))
+            {
                 return true;
-            } else if domain.ends_with(d) {
+            } else if domain
+                .get(domain_len.saturating_sub(d.len())..)
+                .map_or(false, |s| s.eq_ignore_ascii_case(d))
+            {
                 if d.starts_with('.') {
                     // If the first character of d is a dot, that means the first character of domain
                     // must also be a dot, so we are looking at a subdomain of d and that matches
@@ -561,7 +575,7 @@ mod builder {
 #[cfg(feature = "client-proxy-system")]
 #[cfg(target_os = "macos")]
 mod mac {
-    use system_configuration::core_foundation::base::{CFType, TCFType, TCFTypeRef};
+    use system_configuration::core_foundation::base::CFType;
     use system_configuration::core_foundation::dictionary::CFDictionary;
     use system_configuration::core_foundation::number::CFNumber;
     use system_configuration::core_foundation::string::{CFString, CFStringRef};
@@ -572,7 +586,11 @@ mod mac {
     };
 
     pub(super) fn with_system(builder: &mut super::Builder) {
-        let store = SCDynamicStoreBuilder::new("").build();
+        let store = if let Some(store) = SCDynamicStoreBuilder::new("hyper-util").build() {
+            store
+        } else {
+            return;
+        };
 
         let proxies_map = if let Some(proxies_map) = store.get_proxies() {
             proxies_map
@@ -690,13 +708,19 @@ mod tests {
 
         // domains match with leading `.`
         assert!(matcher.contains("foo.bar"));
+        assert!(matcher.contains("FOO.BAR"));
+
         // subdomains match with leading `.`
         assert!(matcher.contains("www.foo.bar"));
+        assert!(matcher.contains("WWW.FOO.BAR"));
 
         // domains match with no leading `.`
         assert!(matcher.contains("bar.foo"));
+        assert!(matcher.contains("Bar.foo"));
+
         // subdomains match with no leading `.`
         assert!(matcher.contains("www.bar.foo"));
+        assert!(matcher.contains("WWW.BAR.FOO"));
 
         // non-subdomain string prefixes don't match
         assert!(!matcher.contains("notfoo.bar"));
@@ -823,6 +847,19 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_http_auth_without_password() {
+        let p = p! {
+            all = "http://Aladdin@y.ep",
+        };
+        let proxy = intercept(&p, "https://example.local");
+        assert_eq!(proxy.uri(), "http://y.ep");
+        assert_eq!(
+            proxy.basic_auth().expect("basic_auth"),
+            "Basic QWxhZGRpbjo="
+        );
+    }
+
+    #[test]
     fn test_parse_http_auth_without_scheme() {
         let p = p! {
             all = "Aladdin:opensesame@y.ep",
@@ -844,5 +881,49 @@ mod tests {
         let m = builder.build();
 
         assert!(m.intercept(&"http://rick.roll".parse().unwrap()).is_none());
+    }
+
+    #[test]
+    fn test_domain_matcher_case_insensitive() {
+        let domains = vec![".foo.bar".into()];
+        let matcher = DomainMatcher(domains);
+
+        assert!(matcher.contains("foo.bar"));
+        assert!(matcher.contains("FOO.BAR"));
+        assert!(matcher.contains("Foo.Bar"));
+
+        assert!(matcher.contains("www.foo.bar"));
+        assert!(matcher.contains("WWW.FOO.BAR"));
+        assert!(matcher.contains("Www.Foo.Bar"));
+    }
+
+    #[test]
+    fn test_no_proxy_case_insensitive() {
+        let p = p! {
+            all = "http://proxy.local",
+            no = ".example.com",
+        };
+
+        // should bypass proxy (case insensitive match)
+        assert!(p
+            .intercept(&"http://example.com".parse().unwrap())
+            .is_none());
+        assert!(p
+            .intercept(&"http://EXAMPLE.COM".parse().unwrap())
+            .is_none());
+        assert!(p
+            .intercept(&"http://Example.com".parse().unwrap())
+            .is_none());
+
+        // subdomain should bypass proxy (case insensitive match)
+        assert!(p
+            .intercept(&"http://www.example.com".parse().unwrap())
+            .is_none());
+        assert!(p
+            .intercept(&"http://WWW.EXAMPLE.COM".parse().unwrap())
+            .is_none());
+        assert!(p
+            .intercept(&"http://Www.Example.Com".parse().unwrap())
+            .is_none());
     }
 }

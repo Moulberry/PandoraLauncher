@@ -13,7 +13,7 @@ error: #[repr(packed)] attribute should be applied to a struct or union
 error[E0517]: attribute should be applied to a struct or union
   --> tests/ui/pin_project/packed-enum.rs:9:8
    |
-9  |   #[repr(packed)] //~ ERROR E0517
+ 9 |   #[repr(packed)] //~ ERROR E0517
    |          ^^^^^^
 10 | / enum E1 {
 11 | |     V(()),

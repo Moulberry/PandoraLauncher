@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.87"
 name = "zvariant"
-version = "5.11.0"
+version = "5.15.0"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
 build = false
 autolib = false
@@ -76,6 +76,10 @@ name = "common"
 path = "tests/common.rs"
 
 [[test]]
+name = "dbus_maybe_rejection"
+path = "tests/dbus_maybe_rejection.rs"
+
+[[test]]
 name = "derive"
 path = "tests/derive.rs"
 
@@ -110,10 +114,6 @@ path = "tests/numbers.rs"
 [[test]]
 name = "object_path_value"
 path = "tests/object_path_value.rs"
-
-[[test]]
-name = "ostree_de"
-path = "tests/ostree_de.rs"
 
 [[test]]
 name = "recursion_limits"
@@ -226,11 +226,15 @@ optional = true
 [dependencies.winnow]
 version = "1.0"
 
+[dependencies.zcheapstr]
+version = "1.0.0"
+features = ["serde"]
+
 [dependencies.zvariant_derive]
-version = "5.11.0"
+version = "5.15.0"
 
 [dependencies.zvariant_utils]
-version = "3.3.1"
+version = "4.2.0"
 
 [dev-dependencies.chrono]
 version = "0.4.38"
@@ -242,7 +246,7 @@ features = [
 default-features = false
 
 [dev-dependencies.criterion]
-version = "4.0.4"
+version = "5.0.0"
 package = "codspeed-criterion-compat"
 
 [dev-dependencies.fastrand]

@@ -26,8 +26,8 @@ To target a version of `libclang`, enable a Cargo features such as one of the fo
 * `clang_3_5` - requires `libclang` 3.5 or later
 * `clang_3_6` - requires `libclang` 3.6 or later
 * etc...
-* `clang_17_0` - requires `libclang` 17.0 or later
-* `clang_18_0` - requires `libclang` 18.0 or later
+* `clang_19_0` - requires `libclang` 19.0 or later
+* `clang_20_0` - requires `libclang` 20.0 or later
 
 If you do not enable one of these features, the API provided by `libclang` 3.5 will be available by default.
 
@@ -88,8 +88,8 @@ The availability of `llvm-config` is not optional for static linking. Ensure tha
 
 #### Static Library Availability
 
-Linking to `libclang` statically on *nix systems requires that the `libclang.a` static library be available.  
-This library is usually *not* included in most distributions of LLVM and Clang (e.g., `libclang-dev` on Debian-based systems).  
+Linking to `libclang` statically on *nix systems requires that the `libclang.a` static library be available.
+This library is usually *not* included in most distributions of LLVM and Clang (e.g., `libclang-dev` on Debian-based systems).
 If you need to link to `libclang` statically then most likely the only consistent way to get your hands on `libclang.a` is to build it yourself.
 
 Here's an example of building the required static libraries and using them with `clang-sys`:
@@ -108,7 +108,7 @@ cd clang-sys
 LLVM_CONFIG_PATH=../llvm-project/build/bin/llvm-config cargo test --features static
 ```
 
-Linking to `libclang` statically requires linking a large number of big static libraries.  
+Linking to `libclang` statically requires linking a large number of big static libraries.
 Using [`rust-lld` as a linker](https://blog.rust-lang.org/2024/05/17/enabling-rust-lld-on-linux.html) can greatly reduce linking times.
 
 ### Runtime

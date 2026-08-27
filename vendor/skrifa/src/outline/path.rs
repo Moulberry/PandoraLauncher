@@ -46,6 +46,8 @@ impl fmt::Display for ToPathError {
     }
 }
 
+impl core::error::Error for ToPathError {}
+
 /// Converts a `glyf` outline described by points, flags and contour end points
 /// to a sequence of path elements and invokes the appropriate callback on the
 /// given pen for each.

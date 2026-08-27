@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.81.0"
+rust-version = "1.85.0"
 name = "deranged"
-version = "0.5.4"
+version = "0.5.8"
 authors = ["Jacob Pratt <jacob@jhpratt.dev>"]
 build = false
 include = [
@@ -57,7 +57,9 @@ quickcheck = [
 rand = [
     "rand08",
     "rand09",
+    "rand010",
 ]
+rand010 = ["dep:rand010"]
 rand08 = ["dep:rand08"]
 rand09 = ["dep:rand09"]
 serde = ["dep:serde_core"]
@@ -85,6 +87,12 @@ version = "1.0.3"
 optional = true
 default-features = false
 
+[dependencies.rand010]
+version = "0.10.0"
+optional = true
+default-features = false
+package = "rand"
+
 [dependencies.rand08]
 version = "0.8.4"
 optional = true
@@ -101,6 +109,10 @@ package = "rand"
 version = "1.0.220"
 optional = true
 default-features = false
+
+[dev-dependencies.rand010]
+version = "0.10.0"
+package = "rand"
 
 [dev-dependencies.rand08]
 version = "0.8.4"

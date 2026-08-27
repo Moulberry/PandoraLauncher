@@ -1,42 +1,20 @@
 use std::{
     io,
-    os::unix::io::{
-        AsFd,
-        AsRawFd,
-        BorrowedFd,
-        FromRawFd,
-        IntoRawFd,
-        OwnedFd,
-        RawFd,
-    },
+    os::unix::io::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd, RawFd},
     path::Path,
-    sync::{
-        atomic::AtomicBool,
-        Arc,
-    }
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use inotify_sys as ffi;
-use libc::{
-    F_GETFL,
-    F_SETFL,
-    O_NONBLOCK,
-    fcntl,
-};
+use libc::{fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
 
 use crate::events::Events;
 use crate::fd_guard::FdGuard;
 use crate::util::read_into_buffer;
-use crate::watches::{
-    WatchDescriptor,
-    WatchMask,
-    Watches,
-};
-
+use crate::watches::{WatchDescriptor, WatchMask, Watches};
 
 #[cfg(feature = "stream")]
 use crate::stream::EventStream;
-
 
 /// Idiomatic Rust wrapper around Linux's inotify API
 ///
@@ -123,9 +101,9 @@ impl Inotify {
 
     /// Deprecated: use `Inotify.watches().add()` instead
     #[deprecated = "use `Inotify.watches().add()` instead"]
-    pub fn add_watch<P>(&mut self, path: P, mask: WatchMask)
-        -> io::Result<WatchDescriptor>
-        where P: AsRef<Path>
+    pub fn add_watch<P>(&mut self, path: P, mask: WatchMask) -> io::Result<WatchDescriptor>
+    where
+        P: AsRef<Path>,
     {
         self.watches().add(path, mask)
     }
@@ -144,9 +122,10 @@ impl Inotify {
     /// This method calls [`Inotify::read_events`] internally and behaves
     /// essentially the same, apart from the blocking behavior. Please refer to
     /// the documentation of [`Inotify::read_events`] for more information.
-    pub fn read_events_blocking<'a>(&mut self, buffer: &'a mut [u8])
-        -> io::Result<Events<'a>>
-    {
+    ///
+    /// Care should be taken when using a [`Vec`] as buffer. See the [crate
+    /// documentation](crate) for details.
+    pub fn read_events_blocking<'a>(&mut self, buffer: &'a mut [u8]) -> io::Result<Events<'a>> {
         unsafe {
             let res = fcntl(**self.fd, F_GETFL);
             if res == -1 {
@@ -177,12 +156,15 @@ impl Inotify {
     /// you need a method that will block until at least one event is available,
     /// please consider [`read_events_blocking`].
     ///
-    /// Please note that inotify will merge identical successive unread events 
-    /// into a single event. This means this method can not be used to count the 
+    /// Please note that inotify will merge identical successive unread events
+    /// into a single event. This means this method can not be used to count the
     /// number of file system events.
     ///
     /// The `buffer` argument, as the name indicates, is used as a buffer for
     /// the inotify events. Its contents may be overwritten.
+    ///
+    /// Care should be taken when using a [`Vec`] as buffer. See the [crate
+    /// documentation](crate) for details.
     ///
     /// # Errors
     ///
@@ -221,26 +203,23 @@ impl Inotify {
     /// [`read`]: libc::read
     /// [`ErrorKind::UnexpectedEof`]: std::io::ErrorKind::UnexpectedEof
     /// [`ErrorKind::InvalidInput`]: std::io::ErrorKind::InvalidInput
-    pub fn read_events<'a>(&mut self, buffer: &'a mut [u8])
-        -> io::Result<Events<'a>>
-    {
+    pub fn read_events<'a>(&mut self, buffer: &'a mut [u8]) -> io::Result<Events<'a>> {
         let num_bytes = read_into_buffer(**self.fd, buffer);
 
         let num_bytes = match num_bytes {
             0 => {
-                return Err(
-                    io::Error::new(
-                        io::ErrorKind::UnexpectedEof,
-                        "`read` return `0`, signaling end-of-file"
-                    )
-                );
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "`read` return `0`, signaling end-of-file",
+                ));
             }
             -1 => {
                 let error = io::Error::last_os_error();
                 return Err(error);
-            },
+            }
             _ if num_bytes < 0 => {
-                panic!("{} {} {} {} {} {}",
+                panic!(
+                    "{} {} {} {} {} {}",
                     "Unexpected return value from `read`. Received a negative",
                     "value that was not `-1`. According to the `read` man page",
                     "this shouldn't happen, as either `-1` is returned on",
@@ -271,8 +250,8 @@ impl Inotify {
     /// as they will contend over one event source and each produce unpredictable stream contents.
     #[deprecated = "use `into_event_stream()` instead, which enforces a single Stream and predictable reads"]
     #[cfg(feature = "stream")]
-    pub fn event_stream<T>(&mut self, buffer: T)
-        -> io::Result<EventStream<T>>
+    #[cfg_attr(docsrs, doc(cfg(feature = "stream")))]
+    pub fn event_stream<T>(&mut self, buffer: T) -> io::Result<EventStream<T>>
     where
         T: AsMut<[u8]> + AsRef<[u8]>,
     {
@@ -281,13 +260,13 @@ impl Inotify {
 
     /// Create a stream which collects events. Consumes the `Inotify` instance.
     ///
-    /// Returns a `Stream` over all events that are available. This stream is an
-    /// infinite source of events.
+    /// Returns a asynchronous `Stream` over the Inotify instance's events.
     ///
-    /// An internal buffer which can hold the largest possible event is used.
+    /// Care should be taken when using a [`Vec`] as buffer. See the [crate
+    /// documentation](crate) for details.
     #[cfg(feature = "stream")]
-    pub fn into_event_stream<T>(self, buffer: T)
-        -> io::Result<EventStream<T>>
+    #[cfg_attr(docsrs, doc(cfg(feature = "stream")))]
+    pub fn into_event_stream<T>(self, buffer: T) -> io::Result<EventStream<T>>
     where
         T: AsMut<[u8]> + AsRef<[u8]>,
     {
@@ -298,11 +277,8 @@ impl Inotify {
     /// initialized in `Inotify::init`. This is intended to be used to transform an
     /// `EventStream` back into an `Inotify`. Do not attempt to clone `Inotify` with this.
     #[cfg(feature = "stream")]
-    pub(crate) fn from_file_descriptor(fd: Arc<FdGuard>) -> Self
-    {
-        Inotify {
-            fd,
-        }
+    pub(crate) fn from_file_descriptor(fd: Arc<FdGuard>) -> Self {
+        Inotify { fd }
     }
 
     /// Closes the inotify instance
@@ -353,7 +329,7 @@ impl AsRawFd for Inotify {
 impl FromRawFd for Inotify {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         Inotify {
-            fd: Arc::new(FdGuard::from_raw_fd(fd))
+            fd: Arc::new(FdGuard::from_raw_fd(fd)),
         }
     }
 }

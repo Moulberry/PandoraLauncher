@@ -631,7 +631,7 @@ impl Ipv4Net {
     /// Creates a new IPv4 network address from an `Ipv4Addr` and prefix
     /// length. If called from a const context it will verify prefix length
     /// at compile time. Otherwise it will panic at runtime if prefix length
-    /// is not less then or equal to 32.
+    /// is not less than or equal to 32.
     ///
     /// # Examples
     ///
@@ -655,7 +655,7 @@ impl Ipv4Net {
     /// ```
     #[inline]
     pub const fn new_assert(ip: Ipv4Addr, prefix_len: u8) -> Ipv4Net {
-        assert!(prefix_len <= 32, "PREFIX_LEN must be less then or equal to 32 for Ipv4Net");
+        assert!(prefix_len <= 32, "prefix_len must be less than or equal to 32 for Ipv4Net");
         Ipv4Net { addr: ip, prefix_len: prefix_len }
     }
 
@@ -1019,7 +1019,7 @@ impl Ipv6Net {
     /// Creates a new IPv6 network address from an `Ipv6Addr` and prefix
     /// length. If called from a const context it will verify prefix length
     /// at compile time. Otherwise it will panic at runtime if prefix length
-    /// is not less then or equal to 128.
+    /// is not less than or equal to 128.
     ///
     /// # Examples
     ///
@@ -1043,7 +1043,7 @@ impl Ipv6Net {
     /// ```
     #[inline]
     pub const fn new_assert(ip: Ipv6Addr, prefix_len: u8) -> Ipv6Net {
-        assert!(prefix_len <= 128, "PREFIX_LEN must be less then or equal to 128 for Ipv6Net");
+        assert!(prefix_len <= 128, "prefix_len must be less than or equal to 128 for Ipv6Net");
         Ipv6Net { addr: ip, prefix_len: prefix_len }
     }
 
@@ -1610,32 +1610,21 @@ impl Iterator for IpSubnets {
 }
 
 fn next_ipv4_subnet(start: Ipv4Addr, end: Ipv4Addr, min_prefix_len: u8) -> Ipv4Net {
-    let range = end.saturating_sub(start).saturating_add(1);
-    if range == core::u32::MAX && min_prefix_len == 0 {
-        Ipv4Net::new(start, min_prefix_len).unwrap()
-    }
-    else {
-        let range_bits = 32u32.saturating_sub(range.leading_zeros()).saturating_sub(1);
-        let start_tz = u32::from(start).trailing_zeros();
-        let new_prefix_len = 32 - min(range_bits, start_tz);
-        let next_prefix_len = max(new_prefix_len as u8, min_prefix_len);
-        Ipv4Net::new(start, next_prefix_len).unwrap()
-    }
+    let range = u32::from(end) - u32::from(start);
+    let range_lz = range.leading_zeros();
+    let range_pl = if range_lz + range.trailing_ones() == u32::BITS { range_lz } else { range_lz + 1 };
+    let start_pl = 32 - u32::from(start).trailing_zeros();
+    let new_prefix_len = max(max(range_pl as u8, start_pl as u8), min_prefix_len);
+    Ipv4Net::new(start, new_prefix_len).unwrap()
 }
 
 fn next_ipv6_subnet(start: Ipv6Addr, end: Ipv6Addr, min_prefix_len: u8) -> Ipv6Net {
-    let range = end.saturating_sub(start).saturating_add(1);
-    if range == core::u128::MAX && min_prefix_len == 0 {
-        Ipv6Net::new(start, min_prefix_len).unwrap()
-    }
-    else {
-        let range = end.saturating_sub(start).saturating_add(1);
-        let range_bits = 128u32.saturating_sub(range.leading_zeros()).saturating_sub(1);
-        let start_tz = u128::from(start).trailing_zeros();
-        let new_prefix_len = 128 - min(range_bits, start_tz);
-        let next_prefix_len = max(new_prefix_len as u8, min_prefix_len);
-        Ipv6Net::new(start, next_prefix_len).unwrap()
-    }
+    let range = u128::from(end) - u128::from(start);
+    let range_lz = range.leading_zeros();
+    let range_pl = if range_lz + range.trailing_ones() == u128::BITS { range_lz } else { range_lz + 1 };
+    let start_pl = 128 - u128::from(start).trailing_zeros();
+    let new_prefix_len = max(max(range_pl as u8, start_pl as u8), min_prefix_len);
+    Ipv6Net::new(start, new_prefix_len).unwrap()
 }
 
 impl Iterator for Ipv4Subnets {
@@ -1647,10 +1636,7 @@ impl Iterator for Ipv4Subnets {
                 let next = next_ipv4_subnet(self.start, self.end, self.min_prefix_len);
                 self.start = next.broadcast().saturating_add(1);
 
-                // Stop the iterator if we saturated self.start. This
-                // check worsens performance slightly but overall this
-                // approach of operating on Ipv4Addr types is faster
-                // than what we were doing before using Ipv4Net.
+                // Stop the iterator if we saturated self.start.
                 if self.start == next.broadcast() {
                     self.end.replace_zero();
                 }
@@ -1676,10 +1662,7 @@ impl Iterator for Ipv6Subnets {
                 let next = next_ipv6_subnet(self.start, self.end, self.min_prefix_len);
                 self.start = next.broadcast().saturating_add(1);
 
-                // Stop the iterator if we saturated self.start. This
-                // check worsens performance slightly but overall this
-                // approach of operating on Ipv6Addr types is faster
-                // than what we were doing before using Ipv6Net.
+                // Stop the iterator if we saturated self.start.
                 if self.start == next.broadcast() {
                     self.end.replace_zero();
                 }
@@ -1910,6 +1893,20 @@ mod tests {
         "::8/127",
         "::a/128",
     );
+
+    // Issue #70
+    #[test]
+    fn test_ipv4_subnets_zero_max_minus_one() {
+        let subnets: Vec<Ipv4Net> = Ipv4Subnets::new(Ipv4Addr::from(0u32), Ipv4Addr::from(u32::MAX-1), 0).collect();
+        assert!(!subnets[0].contains(&Ipv4Addr::from(u32::MAX)));
+    }
+    
+    // Issue #70
+    #[test]
+    fn test_ipv6_subnets_zero_max_minus_one() {
+        let subnets: Vec<Ipv6Net> = Ipv6Subnets::new(Ipv6Addr::from(0u128), Ipv6Addr::from(u128::MAX-1), 0).collect();
+        assert!(!subnets[0].contains(&Ipv6Addr::from(u128::MAX)));
+    }
 
     #[test]
     fn test_aggregate() {

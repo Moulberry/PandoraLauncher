@@ -1,6 +1,6 @@
 [package]
 name = "ntapi"
-version = "0.4.1"
+version = "0.4.3"
 authors = ["MSxDOS <melcodos@gmail.com>"]
 description = "FFI bindings for Native API"
 license = "Apache-2.0 OR MIT"

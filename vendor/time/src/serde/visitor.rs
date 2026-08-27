@@ -9,14 +9,16 @@ use serde_core::de;
 
 #[cfg(feature = "parsing")]
 use super::{
-    DATE_FORMAT, OFFSET_DATE_TIME_FORMAT, PRIMITIVE_DATE_TIME_FORMAT, TIME_FORMAT,
+    DATE_FORMAT, OFFSET_DATE_TIME_FORMAT, PLAIN_DATE_TIME_FORMAT, TIME_FORMAT,
     UTC_DATE_TIME_FORMAT, UTC_OFFSET_FORMAT,
 };
 use crate::error::ComponentRange;
 #[cfg(feature = "parsing")]
 use crate::format_description::well_known::*;
+use crate::internal_macros::try_likely_ok;
 use crate::{
-    Date, Duration, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcDateTime, UtcOffset, Weekday,
+    Date, Month, OffsetDateTime, PlainDateTime, SignedDuration, Time, Timestamp, UtcDateTime,
+    UtcOffset, Weekday,
 };
 
 /// A serde visitor for various types.
@@ -52,19 +54,30 @@ impl<'a> de::Visitor<'a> for Visitor<Date> {
     }
 }
 
-impl<'a> de::Visitor<'a> for Visitor<Duration> {
-    type Value = Duration;
+impl<'a> de::Visitor<'a> for Visitor<SignedDuration> {
+    type Value = SignedDuration;
 
     #[inline]
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a `Duration`")
+        formatter.write_str("a `SignedDuration`")
     }
 
     #[inline]
-    fn visit_str<E>(self, value: &str) -> Result<Duration, E>
+    fn visit_str<E>(self, value: &str) -> Result<SignedDuration, E>
     where
         E: de::Error,
     {
+        const NANOS_PER_DIGIT: [i32; 8] = [
+            100_000_000,
+            10_000_000,
+            1_000_000,
+            100_000,
+            10_000,
+            1_000,
+            100,
+            10,
+        ];
+
         let (seconds, nanoseconds) = value.split_once('.').ok_or_else(|| {
             de::Error::invalid_value(de::Unexpected::Str(value), &"a decimal point")
         })?;
@@ -72,9 +85,28 @@ impl<'a> de::Visitor<'a> for Visitor<Duration> {
         let seconds = seconds
             .parse()
             .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(seconds), &"seconds"))?;
-        let mut nanoseconds = nanoseconds.parse().map_err(|_| {
-            de::Error::invalid_value(de::Unexpected::Str(nanoseconds), &"nanoseconds")
-        })?;
+
+        // All characters must be ASCII digits.
+        if nanoseconds.is_empty() || !nanoseconds.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(de::Error::invalid_value(
+                de::Unexpected::Str(nanoseconds),
+                &"nanoseconds",
+            ));
+        }
+
+        let nanos_len = nanoseconds.len();
+        let truncated = if nanos_len > 9 {
+            &nanoseconds[..9]
+        } else {
+            nanoseconds
+        };
+        // Safety: The input is not empty, is entirely ASCII digits, and is at most 9 characters
+        // long.
+        let mut nanoseconds: i32 = unsafe { truncated.parse().unwrap_unchecked() };
+
+        if nanos_len < 9 {
+            nanoseconds *= NANOS_PER_DIGIT[nanos_len - 1];
+        }
 
         if seconds < 0
             // make sure sign does not disappear when seconds == 0
@@ -83,17 +115,17 @@ impl<'a> de::Visitor<'a> for Visitor<Duration> {
             nanoseconds *= -1;
         }
 
-        Ok(Duration::new(seconds, nanoseconds))
+        Ok(SignedDuration::new(seconds, nanoseconds))
     }
 
     #[inline]
-    fn visit_seq<A>(self, mut seq: A) -> Result<Duration, A::Error>
+    fn visit_seq<A>(self, mut seq: A) -> Result<SignedDuration, A::Error>
     where
         A: de::SeqAccess<'a>,
     {
         let seconds = item!(seq, "seconds")?;
         let nanoseconds = item!(seq, "nanoseconds")?;
-        Ok(Duration::new(seconds, nanoseconds))
+        Ok(SignedDuration::new_ranged(seconds, nanoseconds))
     }
 }
 
@@ -139,25 +171,25 @@ impl<'a> de::Visitor<'a> for Visitor<OffsetDateTime> {
     }
 }
 
-impl<'a> de::Visitor<'a> for Visitor<PrimitiveDateTime> {
-    type Value = PrimitiveDateTime;
+impl<'a> de::Visitor<'a> for Visitor<PlainDateTime> {
+    type Value = PlainDateTime;
 
     #[inline]
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a `PrimitiveDateTime`")
+        formatter.write_str("a `PlainDateTime`")
     }
 
     #[cfg(feature = "parsing")]
     #[inline]
-    fn visit_str<E>(self, value: &str) -> Result<PrimitiveDateTime, E>
+    fn visit_str<E>(self, value: &str) -> Result<PlainDateTime, E>
     where
         E: de::Error,
     {
-        PrimitiveDateTime::parse(value, &PRIMITIVE_DATE_TIME_FORMAT).map_err(E::custom)
+        PlainDateTime::parse(value, &PLAIN_DATE_TIME_FORMAT).map_err(E::custom)
     }
 
     #[inline]
-    fn visit_seq<A>(self, mut seq: A) -> Result<PrimitiveDateTime, A::Error>
+    fn visit_seq<A>(self, mut seq: A) -> Result<PlainDateTime, A::Error>
     where
         A: de::SeqAccess<'a>,
     {
@@ -179,7 +211,7 @@ impl<'a> de::Visitor<'a> for Visitor<UtcDateTime> {
 
     #[inline]
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a `PrimitiveDateTime`")
+        formatter.write_str("a `UtcDateTime`")
     }
 
     #[cfg(feature = "parsing")]
@@ -205,7 +237,7 @@ impl<'a> de::Visitor<'a> for Visitor<UtcDateTime> {
 
         Date::from_ordinal_date(year, ordinal)
             .and_then(|date| date.with_hms_nano(hour, minute, second, nanosecond))
-            .map(UtcDateTime::from_primitive)
+            .map(UtcDateTime::from_plain)
             .map_err(ComponentRange::into_de_error)
     }
 }
@@ -267,14 +299,31 @@ impl<'a> de::Visitor<'a> for Visitor<UtcOffset> {
         let mut minutes = 0;
         let mut seconds = 0;
 
-        if let Ok(Some(min)) = seq.next_element() {
+        if let Some(min) = try_likely_ok!(seq.next_element()) {
             minutes = min;
-            if let Ok(Some(sec)) = seq.next_element() {
+            if let Some(sec) = try_likely_ok!(seq.next_element()) {
                 seconds = sec;
             }
-        };
+        }
 
         UtcOffset::from_hms(hours, minutes, seconds).map_err(ComponentRange::into_de_error)
+    }
+}
+
+impl de::Visitor<'_> for Visitor<Timestamp> {
+    type Value = Timestamp;
+
+    #[inline]
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a `Timestamp`")
+    }
+
+    #[inline]
+    fn visit_i128<E>(self, value: i128) -> Result<Timestamp, E>
+    where
+        E: de::Error,
+    {
+        Timestamp::from_nanoseconds(value).map_err(ComponentRange::into_de_error)
     }
 }
 

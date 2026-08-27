@@ -6,6 +6,7 @@
 
 #if !defined(__ASSEMBLER__)
 #include "../../internal.h"
+#include "../cpucap/internal.h"
 #endif
 
 // Namespacing: All symbols are of the form mldsa*. Level-specific
@@ -34,17 +35,28 @@
 #define MLD_CONFIG_KEYGEN_PCT
 #endif
 
-// Map the CPU capability function to the ones used by AWS-LC
+// Map the CPU capability function to the ones used by AWS-LC.
+// MLD_SYS_CAP_NEON is defined here (not in the vendored mldsa/sys.h enum)
+// with a value that does not collide with AVX2 == 0 / SHA3 == 1.
+#if !defined(__ASSEMBLER__)
+#define MLD_SYS_CAP_NEON 2
+#endif
 #define MLD_CONFIG_CUSTOM_CAPABILITY_FUNC
 #if !defined(__ASSEMBLER__)
 #include <stdint.h>
 #include "mldsa/sys.h"
-static MLD_INLINE int mld_sys_check_capability(mld_sys_cap cap)
+static MLD_INLINE int mld_sys_check_capability(int cap)
 {
 #if defined(MLD_SYS_X86_64)
   if (cap == MLD_SYS_CAP_AVX2)
   {
     return CRYPTO_is_AVX2_capable();
+  }
+#endif
+#if defined(MLD_SYS_AARCH64)
+  if (cap == MLD_SYS_CAP_NEON)
+  {
+    return CRYPTO_is_NEON_capable();
   }
 #endif
   return 0;

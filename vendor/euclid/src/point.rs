@@ -8,7 +8,6 @@
 // except according to those terms.
 
 use super::UnknownUnit;
-use crate::approxeq::ApproxEq;
 use crate::approxord::{max, min};
 use crate::length::Length;
 use crate::num::*;
@@ -20,10 +19,12 @@ use core::fmt;
 use core::hash::Hash;
 use core::marker::PhantomData;
 use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 #[cfg(feature = "mint")]
 use mint;
-use num_traits::real::Real;
-use num_traits::{Euclid, Float, NumCast};
+use num_traits::{Euclid, NumCast};
+
 #[cfg(feature = "serde")]
 use serde;
 
@@ -102,6 +103,13 @@ unsafe impl<T: Zeroable, U> Zeroable for Point2D<T, U> {}
 
 #[cfg(feature = "bytemuck")]
 unsafe impl<T: Pod, U: 'static> Pod for Point2D<T, U> {}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, U> MallocSizeOf for Point2D<T, U> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.x.size_of(ops) + self.y.size_of(ops)
+    }
+}
 
 impl<T, U> Eq for Point2D<T, U> where T: Eq {}
 
@@ -530,11 +538,38 @@ impl<T: NumCast + Copy, U> Point2D<T, U> {
     }
 }
 
-impl<T: Float, U> Point2D<T, U> {
-    /// Returns `true` if all members are finite.
-    #[inline]
-    pub fn is_finite(self) -> bool {
-        self.x.is_finite() && self.y.is_finite()
+#[cfg(any(feature = "std", feature = "libm"))]
+mod point2d_float {
+    use super::Point2D;
+    use crate::{approxeq::ApproxEq, point2};
+    use core::ops::Sub;
+    use num_traits::{real::Real, Float};
+
+    impl<T: Float, U> Point2D<T, U> {
+        /// Returns `true` if all members are finite.
+        #[inline]
+        pub fn is_finite(self) -> bool {
+            self.x.is_finite() && self.y.is_finite()
+        }
+    }
+
+    impl<T: Real + Sub<T, Output = T>, U> Point2D<T, U> {
+        #[inline]
+        pub fn distance_to(self, other: Self) -> T {
+            (self - other).length()
+        }
+    }
+
+    impl<T: ApproxEq<T>, U> ApproxEq<Point2D<T, U>> for Point2D<T, U> {
+        #[inline]
+        fn approx_epsilon() -> Self {
+            point2(T::approx_epsilon(), T::approx_epsilon())
+        }
+
+        #[inline]
+        fn approx_eq_eps(&self, other: &Self, eps: &Self) -> bool {
+            self.x.approx_eq_eps(&other.x, &eps.x) && self.y.approx_eq_eps(&other.y, &eps.y)
+        }
     }
 }
 
@@ -542,13 +577,6 @@ impl<T: Copy + Add<T, Output = T>, U> Point2D<T, U> {
     #[inline]
     pub fn add_size(self, other: &Size2D<T, U>) -> Self {
         point2(self.x + other.width, self.y + other.height)
-    }
-}
-
-impl<T: Real + Sub<T, Output = T>, U> Point2D<T, U> {
-    #[inline]
-    pub fn distance_to(self, other: Self) -> T {
-        (self - other).length()
     }
 }
 
@@ -590,7 +618,7 @@ impl<T: Add, U> Add<Vector2D<T, U>> for Point2D<T, U> {
 impl<T: Copy + Add<T, Output = T>, U> AddAssign<Vector2D<T, U>> for Point2D<T, U> {
     #[inline]
     fn add_assign(&mut self, other: Vector2D<T, U>) {
-        *self = *self + other
+        *self = *self + other;
     }
 }
 
@@ -632,7 +660,7 @@ impl<T: Sub, U> Sub<Vector2D<T, U>> for Point2D<T, U> {
 impl<T: Copy + Sub<T, Output = T>, U> SubAssign<Vector2D<T, U>> for Point2D<T, U> {
     #[inline]
     fn sub_assign(&mut self, other: Vector2D<T, U>) {
-        *self = *self - other
+        *self = *self - other;
     }
 }
 
@@ -648,7 +676,7 @@ impl<T: Copy + Mul, U> Mul<T> for Point2D<T, U> {
 impl<T: Copy + Mul<T, Output = T>, U> MulAssign<T> for Point2D<T, U> {
     #[inline]
     fn mul_assign(&mut self, scale: T) {
-        *self = *self * scale
+        *self = *self * scale;
     }
 }
 
@@ -681,7 +709,7 @@ impl<T: Copy + Div, U> Div<T> for Point2D<T, U> {
 impl<T: Copy + Div<T, Output = T>, U> DivAssign<T> for Point2D<T, U> {
     #[inline]
     fn div_assign(&mut self, scale: T) {
-        *self = *self / scale
+        *self = *self / scale;
     }
 }
 
@@ -730,18 +758,6 @@ impl<T: Floor, U> Floor for Point2D<T, U> {
     #[inline]
     fn floor(self) -> Self {
         self.floor()
-    }
-}
-
-impl<T: ApproxEq<T>, U> ApproxEq<Point2D<T, U>> for Point2D<T, U> {
-    #[inline]
-    fn approx_epsilon() -> Self {
-        point2(T::approx_epsilon(), T::approx_epsilon())
-    }
-
-    #[inline]
-    fn approx_eq_eps(&self, other: &Self, eps: &Self) -> bool {
-        self.x.approx_eq_eps(&other.x, &eps.x) && self.y.approx_eq_eps(&other.y, &eps.y)
     }
 }
 
@@ -895,6 +911,13 @@ unsafe impl<T: Zeroable, U> Zeroable for Point3D<T, U> {}
 
 #[cfg(feature = "bytemuck")]
 unsafe impl<T: Pod, U: 'static> Pod for Point3D<T, U> {}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, U> MallocSizeOf for Point3D<T, U> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.x.size_of(ops) + self.y.size_of(ops) + self.z.size_of(ops)
+    }
+}
 
 impl<T, U> Eq for Point3D<T, U> where T: Eq {}
 
@@ -1355,14 +1378,6 @@ impl<T: NumCast + Copy, U> Point3D<T, U> {
     }
 }
 
-impl<T: Float, U> Point3D<T, U> {
-    /// Returns `true` if all members are finite.
-    #[inline]
-    pub fn is_finite(self) -> bool {
-        self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
-    }
-}
-
 impl<T: Copy + Add<T, Output = T>, U> Point3D<T, U> {
     #[inline]
     pub fn add_size(self, other: Size3D<T, U>) -> Self {
@@ -1371,13 +1386,6 @@ impl<T: Copy + Add<T, Output = T>, U> Point3D<T, U> {
             self.y + other.height,
             self.z + other.depth,
         )
-    }
-}
-
-impl<T: Real + Sub<T, Output = T>, U> Point3D<T, U> {
-    #[inline]
-    pub fn distance_to(self, other: Self) -> T {
-        (self - other).length()
     }
 }
 
@@ -1424,7 +1432,7 @@ impl<T: Add, U> Add<Vector3D<T, U>> for Point3D<T, U> {
 impl<T: Copy + Add<T, Output = T>, U> AddAssign<Vector3D<T, U>> for Point3D<T, U> {
     #[inline]
     fn add_assign(&mut self, other: Vector3D<T, U>) {
-        *self = *self + other
+        *self = *self + other;
     }
 }
 
@@ -1471,7 +1479,7 @@ impl<T: Sub, U> Sub<Vector3D<T, U>> for Point3D<T, U> {
 impl<T: Copy + Sub<T, Output = T>, U> SubAssign<Vector3D<T, U>> for Point3D<T, U> {
     #[inline]
     fn sub_assign(&mut self, other: Vector3D<T, U>) {
-        *self = *self - other
+        *self = *self - other;
     }
 }
 
@@ -1574,24 +1582,6 @@ impl<T: Floor, U> Floor for Point3D<T, U> {
     }
 }
 
-impl<T: ApproxEq<T>, U> ApproxEq<Point3D<T, U>> for Point3D<T, U> {
-    #[inline]
-    fn approx_epsilon() -> Self {
-        point3(
-            T::approx_epsilon(),
-            T::approx_epsilon(),
-            T::approx_epsilon(),
-        )
-    }
-
-    #[inline]
-    fn approx_eq_eps(&self, other: &Self, eps: &Self) -> bool {
-        self.x.approx_eq_eps(&other.x, &eps.x)
-            && self.y.approx_eq_eps(&other.y, &eps.y)
-            && self.z.approx_eq_eps(&other.z, &eps.z)
-    }
-}
-
 impl<T: Euclid, U> Point3D<T, U> {
     /// Calculates the least nonnegative remainder of `self (mod other)`.
     ///
@@ -1603,7 +1593,7 @@ impl<T: Euclid, U> Point3D<T, U> {
     ///
     /// let p = Point3D::new(7.0, -7.0, 0.0);
     /// let s = Size3D::new(4.0, -4.0, 12.0);
-
+    ///
     /// assert_eq!(p.rem_euclid(&s), point3(3.0, 1.0, 0.0));
     /// assert_eq!((-p).rem_euclid(&s), point3(1.0, 3.0, 0.0));
     /// assert_eq!(p.rem_euclid(&-s), point3(3.0, 1.0, 0.0));
@@ -1687,7 +1677,49 @@ pub const fn point3<T, U>(x: T, y: T, z: T) -> Point3D<T, U> {
     }
 }
 
+#[cfg(any(feature = "std", feature = "libm"))]
+mod point3d_float {
+    use super::{point3, Point3D};
+    use crate::approxeq::ApproxEq;
+    use core::ops::Sub;
+    use num_traits::{real::Real, Float};
+
+    impl<T: Float, U> Point3D<T, U> {
+        /// Returns `true` if all members are finite.
+        #[inline]
+        pub fn is_finite(self) -> bool {
+            self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
+        }
+    }
+
+    impl<T: Real + Sub<T, Output = T>, U> Point3D<T, U> {
+        #[inline]
+        pub fn distance_to(self, other: Self) -> T {
+            (self - other).length()
+        }
+    }
+
+    impl<T: ApproxEq<T>, U> ApproxEq<Point3D<T, U>> for Point3D<T, U> {
+        #[inline]
+        fn approx_epsilon() -> Self {
+            point3(
+                T::approx_epsilon(),
+                T::approx_epsilon(),
+                T::approx_epsilon(),
+            )
+        }
+
+        #[inline]
+        fn approx_eq_eps(&self, other: &Self, eps: &Self) -> bool {
+            self.x.approx_eq_eps(&other.x, &eps.x)
+                && self.y.approx_eq_eps(&other.y, &eps.y)
+                && self.z.approx_eq_eps(&other.z, &eps.z)
+        }
+    }
+}
+
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod point2d {
     use crate::default::Point2D;
     use crate::point2;
@@ -1974,6 +2006,7 @@ mod point2d {
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod point3d {
     use crate::default;
     use crate::default::Point3D;

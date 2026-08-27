@@ -5,51 +5,13 @@
 #[allow(unused_imports)]
 use crate::codegen_prelude::*;
 
-/// The [fvar (Font Variations)](https://docs.microsoft.com/en-us/typography/opentype/spec/fvar) table
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct FvarMarker {}
-
-impl FvarMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + MajorMinor::RAW_BYTE_LEN
-    }
-
-    pub fn axis_instance_arrays_offset_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn _reserved_byte_range(&self) -> Range<usize> {
-        let start = self.axis_instance_arrays_offset_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn axis_count_byte_range(&self) -> Range<usize> {
-        let start = self._reserved_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn axis_size_byte_range(&self) -> Range<usize> {
-        let start = self.axis_count_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn instance_count_byte_range(&self) -> Range<usize> {
-        let start = self.axis_size_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn instance_size_byte_range(&self) -> Range<usize> {
-        let start = self.instance_count_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for FvarMarker {
+impl<'a> MinByteRange<'a> for Fvar<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.instance_size_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
@@ -60,35 +22,43 @@ impl TopLevelTable for Fvar<'_> {
 
 impl<'a> FontRead<'a> for Fvar<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<MajorMinor>();
-        cursor.advance::<Offset16>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.finish(FvarMarker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [fvar (Font Variations)](https://docs.microsoft.com/en-us/typography/opentype/spec/fvar) table
-pub type Fvar<'a> = TableRef<'a, FvarMarker>;
+#[derive(Clone)]
+pub struct Fvar<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Fvar<'a> {
+    pub const MIN_SIZE: usize = (MajorMinor::RAW_BYTE_LEN
+        + Offset16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Major version number of the font variations table — set to 1.
     /// Minor version number of the font variations table — set to 0.
     pub fn version(&self) -> MajorMinor {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Offset in bytes from the beginning of the table to the start of the VariationAxisRecord array. The
     /// InstanceRecord array directly follows.
     pub fn axis_instance_arrays_offset(&self) -> Offset16 {
-        let range = self.shape.axis_instance_arrays_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.axis_instance_arrays_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`axis_instance_arrays_offset`][Self::axis_instance_arrays_offset].
@@ -105,26 +75,78 @@ impl<'a> Fvar<'a> {
 
     /// The number of variation axes in the font (the number of records in the axes array).
     pub fn axis_count(&self) -> u16 {
-        let range = self.shape.axis_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.axis_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The size in bytes of each VariationAxisRecord — set to 20 (0x0014) for this version.
     pub fn axis_size(&self) -> u16 {
-        let range = self.shape.axis_size_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.axis_size_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of named instances defined in the font (the number of records in the instances array).
     pub fn instance_count(&self) -> u16 {
-        let range = self.shape.instance_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.instance_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The size in bytes of each InstanceRecord — set to either axisCount * sizeof(Fixed) + 4, or to axisCount * sizeof(Fixed) + 6.
     pub fn instance_size(&self) -> u16 {
-        let range = self.shape.instance_size_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.instance_size_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + MajorMinor::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn axis_instance_arrays_offset_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn _reserved_byte_range(&self) -> Range<usize> {
+        let start = self.axis_instance_arrays_offset_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn axis_count_byte_range(&self) -> Range<usize> {
+        let start = self._reserved_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn axis_size_byte_range(&self) -> Range<usize> {
+        let start = self.axis_count_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn instance_count_byte_range(&self) -> Range<usize> {
+        let start = self.axis_size_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn instance_size_byte_range(&self) -> Range<usize> {
+        let start = self.instance_count_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Fvar::MIN_SIZE));
+
+impl Default for Fvar<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -160,31 +182,13 @@ impl<'a> std::fmt::Debug for Fvar<'a> {
     }
 }
 
-/// Shim table to handle combined axis and instance arrays.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct AxisInstanceArraysMarker {
-    axis_count: u16,
-    instance_size: u16,
-    axes_byte_len: usize,
-    instances_byte_len: usize,
-}
-
-impl AxisInstanceArraysMarker {
-    pub fn axes_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + self.axes_byte_len
-    }
-
-    pub fn instances_byte_range(&self) -> Range<usize> {
-        let start = self.axes_byte_range().end;
-        start..start + self.instances_byte_len
-    }
-}
-
-impl MinByteRange for AxisInstanceArraysMarker {
+impl<'a> MinByteRange<'a> for AxisInstanceArrays<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.instances_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
@@ -195,23 +199,16 @@ impl ReadArgs for AxisInstanceArrays<'_> {
 impl<'a> FontReadWithArgs<'a> for AxisInstanceArrays<'a> {
     fn read_with_args(data: FontData<'a>, args: &(u16, u16, u16)) -> Result<Self, ReadError> {
         let (axis_count, instance_count, instance_size) = *args;
-        let mut cursor = data.cursor();
-        let axes_byte_len = (axis_count as usize)
-            .checked_mul(VariationAxisRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(axes_byte_len);
-        let instances_byte_len = (instance_count as usize)
-            .checked_mul(<InstanceRecord as ComputeSize>::compute_size(&(
-                axis_count,
-                instance_size,
-            ))?)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(instances_byte_len);
-        cursor.finish(AxisInstanceArraysMarker {
+
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self {
+            data,
             axis_count,
+            instance_count,
             instance_size,
-            axes_byte_len,
-            instances_byte_len,
         })
     }
 }
@@ -233,30 +230,81 @@ impl<'a> AxisInstanceArrays<'a> {
 }
 
 /// Shim table to handle combined axis and instance arrays.
-pub type AxisInstanceArrays<'a> = TableRef<'a, AxisInstanceArraysMarker>;
+#[derive(Clone)]
+pub struct AxisInstanceArrays<'a> {
+    data: FontData<'a>,
+    axis_count: u16,
+    instance_count: u16,
+    instance_size: u16,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> AxisInstanceArrays<'a> {
+    pub const MIN_SIZE: usize = 0;
+    basic_table_impls!(impl_the_methods);
+
     /// Variation axis record array.
     pub fn axes(&self) -> &'a [VariationAxisRecord] {
-        let range = self.shape.axes_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.axes_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Instance record array.
     pub fn instances(&self) -> ComputedArray<'a, InstanceRecord<'a>> {
-        let range = self.shape.instances_byte_range();
+        let range = self.instances_byte_range();
         self.data
             .read_with_args(range, &(self.axis_count(), self.instance_size()))
-            .unwrap()
+            .unwrap_or_default()
     }
 
     pub(crate) fn axis_count(&self) -> u16 {
-        self.shape.axis_count
+        self.axis_count
+    }
+
+    pub(crate) fn instance_count(&self) -> u16 {
+        self.instance_count
     }
 
     pub(crate) fn instance_size(&self) -> u16 {
-        self.shape.instance_size
+        self.instance_size
+    }
+
+    pub fn axes_byte_range(&self) -> Range<usize> {
+        let axis_count = self.axis_count();
+        let start = 0;
+        let end = start
+            + (transforms::to_usize(axis_count)).saturating_mul(VariationAxisRecord::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn instances_byte_range(&self) -> Range<usize> {
+        let instance_count = self.instance_count();
+        let start = self.axes_byte_range().end;
+        let end = start
+            + (transforms::to_usize(instance_count)).saturating_mul(
+                <InstanceRecord as ComputeSize>::compute_size(&(
+                    self.axis_count(),
+                    self.instance_size(),
+                ))
+                .unwrap_or(0),
+            );
+        start..end
+    }
+}
+
+#[allow(clippy::absurd_extreme_comparisons)]
+const _: () = assert!(FontData::default_data_long_enough(
+    AxisInstanceArrays::MIN_SIZE
+));
+
+impl Default for AxisInstanceArrays<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+            axis_count: Default::default(),
+            instance_count: Default::default(),
+            instance_size: Default::default(),
+        }
     }
 }
 

@@ -7,6 +7,7 @@ use core::str::FromStr;
 use powerfmt::smart_display::{FormatterOptions, Metadata, SmartDisplay};
 
 use self::Month::*;
+use crate::iter::MonthIter;
 use crate::{error, util};
 
 /// Months of the year.
@@ -174,34 +175,51 @@ impl Month {
             }
         }
     }
-}
 
-mod private {
-    /// Metadata for `Month`.
-    #[non_exhaustive]
-    #[derive(Debug, Clone, Copy)]
-    pub struct MonthMetadata;
+    /// Create an infinite iterator starting at this month.
+    ///
+    /// ```rust
+    /// # use time::Month;
+    /// let mut iter = Month::iter_from(Month::January);
+    /// assert_eq!(iter.next(), Some(Month::January));
+    /// assert_eq!(iter.next(), Some(Month::February));
+    /// assert_eq!(iter.next(), Some(Month::March));
+    /// assert_eq!(iter.next(), Some(Month::April));
+    /// assert_eq!(iter.next(), Some(Month::May));
+    /// assert_eq!(iter.next(), Some(Month::June));
+    /// assert_eq!(iter.next(), Some(Month::July));
+    /// assert_eq!(iter.next(), Some(Month::August));
+    /// assert_eq!(iter.next(), Some(Month::September));
+    /// assert_eq!(iter.next(), Some(Month::October));
+    /// assert_eq!(iter.next(), Some(Month::November));
+    /// assert_eq!(iter.next(), Some(Month::December));
+    /// assert_eq!(iter.next(), Some(Month::January));
+    /// // … continuing forever
+    /// ```
+    #[inline]
+    pub const fn iter_from(start: Self) -> MonthIter {
+        MonthIter::new(start)
+    }
 }
-use private::MonthMetadata;
 
 impl SmartDisplay for Month {
-    type Metadata = MonthMetadata;
+    type Metadata = ();
 
     #[inline]
     fn metadata(&self, _: FormatterOptions) -> Metadata<'_, Self> {
         match self {
-            January => Metadata::new(7, self, MonthMetadata),
-            February => Metadata::new(8, self, MonthMetadata),
-            March => Metadata::new(5, self, MonthMetadata),
-            April => Metadata::new(5, self, MonthMetadata),
-            May => Metadata::new(3, self, MonthMetadata),
-            June => Metadata::new(4, self, MonthMetadata),
-            July => Metadata::new(4, self, MonthMetadata),
-            August => Metadata::new(6, self, MonthMetadata),
-            September => Metadata::new(9, self, MonthMetadata),
-            October => Metadata::new(7, self, MonthMetadata),
-            November => Metadata::new(8, self, MonthMetadata),
-            December => Metadata::new(8, self, MonthMetadata),
+            January => Metadata::new(7, self, ()),
+            February => Metadata::new(8, self, ()),
+            March => Metadata::new(5, self, ()),
+            April => Metadata::new(5, self, ()),
+            May => Metadata::new(3, self, ()),
+            June => Metadata::new(4, self, ()),
+            July => Metadata::new(4, self, ()),
+            August => Metadata::new(6, self, ()),
+            September => Metadata::new(9, self, ()),
+            October => Metadata::new(7, self, ()),
+            November => Metadata::new(8, self, ()),
+            December => Metadata::new(8, self, ()),
         }
     }
 

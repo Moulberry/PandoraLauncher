@@ -19,16 +19,7 @@ library like [`rand`].
 
 [`rand`]: https://crates.io/crates/rand
 
-## Usage
-
-Add the `getrandom` dependency to your `Cargo.toml` file:
-
-```toml
-[dependencies]
-getrandom = "0.3"
-```
-
-Then invoke the `fill` function on a byte buffer to fill it with random data:
+## Examples
 
 ```rust
 fn get_random_u128() -> Result<u128, getrandom::Error> {
@@ -76,16 +67,16 @@ Pull Requests that add support for new targets to `getrandom` are always welcome
 
 ### WebAssembly support
 
-This crate fully supports the [WASI] and [Emscripten] targets. However,
-the `wasm32-unknown-unknown` target (i.e. the target used by `wasm-pack`)
-is not automatically supported since, from the target name alone, we cannot deduce
+This crate fully supports the [WASI] and [Emscripten] targets. However, the `wasm32-unknown-unknown`
+and `wasm64-unknown-unknown` targets (i.e. the target used by `wasm-pack`)
+are not automatically supported since, from the target name alone, we cannot deduce
 which JavaScript interface should be used (or if JavaScript is available at all).
 
-We do not include support for this target in the default configuration because our JS backend
+We do not include support for these targets in the default configuration because our JS backend
 (supporting web browsers, web workers and Node.js v19 or later) requires [`wasm-bindgen`],
 **bloating `Cargo.lock`** and **potentially breaking builds** on non-web WASM platforms.
 
-To enable `getrandom`'s functionality on `wasm32-unknown-unknown` using
+To enable `getrandom`'s functionality on `wasm32/64-unknown-unknown` using
 [`Crypto.getRandomValues`] via [`wasm-bindgen`], enable the `wasm_js` crate feature.
 
 WARNING: We strongly recommend against enabling this feature in libraries (except for tests)
@@ -334,6 +325,13 @@ RUSTFLAGS="-Zsanitizer=memory" cargo test -Zbuild-std --target=x86_64-unknown-li
 ## Minimum Supported Rust Version
 
 This crate requires Rust 1.85 or later.
+
+The most reliable way to get an MSRV-respecting behavior is to set
+`CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback` when doing
+`cargo update -p getrandom`, like so:
+```sh
+CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update -p getrandom
+```
 
 ## License
 

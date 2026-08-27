@@ -2904,6 +2904,205 @@ mod tests {
         expiry_counters.verify();
     }
 
+    /// Test that returning `None` from `expire_after_update` properly clears
+    /// expiration for an already expired entry.
+    ///
+    /// Expected behavior: After `expire_after_update` returns `None`, the entry
+    /// should become accessible via `get()`.
+    #[test]
+    fn expire_after_update_none_on_expired_entry() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        // A flag to control whether the entry should expire immediately
+        let should_expire = Arc::new(AtomicBool::new(true));
+
+        struct TestExpiry {
+            should_expire: Arc<AtomicBool>,
+        }
+
+        impl crate::Expiry<String, String> for TestExpiry {
+            fn expire_after_create(
+                &self,
+                _key: &String,
+                _value: &String,
+                _current_time: StdInstant,
+            ) -> Option<Duration> {
+                if self.should_expire.load(Ordering::SeqCst) {
+                    // Expire immediately
+                    Some(Duration::ZERO)
+                } else {
+                    // No expiration
+                    None
+                }
+            }
+
+            fn expire_after_update(
+                &self,
+                _key: &String,
+                _value: &String,
+                _current_time: StdInstant,
+                _duration_until_expiry: Option<Duration>,
+            ) -> Option<Duration> {
+                if self.should_expire.load(Ordering::SeqCst) {
+                    Some(Duration::ZERO)
+                } else {
+                    // According to docs, None means "no expiration"
+                    // This should make the entry accessible again
+                    None
+                }
+            }
+        }
+
+        let expiry = TestExpiry {
+            should_expire: Arc::clone(&should_expire),
+        };
+
+        let cache: Cache<String, String> = Cache::builder()
+            .max_capacity(100)
+            .expire_after(expiry)
+            .build();
+
+        let key = "test_key".to_string();
+
+        // Insert entry that expires immediately
+        cache.insert(key.clone(), "first_value".to_string());
+        cache.run_pending_tasks();
+
+        // Entry should exist but be expired
+        assert_eq!(cache.entry_count(), 1, "Entry should exist in cache");
+        assert_eq!(
+            cache.get(&key),
+            None,
+            "Entry should not be accessible (expired)"
+        );
+        cache.run_pending_tasks();
+
+        // Now update the entry to NOT expire (expire_after_update returns None)
+        should_expire.store(false, Ordering::SeqCst);
+        cache.insert(key.clone(), "second_value".to_string());
+        cache.run_pending_tasks();
+
+        // The entry should now be accessible since we returned None
+        // (meaning "no expiration") from expire_after_update
+        assert_eq!(cache.entry_count(), 1, "Entry should exist in cache");
+
+        // Returning None from expire_after_update should clear the expiration.
+        let result = cache.get(&key);
+        assert_eq!(
+            result,
+            Some("second_value".to_string()),
+            "Entry should be accessible after clearing expiration"
+        );
+    }
+
+    // https://github.com/moka-rs/moka/issues/575
+    //
+    // Regression test: with a custom `Expiry` that only overrides
+    // `expire_after_create`, re-inserting an expired key should call
+    // `expire_after_create` (not `expire_after_update`), matching the
+    // documented behavior that `expire_after_create` handles new entries.
+    //
+    // Before the fix, the expired entry in the hash table caused the update
+    // path to run, calling `expire_after_update` (default returns
+    // `duration_until_expiry`). The `else if` branch then cleared per-entry
+    // expiration, making the entry immortal (stale).
+    #[test]
+    fn test_expire_after_create_only_no_stale_entries() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct TestExpiry {
+            should_expire: Arc<AtomicBool>,
+        }
+
+        impl crate::Expiry<String, String> for TestExpiry {
+            fn expire_after_create(
+                &self,
+                _key: &String,
+                _value: &String,
+                _current_time: StdInstant,
+            ) -> Option<Duration> {
+                if self.should_expire.load(Ordering::SeqCst) {
+                    Some(Duration::from_secs(1))
+                } else {
+                    None
+                }
+            }
+            // expire_after_read and expire_after_update use defaults (return
+            // duration_until_expiry unchanged).
+        }
+
+        let (clock, mock) = Clock::mock();
+        let should_expire = Arc::new(AtomicBool::new(true));
+
+        let mut cache: Cache<String, String> = Cache::builder()
+            .max_capacity(100)
+            .expire_after(TestExpiry {
+                should_expire: Arc::clone(&should_expire),
+            })
+            .clock(clock)
+            .build();
+        cache.reconfigure_for_testing();
+
+        let key = "key1".to_string();
+
+        // Insert an entry that expires in 1 second.
+        cache.insert(key.clone(), "value1".to_string());
+        cache.run_pending_tasks();
+        assert_eq!(cache.get(&key), Some("value1".to_string()));
+
+        // Advance time past expiration.
+        mock.increment(Duration::from_secs(2));
+
+        // Entry should be expired but still in the hash table (no
+        // run_pending_tasks to evict it).
+        assert_eq!(cache.get(&key), None, "Entry should be expired");
+
+        // Re-insert with no expiration. The old entry is expired, so this
+        // calls expire_after_create (not expire_after_update).
+        // expire_after_create returns None (no expiry) → entry lives forever.
+        should_expire.store(false, Ordering::SeqCst);
+        cache.insert(key.clone(), "value2".to_string());
+        cache.run_pending_tasks();
+
+        // The entry should be accessible (expire_after_create cleared expiry).
+        assert_eq!(
+            cache.get(&key),
+            Some("value2".to_string()),
+            "Re-inserted entry with no expiry should be accessible"
+        );
+
+        // Now test: re-insert an expired key with expiration enabled.
+        // Verify it gets a fresh TTL from expire_after_create.
+        should_expire.store(true, Ordering::SeqCst);
+
+        // Insert key2 with 1s expiry.
+        let key2 = "key2".to_string();
+        cache.insert(key2.clone(), "v1".to_string());
+        cache.run_pending_tasks();
+        assert_eq!(cache.get(&key2), Some("v1".to_string()));
+
+        // Expire it.
+        mock.increment(Duration::from_secs(2));
+        assert_eq!(cache.get(&key2), None, "key2 should be expired");
+
+        // Re-insert → calls expire_after_create → fresh 1s TTL.
+        cache.insert(key2.clone(), "v2".to_string());
+        cache.run_pending_tasks();
+        assert_eq!(
+            cache.get(&key2),
+            Some("v2".to_string()),
+            "Re-inserted key2 should be accessible with fresh TTL"
+        );
+
+        // Advance past the fresh 1s TTL.
+        mock.increment(Duration::from_secs(2));
+        assert_eq!(
+            cache.get(&key2),
+            None,
+            "key2 should expire with fresh TTL from expire_after_create"
+        );
+    }
+
     // https://github.com/moka-rs/moka/issues/345
     #[test]
     fn test_race_between_updating_entry_and_processing_its_write_ops() {
@@ -4646,7 +4845,7 @@ mod tests {
     // This test is ignored by default. It becomes unstable when run in parallel
     // with other tests.
     #[test]
-    #[ignore]
+    #[cfg_attr(not(run_flaky_tests), ignore)]
     fn test_key_lock_used_by_immediate_removal_notifications() {
         use std::thread::{sleep, spawn};
 
@@ -5004,7 +5203,7 @@ mod tests {
     // Ignored by default. This test becomes unstable when run in parallel with
     // other tests.
     #[test]
-    #[ignore]
+    #[cfg_attr(not(run_flaky_tests), ignore)]
     fn drop_value_immediately_after_eviction() {
         use crate::common::test_utils::{Counters, Value};
 
@@ -5066,7 +5265,7 @@ mod tests {
     // Ignored by default. This test becomes unstable when run in parallel with
     // other tests.
     #[test]
-    #[ignore]
+    #[cfg_attr(not(run_flaky_tests), ignore)]
     fn ensure_gc_runs_when_dropping_cache() {
         let cache = Cache::builder().build();
         let val = Arc::new(0);
@@ -5128,5 +5327,71 @@ mod tests {
 
             break;
         }
+    }
+
+    /// Reproduces a bug where `optionally_get_with` on an expired but not yet evicted
+    /// entry causes the new value's expiration to be cleared, making it never expire.
+    ///
+    /// 1. `optionally_get_with` misses at t=0 and inserts value 1 with 2s expiry.
+    /// 2. At t=1.98s, `optionally_get_with` still hits value 1.
+    /// 3. At t=2.01s (expired, not yet evicted), `optionally_get_with` should miss and create value 2.
+    /// 4. At t=12.01s, value 2 should also be expired; `optionally_get_with` should create a new value.
+    #[test]
+    fn test_optionally_get_with_expired_entry_bug() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        struct CreateOnlyExpiry;
+
+        impl Expiry<&str, u32> for CreateOnlyExpiry {
+            fn expire_after_create(
+                &self,
+                _key: &&str,
+                _value: &u32,
+                _current_time: StdInstant,
+            ) -> Option<Duration> {
+                Some(Duration::from_secs(2))
+            }
+            // expire_after_update use defaults
+        }
+
+        let (clock, mock) = Clock::mock();
+
+        let mut cache = Cache::builder()
+            .max_capacity(100)
+            .expire_after(CreateOnlyExpiry)
+            .clock(clock)
+            .build();
+        cache.reconfigure_for_testing();
+        let cache = cache;
+
+        // monotonically increasing counter for test values
+        let counter = AtomicU32::new(0);
+        let next_value = || {
+            let v = counter.fetch_add(1, Ordering::SeqCst) + 1;
+            Some(v)
+        };
+
+        // 1 - time 0
+        let value = cache.optionally_get_with("key", next_value);
+        assert_eq!(value, Some(1), "First access should return 1");
+        cache.run_pending_tasks();
+
+        // 2 - time 1.98s
+        mock.increment(Duration::from_millis(1980));
+        let value = cache.optionally_get_with("key", next_value);
+        assert_eq!(value, Some(1), "Access at 1.98s should hit and return 1");
+
+        // 3 - time 2.01s Entry is expired but NOT evicted (no housekeeping since expiration)
+        mock.increment(Duration::from_millis(30)); // 2.01s
+        let value = cache.optionally_get_with("key", next_value);
+        assert_eq!(value, Some(2), "Access at 2.01s should miss and return 2");
+        cache.run_pending_tasks();
+
+        // Step 4: t=12.01s - 10 seconds later, entry should have expired
+        mock.increment(Duration::from_secs(10)); // Now at 12.01s
+        cache.run_pending_tasks();
+
+        let value = cache.optionally_get_with("key", next_value);
+        assert_ne!(value, Some(2), "Access at 12.01s should not still be 2");
     }
 }

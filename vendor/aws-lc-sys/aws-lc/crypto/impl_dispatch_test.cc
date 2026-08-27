@@ -80,6 +80,7 @@ class ImplDispatchTest : public ::testing::Test {
     neoverse_n1_ = CRYPTO_is_Neoverse_N1();
     neoverse_v1_ = CRYPTO_is_Neoverse_V1();
     neoverse_v2_ = CRYPTO_is_Neoverse_V2();
+    neoverse_v3_ = CRYPTO_is_Neoverse_V3();
 
     assembler_has_neon_sha3_extension_ =
 #if defined(MY_ASSEMBLER_SUPPORTS_NEON_SHA3_EXTENSION)
@@ -140,6 +141,7 @@ class ImplDispatchTest : public ::testing::Test {
   bool neoverse_n1_ = false;
   bool neoverse_v1_ = false;
   bool neoverse_v2_ = false;
+  bool neoverse_v3_ = false;
   bool assembler_has_neon_sha3_extension_ = false;
 #endif
 
@@ -273,7 +275,7 @@ TEST_F(ImplDispatchTest, SHA512) {
 
 TEST_F(ImplDispatchTest, SHA3_512) {
   // Assembly dispatch logic for Keccak-x1 on AArch64:
-  // - For Neoverse N1, V1, V2, we use scalar Keccak assembly from s2n-bignum
+  // - For Neoverse N1, V1, V2, V3, we use scalar Keccak assembly from s2n-bignum
   //   (`sha3_keccak_f1600()`)
   //   leveraging lazy rotations from https://eprint.iacr.org/2022/1243.
   // - Otherwise, if the Neon SHA3 extension is supported, we use the Neon
@@ -285,15 +287,15 @@ TEST_F(ImplDispatchTest, SHA3_512) {
       {
           {kFlag_sha3_keccak_f1600,
            have_s2n_bignum_asm_ &&
-           (neoverse_n1_ || neoverse_v1_ || neoverse_v2_) },
+           (neoverse_n1_ || neoverse_v1_ || neoverse_v2_ || neoverse_v3_) },
           {kFlag_sha3_keccak_f1600_alt,
            have_s2n_bignum_asm_ &&
-           !(neoverse_n1_ || neoverse_v1_ || neoverse_v2_) &&
+           !(neoverse_n1_ || neoverse_v1_ || neoverse_v2_ || neoverse_v3_) &&
            (assembler_has_neon_sha3_extension_ && sha3_ext_) },
           {kFlag_KeccakF1600_hw,
            !have_s2n_bignum_asm_ ||
            (
-             !(neoverse_n1_ || neoverse_v1_ || neoverse_v2_) &&
+             !(neoverse_n1_ || neoverse_v1_ || neoverse_v2_ || neoverse_v3_) &&
              !(assembler_has_neon_sha3_extension_ && sha3_ext_)
            ) },
       },
@@ -325,7 +327,7 @@ TEST_F(ImplDispatchTest, SHAKE256_Batched) {
   // - For Neoverse N1, we use scalar batched hybrid Keccak assembly from s2n-bignum
   //   (`sha3_keccak4_f1600_alt()`) leveraging Neon and scalar assembly with
   //   lazy rotations.
-  // - For Neoverse V1, V2, we use SIMD batched hybrid Keccak assembly from s2n-bignum
+  // - For Neoverse V1, V2, V3, we use SIMD batched hybrid Keccak assembly from s2n-bignum
   //   (`sha3_keccak4_f1600_alt2()`) leveraging Neon, Neon SHA3 extension,
   //   and scalar assembly with lazy rotations.
   // - Otherwise, if the Neon SHA3 extension is supported, we use the 2-fold
@@ -339,28 +341,28 @@ TEST_F(ImplDispatchTest, SHAKE256_Batched) {
            have_s2n_bignum_asm_ && neoverse_n1_},
           {kFlag_sha3_keccak4_f1600_alt2,
            have_s2n_bignum_asm_ &&
-           (neoverse_v1_ || neoverse_v2_) &&
+           (neoverse_v1_ || neoverse_v2_ || neoverse_v3_) &&
            assembler_has_neon_sha3_extension_},
           {kFlag_sha3_keccak2_f1600,
            have_s2n_bignum_asm_ &&
-           !(neoverse_n1_ || neoverse_v1_ || neoverse_v2_) &&
+           !(neoverse_n1_ || neoverse_v1_ || neoverse_v2_ || neoverse_v3_) &&
            (assembler_has_neon_sha3_extension_ && sha3_ext_)},
           // If we don't have assembly batched Keccak available,
           // we fall back to the dispatch logic in KeccakF1600().
           // Under the assumption that no batched Keccak assembly
           // was chosen, this simplifies as follows:
-          // 1. If we run on Neoverse-V1 and Neoverse-V2 and there is
+          // 1. If we run on Neoverse-V1, Neoverse-V2, or Neoverse-V3 and there is
           //    no compiler support for SHA3 (otherwise, we would have
           //    have chosen the batched hybrid with SHA3 extension),
           //    we use the scalar assembly with lazy rotation.
           // 2. Otherwise, we fall back to the OpenSSL assembly.
           {kFlag_sha3_keccak_f1600,
-           have_s2n_bignum_asm_ && (neoverse_v1_ || neoverse_v2_) &&
+           have_s2n_bignum_asm_ && (neoverse_v1_ || neoverse_v2_ || neoverse_v3_) &&
            !(assembler_has_neon_sha3_extension_ && sha3_ext_) },
           {kFlag_KeccakF1600_hw,
            !have_s2n_bignum_asm_ ||
            (
-	       !neoverse_n1_ && !neoverse_v1_ && !neoverse_v2_ &&
+	       !neoverse_n1_ && !neoverse_v1_ && !neoverse_v2_ && !neoverse_v3_ &&
 	       !(assembler_has_neon_sha3_extension_ && sha3_ext_)
 	   ) },
       },

@@ -1,9 +1,8 @@
 use crate::{Error, Result};
 use std::{future::Future, io::ErrorKind, time::Duration};
 
-/// Awaits a future with a provided timeout.
 #[cfg(feature = "tokio")]
-pub(crate) async fn timeout<F, T>(fut: F, timeout: Duration) -> Result<T>
+async fn timeout_tokio<F, T>(fut: F, timeout: Duration) -> Result<T>
 where
     F: Future<Output = Result<T>>,
 {
@@ -15,9 +14,8 @@ where
     })?
 }
 
-/// Awaits a future with a provided timeout.
-#[cfg(not(feature = "tokio"))]
-pub(crate) async fn timeout<F, T>(fut: F, timeout: Duration) -> Result<T>
+#[cfg(feature = "async-io")]
+async fn timeout_async_io<F, T>(fut: F, timeout: Duration) -> Result<T>
 where
     F: Future<Output = Result<T>>,
 {
@@ -32,4 +30,15 @@ where
         )))
     })
     .await
+}
+
+/// Awaits a future with a provided timeout.
+pub(crate) async fn timeout<F, T>(fut: F, timeout: Duration) -> Result<T>
+where
+    F: Future<Output = Result<T>>,
+{
+    crate::abstractions::select_runtime! {
+        tokio: timeout_tokio(fut, timeout).await,
+        async_io: timeout_async_io(fut, timeout).await,
+    }
 }

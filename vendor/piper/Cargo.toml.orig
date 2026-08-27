@@ -1,11 +1,11 @@
 [package]
 authors = ["Stjepan Glavina <stjepang@gmail.com>", "John Nunley <dev@notgull.net>"]
-description = "Async pipes, channels, mutexes, and more."
+description = "An asynchronous single-consumer single-producer pipe for bytes."
 edition = "2018"
 license = "MIT OR Apache-2.0"
 name = "piper"
 repository = "https://github.com/smol-rs/piper"
-version = "0.2.4"
+version = "0.2.5"
 rust-version = "1.36"
 
 [features]
@@ -29,7 +29,7 @@ optional = true
 async-channel = "2.0.0"
 async-executor = "1.5.1"
 async-io = "2.0.0"
-criterion = { version = "0.4.0", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 easy-parallel = "3.2.0"
 futures-lite = "2.0.0"
 

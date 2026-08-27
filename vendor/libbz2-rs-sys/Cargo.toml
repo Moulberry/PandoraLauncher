@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.82"
 name = "libbz2-rs-sys"
-version = "0.2.2"
+version = "0.2.5"
 build = false
 publish = true
 autolib = false

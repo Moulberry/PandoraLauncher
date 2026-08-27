@@ -1,3 +1,29 @@
+## [1.9.1] - 2026-06-29
+
+### Added
+- Added support for `clang` 19.0.x
+- Added support for `clang` 20.0.x
+- Added rewriter API.
+
+### Changed
+- Search for libraries in `LIBRARY_PATH` in addition to `LD_LIBRARY_PATH`.
+
+### Fixed
+- Reverted executable search that caused header search path failure on macOS.
+- Improved Visual Studio search paths.
+- Improved support for Cygwin.
+
+## [1.9.0] - 2024-09-24 [YANKED]
+
+### Changed
+- Added `--link-static` flag when listing static libraries to link to
+
+## [1.8.2] - 2024-05-29 [YANKED]
+
+### Fixed
+- Fixed linking to `libclang` on Windows with MSYS2
+- Fixed `Clang::find` to support both the `-target` and `--target` arguments when using target-prefixed `clang` binaries
+
 ## [1.8.1] - 2024-05-28
 
 ### Added
@@ -20,8 +46,6 @@
 ### Fixed
 - Fixed handling of paths that contain characters that have special meaning in
 glob patterns (e.g., `[` or `]`)
-- Fixed `Clang::find` to support both the `-target` and `--target` arguments
-when using target-prefixed `clang` binaries
 
 ## [1.7.0] - 2023-12-31
 

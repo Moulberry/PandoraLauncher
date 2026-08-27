@@ -491,24 +491,6 @@ impl LitInt {
     }
 }
 
-impl From<Literal> for LitInt {
-    #[track_caller]
-    fn from(token: Literal) -> Self {
-        let repr = token.to_string();
-        if let Some((digits, suffix)) = value::parse_lit_int(&repr) {
-            LitInt {
-                repr: Box::new(LitIntRepr {
-                    token,
-                    digits,
-                    suffix,
-                }),
-            }
-        } else {
-            panic!("not an integer literal: `{}`", repr);
-        }
-    }
-}
-
 impl Display for LitInt {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         self.repr.token.fmt(formatter)
@@ -562,24 +544,6 @@ impl LitFloat {
 
     pub fn token(&self) -> Literal {
         self.repr.token.clone()
-    }
-}
-
-impl From<Literal> for LitFloat {
-    #[track_caller]
-    fn from(token: Literal) -> Self {
-        let repr = token.to_string();
-        if let Some((digits, suffix)) = value::parse_lit_float(&repr) {
-            LitFloat {
-                repr: Box::new(LitFloatRepr {
-                    token,
-                    digits,
-                    suffix,
-                }),
-            }
-        } else {
-            panic!("not a float literal: `{}`", repr);
-        }
     }
 }
 
@@ -838,18 +802,6 @@ pub_if_not_doc! {
     pub fn LitBool(marker: lookahead::TokenMarker) -> LitBool {
         match marker {}
     }
-}
-
-/// The style of a string literal, either plain quoted or a raw string like
-/// `r##"data"##`.
-#[doc(hidden)] // https://github.com/dtolnay/syn/issues/1566
-pub enum StrStyle {
-    /// An ordinary string like `"data"`.
-    Cooked,
-    /// A raw string like `r##"data"##`.
-    ///
-    /// The unsigned integer is the number of `#` symbols used.
-    Raw(usize),
 }
 
 #[cfg(feature = "parsing")]
@@ -1236,13 +1188,11 @@ mod value {
                     }
                 }
                 // true, false
-                b't' | b'f' => {
-                    if repr == "true" || repr == "false" {
-                        return Lit::Bool(LitBool {
-                            value: repr == "true",
-                            span: token.span(),
-                        });
-                    }
+                b't' | b'f' if repr == "true" || repr == "false" => {
+                    return Lit::Bool(LitBool {
+                        value: repr == "true",
+                        span: token.span(),
+                    });
                 }
                 b'(' if repr == "(/*ERROR*/)" => return Lit::Verbatim(token),
                 _ => {}

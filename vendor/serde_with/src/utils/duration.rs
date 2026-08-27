@@ -67,7 +67,7 @@ impl DurationSigned {
         Some(self)
     }
 
-    #[cfg(any(feature = "chrono_0_4", feature = "time_0_3"))]
+    #[cfg(any(feature = "chrono_0_4", feature = "jiff_0_2", feature = "time_0_3"))]
     pub(crate) fn with_duration(sign: Sign, duration: Duration) -> Self {
         Self { sign, duration }
     }
@@ -559,6 +559,124 @@ fn parse_float_into_time_parts(mut value: &str) -> Result<(Sign, u64, u32), Pars
         _ => Err(ParseFloatError::InvalidValue),
     }
 }
+
+/// The following macros are used to implement `SerializeAs` and `DeserializeAs` for the various `DurationSigned` types
+///
+/// ```rust,ignore
+/// use_duration_signed_ser!(
+///     DurationSeconds DurationSeconds,
+///     DurationMilliSeconds DurationMilliSeconds,
+///     DurationMicroSeconds DurationMicroSeconds,
+///     DurationNanoSeconds DurationNanoSeconds,
+///     => {
+///         SignedDuration; duration_into_duration_signed =>
+///         {i64, STRICTNESS => STRICTNESS: Strictness}
+///         {f64, STRICTNESS => STRICTNESS: Strictness}
+///         #[cfg(feature = "alloc")] {String, STRICTNESS => STRICTNESS: Strictness}
+///     }
+/// );
+/// ```
+///
+/// They take the conversion that should be implemented publicly (`DurationSeconds`, `TimestampSeconds`, etc.) and the internal
+/// conversion that is used with the `DurationSigned` (`DurationSeconds`) and then the types that should be implemented
+/// for (`i64`, `f64`, `String`) and the strictness that should be used (Strict, Flexible).
+#[cfg(any(feature = "chrono_0_4", feature = "jiff_0_2", feature = "time_0_3"))]
+macro_rules! use_duration_signed_ser {
+    (
+        $main_trait:ident $internal_trait:ident
+        $(
+            => {
+                $ty:ty; $converter:ident =>
+                $($(#[$attr:meta])? {
+                    $format:ty, $strictness:ty =>
+                    $($tbound:ident: $bound:ident $(,)?)*
+                })*
+            }
+        )+
+    ) => {
+        $($(
+            $(#[$attr])?
+            impl<$($tbound ,)*> SerializeAs<$ty> for $main_trait<$format, $strictness>
+            where
+                $($tbound: $bound,)*
+            {
+                fn serialize_as<S>(source: &$ty, serializer: S) -> Result<S::Ok, S::Error>
+                where
+                    S: Serializer,
+                {
+                    let dur: DurationSigned = $converter(source);
+                    $internal_trait::<$format, $strictness>::serialize_as(
+                        &dur,
+                        serializer,
+                    )
+                }
+            }
+        )*)+
+    };
+    (
+        $main_traitA:ident $internal_traitA:ident,
+        $main_traitB:ident $internal_traitB:ident,
+        $main_traitC:ident $internal_traitC:ident,
+        $main_traitD:ident $internal_traitD:ident,
+        $(=> $rest:tt)+
+    ) => {
+        use_duration_signed_ser!($main_traitA $internal_traitA $(=> $rest)+);
+        use_duration_signed_ser!($main_traitB $internal_traitB $(=> $rest)+);
+        use_duration_signed_ser!($main_traitC $internal_traitC $(=> $rest)+);
+        use_duration_signed_ser!($main_traitD $internal_traitD $(=> $rest)+);
+    };
+}
+// Make the macros available to the rest of the crate
+#[cfg(any(feature = "chrono_0_4", feature = "jiff_0_2", feature = "time_0_3"))]
+pub(crate) use use_duration_signed_ser;
+
+/// The following macros are used to implement `SerializeAs` and `DeserializeAs` for the various `DurationSigned` types
+#[cfg(any(feature = "chrono_0_4", feature = "jiff_0_2", feature = "time_0_3"))]
+macro_rules! use_duration_signed_de {
+    (
+        $main_trait:ident $internal_trait:ident
+        $(
+            => {
+                $ty:ty; $converter:ident =>
+                $($(#[$attr:meta])? {
+                    $format:ty, $strictness:ty =>
+                    $($tbound:ident: $bound:ident)*
+                })*
+            }
+        )+
+    ) =>{
+        $($(
+            $(#[$attr])?
+            impl<'de, $($tbound,)*> DeserializeAs<'de, $ty> for $main_trait<$format, $strictness>
+            where
+                $($tbound: $bound,)*
+            {
+                fn deserialize_as<D>(deserializer: D) -> Result<$ty, D::Error>
+                where
+                    D: Deserializer<'de>,
+                {
+                    let dur: DurationSigned = $internal_trait::<$format, $strictness>::deserialize_as(deserializer)?;
+                    $converter::<D>(dur)
+                }
+            }
+        )*)+
+    };
+    (
+        $main_traitA:ident $internal_traitA:ident,
+        $main_traitB:ident $internal_traitB:ident,
+        $main_traitC:ident $internal_traitC:ident,
+        $main_traitD:ident $internal_traitD:ident,
+        $(=> $rest:tt)+
+    ) => {
+        use_duration_signed_de!($main_traitA $internal_traitA $(=> $rest)+);
+        use_duration_signed_de!($main_traitB $internal_traitB $(=> $rest)+);
+        use_duration_signed_de!($main_traitC $internal_traitC $(=> $rest)+);
+        use_duration_signed_de!($main_traitD $internal_traitD $(=> $rest)+);
+    };
+}
+// Make the macros available to the rest of the crate
+#[cfg(any(feature = "chrono_0_4", feature = "jiff_0_2", feature = "time_0_3"))]
+pub(crate) use use_duration_signed_de;
 
 #[test]
 fn test_parse_float_into_time_parts() {

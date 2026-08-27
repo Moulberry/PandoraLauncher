@@ -1,11 +1,10 @@
 //! Reference-section example for `link-section`.
-#![cfg_attr(linktime_used_linker, feature(used_with_arg))]
 #![warn(missing_docs)]
 
 use link_section::section;
 
 /// Operations.
-#[section(movable, no_macro)]
+#[section(movable, unsafe, name = OPERATIONS)]
 static OPERATIONS: link_section::TypedMovableSection<Operation>;
 
 #[derive(Debug, PartialEq, Eq, Ord, PartialOrd)]

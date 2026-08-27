@@ -22,6 +22,7 @@ fn test_raw_operator() {
 
     snapshot!(stmt, @r#"
     Stmt::Local {
+        modifiers: LocalModifiers,
         pat: Pat::Wild,
         init: Some(LocalInit {
             expr: Expr::RawAddr {
@@ -47,6 +48,7 @@ fn test_raw_variable() {
 
     snapshot!(stmt, @r#"
     Stmt::Local {
+        modifiers: LocalModifiers,
         pat: Pat::Wild,
         init: Some(LocalInit {
             expr: Expr::Reference {
@@ -86,8 +88,10 @@ fn test_none_group() {
     snapshot!(tokens as Stmt, @r#"
     Stmt::Item(Item::Fn {
         vis: Visibility::Inherited,
+        modifiers: FnModifiers,
         sig: Signature {
             asyncness: Some,
+            safety: Safety::Default,
             ident: "f",
             generics: Generics,
             output: ReturnType::Default,
@@ -131,8 +135,9 @@ fn test_let_dot_dot() {
         let .. = 10;
     };
 
-    snapshot!(tokens as Stmt, @r#"
+    snapshot!(tokens as Stmt, @"
     Stmt::Local {
+        modifiers: LocalModifiers,
         pat: Pat::Rest,
         init: Some(LocalInit {
             expr: Expr::Lit {
@@ -140,7 +145,7 @@ fn test_let_dot_dot() {
             },
         }),
     }
-    "#);
+    ");
 }
 
 #[test]
@@ -151,6 +156,7 @@ fn test_let_else() {
 
     snapshot!(tokens as Stmt, @r#"
     Stmt::Local {
+        modifiers: LocalModifiers,
         pat: Pat::TupleStruct {
             path: Path {
                 segments: [
@@ -208,7 +214,9 @@ fn test_macros() {
     snapshot!(tokens as Stmt, @r#"
     Stmt::Item(Item::Fn {
         vis: Visibility::Inherited,
+        modifiers: FnModifiers,
         sig: Signature {
+            safety: Safety::Default,
             ident: "main",
             generics: Generics,
             output: ReturnType::Default,

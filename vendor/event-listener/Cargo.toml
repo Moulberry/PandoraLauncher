@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.60"
 name = "event-listener"
-version = "5.4.1"
+version = "5.4.2"
 authors = [
     "Stjepan Glavina <stjepang@gmail.com>",
     "John Nunley <dev@notgull.net>",
@@ -44,19 +44,14 @@ repository = "https://github.com/smol-rs/event-listener"
 [features]
 default = ["std"]
 loom = [
-    "concurrent-queue/loom",
     "parking?/loom",
     "dep:loom",
 ]
 portable-atomic = [
     "portable-atomic-util",
     "portable_atomic_crate",
-    "concurrent-queue/portable-atomic",
 ]
-std = [
-    "concurrent-queue/std",
-    "parking",
-]
+std = ["parking"]
 
 [lib]
 name = "event_listener"
@@ -80,10 +75,6 @@ name = "bench"
 path = "benches/bench.rs"
 harness = false
 
-[dependencies.concurrent-queue]
-version = "2.4.0"
-default-features = false
-
 [dependencies.critical-section]
 version = "1.2.0"
 optional = true
@@ -105,7 +96,7 @@ default-features = false
 package = "portable-atomic"
 
 [dev-dependencies.criterion]
-version = "0.7"
+version = "0.8"
 features = ["cargo_bench_support"]
 default-features = false
 

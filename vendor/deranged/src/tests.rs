@@ -687,6 +687,20 @@ macro_rules! tests {
             }
         )*}
 
+        #[cfg(feature = "rand010")]
+        #[test]
+        fn rand010() {$(
+            let rand_val: $t<5, 10> = rand010::random();
+            assert!(rand_val >= $t::<5, 10>::MIN);
+            assert!(rand_val <= $t::<5, 10>::MAX);
+
+            let rand: $opt<5, 10> = rand010::random();
+            if let Some(rand) = rand.get() {
+                assert!(rand >= $t::<5, 10>::MIN);
+                assert!(rand <= $t::<5, 10>::MAX);
+            }
+        )*}
+
         #[cfg(feature = "num")]
         #[test]
         fn num() {$(

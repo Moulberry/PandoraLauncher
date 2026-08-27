@@ -3,7 +3,7 @@
 //!
 //! - Use [`tempfile()`] when you need a real [`std::fs::File`] but don't need to refer to it
 //!   by-path.
-//! - Use [`NamedTempFile::new()`] when you need a _named_ temporary file that can be refered to its
+//! - Use [`NamedTempFile::new()`] when you need a _named_ temporary file that can be referred to its
 //!   path.
 //! - Use [`tempdir()`] when you need a temporary directory that will be recursively deleted on drop.
 //! - Use [`spooled_tempfile()`] when you need an in-memory buffer that will ultimately be backed by
@@ -187,13 +187,6 @@
 #![cfg_attr(test, deny(warnings))]
 #![deny(rust_2018_idioms)]
 #![allow(clippy::redundant_field_names)]
-// wasip2 conditionally gates stdlib APIs.
-// https://github.com/rust-lang/rust/issues/130323
-#![cfg_attr(
-    all(feature = "nightly", target_os = "wasi", target_env = "p2"),
-    feature(wasip2)
-)]
-#![cfg_attr(all(feature = "nightly", target_os = "wasi"), feature(wasi_ext))]
 
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");

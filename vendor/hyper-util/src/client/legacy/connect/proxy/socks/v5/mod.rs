@@ -18,7 +18,7 @@ use super::{Handshaking, SocksError};
 /// Tunnel Proxy via SOCKSv5
 ///
 /// This is a connector that can be used by the `legacy::Client`. It wraps
-/// another connector, and after getting an underlying connection, it established
+/// another connector, and after getting an underlying connection, it establishes
 /// a TCP tunnel over it using SOCKSv5.
 #[derive(Debug, Clone)]
 pub struct SocksV5<C> {
@@ -64,8 +64,9 @@ impl<C> SocksV5<C> {
     /// Use User/Pass authentication method during handshake.
     ///
     /// Username and Password must be maximum of 255 characters each.
-    /// 0 length strings are allowed despite RFC prohibiting it. This is done so that
-    /// for compatablity with server implementations that require it for IP authentication.
+    /// 0 length strings are allowed despite RFC prohibiting it. This is done for
+    /// compatablity with server implementations that use empty credentials
+    /// to allow returning error codes during IP authentication.
     pub fn with_auth(mut self, user: String, pass: String) -> Self {
         self.config.proxy_auth = Some((user, pass));
         self
@@ -82,10 +83,10 @@ impl<C> SocksV5<C> {
 
     /// Send all messages of the handshake optmistically (without waiting for server response).
     ///
-    /// Typical SOCKS handshake with auithentication takes 3 round trips. Optimistic sending
+    /// A typical SOCKS handshake with user/pass authentication takes 3 round trips Optimistic sending
     /// can reduce round trip times and dramatically increase speed of handshake at the cost of
     /// reduced portability; many server implementations do not support optimistic sending as it
-    /// is not defined in the RFC (RFC 1928).
+    /// is not defined in the RFC.
     ///
     /// Recommended to ensure connector works correctly without optimistic sending before trying
     /// with optimistic sending.

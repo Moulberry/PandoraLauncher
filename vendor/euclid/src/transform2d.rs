@@ -9,26 +9,28 @@
 
 #![allow(clippy::just_underscores_and_digits)]
 
-use super::{Angle, UnknownUnit};
-use crate::approxeq::ApproxEq;
 use crate::box2d::Box2D;
 use crate::num::{One, Zero};
 use crate::point::{point2, Point2D};
 use crate::rect::Rect;
+use crate::scale::Scale;
 use crate::transform3d::Transform3D;
-use crate::trig::Trig;
+use crate::translation::Translation2D;
 use crate::vector::{vec2, Vector2D};
+use crate::UnknownUnit;
 use core::cmp::{Eq, PartialEq};
 use core::fmt;
 use core::hash::Hash;
 use core::marker::PhantomData;
-use core::ops::{Add, Div, Mul, Sub};
+use core::ops::{Add, Div, Mul, Neg, Sub};
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 #[cfg(feature = "mint")]
 use mint;
-use num_traits::NumCast;
+use num_traits::{NumCast, Signed};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +99,18 @@ unsafe impl<T: Zeroable, Src, Dst> Zeroable for Transform2D<T, Src, Dst> {}
 
 #[cfg(feature = "bytemuck")]
 unsafe impl<T: Pod, Src: 'static, Dst: 'static> Pod for Transform2D<T, Src, Dst> {}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, Src, Dst> MallocSizeOf for Transform2D<T, Src, Dst> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.m11.size_of(ops)
+            + self.m12.size_of(ops)
+            + self.m21.size_of(ops)
+            + self.m22.size_of(ops)
+            + self.m31.size_of(ops)
+            + self.m32.size_of(ops)
+    }
+}
 
 impl<T: Copy, Src, Dst> Copy for Transform2D<T, Src, Dst> {}
 
@@ -168,30 +182,6 @@ impl<T, Src, Dst> Transform2D<T, Src, Dst> {
             m31, m32,
             _unit: PhantomData,
         }
-    }
-
-    /// Returns `true` if this transform is approximately equal to the other one, using
-    /// `T`'s default epsilon value.
-    ///
-    /// The same as [`ApproxEq::approx_eq`] but available without importing trait.
-    #[inline]
-    pub fn approx_eq(&self, other: &Self) -> bool
-    where
-        T: ApproxEq<T>,
-    {
-        <Self as ApproxEq<T>>::approx_eq(&self, &other)
-    }
-
-    /// Returns `true` if this transform is approximately equal to the other one, using
-    /// a provided epsilon value.
-    ///
-    /// The same as [`ApproxEq::approx_eq_eps`] but available without importing trait.
-    #[inline]
-    pub fn approx_eq_eps(&self, other: &Self, eps: &T) -> bool
-    where
-        T: ApproxEq<T>,
-    {
-        <Self as ApproxEq<T>>::approx_eq_eps(&self, &other, &eps)
     }
 }
 
@@ -319,11 +309,32 @@ impl<T: Copy, Src, Dst> Transform2D<T, Src, Dst> {
     }
 
     /// Create a 3D transform from the current transform
+    #[inline]
     pub fn to_3d(&self) -> Transform3D<T, Src, Dst>
     where
         T: Zero + One,
     {
         Transform3D::new_2d(self.m11, self.m12, self.m21, self.m22, self.m31, self.m32)
+    }
+
+    /// Returns true if self can be represented as a 2d scale+offset
+    /// transform.
+    #[inline]
+    pub fn is_scale_offset_eps(&self, epsilon: T) -> bool
+    where
+        T: Signed + One + PartialOrd,
+    {
+        (self.m12.abs() < epsilon) & (self.m21.abs() < epsilon)
+    }
+
+    /// Creates a 2D scale+offset transform from the current transform.
+    ///
+    /// This method assumes that self can be represented as a 2d scale+offset
+    /// transformation, callers should check that [`is_scale_offset_2d`] or
+    /// [`is_scale_offset_2d_eps`] returns `true` beforehand.
+    #[inline]
+    pub fn to_scale_offset(&self) -> ScaleOffset2D<T, Src, Dst> {
+        ScaleOffset2D::new(self.m11, self.m22, self.m31, self.m32)
     }
 }
 
@@ -447,40 +458,6 @@ where
         T: Copy + Add<Output = T> + Mul<Output = T>,
     {
         Transform2D::translation(v.x, v.y).then(self)
-    }
-}
-
-/// Methods for creating and combining rotation transformations
-impl<T, Src, Dst> Transform2D<T, Src, Dst>
-where
-    T: Copy + Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Zero + Trig,
-{
-    /// Returns a rotation transform.
-    #[inline]
-    #[rustfmt::skip]
-    pub fn rotation(theta: Angle<T>) -> Self {
-        let _0 = Zero::zero();
-        let cos = theta.get().cos();
-        let sin = theta.get().sin();
-        Transform2D::new(
-            cos, sin,
-            _0 - sin, cos,
-            _0, _0
-        )
-    }
-
-    /// Applies a rotation after self's transformation and returns the resulting transform.
-    #[inline]
-    #[must_use]
-    pub fn then_rotate(&self, theta: Angle<T>) -> Self {
-        self.then(&Transform2D::rotation(theta))
-    }
-
-    /// Applies a rotation before self's transformation and returns the resulting transform.
-    #[inline]
-    #[must_use]
-    pub fn pre_rotate(&self, theta: Angle<T>) -> Self {
-        Transform2D::rotation(theta).then(self)
     }
 }
 
@@ -643,24 +620,6 @@ where
     }
 }
 
-impl<T: ApproxEq<T>, Src, Dst> ApproxEq<T> for Transform2D<T, Src, Dst> {
-    #[inline]
-    fn approx_epsilon() -> T {
-        T::approx_epsilon()
-    }
-
-    /// Returns `true` if this transform is approximately equal to the other one, using
-    /// a provided epsilon value.
-    fn approx_eq_eps(&self, other: &Self, eps: &T) -> bool {
-        self.m11.approx_eq_eps(&other.m11, eps)
-            && self.m12.approx_eq_eps(&other.m12, eps)
-            && self.m21.approx_eq_eps(&other.m21, eps)
-            && self.m22.approx_eq_eps(&other.m22, eps)
-            && self.m31.approx_eq_eps(&other.m31, eps)
-            && self.m32.approx_eq_eps(&other.m32, eps)
-    }
-}
-
 impl<T, Src, Dst> fmt::Debug for Transform2D<T, Src, Dst>
 where
     T: Copy + fmt::Debug + PartialEq + One + Zero,
@@ -697,13 +656,575 @@ impl<T, Src, Dst> From<Transform2D<T, Src, Dst>> for mint::RowMatrix3x2<T> {
     }
 }
 
+impl<T: Copy + Zero, Src, Dst> From<ScaleOffset2D<T, Src, Dst>> for Transform2D<T, Src, Dst> {
+    fn from(t: ScaleOffset2D<T, Src, Dst>) -> Self {
+        t.to_transform2d()
+    }
+}
+
+impl<T: Copy + Zero, Src, Dst> From<Scale<T, Src, Dst>> for Transform2D<T, Src, Dst> {
+    fn from(s: Scale<T, Src, Dst>) -> Self {
+        Transform2D::scale(s.0, s.0)
+    }
+}
+
+#[cfg(any(feature = "std", feature = "libm"))]
+mod transform2d_float {
+    use super::Transform2D;
+    use crate::approxeq::ApproxEq;
+    use crate::num::{One, Zero};
+    use crate::{Angle, Rotation2D, Trig};
+    use core::ops::{Add, Mul, Sub};
+    use num_traits::Signed;
+
+    impl<T, Src, Dst> Transform2D<T, Src, Dst> {
+        /// Returns `true` if this transform is approximately equal to the other one, using
+        /// `T`'s default epsilon value.
+        ///
+        /// The same as [`ApproxEq::approx_eq`] but available without importing trait.
+        #[inline]
+        pub fn approx_eq(&self, other: &Self) -> bool
+        where
+            T: ApproxEq<T>,
+        {
+            <Self as ApproxEq<T>>::approx_eq(self, other)
+        }
+
+        /// Returns `true` if this transform is approximately equal to the other one, using
+        /// a provided epsilon value.
+        ///
+        /// The same as [`ApproxEq::approx_eq_eps`] but available without importing trait.
+        #[inline]
+        pub fn approx_eq_eps(&self, other: &Self, eps: &T) -> bool
+        where
+            T: ApproxEq<T>,
+        {
+            <Self as ApproxEq<T>>::approx_eq_eps(self, other, eps)
+        }
+
+        /// Returns true if self can be represented as a 2d scale+offset
+        /// transform, using `T`'s default epsilon value.
+        #[inline]
+        pub fn is_scale_offset(&self) -> bool
+        where
+            T: Copy + Signed + One + PartialOrd + ApproxEq<T>,
+        {
+            self.is_scale_offset_eps(T::approx_epsilon())
+        }
+    }
+
+    /// Methods for creating and combining rotation transformations
+    impl<T, Src, Dst> Transform2D<T, Src, Dst>
+    where
+        T: Copy + Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Zero + Trig,
+    {
+        /// Returns a rotation transform.fn pre_translate
+        #[inline]
+        #[rustfmt::skip]
+        pub fn rotation(theta: Angle<T>) -> Self {
+            let _0 = Zero::zero();
+            let cos = theta.get().cos();
+            let sin = theta.get().sin();
+            Transform2D::new(
+                cos, sin,
+                _0 - sin, cos,
+                _0, _0
+            )
+        }
+
+        /// Applies a rotation after self's transformation and returns the resulting transform.
+        #[inline]
+        #[must_use]
+        pub fn then_rotate(&self, theta: Angle<T>) -> Self {
+            self.then(&Transform2D::rotation(theta))
+        }
+
+        /// Applies a rotation before self's transformation and returns the resulting transform.
+        #[inline]
+        #[must_use]
+        pub fn pre_rotate(&self, theta: Angle<T>) -> Self {
+            Transform2D::rotation(theta).then(self)
+        }
+    }
+
+    impl<T: ApproxEq<T>, Src, Dst> ApproxEq<T> for Transform2D<T, Src, Dst> {
+        #[inline]
+        fn approx_epsilon() -> T {
+            T::approx_epsilon()
+        }
+
+        /// Returns `true` if this transform is approximately equal to the other one, using
+        /// a provided epsilon value.
+        fn approx_eq_eps(&self, other: &Self, eps: &T) -> bool {
+            self.m11.approx_eq_eps(&other.m11, eps)
+                && self.m12.approx_eq_eps(&other.m12, eps)
+                && self.m21.approx_eq_eps(&other.m21, eps)
+                && self.m22.approx_eq_eps(&other.m22, eps)
+                && self.m31.approx_eq_eps(&other.m31, eps)
+                && self.m32.approx_eq_eps(&other.m32, eps)
+        }
+    }
+
+    impl<T, Src, Dst> From<Rotation2D<T, Src, Dst>> for Transform2D<T, Src, Dst>
+    where
+        T: Copy + Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Zero + Trig,
+    {
+        fn from(r: Rotation2D<T, Src, Dst>) -> Self {
+            r.to_transform()
+        }
+    }
+}
+
+#[repr(C)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))
+)]
+pub struct ScaleOffset2D<T, Src, Dst> {
+    pub sx: T,
+    pub sy: T,
+    pub tx: T,
+    pub ty: T,
+    #[doc(hidden)]
+    pub _unit: PhantomData<(Src, Dst)>,
+}
+
+impl<T, Src, Dst> ScaleOffset2D<T, Src, Dst> {
+    /// Create an identity transform.
+    #[inline]
+    pub fn identity() -> Self
+    where
+        T: Zero + One,
+    {
+        ScaleOffset2D {
+            sx: T::one(),
+            sy: T::one(),
+            tx: T::zero(),
+            ty: T::zero(),
+            _unit: PhantomData,
+        }
+    }
+
+    /// Create a transform with provided scale and offset terms.
+    #[inline]
+    pub fn new(sx: T, sy: T, tx: T, ty: T) -> Self {
+        ScaleOffset2D {
+            sx,
+            sy,
+            tx,
+            ty,
+            _unit: PhantomData,
+        }
+    }
+
+    /// Create a transform from a scale.
+    #[inline]
+    pub fn scale(sx: T, sy: T) -> Self
+    where
+        T: Zero,
+    {
+        ScaleOffset2D {
+            sx,
+            sy,
+            tx: T::zero(),
+            ty: T::zero(),
+            _unit: PhantomData,
+        }
+    }
+
+    /// Create a transform from an offset.
+    #[inline]
+    pub fn offset(tx: T, ty: T) -> Self
+    where
+        T: One,
+    {
+        ScaleOffset2D {
+            sx: T::one(),
+            sy: T::one(),
+            tx,
+            ty,
+            _unit: PhantomData,
+        }
+    }
+}
+
+impl<T: Copy, Src, Dst> ScaleOffset2D<T, Src, Dst> {
+    /// Returns the given point transformed by this transform.
+    #[inline]
+    pub fn transform_point(&self, p: Point2D<T, Src>) -> Point2D<T, Dst>
+    where
+        T: Add<Output = T> + Mul<Output = T>,
+    {
+        point2(p.x * self.sx + self.tx, p.y * self.sy + self.ty)
+    }
+
+    /// Returns the given vector transformed by this transform.
+    #[inline]
+    pub fn transform_vector(&self, v: Vector2D<T, Src>) -> Vector2D<T, Dst>
+    where
+        T: Mul<Output = T>,
+    {
+        vec2(v.x * self.sx, v.y * self.sy)
+    }
+
+    /// Returns the given box transformed by this transform.
+    #[inline]
+    pub fn transform_box(&self, b: &Box2D<T, Src>) -> Box2D<T, Dst>
+    where
+        T: Zero + Add<Output = T> + Mul<Output = T> + PartialOrd,
+    {
+        let mut min = self.transform_point(b.min);
+        let mut max = self.transform_point(b.max);
+
+        if self.sx < T::zero() {
+            core::mem::swap(&mut min.x, &mut max.x);
+        }
+        if self.sy < T::zero() {
+            core::mem::swap(&mut min.y, &mut max.y);
+        }
+
+        Box2D { min, max }
+    }
+
+    /// Returns the given rectangle transformed by this transform.
+    #[inline]
+    pub fn transform_rect(&self, r: &Rect<T, Src>) -> Rect<T, Dst>
+    where
+        T: Zero + Add<Output = T> + Sub<Output = T> + Mul<Output = T> + PartialOrd,
+    {
+        self.transform_box(&r.to_box2d()).to_rect()
+    }
+
+    /// Produce a ScaleOffset2D that includes both self and other.
+    /// The 'other' ScaleOffset2D is applied after `self`.
+    ///
+    /// This is equivalent to `Transform2D::then`.
+    #[inline]
+    pub fn then<NewDst>(
+        &self,
+        other: &ScaleOffset2D<T, Dst, NewDst>,
+    ) -> ScaleOffset2D<T, Src, NewDst>
+    where
+        T: Add<Output = T> + Mul<Output = T>,
+    {
+        ScaleOffset2D {
+            sx: self.sx * other.sx,
+            sy: self.sy * other.sy,
+            tx: self.tx * other.sx + other.tx,
+            ty: self.ty * other.sy + other.ty,
+            _unit: PhantomData,
+        }
+    }
+
+    /// Applies a translation before self's transformation and returns the resulting transform.
+    #[inline]
+    #[must_use]
+    pub fn pre_translate(&self, v: Vector2D<T, Src>) -> Self
+    where
+        T: Add<Output = T> + Mul<Output = T>,
+    {
+        ScaleOffset2D {
+            sx: self.sx,
+            sy: self.sy,
+            tx: self.tx + v.x * self.sx,
+            ty: self.ty + v.y * self.sy,
+            _unit: PhantomData,
+        }
+    }
+
+    /// Applies a translation after self's transformation and returns the resulting transform.
+    #[inline]
+    pub fn then_translate(&self, v: Vector2D<T, Dst>) -> Self
+    where
+        T: Add<Output = T> + Mul<Output = T>,
+    {
+        ScaleOffset2D {
+            sx: self.sx,
+            sy: self.sy,
+            tx: self.tx + v.x,
+            ty: self.ty + v.y,
+            _unit: PhantomData,
+        }
+    }
+
+    /// Applies a scale before self's transformation and returns the resulting transform.
+    #[inline]
+    pub fn pre_scale(&self, sx: T, sy: T) -> Self
+    where
+        T: Add<Output = T> + Mul<Output = T>,
+    {
+        ScaleOffset2D {
+            sx: self.sx * sx,
+            sy: self.sy * sy,
+            tx: self.tx,
+            ty: self.ty,
+            _unit: PhantomData,
+        }
+    }
+
+    /// Applies a scale after self's transformation and returns the resulting transform.
+    #[inline]
+    pub fn then_scale(&self, sx: T, sy: T) -> Self
+    where
+        T: Add<Output = T> + Mul<Output = T>,
+    {
+        ScaleOffset2D {
+            sx: self.sx * sx,
+            sy: self.sy * sy,
+            tx: self.tx * sx,
+            ty: self.ty * sy,
+            _unit: PhantomData,
+        }
+    }
+
+    /// Returns whether it is possible to compute the inverse transform.
+    #[inline]
+    pub fn is_invertible(&self) -> bool
+    where
+        T: Zero + PartialEq,
+    {
+        // Expressing the negation this way makes it so NaN scales
+        // count as non-invertible, although we don't attemp to check
+        // for NaN offsets.
+        !(self.sx == T::zero() || self.sy == T::zero())
+    }
+
+    /// Returns the inverse transform if possible.
+    #[must_use]
+    pub fn inverse(&self) -> Option<ScaleOffset2D<T, Dst, Src>>
+    where
+        T: Zero + One + PartialEq + Div<Output = T> + Mul<Output = T> + Neg<Output = T>,
+    {
+        if self.sx == T::zero() || self.sy == T::zero() {
+            return None;
+        }
+
+        let sx = T::one() / self.sx;
+        let sy = T::one() / self.sy;
+        let tx = -self.tx * sx;
+        let ty = -self.ty * sy;
+
+        Some(ScaleOffset2D::new(sx, sy, tx, ty))
+    }
+
+    /// Returns the same transform using Transform2D's matrix representation.
+    #[inline]
+    pub fn to_transform2d(&self) -> Transform2D<T, Src, Dst>
+    where
+        T: Zero,
+    {
+        Transform2D::new(self.sx, T::zero(), T::zero(), self.sy, self.tx, self.ty)
+    }
+
+    /// Returns the same transform using Transform3D's matrix representation.
+    #[inline]
+    #[rustfmt::skip]
+    pub fn to_transform3d(&self) -> Transform3D<T, Src, Dst>
+    where
+        T: Zero + One
+    {
+        Transform3D::new(
+            self.sx,   T::zero(), T::zero(), T::zero(),
+            T::zero(), self.sy,   T::zero(), T::zero(),
+            T::zero(), T::zero(), T::one(),  T::zero(),
+            self.tx,   self.ty,   T::zero(), T::one(),
+        )
+    }
+
+    /// Returns an array containing this transform's terms.
+    ///
+    /// The terms are laid out in the same order as they are
+    /// specified in [`ScaleOffset2D::new`].
+    #[inline]
+    pub fn to_array(&self) -> [T; 4] {
+        [self.sx, self.sy, self.tx, self.ty]
+    }
+
+    /// Returns the same transform with a different source unit.
+    #[inline]
+    pub fn with_source<NewSrc>(&self) -> ScaleOffset2D<T, NewSrc, Dst> {
+        ScaleOffset2D::new(self.sx, self.sy, self.tx, self.ty)
+    }
+
+    /// Returns the same transform with a different destination unit.
+    #[inline]
+    pub fn with_destination<NewDst>(&self) -> ScaleOffset2D<T, Src, NewDst> {
+        ScaleOffset2D::new(self.sx, self.sy, self.tx, self.ty)
+    }
+
+    /// Drop the units, preserving only the numeric value.
+    #[inline]
+    pub fn to_untyped(&self) -> ScaleOffset2D<T, UnknownUnit, UnknownUnit> {
+        ScaleOffset2D::new(self.sx, self.sy, self.tx, self.ty)
+    }
+
+    /// Tag a unitless value with units.
+    #[inline]
+    pub fn from_untyped(val: ScaleOffset2D<T, UnknownUnit, UnknownUnit>) -> Self {
+        ScaleOffset2D::new(val.sx, val.sy, val.tx, val.ty)
+    }
+}
+
+impl<T: Copy, Src, Dst> Copy for ScaleOffset2D<T, Src, Dst> {}
+
+impl<T: Clone, Src, Dst> Clone for ScaleOffset2D<T, Src, Dst> {
+    fn clone(&self) -> Self {
+        ScaleOffset2D {
+            sx: self.sx.clone(),
+            sy: self.sy.clone(),
+            tx: self.tx.clone(),
+            ty: self.ty.clone(),
+            _unit: PhantomData,
+        }
+    }
+}
+
+impl<T, Src, Dst> Eq for ScaleOffset2D<T, Src, Dst> where T: Eq {}
+
+impl<T, Src, Dst> PartialEq for ScaleOffset2D<T, Src, Dst>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        (self.sx == other.sx)
+            & (self.sy == other.sy)
+            & (self.tx == other.tx)
+            & (self.ty == other.ty)
+    }
+}
+
+impl<T, Src, Dst> Hash for ScaleOffset2D<T, Src, Dst>
+where
+    T: Hash,
+{
+    fn hash<H: core::hash::Hasher>(&self, h: &mut H) {
+        self.sx.hash(h);
+        self.sy.hash(h);
+        self.tx.hash(h);
+        self.ty.hash(h);
+    }
+}
+
+impl<T, Src, Dst> Default for ScaleOffset2D<T, Src, Dst>
+where
+    T: Copy + Zero + One,
+{
+    /// Returns the [identity transform](ScaleOffset2D::identity).
+    fn default() -> Self {
+        Self::identity()
+    }
+}
+
+impl<T: Copy + Zero, Src, Dst> From<Scale<T, Src, Dst>> for ScaleOffset2D<T, Src, Dst> {
+    fn from(s: Scale<T, Src, Dst>) -> Self {
+        ScaleOffset2D::scale(s.0, s.0)
+    }
+}
+
+impl<T: Copy + One, Src, Dst> From<Translation2D<T, Src, Dst>> for ScaleOffset2D<T, Src, Dst> {
+    fn from(t: Translation2D<T, Src, Dst>) -> Self {
+        ScaleOffset2D::offset(t.x, t.y)
+    }
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a, T, Src, Dst> arbitrary::Arbitrary<'a> for ScaleOffset2D<T, Src, Dst>
+where
+    T: arbitrary::Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let (sx, sy, tx, ty) = arbitrary::Arbitrary::arbitrary(u)?;
+        Ok(ScaleOffset2D::new(sx, sy, tx, ty))
+    }
+}
+
+#[cfg(feature = "bytemuck")]
+unsafe impl<T: Zeroable, Src, Dst> Zeroable for ScaleOffset2D<T, Src, Dst> {}
+
+#[cfg(feature = "bytemuck")]
+unsafe impl<T: Pod, Src: 'static, Dst: 'static> Pod for ScaleOffset2D<T, Src, Dst> {}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, Src, Dst> MallocSizeOf for ScaleOffset2D<T, Src, Dst> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.sx.size_of(ops) + self.sy.size_of(ops) + self.tx.size_of(ops) + self.ty.size_of(ops)
+    }
+}
+
+#[cfg(any(feature = "std", feature = "libm"))]
+mod scaleoffset_float {
+    use super::ScaleOffset2D;
+    use crate::{
+        approxeq::ApproxEq,
+        num::{One, Zero},
+    };
+    use core::fmt;
+
+    impl<T: Copy, Src, Dst> ScaleOffset2D<T, Src, Dst> {
+        /// Returns true if self is an identity transform, using `T`'s
+        /// default epsilon value.
+        #[inline]
+        pub fn is_identity(&self) -> bool
+        where
+            T: One + Zero + ApproxEq<T>,
+        {
+            self.is_identity_eps(T::approx_epsilon())
+        }
+
+        /// Returns true if self is an identity transform.
+        #[inline]
+        pub fn is_identity_eps(&self, epsilon: T) -> bool
+        where
+            T: One + Zero + ApproxEq<T>,
+        {
+            self.sx.approx_eq_eps(&T::one(), &epsilon)
+                & self.sy.approx_eq_eps(&T::one(), &epsilon)
+                & self.tx.approx_eq_eps(&T::zero(), &epsilon)
+                & self.ty.approx_eq_eps(&T::zero(), &epsilon)
+        }
+    }
+
+    impl<T: ApproxEq<T>, Src, Dst> ApproxEq<T> for ScaleOffset2D<T, Src, Dst> {
+        #[inline]
+        fn approx_epsilon() -> T {
+            T::approx_epsilon()
+        }
+
+        /// Returns `true` if this transform is approximately equal to the other one, using
+        /// a provided epsilon value.
+        fn approx_eq_eps(&self, other: &Self, eps: &T) -> bool {
+            self.sx.approx_eq_eps(&other.sx, eps)
+                && self.sy.approx_eq_eps(&other.sy, eps)
+                && self.tx.approx_eq_eps(&other.tx, eps)
+                && self.ty.approx_eq_eps(&other.ty, eps)
+        }
+    }
+
+    impl<T, Src, Dst> fmt::Debug for ScaleOffset2D<T, Src, Dst>
+    where
+        T: Copy + fmt::Debug + PartialEq + One + Zero + ApproxEq<T>,
+    {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            if self.is_identity() {
+                write!(f, "[I]")
+            } else {
+                self.to_array().fmt(f)
+            }
+        }
+    }
+}
+
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod test {
     use super::*;
     use crate::approxeq::ApproxEq;
-    use crate::default;
+    use crate::{default, Angle};
     #[cfg(feature = "mint")]
     use mint;
+    type ScaleOffset = crate::default::ScaleOffset2D<f32>;
+    type IntScaleOffset = crate::default::ScaleOffset2D<i32>;
 
     use core::f32::consts::FRAC_PI_2;
 
@@ -853,5 +1374,145 @@ mod test {
         let m2 = Mat::from(mm);
 
         assert_eq!(m1, m2);
+    }
+
+    #[test]
+    pub fn scale_offset_transform_point() {
+        let t1 = IntScaleOffset::new(2, 3, 4, 5);
+
+        let p = point2(6, 7);
+
+        assert_eq!(
+            t1.transform_point(p),
+            t1.to_transform2d().transform_point(p),
+        );
+    }
+
+    #[test]
+    pub fn scale_offset_transform_vector() {
+        let t1 = IntScaleOffset::new(2, 3, 4, 5);
+
+        let v = vec2(6, 7);
+
+        assert_eq!(
+            t1.transform_vector(v),
+            t1.to_transform2d().transform_vector(v),
+        );
+    }
+
+    #[test]
+    pub fn scale_offset_transform_box() {
+        let transforms = [
+            ScaleOffset::identity(),
+            ScaleOffset::new(2.0, 3.0, 4.0, 5.0),
+            ScaleOffset::new(-2.0, 3.0, 4.0, -5.0),
+            ScaleOffset::new(2.0, -3.0, 4.0, -5.0),
+            ScaleOffset::new(-2.0, -3.0, -4.0, 5.0),
+        ];
+
+        let boxes = [
+            default::Box2D {
+                min: point2(0.0, 0.0),
+                max: point2(1.0, 1.0),
+            },
+            Box2D {
+                min: point2(-10.0, -10.0),
+                max: point2(10.0, 10.0),
+            },
+            Box2D {
+                min: point2(100.0, 130.0),
+                max: point2(150.0, 160.0),
+            },
+            Box2D {
+                min: point2(-100.0, -130.0),
+                max: point2(-50.0, 160.0),
+            },
+            Box2D {
+                min: point2(0.0, 0.0),
+                max: point2(0.0, 0.0),
+            },
+            Box2D {
+                min: point2(1.0, 0.0),
+                max: point2(-1.0, 1.0),
+            },
+            Box2D {
+                min: point2(1.0, 1.0),
+                max: point2(1.0, -1.0),
+            },
+            Box2D {
+                min: point2(1.0, 1.0),
+                max: point2(-1.0, -1.0),
+            },
+        ];
+
+        for b in &boxes {
+            for transform in &transforms {
+                let b2 = transform.transform_box(b);
+                assert_eq!(
+                    b2.is_empty(),
+                    b.is_empty(),
+                    "transform: {transform:?}, box: {b:?}, empty before: {:?} after {:?}",
+                    b.is_empty(),
+                    b2.is_empty()
+                );
+
+                let mat = transform.to_transform2d();
+                // We don't guarantee that Transform2D and ScaleOffset2D
+                // deal with empty boxes the same way.
+                if !b.is_empty() {
+                    assert_eq!(b2, mat.outer_transformed_box(b));
+                }
+            }
+        }
+    }
+
+    #[test]
+    pub fn scale_offset_then() {
+        let t1 = IntScaleOffset::new(2, 3, 4, 5);
+        let t2 = IntScaleOffset::new(6, 7, 8, 9);
+
+        let t3 = t1.then(&t2).to_transform2d();
+        let t3_tx = t1.to_transform2d().then(&t2.to_transform2d());
+
+        assert_eq!(t3, t3_tx);
+    }
+
+    #[test]
+    pub fn scale_offset_pre_post() {
+        let t1 = ScaleOffset::new(2.0, 3.0, 4.0, 5.0);
+        let v = vec2(100.0, 200.0);
+        assert!(t1
+            .then_translate(v)
+            .to_transform2d()
+            .approx_eq(&t1.to_transform2d().then_translate(v)));
+        assert!(t1
+            .pre_translate(v)
+            .to_transform2d()
+            .approx_eq(&t1.to_transform2d().pre_translate(v)));
+        let sx = 100.0;
+        let sy = 120.0;
+        assert!(t1
+            .then_scale(sx, sy)
+            .to_transform2d()
+            .approx_eq(&t1.to_transform2d().then_scale(sx, sy)));
+        assert!(t1
+            .pre_scale(sx, sy)
+            .to_transform2d()
+            .approx_eq(&t1.to_transform2d().pre_scale(sx, sy)));
+    }
+
+    #[test]
+    pub fn scale_offset_inverse() {
+        let t1 = ScaleOffset::new(2.0, 3.0, 4.0, 5.0);
+
+        assert_eq!(
+            t1.inverse().unwrap().to_transform2d(),
+            t1.to_transform2d().inverse().unwrap(),
+        )
+    }
+
+    #[test]
+    pub fn scale_offset_identity() {
+        assert!(ScaleOffset::identity().is_identity())
     }
 }

@@ -55,12 +55,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "grid"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b40ca9252762c466af32d0b1002e91e4e1bc5398f77455e55474deb466355ff5"
-
-[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -176,16 +170,16 @@ dependencies = [
 
 [[package]]
 name = "taffy"
-version = "0.12.2"
+version = "0.13.0"
 dependencies = [
  "arrayvec",
  "cssparser",
  "document-features",
- "grid",
  "roxmltree",
  "serde",
  "serde_json",
  "slotmap",
+ "smallvec",
 ]
 
 [[package]]

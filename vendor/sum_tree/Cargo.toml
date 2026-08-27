@@ -24,7 +24,7 @@ description = "A sum tree data structure, a concurrency-friendly B-tree"
 readme = false
 license = "Apache-2.0"
 
-[package.metadata.cargo-machete]
+[package.metadata.cargo-shear]
 ignored = ["tracing"]
 
 [features]
@@ -58,10 +58,10 @@ version = "1.8"
 version = "0.1.40"
 
 [dependencies.ztracing]
-path = "../ztracing"
+path = '..\ztracing'
 
 [dev-dependencies.ctor]
-version = "1.0.6"
+version = "1.0.12"
 
 [dev-dependencies.proptest]
 git = "https://github.com/proptest-rs/proptest"
@@ -72,7 +72,7 @@ features = ["attr-macro"]
 version = "0.9"
 
 [dev-dependencies.zlog]
-path = "../zlog"
+path = '..\zlog'
 
 [lints.clippy]
 dbg_macro = "deny"

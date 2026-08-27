@@ -2,11 +2,14 @@
 //! [the Adam7 algorithm](https://en.wikipedia.org/wiki/Adam7_algorithm).
 use core::ops::RangeTo;
 
+#[cfg(doc)]
+use crate::decoder::Reader;
+
 /// Describes which stage of
 /// [the Adam7 algorithm](https://en.wikipedia.org/wiki/Adam7_algorithm)
 /// applies to a decoded row.
 ///
-/// See also [Reader.next_interlaced_row](crate::decoder::Reader::next_interlaced_row).
+/// See also [`Reader::next_interlaced_row`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Adam7Info {
     /// The Adam7 pass number, 1..7.
@@ -41,12 +44,12 @@ impl Adam7Info {
     /// * `width` describes how many pixels are in a full row of the image. The bytes in each
     ///   passline of the Adam7 are calculated from this number.
     ///
-    /// Note that in typical usage, `Adam7Info`s are returned by [Reader.next_interlaced_row]
+    /// Note that in typical usage, `Adam7Info`s are returned by [`Reader::next_interlaced_row`]
     /// and there is no need to create them by calling `Adam7Info::new`.  `Adam7Info::new` is
     /// nevertheless exposed as a public API, because it helps to provide self-contained example
-    /// usage of [expand_interlaced_row](crate::expand_interlaced_row).
+    /// usage of [`expand_interlaced_row`](crate::expand_interlaced_row).
     pub fn new(pass: u8, line: u32, width: u32) -> Self {
-        assert!(1 <= pass && pass <= 7);
+        assert!((1..=7).contains(&pass));
         assert!(width > 0);
 
         let info = PassConstants::PASSES[pass as usize - 1];
@@ -79,7 +82,7 @@ impl Adam7Info {
 }
 
 #[derive(Clone, Copy)]
-struct PassConstants {
+pub(crate) struct PassConstants {
     x_sampling: u8,
     x_offset: u8,
     y_sampling: u8,
@@ -95,13 +98,13 @@ impl PassConstants {
         self.y_sampling - self.y_offset
     }
 
-    fn count_samples(self, width: u32) -> u32 {
+    pub fn count_samples(self, width: u32) -> u32 {
         width
             .saturating_sub(u32::from(self.x_offset))
             .div_ceil(u32::from(self.x_sampling))
     }
 
-    fn count_lines(self, height: u32) -> u32 {
+    pub fn count_lines(self, height: u32) -> u32 {
         height
             .saturating_sub(u32::from(self.y_offset))
             .div_ceil(u32::from(self.y_sampling))
@@ -221,7 +224,9 @@ pub enum Adam7Variant {
     /// are complete. At least the invalid pixels in the buffer should be masked. However, this
     /// performs the least amount of writes and is optimal when you're only reading full frames.
     ///
-    /// This corresponds to [`crate::expand_interlaced_row`].
+    /// This corresponds to [`expand_interlaced_row`].
+    ///
+    /// [`expand_interlaced_row`]: crate::expand_interlaced_row.
     #[default]
     Sparse,
     /// A variant of the Adam7 de-interlace that ensures that all pixels are initialized after each
@@ -229,7 +234,9 @@ pub enum Adam7Variant {
     /// other variant as some pixels are touched repeatedly, but ensures the buffer can be used as
     /// directly as possible for presentation.
     ///
-    /// This corresponds to [`crate::splat_interlaced_row`].
+    /// This corresponds to [`splat_interlaced_row`].
+    ///
+    /// [`splat_interlaced_row`]: crate::splat_interlaced_row
     Splat,
 }
 
@@ -313,7 +320,7 @@ fn expand_adam7_bytes(
 /// stride may be useful if the frame being decoded is a sub-region of `img`.
 ///
 /// `interlaced_row` and `interlace_info` typically come from
-/// [crate::decoder::Reader::next_interlaced_row], but this is not required.  In particular, before
+/// [`Reader::next_interlaced_row`], but this is not required.  In particular, before
 /// calling `expand_interlaced_row` one may need to expand the decoded row, so that its format and
 /// `bits_per_pixel` matches that of `img`.  Note that in initial Adam7 passes the `interlaced_row`
 /// may contain less pixels that the width of the frame being decoded (e.g. it contains only 1/8th

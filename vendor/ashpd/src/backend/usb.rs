@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AppID, WindowIdentifierType,
+    MaybeAppID, WindowIdentifierType,
     backend::{
         Result,
         request::{Request, RequestImpl},
@@ -43,7 +43,7 @@ pub trait UsbImpl: RequestImpl {
         &self,
         token: HandleToken,
         window_identifier: Option<WindowIdentifierType>,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         devices: Vec<(String, UsbDevice, AccessOptions)>,
         options: AcquireDevicesOptions,
     ) -> Result<Vec<(String, AccessOptions)>>;
@@ -78,7 +78,7 @@ impl UsbInterface {
         &self,
         handle: OwnedObjectPath,
         window_identifier: Optional<WindowIdentifierType>,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         devices: Vec<(String, UsbDevice, AccessOptions)>,
         options: AcquireDevicesOptions,
     ) -> Result<Response<Vec<(String, AccessOptions)>>> {

@@ -65,3 +65,7 @@ reflink-copy.workspace = true
 junction.workspace = true
 mslnk.workspace = true
 windows.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+udev.workspace = true
+libc.workspace = true

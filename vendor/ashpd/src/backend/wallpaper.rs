@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::{
-    AppID, Uri, WindowIdentifierType,
+    MaybeAppID, Uri, WindowIdentifierType,
     backend::{
         Result,
         request::{Request, RequestImpl},
@@ -18,7 +18,7 @@ pub trait WallpaperImpl: RequestImpl {
     async fn with_uri(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         window_identifier: Option<WindowIdentifierType>,
         uri: Uri,
         options: WallpaperOptions,
@@ -53,7 +53,7 @@ impl WallpaperInterface {
     async fn set_wallpaper_uri(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         uri: Uri,
         options: WallpaperOptions,

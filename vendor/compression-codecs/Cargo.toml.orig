@@ -1,6 +1,6 @@
 [package]
 name = "compression-codecs"
-version = "0.4.31"
+version = "0.4.38"
 description = """
 Adaptors for various compression algorithms.
 """
@@ -10,6 +10,7 @@ edition.workspace = true
 license.workspace = true
 readme = "../../README.md"
 repository.workspace = true
+rust-version.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
@@ -47,12 +48,12 @@ deflate64 = ["dep:deflate64"]
 compression-core.workspace = true
 # features
 brotli = { version = "8", optional = true }
-bzip2 = { version = "0.6", optional = true }
-deflate64 = { version = "0.1.5", optional = true }
-flate2 = { version = "1.0.13", optional = true }
+bzip2 = { version = "0.6.1", optional = true }
+deflate64 = { version = "0.1.10", optional = true }
+flate2 = { version = "1.1.4", optional = true }
 libzstd = { package = "zstd", version = "0.13.1", optional = true, default-features = false }
 lz4 = { version = "1.28.1", optional = true }
-liblzma = { version = "0.4.4", optional = true }
+liblzma = { version = "0.4.5", optional = true }
 memchr = { version = "2", optional = true }
 zstd-safe = { version = "7", optional = true, default-features = false }
 

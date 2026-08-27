@@ -115,6 +115,20 @@ jobs:
     - name: Run check
       run: cargo check --all-features --target wasm32-unknown-unknown
 
+  check-visionos:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install toolchain
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: rust-src
+
+    - name: Run check
+      run: cargo check --all-features --target aarch64-apple-visionos -Zbuild-std
+
   test-msrv:
     runs-on: ubuntu-latest
     steps:
@@ -122,7 +136,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Install toolchain
-      uses: dtolnay/rust-toolchain@1.63.0
+      uses: dtolnay/rust-toolchain@1.65.0
 
     # do not test, because dev-dependencies do not follow MSRV
     - name: Build

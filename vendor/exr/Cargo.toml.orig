@@ -4,7 +4,7 @@ description = "Read and write OpenEXR files without any unsafe code"
 keywords = ["exr", "openexr", "file", "binary", "io"]
 categories = ["encoding", "filesystem", "graphics", "multimedia"]
 
-version = "1.74.0"
+version = "1.74.2"
 edition = "2018"
 authors = ["johannesvollmer <contact@johannesvollmer.com>"]
 
@@ -12,7 +12,7 @@ repository = "https://github.com/johannesvollmer/exrs"
 readme = "README.md"
 license = "BSD-3-Clause"
 exclude = [ "specification/*", "specification/**", "tests/images/*", "tests/images/**" ]
-rust-version = "1.61.0"
+rust-version = "1.83.0"
 
 [badges]
 maintenance = { status = "actively-developed" }
@@ -34,6 +34,8 @@ miniz_oxide = "^0.8.0"         # zip compression for pxr24
 smallvec = "^1.7.0"            # make cache-friendly allocations        TODO profile if smallvec is really an improvement!
 rayon-core = { version = "^1.11.0", optional = true }         # threading for parallel compression
 zune-inflate = { version = "^0.2.3", default-features = false, features = ["zlib"] }  # zip decompression, faster than miniz_oxide
+pulp = "0.22.3"                # used for runtime SIMD dispatch
+num-complex = "0.4.6"          # pins pulps own dependency, pulp wants 0.4.4 but calls for Complex::ZERO/ONE/I; consts added in 0.4.6
 
 [dev-dependencies]
 image = { version = "0.25.2", default-features = false, features = ["png"] }         # used to convert one exr to some pngs
@@ -48,6 +50,20 @@ default = ["rayon"]
 
 # rayon is used for parallel compression
 rayon = ["dep:rayon-core"]
+
+# Opt-in gates for the DWA SIMD tier unit tests
+# (in src/compression/dwa/discrete_cosine_transform/test.rs).
+# Intentionally opt-in: each must be built and run under a CPU or emulator exposing
+# the requested tier, e.g.
+# `cargo test --lib --features avx2-tests -- avx2`
+avx2-tests = []
+sse2-tests = []
+
+# Call the DWA DCT avx2/sse2/autovectorized kernels directly,
+# bypassing runtime dispatch, for the comparison benchmark.
+# Meaningless under emulation (timings won't reflect real hardware)
+# `cargo bench --features simd-benches --bench dct`
+simd-benches = []
 
 [[example]]
 name = "7_write_raw_blocks"
@@ -76,6 +92,11 @@ required-features = ["rayon"]
 name = "pixel_format_conversion"
 harness = false
 required-features = ["rayon"]
+
+[[bench]]
+name = "dct"
+harness = false
+required-features = ["simd-benches"]
 
 # recommended release settings for max runtime performance
 [profile.release]

@@ -1,3 +1,6 @@
+// `Maybe` itself is deprecated below; its own implementation necessarily references it.
+#![allow(deprecated)]
+
 use serde::ser::{Serialize, Serializer};
 use std::fmt::Display;
 
@@ -9,6 +12,11 @@ use crate::{Error, Signature, Type, Value, value_display_fmt};
 ///
 /// [`Value`]: enum.Value.html
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[deprecated(
+    since = "5.15.0",
+    note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+            `zgvariant` crate instead."
+)]
 pub struct Maybe<'a> {
     value: Box<Option<Value<'a>>>,
     signature: Signature,

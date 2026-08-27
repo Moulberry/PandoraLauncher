@@ -1,7 +1,9 @@
 use crate::base::{Connection, Reply};
-use crate::ffi::{
-    xcb_connection_t, xcb_extension_t, xcb_get_extension_data, xcb_prefetch_extension_data,
-};
+#[cfg(feature = "dl")]
+use crate::ffi::XcbLib;
+use crate::ffi::{xcb_connection_t, xcb_extension_t};
+#[cfg(not(feature = "dl"))]
+use crate::ffi::{xcb_get_extension_data, xcb_prefetch_extension_data};
 use crate::x;
 
 use std::fmt;
@@ -281,6 +283,9 @@ pub fn cache_extensions_data(
     mandatory: &[Extension],
     optional: &[Extension],
 ) -> Vec<ExtensionData> {
+    #[cfg(feature = "dl")]
+    crate::ffi::dl::xcb_get_funcs_expect!(xcb_prefetch_extension_data, xcb_get_extension_data);
+
     unsafe {
         for ext in mandatory {
             let ext_id = get_extension_id(*ext);

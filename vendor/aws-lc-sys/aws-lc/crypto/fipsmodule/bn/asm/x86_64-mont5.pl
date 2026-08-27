@@ -46,7 +46,7 @@ open OUT,"| \"$^X\" \"$xlate\" $flavour \"$output\"";
 # versions, but BoringSSL is intended to be used with pre-generated perlasm
 # output, so this isn't useful anyway.
 $addx = 1;
-for (@ARGV) { $addx = 0 if (/-DMY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX/); }
+for (@ARGV) { $addx = 0 if (/-DMY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2/); }
 
 # int bn_mul_mont_gather5(
 $rp="%rdi";	# BN_ULONG *rp,
@@ -85,7 +85,7 @@ bn_mul_mont_gather5:
 	jnz	.Lmul_enter
 ___
 $code.=<<___ if ($addx);
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%r11
 	mov	8(%r11),%r11d
 #endif
@@ -470,7 +470,7 @@ bn_mul4x_mont_gather5:
 .Lmul4x_enter:
 ___
 $code.=<<___ if ($addx);
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	and	\$0x80108,%r11d
 	cmp	\$0x80108,%r11d		# check for AD*X+BMI2+BMI1
 	je	.Lmulx4x_enter
@@ -1106,7 +1106,7 @@ bn_power5:
 .cfi_def_cfa_register	%rax
 ___
 $code.=<<___ if ($addx);
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%r11
 	mov	8(%r11),%r11d
 	and	\$0x80108,%r11d
@@ -2112,7 +2112,7 @@ if ($addx) {{{
 my $bp="%rdx";	# restore original value
 
 $code.=<<___;
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 .type	bn_mulx4x_mont_gather5,\@function,6
 .align	32
 bn_mulx4x_mont_gather5:
@@ -3724,7 +3724,7 @@ mul_handler:
 	.rva	.LSEH_info_bn_power5
 ___
 $code.=<<___ if ($addx);
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	.rva	.LSEH_begin_bn_mulx4x_mont_gather5
 	.rva	.LSEH_end_bn_mulx4x_mont_gather5
 	.rva	.LSEH_info_bn_mulx4x_mont_gather5
@@ -3757,7 +3757,7 @@ $code.=<<___;
 	.rva	.Lpower5_prologue,.Lpower5_body,.Lpower5_epilogue	# HandlerData[]
 ___
 $code.=<<___ if ($addx);
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 .align	4
 .LSEH_info_bn_mulx4x_mont_gather5:
 	.byte	9,0,0,0

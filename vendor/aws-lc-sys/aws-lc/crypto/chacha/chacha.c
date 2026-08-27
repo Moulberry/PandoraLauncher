@@ -81,7 +81,10 @@ static void ChaCha20_ctr32(uint8_t *out, const uint8_t *in, size_t in_len,
     return;
   }
 #endif
-#if defined(CHACHA20_ASM_AVX2) && !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
+// chacha-x86_64.pl only emits ChaCha20_ctr32_avx2 when the assembler
+// supports AVX (it has no MY_ASSEMBLER_IS_TOO_OLD_FOR_AVX preprocessor
+// fallback in the generated output), so the call must be compiled out too.
+#if defined(CHACHA20_ASM_AVX2) && !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_AVX)
   if (ChaCha20_ctr32_avx2_capable(in_len)) {
     ChaCha20_ctr32_avx2(out, in, in_len, key, counter);
     return;

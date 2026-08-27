@@ -10,6 +10,7 @@ use zbus::{AuthMechanism, Guid, block_on, connection::Builder};
 
 const UID: u32 = 0;
 
+#[allow(deprecated)] // exercises the deprecated `unix_stream`, which must keep working
 #[test]
 #[timeout(15000)]
 #[instrument]

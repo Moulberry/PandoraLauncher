@@ -1,0 +1,131 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test-nightly:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [nightly]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run tests (no_std)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --tests --no-default-features --features nightly
+      - name: Run tests (std)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --tests --no-default-features --features std,nightly
+      - name: Run tests (alloc)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --tests --no-default-features --features alloc,nightly
+  test-stable:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [stable]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run tests (no_std)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features
+      - name: Run tests (std)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features --features std
+      - name: Run tests (alloc)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features --features alloc
+  test-msrv:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        rust: [1.81.0]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - name: Run tests (no_std)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features
+      - name: Run tests (std)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features --features std
+      - name: Run tests (alloc)
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-default-features --features alloc
+  test-fuzz:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        rust: [stable]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Run fuzz tests -- Cursor (no_std)
+        run: cargo fuzz run -s none fuzz_cursor -- -runs=10000000
+
+      - name: Run fuzz tests -- Read (no_std)
+        run: cargo fuzz run -s none fuzz_read -- -runs=10000000
+
+      - name: Run fuzz tests -- Write (no_std)
+        run: cargo fuzz run -s none fuzz_write -- -runs=10000000
+  test-no-std:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-none
+      - uses: cargo-bins/cargo-binstall@main
+      - name: Install cargo-no-std
+        run: cargo binstall --no-confirm --force cargo-no-std
+      - name: Check no_std
+        run: cargo no-std --no-default-features
+      - name: Check no_std (alloc)
+        run: cargo no-std --no-default-features --alloc --features alloc

@@ -1648,6 +1648,82 @@ TEST(RSATest, LargeE) {
   EXPECT_FALSE(RSA_new_public_key_large_e(n, bad_e.get()));
 }
 
+// PSSWithVariousDigests proves that RSASSA-PSS works with a range of digest
+// and MGF1 hash functions (currently the SHA-2 and SHA-3 families). It
+// exercises the low-level padding functions (|RSA_padding_add_PKCS1_PSS_mgf1| /
+// |RSA_verify_PKCS1_PSS_mgf1|) and the higher-level sign/verify functions
+// (|RSA_sign_pss_mgf1| / |RSA_verify_pss_mgf1|), including cases where the
+// message digest and the MGF1 digest differ.
+TEST(RSATest, PSSWithVariousDigests) {
+  // A 2048-bit key so that even SHA-512 / SHA3-512 with a digest-length salt
+  // fits within the modulus (64-byte hash + 64-byte salt + overhead).
+  bssl::UniquePtr<RSA> key(RSA_new());
+  ASSERT_TRUE(key);
+  bssl::UniquePtr<BIGNUM> e(BN_new());
+  ASSERT_TRUE(e);
+  ASSERT_TRUE(BN_set_word(e.get(), RSA_F4));
+  ASSERT_TRUE(RSA_generate_key_ex(key.get(), 2048, e.get(), nullptr));
+
+  struct {
+    const EVP_MD *md;
+    const EVP_MD *mgf1_md;
+  } kTests[] = {
+      // SHA-2 family, message digest == MGF1 digest.
+      {EVP_sha224(), EVP_sha224()},
+      {EVP_sha256(), EVP_sha256()},
+      {EVP_sha384(), EVP_sha384()},
+      {EVP_sha512(), EVP_sha512()},
+      // SHA-3 family, message digest == MGF1 digest.
+      {EVP_sha3_256(), EVP_sha3_256()},
+      {EVP_sha3_384(), EVP_sha3_384()},
+      {EVP_sha3_512(), EVP_sha3_512()},
+      // The message digest and MGF1 digest are independent.
+      {EVP_sha256(), EVP_sha512()},
+      {EVP_sha3_256(), EVP_sha3_512()},
+  };
+
+  static const uint8_t kMsg[] = "RSASSA-PSS with SHA-3";
+  for (const auto &t : kTests) {
+    SCOPED_TRACE(EVP_MD_type(t.md));
+    SCOPED_TRACE(EVP_MD_type(t.mgf1_md));
+
+    // Hash the message with the message digest.
+    uint8_t digest[EVP_MAX_MD_SIZE];
+    unsigned digest_len;
+    ASSERT_TRUE(EVP_Digest(kMsg, sizeof(kMsg), digest, &digest_len, t.md,
+                           /*impl=*/nullptr));
+    ASSERT_EQ(digest_len, EVP_MD_size(t.md));
+
+    // Low-level padding round-trips: add the PSS padding, then verify it.
+    std::vector<uint8_t> em(RSA_size(key.get()));
+    ASSERT_TRUE(RSA_padding_add_PKCS1_PSS_mgf1(key.get(), em.data(), digest,
+                                               t.md, t.mgf1_md,
+                                               RSA_PSS_SALTLEN_DIGEST));
+    EXPECT_TRUE(RSA_verify_PKCS1_PSS_mgf1(key.get(), digest, t.md, t.mgf1_md,
+                                          em.data(), RSA_PSS_SALTLEN_DIGEST));
+
+    // High-level sign/verify round-trips.
+    std::vector<uint8_t> sig(RSA_size(key.get()));
+    size_t sig_len;
+    ASSERT_TRUE(RSA_sign_pss_mgf1(key.get(), &sig_len, sig.data(), sig.size(),
+                                  digest, digest_len, t.md, t.mgf1_md,
+                                  RSA_PSS_SALTLEN_DIGEST));
+    sig.resize(sig_len);
+    EXPECT_TRUE(RSA_verify_pss_mgf1(key.get(), digest, digest_len, t.md,
+                                    t.mgf1_md, RSA_PSS_SALTLEN_DIGEST,
+                                    sig.data(), sig.size()));
+
+    // A signature over a different digest must not verify.
+    uint8_t bad_digest[EVP_MAX_MD_SIZE];
+    OPENSSL_memcpy(bad_digest, digest, digest_len);
+    bad_digest[0] ^= 0xff;
+    EXPECT_FALSE(RSA_verify_pss_mgf1(key.get(), bad_digest, digest_len, t.md,
+                                     t.mgf1_md, RSA_PSS_SALTLEN_DIGEST,
+                                     sig.data(), sig.size()));
+    ERR_clear_error();
+  }
+}
+
 #if !defined(BORINGSSL_SHARED_LIBRARY)
 TEST(RSATest, SqrtTwo) {
   bssl::UniquePtr<BIGNUM> sqrt(BN_new()), pow2(BN_new());

@@ -343,6 +343,11 @@ pub struct Builder {
     ///
     /// When this gets exceeded, we issue GOAWAYs.
     local_max_error_reset_streams: Option<usize>,
+
+    /// connection-level budget for DATA framing overhead.
+    ///
+    /// When this gets exhausted, we issue a GOAWAY with `ENHANCE_YOUR_CALM`.
+    data_frame_budget: proto::DataFrameBudget,
 }
 
 #[derive(Debug)]
@@ -663,6 +668,7 @@ impl Builder {
             settings: Default::default(),
             stream_id: 1.into(),
             local_max_error_reset_streams: Some(proto::DEFAULT_LOCAL_RESET_COUNT_MAX),
+            data_frame_budget: proto::DataFrameBudget::Auto,
         }
     }
 
@@ -1145,6 +1151,29 @@ impl Builder {
         self
     }
 
+    /// Sets a connection-level budget for limiting memory overhead from
+    /// received small DATA frames.
+    ///
+    /// HTTP/2 flow control accounts for DATA payload bytes, but not the
+    /// additional memory required to buffer each DATA frame. An excessive
+    /// number of small frames may therefore consume disproportionate memory.
+    ///
+    /// Small DATA frames consume this budget. The budget is restored when
+    /// buffered frames are consumed by the application, while sufficiently
+    /// large frames may also restore budget. Empty DATA frames are limited
+    /// separately and do not consume this budget.
+    ///
+    /// When this budget is exhausted, the connection is closed with
+    /// `ENHANCE_YOUR_CALM`.
+    ///
+    /// By default, the budget is half the initial connection window, with a
+    /// minimum of 25,600 bytes. Increasing the connection window therefore
+    /// also increases the permitted framing overhead.
+    pub fn data_frame_budget(&mut self, budget: usize) -> &mut Self {
+        self.data_frame_budget = proto::DataFrameBudget::Configured(budget);
+        self
+    }
+
     /// Sets the first stream ID to something other than 1.
     #[cfg(feature = "unstable")]
     pub fn initial_stream_id(&mut self, stream_id: u32) -> &mut Self {
@@ -1334,7 +1363,10 @@ where
                 reset_stream_max: builder.reset_stream_max,
                 remote_reset_stream_max: builder.pending_accept_reset_stream_max,
                 local_error_reset_streams_max: builder.local_max_error_reset_streams,
-                settings: builder.settings.clone(),
+                settings: builder.settings,
+                data_frame_budget: builder
+                    .data_frame_budget
+                    .resolve(builder.initial_target_connection_window_size),
             },
         );
         let send_request = SendRequest {
@@ -1485,6 +1517,22 @@ impl ResponseFuture {
     pub fn stream_id(&self) -> crate::StreamId {
         crate::StreamId::from_internal(self.inner.stream_id())
     }
+
+    /// Polls for informational responses (1xx status codes).
+    ///
+    /// This method should be called before polling the main response future
+    /// to check for any informational responses that have been received.
+    ///
+    /// Returns `Poll::Ready(Some(response))` if an informational response is available,
+    /// `Poll::Ready(None)` if no more informational responses are expected,
+    /// or `Poll::Pending` if no informational response is currently available.
+    pub fn poll_informational(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Response<()>, crate::Error>>> {
+        self.inner.poll_informational(cx).map_err(Into::into)
+    }
+
     /// Returns a stream of PushPromises
     ///
     /// # Panics

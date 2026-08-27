@@ -1,8 +1,6 @@
-
-extern crate smallvec;
-extern crate rand;
 extern crate half;
-
+extern crate rand;
+extern crate smallvec;
 
 // exr imports
 extern crate exr;
@@ -12,7 +10,6 @@ extern crate exr;
 fn main() {
     use exr::prelude::*;
     let size = Vec2(512, 512);
-
 
     let layer1 = Layer::new(
         size,
@@ -31,12 +28,13 @@ fn main() {
     // define the visible area of the canvas
     let attributes = ImageAttributes::new(
         // the pixel section that should be shown
-        IntegerBounds::from_dimensions(size)
+        IntegerBounds::from_dimensions(size),
     );
 
     let image = Image::empty(attributes)
         .with_layer(layer1) // add an rgb layer of type `SpecificChannels<ClosureA>`
-        .with_layer(layer2); // add an rgba layer of different type, `SpecificChannels<ClosureB>`, not possible with a vector
+        .with_layer(layer2); // add an rgba layer of different type, `SpecificChannels<ClosureB>`, not
+                             // possible with a vector
 
     println!("writing image...");
     image.write().to_file("layers.exr").unwrap();

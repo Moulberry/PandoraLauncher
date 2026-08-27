@@ -12,7 +12,7 @@ categories = [
 ]
 description = "A library to generate and parse UUIDs."
 documentation = "https://docs.rs/uuid"
-edition = "2018"
+edition = "2021"
 include = [
     "src",
     "README.md",
@@ -29,8 +29,8 @@ homepage = "https://github.com/uuid-rs/uuid"
 name = "uuid"
 readme = "README.md"
 repository = "https://github.com/uuid-rs/uuid"
-version = "1.18.1" # remember to update html_root_url in lib.rs
-rust-version = "1.63.0"
+version = "1.25.0" # remember to update html_root_url in lib.rs
+rust-version = "1.85.0"
 
 [package.metadata.docs.rs]
 rustc-args = ["--cfg", "uuid_unstable"]
@@ -56,7 +56,8 @@ status = "actively-developed"
 [features]
 default = ["std"]
 std = ["wasm-bindgen?/std", "js-sys?/std"]
-macro-diagnostics = ["dep:uuid-macro-internal"]
+# Deprecated; now a no-op
+macro-diagnostics = []
 
 # NOTE: When adding new features, check the `ci.yml` workflow
 # and include them where necessary (you can follow along with existing features)
@@ -73,6 +74,7 @@ js = ["dep:wasm-bindgen", "dep:js-sys"]
 rng = ["dep:getrandom"]
 rng-getrandom = ["rng", "dep:getrandom", "uuid-rng-internal-lib", "uuid-rng-internal-lib/getrandom"]
 rng-rand = ["rng", "dep:rand", "uuid-rng-internal-lib", "uuid-rng-internal-lib/rand"]
+serde = ["dep:serde_core"]
 
 fast-rng = ["rng", "dep:rand"]
 
@@ -84,15 +86,15 @@ borsh = ["dep:borsh", "dep:borsh-derive"]
 
 # Public: Used in trait impls on `Uuid`
 [dependencies.bytemuck]
-version = "1.18.1"
+version = "1.22"
 optional = true
 features = ["derive"]
 
 # Public: Used in trait impls on `Uuid`
-[dependencies.serde]
+[dependencies.serde_core]
 default-features = false
 optional = true
-version = "1.0.56"
+version = "1.0.221"
 
 # Public: Used in trait impls on `Uuid`
 [dependencies.slog]
@@ -132,19 +134,19 @@ default-features = false
 # Private
 # (Formally public)
 [target.'cfg(not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none"))))'.dependencies.getrandom]
-version = "0.3"
+version = "0.4"
 optional = true
 
 [target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies.uuid-rng-internal-lib]
 # Work-around lack of support for both `dep:x` and `x/` in MSRV
 package = "uuid-rng-internal"
-version = "1.18.1"
+version = "1.25.0"
 path = "rng"
 optional = true
 
 # Private
 [target.'cfg(not(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none"))))'.dependencies.rand]
-version = "0.9"
+version = "0.10"
 optional = true
 
 # Private
@@ -159,12 +161,6 @@ default-features = false
 optional = true
 version = "1"
 
-# Public: Re-exported
-[dependencies.uuid-macro-internal]
-version = "1.18.1"
-path = "macros"
-optional = true
-
 # Private
 [dependencies.atomic]
 default-features = false
@@ -174,7 +170,6 @@ version = "0.6"
 # Private
 [target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies.wasm-bindgen]
 default-features = false
-features = ["msrv"]
 version = "0.2"
 optional = true
 
@@ -184,11 +179,11 @@ default-features = false
 version = "0.3"
 optional = true
 
-[dev-dependencies.bincode]
-version = "1.0"
+[dev-dependencies.serde]
+version = "1.0.221"
 
 [dev-dependencies.serde_derive]
-version = "1.0.79"
+version = "1.0.221"
 
 [dev-dependencies.serde_json]
 version = "1.0"
@@ -208,9 +203,27 @@ version = "1.0.52"
 [dev-dependencies.rustversion]
 version = "1"
 
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.gungraun]
+version = "=0.19.2"
+
+[[bench]]
+name = "gungraun_format_str"
+harness = false
+
+[[bench]]
+name = "gungraun_parse_str"
+harness = false
+
+[[bench]]
+name = "gungraun_v4"
+harness = false
+
+[[bench]]
+name = "gungraun_v7"
+harness = false
+
 [workspace]
 members = [
-    "macros",
     "rng",
     "examples",
     "tests/smoke-test",

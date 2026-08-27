@@ -21,7 +21,7 @@
 )))]
 // Not needed for 2018 edition and conflicts with `rust_2018_idioms`
 #![doc(test(no_crate_inject))]
-#![doc(html_root_url = "https://docs.rs/serde_with/3.20.0/")]
+#![doc(html_root_url = "https://docs.rs/serde_with/3.22.0/")]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![no_std]
 
@@ -253,15 +253,15 @@
 //! # }
 //! ```
 //!
-//! [`DisplayFromStr`]: https://docs.rs/serde_with/3.20.0/serde_with/struct.DisplayFromStr.html
-//! [`with_prefix!`]: https://docs.rs/serde_with/3.20.0/serde_with/macro.with_prefix.html
-//! [`with_suffix!`]: https://docs.rs/serde_with/3.20.0/serde_with/macro.with_suffix.html
-//! [feature flags]: https://docs.rs/serde_with/3.20.0/serde_with/guide/feature_flags/index.html
-//! [skip_serializing_none]: https://docs.rs/serde_with/3.20.0/serde_with/attr.skip_serializing_none.html
-//! [StringWithSeparator]: https://docs.rs/serde_with/3.20.0/serde_with/struct.StringWithSeparator.html
-//! [user guide]: https://docs.rs/serde_with/3.20.0/serde_with/guide/index.html
+//! [`DisplayFromStr`]: https://docs.rs/serde_with/3.22.0/serde_with/struct.DisplayFromStr.html
+//! [`with_prefix!`]: https://docs.rs/serde_with/3.22.0/serde_with/macro.with_prefix.html
+//! [`with_suffix!`]: https://docs.rs/serde_with/3.22.0/serde_with/macro.with_suffix.html
+//! [feature flags]: https://docs.rs/serde_with/3.22.0/serde_with/guide/feature_flags/index.html
+//! [skip_serializing_none]: https://docs.rs/serde_with/3.22.0/serde_with/attr.skip_serializing_none.html
+//! [StringWithSeparator]: https://docs.rs/serde_with/3.22.0/serde_with/struct.StringWithSeparator.html
+//! [user guide]: https://docs.rs/serde_with/3.22.0/serde_with/guide/index.html
 //! [with-annotation]: https://serde.rs/field-attrs.html#with
-//! [as-annotation]: https://docs.rs/serde_with/3.20.0/serde_with/guide/serde_as/index.html
+//! [as-annotation]: https://docs.rs/serde_with/3.22.0/serde_with/guide/serde_as/index.html
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -303,6 +303,9 @@ pub mod formats;
 #[cfg(feature = "hex")]
 #[cfg_attr(docsrs, doc(cfg(feature = "hex")))]
 pub mod hex;
+#[cfg(feature = "jiff_0_2")]
+#[cfg_attr(docsrs, doc(cfg(feature = "jiff_0_2")))]
+pub mod jiff_0_2;
 #[cfg(feature = "json")]
 #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
 pub mod json;
@@ -497,7 +500,7 @@ pub use serde_with_macros::*;
 /// # }
 /// ```
 ///
-/// [serde_as]: https://docs.rs/serde_with/3.20.0/serde_with/attr.serde_as.html
+/// [serde_as]: https://docs.rs/serde_with/3.22.0/serde_with/attr.serde_as.html
 pub struct As<T: ?Sized>(PhantomData<T>);
 
 /// Adapter to convert from `serde_as` to the serde traits.
@@ -638,6 +641,59 @@ pub struct IfIsHumanReadable<H, F = Same>(PhantomData<H>, PhantomData<F>);
 ///
 /// [`FromStr`]: std::str::FromStr
 pub struct NoneAsEmptyString;
+
+/// De/Serialize an [`Option<NonZero*>`] losslessly as the inner integer
+///
+/// Serde natively supports [`NonZeroU8`] and friends, but rejects `0` during deserialization.
+/// This adapter treats `0` as [`None`] and any other value as [`Some`], allowing the wire format
+/// to always be a plain integer.
+///
+/// Supported in-memory types are [`Option<NonZeroU8>`], [`Option<NonZeroU16>`], [`Option<NonZeroU32>`],
+/// [`Option<NonZeroU64>`], [`Option<NonZeroU128>`], [`Option<NonZeroUsize>`], [`Option<NonZeroI8>`],
+/// [`Option<NonZeroI16>`], [`Option<NonZeroI32>`], [`Option<NonZeroI64>`], [`Option<NonZeroI128>`],
+/// and [`Option<NonZeroIsize>`].
+///
+/// # Examples
+///
+/// ```
+/// # #[cfg(feature = "macros")] {
+/// # use core::num::NonZeroU32;
+/// # use serde::{Deserialize, Serialize};
+/// # use serde_json::json;
+/// # use serde_with::{serde_as, NoneAsZero};
+/// #
+/// #[serde_as]
+/// # #[derive(Debug, PartialEq)]
+/// #[derive(Deserialize, Serialize)]
+/// struct Data {
+///     #[serde_as(as = "NoneAsZero")]
+///     value: Option<NonZeroU32>,
+/// }
+///
+/// let data = Data { value: NonZeroU32::new(7) };
+/// assert_eq!(json!({"value": 7}), serde_json::to_value(&data).unwrap());
+/// assert_eq!(data, serde_json::from_value(json!({"value": 7})).unwrap());
+///
+/// let none = Data { value: None };
+/// assert_eq!(json!({"value": 0}), serde_json::to_value(&none).unwrap());
+/// assert_eq!(none, serde_json::from_value(json!({"value": 0})).unwrap());
+/// # }
+/// ```
+///
+/// [`NonZeroU8`]: core::num::NonZeroU8
+/// [`Option<NonZeroU8>`]: core::num::NonZeroU8
+/// [`Option<NonZeroU16>`]: core::num::NonZeroU16
+/// [`Option<NonZeroU32>`]: core::num::NonZeroU32
+/// [`Option<NonZeroU64>`]: core::num::NonZeroU64
+/// [`Option<NonZeroU128>`]: core::num::NonZeroU128
+/// [`Option<NonZeroUsize>`]: core::num::NonZeroUsize
+/// [`Option<NonZeroI8>`]: core::num::NonZeroI8
+/// [`Option<NonZeroI16>`]: core::num::NonZeroI16
+/// [`Option<NonZeroI32>`]: core::num::NonZeroI32
+/// [`Option<NonZeroI64>`]: core::num::NonZeroI64
+/// [`Option<NonZeroI128>`]: core::num::NonZeroI128
+/// [`Option<NonZeroIsize>`]: core::num::NonZeroIsize
+pub struct NoneAsZero;
 
 /// Deserialize value and return [`Default`] on error
 ///
@@ -845,19 +901,22 @@ pub struct BytesOrString;
 /// Serialization of integers will round the duration to the nearest value.
 ///
 /// This type also supports [`chrono::Duration`] with the `chrono_0_4`-[feature flag].
+/// This type also supports [`jiff::SignedDuration`][::jiff_0_2::SignedDuration] with the `jiff_0_2`-[feature flag].
 /// This type also supports [`time::Duration`][::time_0_3::Duration] with the `time_0_3`-[feature flag].
 ///
 /// This table lists the available `FORMAT`s for the different duration types.
 /// The `FORMAT` specifier defaults to `u64`/`f64`.
 ///
-/// | Duration Type         | Converter                 | Available `FORMAT`s      |
-/// | --------------------- | ------------------------- | ------------------------ |
-/// | `std::time::Duration` | `DurationSeconds`         | *`u64`*, `f64`, `String` |
-/// | `std::time::Duration` | `DurationSecondsWithFrac` | *`f64`*, `String`        |
-/// | `chrono::Duration`    | `DurationSeconds`         | `i64`, `f64`, `String`   |
-/// | `chrono::Duration`    | `DurationSecondsWithFrac` | *`f64`*, `String`        |
-/// | `time::Duration`      | `DurationSeconds`         | `i64`, `f64`, `String`   |
-/// | `time::Duration`      | `DurationSecondsWithFrac` | *`f64`*, `String`        |
+/// | Duration Type          | Converter                 | Available `FORMAT`s      |
+/// | ---------------------- | ------------------------- | ------------------------ |
+/// | `std::time::Duration`  | `DurationSeconds`         | *`u64`*, `f64`, `String` |
+/// | `std::time::Duration`  | `DurationSecondsWithFrac` | *`f64`*, `String`        |
+/// | `chrono::Duration`     | `DurationSeconds`         | `i64`, `f64`, `String`   |
+/// | `chrono::Duration`     | `DurationSecondsWithFrac` | *`f64`*, `String`        |
+/// | `jiff::SignedDuration` | `DurationSeconds`         | `i64`, `f64`, `String`   |
+/// | `jiff::SignedDuration` | `DurationSecondsWithFrac` | *`f64`*, `String`        |
+/// | `time::Duration`       | `DurationSeconds`         | `i64`, `f64`, `String`   |
+/// | `time::Duration`       | `DurationSecondsWithFrac` | *`f64`*, `String`        |
 ///
 /// # Examples
 ///
@@ -972,7 +1031,7 @@ pub struct BytesOrString;
 /// ```
 ///
 /// [`chrono::Duration`]: ::chrono_0_4::Duration
-/// [feature flag]: https://docs.rs/serde_with/3.20.0/serde_with/guide/feature_flags/index.html
+/// [feature flag]: https://docs.rs/serde_with/3.22.0/serde_with/guide/feature_flags/index.html
 pub struct DurationSeconds<
     FORMAT: formats::Format = u64,
     STRICTNESS: formats::Strictness = formats::Strict,
@@ -991,19 +1050,22 @@ pub struct DurationSeconds<
 /// For example, deserializing `DurationSeconds<f64, Flexible>` will discard any subsecond precision during deserialization from `f64` and will parse a `String` as an integer number.
 ///
 /// This type also supports [`chrono::Duration`] with the `chrono`-[feature flag].
+/// This type also supports [`jiff::SignedDuration`][::jiff_0_2::SignedDuration] with the `jiff_0_2`-[feature flag].
 /// This type also supports [`time::Duration`][::time_0_3::Duration] with the `time_0_3`-[feature flag].
 ///
 /// This table lists the available `FORMAT`s for the different duration types.
 /// The `FORMAT` specifier defaults to `u64`/`f64`.
 ///
-/// | Duration Type         | Converter                 | Available `FORMAT`s      |
-/// | --------------------- | ------------------------- | ------------------------ |
-/// | `std::time::Duration` | `DurationSeconds`         | *`u64`*, `f64`, `String` |
-/// | `std::time::Duration` | `DurationSecondsWithFrac` | *`f64`*, `String`        |
-/// | `chrono::Duration`    | `DurationSeconds`         | `i64`, `f64`, `String`   |
-/// | `chrono::Duration`    | `DurationSecondsWithFrac` | *`f64`*, `String`        |
-/// | `time::Duration`      | `DurationSeconds`         | `i64`, `f64`, `String`   |
-/// | `time::Duration`      | `DurationSecondsWithFrac` | *`f64`*, `String`        |
+/// | Duration Type          | Converter                 | Available `FORMAT`s      |
+/// | ---------------------- | ------------------------- | ------------------------ |
+/// | `std::time::Duration`  | `DurationSeconds`         | *`u64`*, `f64`, `String` |
+/// | `std::time::Duration`  | `DurationSecondsWithFrac` | *`f64`*, `String`        |
+/// | `chrono::Duration`     | `DurationSeconds`         | `i64`, `f64`, `String`   |
+/// | `chrono::Duration`     | `DurationSecondsWithFrac` | *`f64`*, `String`        |
+/// | `jiff::SignedDuration` | `DurationSeconds`         | `i64`, `f64`, `String`   |
+/// | `jiff::SignedDuration` | `DurationSecondsWithFrac` | *`f64`*, `String`        |
+/// | `time::Duration`       | `DurationSeconds`         | `i64`, `f64`, `String`   |
+/// | `time::Duration`       | `DurationSecondsWithFrac` | *`f64`*, `String`        |
 ///
 /// # Examples
 ///
@@ -1104,7 +1166,7 @@ pub struct DurationSeconds<
 /// ```
 ///
 /// [`chrono::Duration`]: ::chrono_0_4::Duration
-/// [feature flag]: https://docs.rs/serde_with/3.20.0/serde_with/guide/feature_flags/index.html
+/// [feature flag]: https://docs.rs/serde_with/3.22.0/serde_with/guide/feature_flags/index.html
 pub struct DurationSecondsWithFrac<
     FORMAT: formats::Format = f64,
     STRICTNESS: formats::Strictness = formats::Strict,
@@ -1171,6 +1233,7 @@ pub struct DurationNanoSecondsWithFrac<
 /// For example, deserializing `TimestampSeconds<f64, Flexible>` will discard any subsecond precision during deserialization from `f64` and will parse a `String` as an integer number.
 ///
 /// This type also supports [`chrono::DateTime`] with the `chrono_0_4`-[feature flag].
+/// This type also supports [`jiff::Timestamp`][::jiff_0_2::Timestamp], [`jiff::Zoned`][::jiff_0_2::Zoned], and [`jiff::civil::DateTime`][::jiff_0_2::civil::DateTime] with the `jiff_0_2`-[feature flag].
 /// This type also supports [`time::OffsetDateTime`][::time_0_3::OffsetDateTime] and [`time::PrimitiveDateTime`][::time_0_3::PrimitiveDateTime] with the `time_0_3`-[feature flag].
 ///
 /// This table lists the available `FORMAT`s for the different timestamp types.
@@ -1186,6 +1249,12 @@ pub struct DurationNanoSecondsWithFrac<
 /// | `chrono::DateTime<Local>` | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
 /// | `chrono::NaiveDateTime`   | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
 /// | `chrono::NaiveDateTime`   | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
+/// | `jiff::Timestamp`         | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
+/// | `jiff::Timestamp`         | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
+/// | `jiff::Zoned`             | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
+/// | `jiff::Zoned`             | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
+/// | `jiff::civil::DateTime`   | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
+/// | `jiff::civil::DateTime`   | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
 /// | `time::OffsetDateTime`    | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
 /// | `time::OffsetDateTime`    | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
 /// | `time::PrimitiveDateTime` | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
@@ -1306,7 +1375,7 @@ pub struct DurationNanoSecondsWithFrac<
 /// [`SystemTime`]: std::time::SystemTime
 /// [`chrono::DateTime<Local>`]: ::chrono_0_4::DateTime
 /// [`chrono::DateTime<Utc>`]: ::chrono_0_4::DateTime
-/// [feature flag]: https://docs.rs/serde_with/3.20.0/serde_with/guide/feature_flags/index.html
+/// [feature flag]: https://docs.rs/serde_with/3.22.0/serde_with/guide/feature_flags/index.html
 pub struct TimestampSeconds<
     FORMAT: formats::Format = i64,
     STRICTNESS: formats::Strictness = formats::Strict,
@@ -1325,6 +1394,7 @@ pub struct TimestampSeconds<
 /// For example, deserializing `TimestampSeconds<f64, Flexible>` will discard any subsecond precision during deserialization from `f64` and will parse a `String` as an integer number.
 ///
 /// This type also supports [`chrono::DateTime`] and [`chrono::NaiveDateTime`][NaiveDateTime] with the `chrono`-[feature flag].
+/// This type also supports [`jiff::Timestamp`][::jiff_0_2::Timestamp], [`jiff::Zoned`][::jiff_0_2::Zoned], and [`jiff::civil::DateTime`][::jiff_0_2::civil::DateTime] with the `jiff_0_2`-[feature flag].
 /// This type also supports [`time::OffsetDateTime`][::time_0_3::OffsetDateTime] and [`time::PrimitiveDateTime`][::time_0_3::PrimitiveDateTime] with the `time_0_3`-[feature flag].
 ///
 /// This table lists the available `FORMAT`s for the different timestamp types.
@@ -1340,6 +1410,12 @@ pub struct TimestampSeconds<
 /// | `chrono::DateTime<Local>` | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
 /// | `chrono::NaiveDateTime`   | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
 /// | `chrono::NaiveDateTime`   | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
+/// | `jiff::Timestamp`         | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
+/// | `jiff::Timestamp`         | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
+/// | `jiff::Zoned`             | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
+/// | `jiff::Zoned`             | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
+/// | `jiff::civil::DateTime`   | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
+/// | `jiff::civil::DateTime`   | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
 /// | `time::OffsetDateTime`    | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
 /// | `time::OffsetDateTime`    | `TimestampSecondsWithFrac` | *`f64`*, `String`        |
 /// | `time::PrimitiveDateTime` | `TimestampSeconds`         | *`i64`*, `f64`, `String` |
@@ -1448,7 +1524,7 @@ pub struct TimestampSeconds<
 /// [`chrono::DateTime<Local>`]: ::chrono_0_4::DateTime
 /// [`chrono::DateTime<Utc>`]: ::chrono_0_4::DateTime
 /// [NaiveDateTime]: ::chrono_0_4::NaiveDateTime
-/// [feature flag]: https://docs.rs/serde_with/3.20.0/serde_with/guide/feature_flags/index.html
+/// [feature flag]: https://docs.rs/serde_with/3.22.0/serde_with/guide/feature_flags/index.html
 pub struct TimestampSecondsWithFrac<
     FORMAT: formats::Format = f64,
     STRICTNESS: formats::Strictness = formats::Strict,

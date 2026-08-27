@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "tinyvec"
-version = "1.10.0"
+version = "1.12.0"
 authors = ["Lokathor <zefria@gmail.com>"]
 build = false
 exclude = [
@@ -48,6 +48,9 @@ features = [
     "latest_stable_rust",
     "serde",
     "borsh",
+    "defmt",
+    "bin-proto",
+    "schemars",
 ]
 rustdoc-args = [
     "--cfg",
@@ -62,6 +65,7 @@ features = [
     "latest_stable_rust",
     "serde",
     "borsh",
+    "schemars",
 ]
 
 [features]
@@ -77,6 +81,11 @@ rustc_1_40 = []
 rustc_1_55 = []
 rustc_1_57 = []
 rustc_1_61 = ["rustc_1_57"]
+schemars = [
+    "dep:schemars",
+    "alloc",
+]
+serde = ["dep:serde_core"]
 std = ["alloc"]
 
 [lib]
@@ -120,17 +129,31 @@ required-features = [
 version = "1"
 optional = true
 
+[dependencies.bin-proto]
+version = "0.12.5"
+optional = true
+default-features = false
+
 [dependencies.borsh]
 version = "1.2.0"
 optional = true
 default-features = false
+
+[dependencies.defmt]
+version = "1.0"
+optional = true
 
 [dependencies.generic-array]
 version = "1.1.1"
 optional = true
 default-features = false
 
-[dependencies.serde]
+[dependencies.schemars]
+version = "1.0"
+optional = true
+default-features = false
+
+[dependencies.serde_core]
 version = "1.0"
 optional = true
 default-features = false
@@ -140,7 +163,7 @@ version = "0.1"
 optional = true
 
 [dev-dependencies.criterion]
-version = "0.3.0"
+version = "0.8.0"
 
 [dev-dependencies.debugger_test]
 version = "0.1"
@@ -156,3 +179,6 @@ version = "1"
 
 [profile.bench]
 debug = 2
+
+[profile.dev]
+lto = "thin"

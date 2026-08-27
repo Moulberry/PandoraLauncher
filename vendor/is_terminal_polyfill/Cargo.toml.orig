@@ -1,6 +1,6 @@
 [package]
 name = "is_terminal_polyfill"
-version = "1.70.1"
+version = "1.70.2"
 description = "Polyfill for `is_terminal` stdlib feature for use with older MSRVs"
 repository = "https://github.com/polyfill-rs/is_terminal_polyfill"
 categories = []
@@ -21,7 +21,6 @@ include = [
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
 
 [package.metadata.release]
 pre-release-replacements = [

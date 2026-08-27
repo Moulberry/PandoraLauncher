@@ -555,7 +555,7 @@ impl Config {
             .clone()
             .unwrap_or_else(|| PathBuf::from(getenv_unwrap("OUT_DIR")));
 
-        let build_dir = try_canonicalize(&dst.join("build"));
+        let build_dir = fix_build_dir(&dst.join("build"));
 
         self.maybe_clear(&build_dir);
         let _ = fs::create_dir_all(&build_dir);
@@ -1004,7 +1004,10 @@ impl Config {
         // CMake will apparently store canonicalized paths which normally
         // isn't relevant to us but we canonicalize it here to ensure
         // we're both checking the same thing.
-        let path = try_canonicalize(&self.path);
+        let path = self
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| self.path.to_owned());
 
         let mut f = match File::open(dir.join("CMakeCache.txt")) {
             Ok(f) => f,
@@ -1139,32 +1142,59 @@ fn uses_named_pipe_jobserver(makeflags: &OsStr) -> bool {
         .contains("--jobserver-auth=fifo:")
 }
 
-/// Attempt to canonicalize; fall back to the original path if unsuccessful, in case `cmake` knows
-/// something we don't.
-fn try_canonicalize(path: &Path) -> PathBuf {
-    let path = path.canonicalize().unwrap_or_else(|_| path.to_owned());
-    // On Windows, attempt to remove the verbatim prefix from the canonicalized path.
-    // FIXME(ChrisDenton): once MSRV is >=1.79 use `std::path::absolute` instead of canonicalize.
-    // That will avoid the need for this hack.
-    #[cfg(windows)]
-    {
-        use std::os::windows::ffi::{OsStrExt, OsStringExt};
-        let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
-        if wide.starts_with(&[b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16]) {
-            if wide.get(5..7) == Some(&[b':' as u16, b'\\' as u16]) {
-                // Convert \\?\C:\ to C:\
-                wide.copy_within(4.., 0);
-                wide.truncate(wide.len() - 4);
-            } else if wide.get(4..8) == Some(&[b'U' as u16, b'N' as u16, b'C' as u16, b'\\' as u16])
-            {
-                // Convert \\?\UNC\ to \\
-                wide.copy_within(8.., 2);
-                wide.truncate(wide.len() - (8 - 2));
-            }
-            return OsString::from_wide(&wide).into();
-        }
+#[cfg(not(windows))]
+fn fix_build_dir(path: &Path) -> PathBuf {
+    path.into()
+}
+
+// Change relative paths to absolute to workaround #200 where
+// some flavors of CMake on Windows otherwise fail with
+// `error MSB1009: Project file does not exist`
+#[cfg(windows)]
+fn fix_build_dir(path: &Path) -> PathBuf {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use std::ptr::null_mut;
+    if path.is_absolute() {
+        return path.into();
     }
-    path
+    #[cfg_attr(not(target_arch = "x86"), link(name = "kernel32", kind = "raw-dylib"))]
+    #[cfg_attr(
+        target_arch = "x86",
+        link(
+            name = "kernel32",
+            kind = "raw-dylib",
+            import_name_type = "undecorated"
+        )
+    )]
+    extern "system" {
+        fn GetFullPathNameW(
+            lpfilename: *const u16,
+            nbufferlength: u32,
+            lpbuffer: *mut u16,
+            lpfilepart: *mut *mut u16,
+        ) -> u32;
+    }
+
+    // FIXME(ChrisDenton): once MSRV is >=1.79 use `std::path::absolute` instead of this.
+    let path_utf16: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
+    unsafe {
+        // Calling `GetFullPathNameW` with a buffer of length zero will return the necessary buffer size.
+        let expected_len = GetFullPathNameW(path_utf16.as_ptr(), 0, null_mut(), null_mut());
+        let mut buffer = vec![0; expected_len as usize];
+        let len = GetFullPathNameW(
+            path_utf16.as_ptr(),
+            expected_len,
+            buffer.as_mut_ptr(),
+            null_mut(),
+        ) as usize;
+        if len == 0 || len > buffer.len() {
+            // Failed to get the absolute path. Fallback to using the original path.
+            return path.into();
+        }
+        // If successful then `len` will be the length of the path that was written to the buffer.
+        buffer.truncate(len);
+        OsString::from_wide(&buffer).into()
+    }
 }
 
 #[cfg(windows)]

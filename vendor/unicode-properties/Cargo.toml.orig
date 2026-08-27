@@ -1,6 +1,6 @@
 [package]
 name = "unicode-properties"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Charles Lew <crlf0710@gmail.com>", "Manish Goregaokar <manishsmail@gmail.com>"]
 edition = "2021"
 homepage = "https://github.com/unicode-rs/unicode-properties"

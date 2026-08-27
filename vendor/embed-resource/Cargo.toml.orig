@@ -5,13 +5,15 @@ repository = "https://github.com/nabijaczleweli/rust-embed-resource"
 readme = "README.md"
 keywords = ["cargo", "build", "windows", "resource", "manifest"]
 categories = ["development-tools", "os::windows-apis"]
+edition = "2021"
+rust-version = "1.76"
 license = "MIT"
 # Remember to also update in appveyor.yml
-# Remember to also update in src/lib.rs ~L40 (Cargo.toml example)
-# Remember to also update in README
 # Remember to also update in .github/workflows/msvc/test.py
 # Remember to also update in .github/workflows/msvc/version.rc
-version = "3.0.6"
+# Remember to also update in src/lib.rs ~L40 (Cargo.toml example)
+# Remember to also update in README
+version = "3.0.11"
 authors = ["наб <nabijaczleweli@nabijaczleweli.xyz>",
            "Cat Plus Plus <piotrlegnica@piotrl.pl>",
            "Liigo <liigo@qq.com>",
@@ -37,20 +39,26 @@ authors = ["наб <nabijaczleweli@nabijaczleweli.xyz>",
            "CharlesChen0823 <yongchen0823@gmail.com>",
            "Daniel Schaefer <dhs@frame.work>",
            "Rene Leonhardt",
-           "ssrlive"]
+           "ssrlive",
+           "Kan-Ru Chen <kanru@kanru.info>",
+           "Tony <legendmastertony@gmail.com>",
+           "Berrysoft <Strawberry_Str@hotmail.com>",
+           "Marcus Ahlberg <marcus.ahlberg@kvaser.com>"]
 exclude = ["*.enc"]
 
 
 [dependencies]
 rustc_version = "0.4"
-toml = "0.9"
+toml = "1"
+cc = "1.2"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 memchr = "2.7"
-cc = "1.2"
+
+[target.'cfg(all(target_os = "windows", not(target_env = "msvc")))'.dependencies]
+memchr = "2.7"
 
 [target.'cfg(all(target_os = "windows", target_env = "msvc"))'.dependencies]
-cc = "1.2"
 vswhom = "0.1"
 
 [target.'cfg(all(target_os = "windows", target_env = "msvc"))'.dependencies.winreg]

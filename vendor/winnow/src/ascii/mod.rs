@@ -265,11 +265,11 @@ where
 /// assert_eq!(newline::<_, ErrMode<ContextError>>.parse_peek(Partial::new("")), Err(ErrMode::Incomplete(Needed::Unknown)));
 /// ```
 #[inline(always)]
-pub fn newline<I, Error: ParserError<I>>(input: &mut I) -> Result<char, Error>
+pub fn newline<Input, Error: ParserError<Input>>(input: &mut Input) -> Result<char, Error>
 where
-    I: StreamIsPartial,
-    I: Stream,
-    I: Compare<char>,
+    Input: StreamIsPartial,
+    Input: Stream,
+    Input: Compare<char>,
 {
     trace("newline", '\n').parse_next(input)
 }
@@ -1092,8 +1092,7 @@ where
             .take()
             .verify_map(|s: <Input as Stream>::Slice| {
                 let s = s.as_bstr();
-                // SAFETY: Only 7-bit ASCII characters are parsed
-                let s = unsafe { core::str::from_utf8_unchecked(s) };
+                let s = core::str::from_utf8(s).ok()?;
                 Output::try_from_dec_uint(s)
             })
             .parse_next(input)
@@ -1182,8 +1181,7 @@ where
             .take()
             .verify_map(|s: <Input as Stream>::Slice| {
                 let s = s.as_bstr();
-                // SAFETY: Only 7-bit ASCII characters are parsed
-                let s = unsafe { core::str::from_utf8_unchecked(s) };
+                let s = core::str::from_utf8(s).ok()?;
                 Output::try_from_dec_int(s)
             })
             .parse_next(input)
@@ -1440,7 +1438,7 @@ impl HexUint for u128 {
 #[allow(clippy::trait_duplication_in_bounds)] // HACK: clippy 1.64.0 bug
 pub fn float<Input, Output, Error>(input: &mut Input) -> Result<Output, Error>
 where
-    Input: StreamIsPartial + Stream + Compare<Caseless<&'static str>> + Compare<char> + AsBStr,
+    Input: StreamIsPartial + Stream + Compare<Caseless<&'static str>> + Compare<char>,
     <Input as Stream>::Slice: ParseSlice<Output>,
     <Input as Stream>::Token: AsChar + Clone,
     <Input as Stream>::IterOffsets: Clone,
@@ -1463,7 +1461,6 @@ where
     I: Compare<char>,
     <I as Stream>::Token: AsChar + Clone,
     <I as Stream>::IterOffsets: Clone,
-    I: AsBStr,
 {
     dispatch! {opt(peek(any).map(AsChar::as_char));
         Some('N') | Some('n') => Caseless("nan").void(),
@@ -1483,7 +1480,6 @@ where
     I: Compare<char>,
     <I as Stream>::Token: AsChar + Clone,
     <I as Stream>::IterOffsets: Clone,
-    I: AsBStr,
 {
     dispatch! {opt(peek(any).map(AsChar::as_char));
         Some('I') | Some('i') => (Caseless("inf"), opt(Caseless("inity"))).void(),
@@ -1501,7 +1497,6 @@ where
     I: Compare<char>,
     <I as Stream>::Token: AsChar + Clone,
     <I as Stream>::IterOffsets: Clone,
-    I: AsBStr,
 {
     dispatch! {opt(peek(any).map(AsChar::as_char));
         Some('E') | Some('e') => (one_of(['e', 'E']), opt(one_of(['+', '-'])), digit1).void(),

@@ -4,7 +4,7 @@
 
 use crate::parser::*;
 use crate::subtags::Subtag;
-use crate::{extensions, subtags, LanguageIdentifier};
+use crate::{LanguageIdentifier, extensions, subtags};
 #[cfg(feature = "alloc")]
 use alloc::borrow::Cow;
 use core::cmp::Ordering;
@@ -26,7 +26,7 @@ use core::str::FromStr;
 /// multiple possible orderings. Depending on your use case, two orderings are available:
 ///
 /// 1. A string ordering, suitable for stable serialization: [`Locale::strict_cmp`]
-/// 2. A struct ordering, suitable for use with a BTreeSet: [`Locale::total_cmp`]
+/// 2. A struct ordering, suitable for use with a `BTreeSet`: [`Locale::total_cmp`]
 ///
 /// See issue: <https://github.com/unicode-org/icu4x/issues/1215>
 ///
@@ -45,6 +45,14 @@ use core::str::FromStr;
 ///
 /// ICU4X's Locale parsing does not allow for non-BCP-47-compatible locales [allowed by UTS 35 for backwards compatability][tr35-bcp].
 /// Furthermore, it currently does not allow for language tags to have more than three characters.
+///
+/// # Serde
+///
+/// This type implements `serde::Serialize` and `serde::Deserialize` if the
+/// `"serde"` Cargo feature is enabled on the crate.
+///
+/// The value will be serialized as a string and parsed when deserialized.
+/// For tips on efficient storage and retrieval of locales, see [`crate::zerovec`].
 ///
 /// # Examples
 ///
@@ -72,7 +80,7 @@ use core::str::FromStr;
 /// More complex example:
 ///
 /// ```
-/// use icu::locale::{subtags::*, Locale};
+/// use icu::locale::{Locale, subtags::*};
 ///
 /// let loc: Locale = "eN-latn-Us-Valencia-u-hC-H12"
 ///     .parse()
@@ -82,7 +90,7 @@ use core::str::FromStr;
 /// assert_eq!(loc.id.script, "Latn".parse::<Script>().ok());
 /// assert_eq!(loc.id.region, "US".parse::<Region>().ok());
 /// assert_eq!(
-///     loc.id.variants.get(0),
+///     loc.id.variants.first(),
 ///     "valencia".parse::<Variant>().ok().as_ref()
 /// );
 /// ```
@@ -99,25 +107,27 @@ pub struct Locale {
 }
 
 #[test]
+// Expected sizes are based on a 64-bit architecture
+#[cfg(target_pointer_width = "64")]
 fn test_sizes() {
-    assert_eq!(core::mem::size_of::<subtags::Language>(), 3);
-    assert_eq!(core::mem::size_of::<subtags::Script>(), 4);
-    assert_eq!(core::mem::size_of::<subtags::Region>(), 3);
-    assert_eq!(core::mem::size_of::<subtags::Variant>(), 8);
-    assert_eq!(core::mem::size_of::<subtags::Variants>(), 16);
-    assert_eq!(core::mem::size_of::<LanguageIdentifier>(), 32);
+    assert_eq!(size_of::<subtags::Language>(), 3);
+    assert_eq!(size_of::<subtags::Script>(), 4);
+    assert_eq!(size_of::<subtags::Region>(), 3);
+    assert_eq!(size_of::<subtags::Variant>(), 8);
+    assert_eq!(size_of::<subtags::Variants>(), 16);
+    assert_eq!(size_of::<LanguageIdentifier>(), 32);
 
-    assert_eq!(core::mem::size_of::<extensions::transform::Transform>(), 56);
-    assert_eq!(core::mem::size_of::<Option<LanguageIdentifier>>(), 32);
-    assert_eq!(core::mem::size_of::<extensions::transform::Fields>(), 24);
+    assert_eq!(size_of::<extensions::transform::Transform>(), 56);
+    assert_eq!(size_of::<Option<LanguageIdentifier>>(), 32);
+    assert_eq!(size_of::<extensions::transform::Fields>(), 24);
 
-    assert_eq!(core::mem::size_of::<extensions::unicode::Attributes>(), 16);
-    assert_eq!(core::mem::size_of::<extensions::unicode::Keywords>(), 24);
-    assert_eq!(core::mem::size_of::<Vec<extensions::other::Other>>(), 24);
-    assert_eq!(core::mem::size_of::<extensions::private::Private>(), 16);
-    assert_eq!(core::mem::size_of::<extensions::Extensions>(), 136);
+    assert_eq!(size_of::<extensions::unicode::Attributes>(), 16);
+    assert_eq!(size_of::<extensions::unicode::Keywords>(), 24);
+    assert_eq!(size_of::<Vec<extensions::other::Other>>(), 24);
+    assert_eq!(size_of::<extensions::private::Private>(), 16);
+    assert_eq!(size_of::<extensions::Extensions>(), 136);
 
-    assert_eq!(core::mem::size_of::<Locale>(), 168);
+    assert_eq!(size_of::<Locale>(), 168);
 }
 
 impl Locale {
@@ -126,6 +136,12 @@ impl Locale {
 
     /// A constructor which takes a utf8 slice, parses it and
     /// produces a well-formed [`Locale`].
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
+    ///
+    /// Note: Support for the legacy `_` separator has been dropped since 2.0.0.
+    /// Users of ICU4X need to convert the `_` to `-` before calling the
+    /// function.
     ///
     /// # Examples
     ///
@@ -141,6 +157,8 @@ impl Locale {
     }
 
     /// See [`Self::try_from_str`]
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     #[cfg(feature = "alloc")]
     pub fn try_from_utf8(code_units: &[u8]) -> Result<Self, ParseError> {
         parse_locale(code_units)
@@ -148,7 +166,9 @@ impl Locale {
 
     /// Normalize the locale (operating on UTF-8 formatted byte slices)
     ///
-    /// This operation will normalize casing and the separator.
+    /// This operation will normalize casing.
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     ///
     /// # Examples
     ///
@@ -161,14 +181,16 @@ impl Locale {
     /// );
     /// ```
     #[cfg(feature = "alloc")]
-    pub fn normalize_utf8(input: &[u8]) -> Result<Cow<str>, ParseError> {
+    pub fn normalize_utf8(input: &[u8]) -> Result<Cow<'_, str>, ParseError> {
         let locale = Self::try_from_utf8(input)?;
         Ok(writeable::to_string_or_borrow(&locale, input))
     }
 
     /// Normalize the locale (operating on strings)
     ///
-    /// This operation will normalize casing and the separator.
+    /// This operation will normalize casing.
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     ///
     /// # Examples
     ///
@@ -181,7 +203,7 @@ impl Locale {
     /// );
     /// ```
     #[cfg(feature = "alloc")]
-    pub fn normalize(input: &str) -> Result<Cow<str>, ParseError> {
+    pub fn normalize(input: &str) -> Result<Cow<'_, str>, ParseError> {
         Self::normalize_utf8(input.as_bytes())
     }
 
@@ -243,7 +265,7 @@ impl Locale {
         writeable::cmp_utf8(self, other)
     }
 
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub(crate) fn as_tuple(
         &self,
     ) -> (
@@ -358,6 +380,8 @@ impl Locale {
     /// The return value is equivalent to what would happen if you first parsed the
     /// BCP-47 string to a `Locale` and then performed a structural comparison.
     ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
+    ///
     /// # Examples
     ///
     /// ```
@@ -391,15 +415,15 @@ impl Locale {
         if !subtag_matches!(subtags::Language, iter, self.id.language) {
             return false;
         }
-        if let Some(ref script) = self.id.script {
-            if !subtag_matches!(subtags::Script, iter, *script) {
-                return false;
-            }
+        if let Some(ref script) = self.id.script
+            && !subtag_matches!(subtags::Script, iter, *script)
+        {
+            return false;
         }
-        if let Some(ref region) = self.id.region {
-            if !subtag_matches!(subtags::Region, iter, *region) {
-                return false;
-            }
+        if let Some(ref region) = self.id.region
+            && !subtag_matches!(subtags::Region, iter, *region)
+        {
+            return false;
         }
         for variant in self.id.variants.iter() {
             if !subtag_matches!(subtags::Variant, iter, *variant) {
@@ -422,7 +446,7 @@ impl Locale {
     }
 
     #[doc(hidden)] // macro use
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     pub const fn try_from_utf8_with_single_variant_single_keyword_unicode_extension(
         code_units: &[u8],
     ) -> Result<
@@ -451,6 +475,13 @@ impl Locale {
     }
 }
 
+impl AsRef<LanguageIdentifier> for Locale {
+    fn as_ref(&self) -> &LanguageIdentifier {
+        &self.id
+    }
+}
+
+/// ✨ *Enabled with the `alloc` Cargo feature.*
 #[cfg(feature = "alloc")]
 impl FromStr for Locale {
     type Err = ParseError;
@@ -482,7 +513,7 @@ impl core::fmt::Debug for Locale {
     }
 }
 
-impl_writeable_for_each_subtag_str_no_test!(Locale, selff, selff.extensions.is_empty() => selff.id.write_to_string());
+impl_writeable_for_each_subtag_str_no_test!(Locale, selff, selff.extensions.is_empty() => selff.id.writeable_borrow());
 
 #[test]
 fn test_writeable() {

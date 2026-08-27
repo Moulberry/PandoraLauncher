@@ -5,7 +5,7 @@ edition = "2021"
 name = "clang-sys"
 authors = ["Kyle Mayes <kyle@mayeses.com>"]
 
-version = "1.8.1"
+version = "1.9.1"
 
 readme = "README.md"
 license = "Apache-2.0"
@@ -40,6 +40,8 @@ clang_15_0 = ["clang_14_0"]
 clang_16_0 = ["clang_15_0"]
 clang_17_0 = ["clang_16_0"]
 clang_18_0 = ["clang_17_0"]
+clang_19_0 = ["clang_18_0"]
+clang_20_0 = ["clang_19_0"]
 
 runtime = ["libloading"]
 static = []
@@ -64,4 +66,4 @@ tempfile = ">=3.0.0, <3.7.0"
 
 [package.metadata.docs.rs]
 
-features = ["clang_18_0", "runtime"]
+features = ["clang_20_0", "runtime"]

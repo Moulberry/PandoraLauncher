@@ -28,6 +28,12 @@ tracy = [
     "tracing-tracy",
     "tracy-client",
 ]
+web = [
+    "dep:async-channel",
+    "dep:js-sys",
+    "dep:wasm-bindgen",
+    "dep:web-sys",
+]
 
 [lib]
 name = "ztracing"
@@ -39,7 +45,13 @@ tracing-subscriber = "0.3.22"
 [dependencies.tracing]
 version = "0.1.40"
 
-[dependencies.tracing-tracy]
+[dependencies.zlog]
+path = '..\zlog'
+
+[dependencies.ztracing_macro]
+path = '..\ztracing_macro'
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies.tracing-tracy]
 version = "0.11.4"
 features = [
     "enable",
@@ -47,7 +59,7 @@ features = [
 ]
 optional = true
 
-[dependencies.tracy-client]
+[target.'cfg(not(target_family = "wasm"))'.dependencies.tracy-client]
 version = "0.18.2"
 features = [
     "enable",
@@ -55,11 +67,25 @@ features = [
 ]
 optional = true
 
-[dependencies.zlog]
-path = "../zlog"
+[target.'cfg(target_family = "wasm")'.dependencies.async-channel]
+version = "2.5.0"
+optional = true
 
-[dependencies.ztracing_macro]
-path = "../ztracing_macro"
+[target.'cfg(target_family = "wasm")'.dependencies.js-sys]
+version = "0.3"
+optional = true
+
+[target.'cfg(target_family = "wasm")'.dependencies.wasm-bindgen]
+version = "0.2.120"
+optional = true
+
+[target.'cfg(target_family = "wasm")'.dependencies.web-sys]
+version = "0.3"
+features = [
+    "console",
+    "Performance",
+]
+optional = true
 
 [lints.clippy]
 dbg_macro = "deny"

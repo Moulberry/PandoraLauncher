@@ -92,26 +92,22 @@ const BT1886_GAMMA: f32 = 2.4;
 // once floats in const fns are stabilized and `powf` is const.
 // Until then, `inline(always)` gets us close enough.
 
-#[inline(always)]
 fn bt1886_inv_whitepoint() -> f32 {
     BT1886_WHITEPOINT.powf(1.0 / BT1886_GAMMA)
 }
 
-#[inline(always)]
 fn bt1886_inv_blackpoint() -> f32 {
     BT1886_BLACKPOINT.powf(1.0 / BT1886_GAMMA)
 }
 
 /// The variable for user gain:
 /// `α = (Lw^(1/λ) - Lb^(1/λ)) ^ λ`
-#[inline(always)]
 fn bt1886_alpha() -> f32 {
     (bt1886_inv_whitepoint() - bt1886_inv_blackpoint()).powf(BT1886_GAMMA)
 }
 
 /// The variable for user black level lift:
 /// `β = Lb^(1/λ) / (Lw^(1/λ) - Lb^(1/λ))`
-#[inline(always)]
 fn bt1886_beta() -> f32 {
     bt1886_inv_blackpoint() / (bt1886_inv_whitepoint() - bt1886_inv_blackpoint())
 }
@@ -130,6 +126,7 @@ pub struct NoiseGenArgs {
 /// Generates a set of photon noise parameters for a segment of video
 /// given a set of `args`.
 #[must_use]
+#[inline]
 pub fn generate_photon_noise_params(
     start_time: u64,
     end_time: u64,
@@ -168,6 +165,7 @@ pub fn generate_photon_noise_params(
 /// # Panics
 /// - This is not yet implemented, so it will always panic
 #[must_use]
+#[inline]
 #[cfg(feature = "unstable")]
 pub fn generate_film_grain_params(
     start_time: u64,
@@ -209,6 +207,7 @@ pub fn generate_film_grain_params(
 /// # Errors
 ///
 /// - If the output file cannot be written to
+#[inline]
 pub fn write_grain_table<P: AsRef<Path>>(
     filename: P,
     params: &[GrainTableSegment],
@@ -299,6 +298,7 @@ pub enum TransferFunction {
 
 impl TransferFunction {
     #[must_use]
+    #[inline]
     pub fn to_linear(self, x: f32) -> f32 {
         match self {
             TransferFunction::BT1886 => {
@@ -319,6 +319,7 @@ impl TransferFunction {
 
     #[allow(clippy::wrong_self_convention)]
     #[must_use]
+    #[inline]
     pub fn from_linear(self, x: f32) -> f32 {
         match self {
             TransferFunction::BT1886 => {
@@ -339,7 +340,7 @@ impl TransferFunction {
         }
     }
 
-    #[inline(always)]
+    #[inline]
     #[must_use]
     pub fn mid_tone(self) -> f32 {
         self.to_linear(0.5)

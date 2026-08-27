@@ -9,7 +9,8 @@ use zbus::zvariant::Type;
 /// This is a lightweight alternative to `url::Url` for cases where we just need
 /// to store and pass URIs without extensive parsing or manipulation.
 ///
-/// URIs must contain `://` to be valid (e.g., `file://`, `http://`, `https://`).
+/// URIs must contain `:` to be valid (e.g., `file:`, `http:`, `https:`).
+/// URIs can't start with `:` to be valid.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Type)]
 #[zvariant(signature = "s")]
 pub struct Uri(String);
@@ -36,7 +37,7 @@ impl FromStr for Uri {
         if s.is_empty() {
             return Err(ParseError::Empty);
         }
-        if !s.contains("://") {
+        if !s.contains(":") | s.starts_with(':') {
             return Err(ParseError::MissingScheme);
         }
         Ok(Self(s.to_string()))
@@ -82,7 +83,7 @@ impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Empty => write!(f, "URI cannot be empty"),
-            Self::MissingScheme => write!(f, "URI must contain a scheme (e.g., file://, http://)"),
+            Self::MissingScheme => write!(f, "URI must contain a scheme (e.g., file:, http:)"),
         }
     }
 }

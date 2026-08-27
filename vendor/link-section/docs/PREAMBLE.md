@@ -3,13 +3,73 @@ A crate for defining linker-backed sections in Rust.
 `link-section` provides two attributes:
 
 - `#[section(...)]` defines a section handle. The handle is a `static` item used
-  to inspect the section at runtime, usually as a slice.
-- `#[in_section(SECTION)]` submits an item to that section. A submitted item is
-  an item annotated with `#[in_section(...)]`; depending on the section kind, it
-  may also remain usable directly at the submission site.
+  to inspect the section at runtime, usually as a slice. The handle's visibility
+  determines where items may be submitted: public handles can be submitted from
+  any module, while private handles can only be submitted from the module that
+  defines them.
+- `#[in_section(path::to::SECTION)]` submits an item to that section. A
+  submitted item is an item annotated with `#[in_section(...)]`; depending on
+  the section kind, it may also remain usable directly at the submission site.
+  The `path::to::SECTION` must be visible to the submission site.
 
 Together, these attributes let separately-declared items be collected into one
 linker section and accessed through a single section handle.
+
+## Visibility
+
+Importantly, even though the linker is used to collect items, the visibility of
+the section handle determines where items may be submitted: public handles can
+be submitted from any crate (assuming the submitting crate references the one
+with the collection handle), while private handles can only be submitted from
+the crate that defines them.
+
+The section name is generated from the name of the item and a location of the
+item within the source tree. This means that you may have more than one
+independent section with the item name in a project, and they will not conflict.
+
+Note that if you are generating sections from a macro, you _must_ include at
+least one token from the top-level macro call in the section definition to avoid
+conflicts with tokens that are provided purely from the macro itself.
+
+To allow for submission of items without visibility constraints, the crate
+provides an `unsafe` option for the submission macro where the section's
+name and attributes may be specified manually:
+
+```rust
+# mod root {
+pub struct MyType(u8);
+
+mod my_private_section {
+    # use link_section::section;
+    # use super::MyType;
+    // Specify a section name so it can be used without a direct reference.
+    #[section(typed, unsafe, name = my_crate::SECTION_NAME)]
+    static MY_SECTION: link_section::TypedSection<MyType>;
+}
+
+mod elsewhere {
+    # use link_section::in_section;
+    # use super::MyType;
+    // This must match the definition site!
+    #[in_section(unsafe, name = my_crate::SECTION_NAME, type = typed)] // optionally: aux(main = MAIN_SECTION)
+    static ITEM: MyType = MyType(42);
+}
+# }
+```
+
+### Syntax
+
+Section definition:
+
+ - `#[section(<kind>)]`
+ - `#[section(<kind>, aux(main = <path::to::MAIN_SECTION>))]`
+ - `#[section(unsafe, type = <kind>)]`
+ - `#[section(unsafe, type = <kind>, name = <name>)]`
+
+Section submission:
+
+ - `#[in_section(path::to::SECTION)]`
+ - `#[in_section(unsafe, type = <kind>, name = <name>)]`
 
 ## Section Kinds
 
@@ -90,8 +150,8 @@ pub fn callback() {
 | \*BSD                    | ✅ Supported, uses orphan section handling (§1) |
 | macOS                    | ✅ Fully supported                              |
 | Windows                  | ✅ Fully supported                              |
-| WASM                     | ✅ Fully supported, via emulation (§2) (§3)     |
-| AIX                      | ✅ Supported (§4)                               |
+| WASM                     | ✅ Fully supported, via emulation (§2)          |
+| AIX                      | ✅ Supported (§3) (§4)                          |
 | Other LLVM/GCC platforms | ✅ Supported, uses orphan section handling (§1) |
 
 (§1) Orphan section handling is a feature of the linker that allows sections to
@@ -101,11 +161,11 @@ be defined without a pre-defined name.
 data to a contiguous section. To access link-section slices in WASM in `#[ctor]`
 functions, make sure to use at least `#[ctor(priority = 1)]`.
 
-(§3) Host environment support (by calling the exported `read_custom_section`
-function) is required to register each section with the runtime.
-
-(§4) AIX requires `-C link-arg=-bdbg:namedsects:ss` which enables functionality
+(§3) AIX requires `-C link-arg=-bdbg:namedsects:ss` which enables functionality
 similar to LLVM/GCC's orphan section handling.
+
+(§4) Empty sections are not currently supported: ensure every section has at least
+one item, or pass the `-C link-arg=-berok` linker flag to ignore errors.
 
 ## Platform Details
 
@@ -154,54 +214,39 @@ for more details about the alphabetical sorting rule.
 - Has start/end symbols: ❌
 - Supports linker sorting: ❌
 
-On WASM platforms, Rust emits data into custom sections which do not support
-ordering, and are stored out-of-band. The host environment is responsible for
-registering this out-of-band section with this library as this data is not
-accessible by the WASM runtime.
+On WASM platforms there are no linker-provided start/end symbols and no linker
+ordering. Normally, WASM does not support placing arbitrary data in link
+sections - only non-pointer data is supported. To work around this, the WASM
+support uses `const` items and pre-`main` construction functions to gather each
+entry into a contiguous section allocated at startup.
 
-Normally, WASM does not support placing arbitrary data in link sections - only
-non-pointer data is supported. However, the WASM support uses `const` items and
-pre-main construction functions to copy each entry into a contiguous section
-allocated at startup. The number of items in a link-section is computed by
-generating a custom data section containing one byte per item.
+Each submitted item emits a plain (linear-memory) static "list node" plus an
+`.init_array.0` constructor that threads the node onto an intrusive linked list
+rooted in the section. Because these nodes are interior-mutable and have their
+address taken, LLVM cannot merge them even under fat LTO, so the item
+count is always exact.
 
-The WASM support expects a function in the module's environment with the
-following signature and functionality. The wasm import only passes the four
-`usize` / pointer parameters; the embedder should close over
-`WebAssembly.Module` and `WebAssembly.Memory` from compile/instantiate when
-installing the import.
+The list is materialised into one contiguous allocation by an eager,
+ordered constructor. Item submissions run at `.init_array.0` (priority 0), and
+each section emits a finalization constructor at `.init_array.1` (priority 1).
+Because wasm-ld orders `.init_array.*` by the integer value of the suffix, the
+finalizer is guaranteed to run after every submission and before any
+`#[ctor(priority >= 2)]` and before `main` — a well-defined pre-`main` time
+rather than "whenever the section is first read".
 
-```js
-/**
- * Support function for `link-section` crate.
- */
-export function readCustomSection(
-  wasmModule: WebAssembly.Module,
-  wasmInstance: WebAssembly.Instance,
-  namePtr: number,
-  nameLength: number,
-  targetPtr: number,
-  targetLength: number,
-): number {
-    const memory = wasmInstance.exports.memory as WebAssembly.Memory;
-    const nameBytes = new Uint8Array(memory.buffer, namePtr, nameLength);
-    const sectionName = new TextDecoder().decode(nameBytes);
+[`Ref`] / [`MovableRef`] handles carry a pointer to their owning section and also
+flatten it on first dereference. That lazy path is an idempotent backstop for the
+one remaining tie: an explicit `#[ctor(priority = 1)]` that runs before the
+finalizer. As a result the `#[ctor]` priority requirement is the same as
+elsewhere: to read a link section or dereference a [`Ref`] / [`MovableRef`]
+handle from a `#[ctor]`, use at least `#[ctor(priority = 1)]`. Reads from `main`
+(or any later constructor) are always safe.
 
-    const sections = WebAssembly.Module.customSections(wasmModule, sectionName);
-    if (sections.length === 0) {
-        return 0;
-    }
-
-    const section = sections[0];
-    const need = section.byteLength;
-    if (targetLength < need) {
-        return need;
-    }
-
-    new Uint8Array(memory.buffer, targetPtr, need).set(new Uint8Array(section));
-    return need;
-}
-```
+A `#[ctor(priority = 0)]` that reads section *bounds* (not a [`Ref`]) is the one
+corner that breaks: it interleaves with `.init_array.0` submissions, triggers an
+early lazy flatten, and then any later submission panics (the section is already
+materialised). The contract — use at least priority 1 — is unchanged, but the
+panic now names the section and the likely cause.
 
 ### AIX
 
@@ -232,6 +277,10 @@ found:
         ld: 0711-345 Use the -bloadmap or -bnoquiet option to obtain more information.
 ```
 
+In addition, the linker may report the same errors if a section is empty. It is
+recommended that you either (1) provide a sentinel item for AIX that can be skipped
+in the slice, or (2) pass the `-C link-arg=-berok` linker flag to ignore the error.
+
 For debugging AIX link-section issues, `-C link-arg=-bmap:[path]/linker.out` and
 `-C link-arg=-bnoquiet` may also be useful.
 
@@ -256,7 +305,7 @@ desired.
 
 A typed section can be created from either `static` or `const` items.
 
-For `const` items: a copy of the `const` is materialized at link time, while the
+For `const` items: a copy of the `const` is materialised at link time, while the
 constant itself remains available for use as a constant in `const` contexts.
 
 For `static` items: the static is stored directly in the link section.
@@ -330,4 +379,4 @@ mod my_registry {
 
 ## Inspiration
 
-`link-section` was originally inspired by the `linkme` project.
+`link-section` would have been far more challenging to implement without dtolnay's great `linkme` project paving the way.

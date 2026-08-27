@@ -3,7 +3,7 @@
 // Use ../scripts/gen_autohint_scripts.py to regenerate.
 
 #[rustfmt::skip]
-pub(super) const SCRIPT_CLASSES: &[ScriptClass] = &[
+pub const SCRIPT_CLASSES: &[ScriptClass] = &[
     ScriptClass {
         name: "Adlam",
         group: ScriptGroup::Default,
@@ -330,6 +330,17 @@ pub(super) const SCRIPT_CLASSES: &[ScriptClass] = &[
             ("ב ד ה ח ך כ ם ס", BlueZones::TOP.union(BlueZones::LONG)),
             ("ב ט כ ם ס צ", BlueZones::NONE),
             ("ק ך ן ף ץ", BlueZones::NONE),
+        ],
+    },
+    ScriptClass {
+        name: "Nyiakeng Puachue Hmong",
+        group: ScriptGroup::Default,
+        tag: Tag::new(b"Hmnp"),
+        hint_top_to_bottom: false,
+        std_chars: "𞄨",
+        blues: &[
+            ("𞄀 𞄁 𞄈 𞄑 𞄧 𞄬", BlueZones::TOP),
+            ("𞄁 𞄜 𞄠 𞄡 𞄤 𞅂", BlueZones::NONE),
         ],
     },
     ScriptClass {
@@ -778,45 +789,46 @@ pub(super) const SCRIPT_CLASSES: &[ScriptClass] = &[
     pub const GUJR: usize = 22;
     pub const GURU: usize = 23;
     pub const HEBR: usize = 24;
-    pub const KALI: usize = 25;
-    pub const KHMR: usize = 26;
-    pub const KHMS: usize = 27;
-    pub const KNDA: usize = 28;
-    pub const LAOO: usize = 29;
-    pub const LATN: usize = 30;
-    pub const LATB: usize = 31;
-    pub const LATP: usize = 32;
-    pub const LISU: usize = 33;
-    pub const MLYM: usize = 34;
-    pub const MEDF: usize = 35;
-    pub const MONG: usize = 36;
-    pub const MYMR: usize = 37;
-    pub const NKOO: usize = 38;
-    pub const NONE: usize = 39;
-    pub const OLCK: usize = 40;
-    pub const ORKH: usize = 41;
-    pub const OSGE: usize = 42;
-    pub const OSMA: usize = 43;
-    pub const ROHG: usize = 44;
-    pub const SAUR: usize = 45;
-    pub const SHAW: usize = 46;
-    pub const SINH: usize = 47;
-    pub const SUND: usize = 48;
-    pub const TAML: usize = 49;
-    pub const TAVT: usize = 50;
-    pub const TELU: usize = 51;
-    pub const TFNG: usize = 52;
-    pub const THAI: usize = 53;
-    pub const VAII: usize = 54;
-    pub const LIMB: usize = 55;
-    pub const ORYA: usize = 56;
-    pub const SYLO: usize = 57;
-    pub const TIBT: usize = 58;
-    pub const HANI: usize = 59;
+    pub const HMNP: usize = 25;
+    pub const KALI: usize = 26;
+    pub const KHMR: usize = 27;
+    pub const KHMS: usize = 28;
+    pub const KNDA: usize = 29;
+    pub const LAOO: usize = 30;
+    pub const LATN: usize = 31;
+    pub const LATB: usize = 32;
+    pub const LATP: usize = 33;
+    pub const LISU: usize = 34;
+    pub const MLYM: usize = 35;
+    pub const MEDF: usize = 36;
+    pub const MONG: usize = 37;
+    pub const MYMR: usize = 38;
+    pub const NKOO: usize = 39;
+    pub const NONE: usize = 40;
+    pub const OLCK: usize = 41;
+    pub const ORKH: usize = 42;
+    pub const OSGE: usize = 43;
+    pub const OSMA: usize = 44;
+    pub const ROHG: usize = 45;
+    pub const SAUR: usize = 46;
+    pub const SHAW: usize = 47;
+    pub const SINH: usize = 48;
+    pub const SUND: usize = 49;
+    pub const TAML: usize = 50;
+    pub const TAVT: usize = 51;
+    pub const TELU: usize = 52;
+    pub const TFNG: usize = 53;
+    pub const THAI: usize = 54;
+    pub const VAII: usize = 55;
+    pub const LIMB: usize = 56;
+    pub const ORYA: usize = 57;
+    pub const SYLO: usize = 58;
+    pub const TIBT: usize = 59;
+    pub const HANI: usize = 60;
 }
 
 #[rustfmt::skip]
-pub(super) const STYLE_CLASSES: &[StyleClass] = &[
+pub const STYLE_CLASSES: &[StyleClass] = &[
     StyleClass { name: "Adlam", index: 0, script: &SCRIPT_CLASSES[0], feature: None },
     StyleClass { name: "Arabic", index: 1, script: &SCRIPT_CLASSES[1], feature: None },
     StyleClass { name: "Armenian", index: 2, script: &SCRIPT_CLASSES[2], feature: None },
@@ -862,51 +874,52 @@ pub(super) const STYLE_CLASSES: &[StyleClass] = &[
     StyleClass { name: "Gujarati", index: 42, script: &SCRIPT_CLASSES[22], feature: None },
     StyleClass { name: "Gurmukhi", index: 43, script: &SCRIPT_CLASSES[23], feature: None },
     StyleClass { name: "Hebrew", index: 44, script: &SCRIPT_CLASSES[24], feature: None },
-    StyleClass { name: "Kayah Li", index: 45, script: &SCRIPT_CLASSES[25], feature: None },
-    StyleClass { name: "Khmer", index: 46, script: &SCRIPT_CLASSES[26], feature: None },
-    StyleClass { name: "Khmer Symbols", index: 47, script: &SCRIPT_CLASSES[27], feature: None },
-    StyleClass { name: "Kannada", index: 48, script: &SCRIPT_CLASSES[28], feature: None },
-    StyleClass { name: "Lao", index: 49, script: &SCRIPT_CLASSES[29], feature: None },
-    StyleClass { name: "Latin petite capitals from capitals", index: 50, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"c2cp")) },
-    StyleClass { name: "Latin small capitals from capitals", index: 51, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"c2sc")) },
-    StyleClass { name: "Latin ordinals", index: 52, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"ordn")) },
-    StyleClass { name: "Latin petite capitals", index: 53, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"pcap")) },
-    StyleClass { name: "Latin ruby", index: 54, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"ruby")) },
-    StyleClass { name: "Latin scientific inferiors", index: 55, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"sinf")) },
-    StyleClass { name: "Latin small capitals", index: 56, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"smcp")) },
-    StyleClass { name: "Latin subscript", index: 57, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"subs")) },
-    StyleClass { name: "Latin superscript", index: 58, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"sups")) },
-    StyleClass { name: "Latin titling", index: 59, script: &SCRIPT_CLASSES[30], feature: Some(Tag::new(b"titl")) },
-    StyleClass { name: "Latin", index: 60, script: &SCRIPT_CLASSES[30], feature: None },
-    StyleClass { name: "Latin Subscript Fallback", index: 61, script: &SCRIPT_CLASSES[31], feature: None },
-    StyleClass { name: "Latin Superscript Fallback", index: 62, script: &SCRIPT_CLASSES[32], feature: None },
-    StyleClass { name: "Lisu", index: 63, script: &SCRIPT_CLASSES[33], feature: None },
-    StyleClass { name: "Malayalam", index: 64, script: &SCRIPT_CLASSES[34], feature: None },
-    StyleClass { name: "Medefaidrin", index: 65, script: &SCRIPT_CLASSES[35], feature: None },
-    StyleClass { name: "Mongolian", index: 66, script: &SCRIPT_CLASSES[36], feature: None },
-    StyleClass { name: "Myanmar", index: 67, script: &SCRIPT_CLASSES[37], feature: None },
-    StyleClass { name: "N'Ko", index: 68, script: &SCRIPT_CLASSES[38], feature: None },
-    StyleClass { name: "no script", index: 69, script: &SCRIPT_CLASSES[39], feature: None },
-    StyleClass { name: "Ol Chiki", index: 70, script: &SCRIPT_CLASSES[40], feature: None },
-    StyleClass { name: "Old Turkic", index: 71, script: &SCRIPT_CLASSES[41], feature: None },
-    StyleClass { name: "Osage", index: 72, script: &SCRIPT_CLASSES[42], feature: None },
-    StyleClass { name: "Osmanya", index: 73, script: &SCRIPT_CLASSES[43], feature: None },
-    StyleClass { name: "Hanifi Rohingya", index: 74, script: &SCRIPT_CLASSES[44], feature: None },
-    StyleClass { name: "Saurashtra", index: 75, script: &SCRIPT_CLASSES[45], feature: None },
-    StyleClass { name: "Shavian", index: 76, script: &SCRIPT_CLASSES[46], feature: None },
-    StyleClass { name: "Sinhala", index: 77, script: &SCRIPT_CLASSES[47], feature: None },
-    StyleClass { name: "Sundanese", index: 78, script: &SCRIPT_CLASSES[48], feature: None },
-    StyleClass { name: "Tamil", index: 79, script: &SCRIPT_CLASSES[49], feature: None },
-    StyleClass { name: "Tai Viet", index: 80, script: &SCRIPT_CLASSES[50], feature: None },
-    StyleClass { name: "Telugu", index: 81, script: &SCRIPT_CLASSES[51], feature: None },
-    StyleClass { name: "Tifinagh", index: 82, script: &SCRIPT_CLASSES[52], feature: None },
-    StyleClass { name: "Thai", index: 83, script: &SCRIPT_CLASSES[53], feature: None },
-    StyleClass { name: "Vai", index: 84, script: &SCRIPT_CLASSES[54], feature: None },
-    StyleClass { name: "Limbu", index: 85, script: &SCRIPT_CLASSES[55], feature: None },
-    StyleClass { name: "Oriya", index: 86, script: &SCRIPT_CLASSES[56], feature: None },
-    StyleClass { name: "Syloti Nagri", index: 87, script: &SCRIPT_CLASSES[57], feature: None },
-    StyleClass { name: "Tibetan", index: 88, script: &SCRIPT_CLASSES[58], feature: None },
-    StyleClass { name: "CJKV ideographs", index: 89, script: &SCRIPT_CLASSES[59], feature: None },
+    StyleClass { name: "Nyiakeng Puachue Hmong", index: 45, script: &SCRIPT_CLASSES[25], feature: None },
+    StyleClass { name: "Kayah Li", index: 46, script: &SCRIPT_CLASSES[26], feature: None },
+    StyleClass { name: "Khmer", index: 47, script: &SCRIPT_CLASSES[27], feature: None },
+    StyleClass { name: "Khmer Symbols", index: 48, script: &SCRIPT_CLASSES[28], feature: None },
+    StyleClass { name: "Kannada", index: 49, script: &SCRIPT_CLASSES[29], feature: None },
+    StyleClass { name: "Lao", index: 50, script: &SCRIPT_CLASSES[30], feature: None },
+    StyleClass { name: "Latin petite capitals from capitals", index: 51, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"c2cp")) },
+    StyleClass { name: "Latin small capitals from capitals", index: 52, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"c2sc")) },
+    StyleClass { name: "Latin ordinals", index: 53, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"ordn")) },
+    StyleClass { name: "Latin petite capitals", index: 54, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"pcap")) },
+    StyleClass { name: "Latin ruby", index: 55, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"ruby")) },
+    StyleClass { name: "Latin scientific inferiors", index: 56, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"sinf")) },
+    StyleClass { name: "Latin small capitals", index: 57, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"smcp")) },
+    StyleClass { name: "Latin subscript", index: 58, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"subs")) },
+    StyleClass { name: "Latin superscript", index: 59, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"sups")) },
+    StyleClass { name: "Latin titling", index: 60, script: &SCRIPT_CLASSES[31], feature: Some(Tag::new(b"titl")) },
+    StyleClass { name: "Latin", index: 61, script: &SCRIPT_CLASSES[31], feature: None },
+    StyleClass { name: "Latin Subscript Fallback", index: 62, script: &SCRIPT_CLASSES[32], feature: None },
+    StyleClass { name: "Latin Superscript Fallback", index: 63, script: &SCRIPT_CLASSES[33], feature: None },
+    StyleClass { name: "Lisu", index: 64, script: &SCRIPT_CLASSES[34], feature: None },
+    StyleClass { name: "Malayalam", index: 65, script: &SCRIPT_CLASSES[35], feature: None },
+    StyleClass { name: "Medefaidrin", index: 66, script: &SCRIPT_CLASSES[36], feature: None },
+    StyleClass { name: "Mongolian", index: 67, script: &SCRIPT_CLASSES[37], feature: None },
+    StyleClass { name: "Myanmar", index: 68, script: &SCRIPT_CLASSES[38], feature: None },
+    StyleClass { name: "N'Ko", index: 69, script: &SCRIPT_CLASSES[39], feature: None },
+    StyleClass { name: "no script", index: 70, script: &SCRIPT_CLASSES[40], feature: None },
+    StyleClass { name: "Ol Chiki", index: 71, script: &SCRIPT_CLASSES[41], feature: None },
+    StyleClass { name: "Old Turkic", index: 72, script: &SCRIPT_CLASSES[42], feature: None },
+    StyleClass { name: "Osage", index: 73, script: &SCRIPT_CLASSES[43], feature: None },
+    StyleClass { name: "Osmanya", index: 74, script: &SCRIPT_CLASSES[44], feature: None },
+    StyleClass { name: "Hanifi Rohingya", index: 75, script: &SCRIPT_CLASSES[45], feature: None },
+    StyleClass { name: "Saurashtra", index: 76, script: &SCRIPT_CLASSES[46], feature: None },
+    StyleClass { name: "Shavian", index: 77, script: &SCRIPT_CLASSES[47], feature: None },
+    StyleClass { name: "Sinhala", index: 78, script: &SCRIPT_CLASSES[48], feature: None },
+    StyleClass { name: "Sundanese", index: 79, script: &SCRIPT_CLASSES[49], feature: None },
+    StyleClass { name: "Tamil", index: 80, script: &SCRIPT_CLASSES[50], feature: None },
+    StyleClass { name: "Tai Viet", index: 81, script: &SCRIPT_CLASSES[51], feature: None },
+    StyleClass { name: "Telugu", index: 82, script: &SCRIPT_CLASSES[52], feature: None },
+    StyleClass { name: "Tifinagh", index: 83, script: &SCRIPT_CLASSES[53], feature: None },
+    StyleClass { name: "Thai", index: 84, script: &SCRIPT_CLASSES[54], feature: None },
+    StyleClass { name: "Vai", index: 85, script: &SCRIPT_CLASSES[55], feature: None },
+    StyleClass { name: "Limbu", index: 86, script: &SCRIPT_CLASSES[56], feature: None },
+    StyleClass { name: "Oriya", index: 87, script: &SCRIPT_CLASSES[57], feature: None },
+    StyleClass { name: "Syloti Nagri", index: 88, script: &SCRIPT_CLASSES[58], feature: None },
+    StyleClass { name: "Tibetan", index: 89, script: &SCRIPT_CLASSES[59], feature: None },
+    StyleClass { name: "CJKV ideographs", index: 90, script: &SCRIPT_CLASSES[60], feature: None },
 ];
 
 #[allow(unused)]impl StyleClass {
@@ -955,78 +968,79 @@ pub(super) const STYLE_CLASSES: &[StyleClass] = &[
     pub const GUJR: usize = 42;
     pub const GURU: usize = 43;
     pub const HEBR: usize = 44;
-    pub const KALI: usize = 45;
-    pub const KHMR: usize = 46;
-    pub const KHMS: usize = 47;
-    pub const KNDA: usize = 48;
-    pub const LAOO: usize = 49;
-    pub const LATN_C2CP: usize = 50;
-    pub const LATN_C2SC: usize = 51;
-    pub const LATN_ORDN: usize = 52;
-    pub const LATN_PCAP: usize = 53;
-    pub const LATN_RUBY: usize = 54;
-    pub const LATN_SINF: usize = 55;
-    pub const LATN_SMCP: usize = 56;
-    pub const LATN_SUBS: usize = 57;
-    pub const LATN_SUPS: usize = 58;
-    pub const LATN_TITL: usize = 59;
-    pub const LATN: usize = 60;
-    pub const LATB: usize = 61;
-    pub const LATP: usize = 62;
-    pub const LISU: usize = 63;
-    pub const MLYM: usize = 64;
-    pub const MEDF: usize = 65;
-    pub const MONG: usize = 66;
-    pub const MYMR: usize = 67;
-    pub const NKOO: usize = 68;
-    pub const NONE: usize = 69;
-    pub const OLCK: usize = 70;
-    pub const ORKH: usize = 71;
-    pub const OSGE: usize = 72;
-    pub const OSMA: usize = 73;
-    pub const ROHG: usize = 74;
-    pub const SAUR: usize = 75;
-    pub const SHAW: usize = 76;
-    pub const SINH: usize = 77;
-    pub const SUND: usize = 78;
-    pub const TAML: usize = 79;
-    pub const TAVT: usize = 80;
-    pub const TELU: usize = 81;
-    pub const TFNG: usize = 82;
-    pub const THAI: usize = 83;
-    pub const VAII: usize = 84;
-    pub const LIMB: usize = 85;
-    pub const ORYA: usize = 86;
-    pub const SYLO: usize = 87;
-    pub const TIBT: usize = 88;
-    pub const HANI: usize = 89;
+    pub const HMNP: usize = 45;
+    pub const KALI: usize = 46;
+    pub const KHMR: usize = 47;
+    pub const KHMS: usize = 48;
+    pub const KNDA: usize = 49;
+    pub const LAOO: usize = 50;
+    pub const LATN_C2CP: usize = 51;
+    pub const LATN_C2SC: usize = 52;
+    pub const LATN_ORDN: usize = 53;
+    pub const LATN_PCAP: usize = 54;
+    pub const LATN_RUBY: usize = 55;
+    pub const LATN_SINF: usize = 56;
+    pub const LATN_SMCP: usize = 57;
+    pub const LATN_SUBS: usize = 58;
+    pub const LATN_SUPS: usize = 59;
+    pub const LATN_TITL: usize = 60;
+    pub const LATN: usize = 61;
+    pub const LATB: usize = 62;
+    pub const LATP: usize = 63;
+    pub const LISU: usize = 64;
+    pub const MLYM: usize = 65;
+    pub const MEDF: usize = 66;
+    pub const MONG: usize = 67;
+    pub const MYMR: usize = 68;
+    pub const NKOO: usize = 69;
+    pub const NONE: usize = 70;
+    pub const OLCK: usize = 71;
+    pub const ORKH: usize = 72;
+    pub const OSGE: usize = 73;
+    pub const OSMA: usize = 74;
+    pub const ROHG: usize = 75;
+    pub const SAUR: usize = 76;
+    pub const SHAW: usize = 77;
+    pub const SINH: usize = 78;
+    pub const SUND: usize = 79;
+    pub const TAML: usize = 80;
+    pub const TAVT: usize = 81;
+    pub const TELU: usize = 82;
+    pub const TFNG: usize = 83;
+    pub const THAI: usize = 84;
+    pub const VAII: usize = 85;
+    pub const LIMB: usize = 86;
+    pub const ORYA: usize = 87;
+    pub const SYLO: usize = 88;
+    pub const TIBT: usize = 89;
+    pub const HANI: usize = 90;
 }
 
 #[rustfmt::skip]
 pub(super) const STYLE_RANGES: &[StyleRange] = &[
-    base_range(32, 93, 60),
-    non_base_range(94, 96, 60),
-    base_range(97, 125, 60),
-    non_base_range(126, 126, 60),
-    base_range(127, 127, 60),
-    base_range(160, 167, 60),
-    non_base_range(168, 169, 60),
-    base_range(170, 170, 62),
-    base_range(171, 173, 60),
-    non_base_range(174, 176, 60),
-    base_range(177, 177, 60),
-    base_range(178, 179, 62),
-    non_base_range(180, 180, 60),
-    base_range(181, 183, 60),
-    non_base_range(184, 184, 60),
-    base_range(185, 186, 62),
-    base_range(187, 187, 60),
-    non_base_range(188, 190, 60),
-    base_range(191, 687, 60),
-    base_range(688, 696, 62),
-    non_base_range(697, 735, 60),
-    base_range(736, 740, 62),
-    non_base_range(741, 879, 60),
+    base_range(32, 93, 61),
+    non_base_range(94, 96, 61),
+    base_range(97, 125, 61),
+    non_base_range(126, 126, 61),
+    base_range(127, 127, 61),
+    base_range(160, 167, 61),
+    non_base_range(168, 169, 61),
+    base_range(170, 170, 63),
+    base_range(171, 173, 61),
+    non_base_range(174, 176, 61),
+    base_range(177, 177, 61),
+    base_range(178, 179, 63),
+    non_base_range(180, 180, 61),
+    base_range(181, 183, 61),
+    non_base_range(184, 184, 61),
+    base_range(185, 186, 63),
+    base_range(187, 187, 61),
+    non_base_range(188, 190, 61),
+    base_range(191, 687, 61),
+    base_range(688, 696, 63),
+    non_base_range(697, 735, 61),
+    base_range(736, 740, 63),
+    non_base_range(741, 879, 61),
     base_range(880, 889, 41),
     non_base_range(890, 890, 41),
     base_range(891, 899, 41),
@@ -1115,119 +1129,119 @@ pub(super) const STYLE_RANGES: &[StyleRange] = &[
     non_base_range(2786, 2787, 42),
     base_range(2788, 2809, 42),
     non_base_range(2810, 2815, 42),
-    base_range(2816, 2816, 86),
-    non_base_range(2817, 2818, 86),
-    base_range(2819, 2875, 86),
-    non_base_range(2876, 2876, 86),
-    base_range(2877, 2878, 86),
-    non_base_range(2879, 2879, 86),
-    base_range(2880, 2880, 86),
-    non_base_range(2881, 2884, 86),
-    base_range(2885, 2892, 86),
-    non_base_range(2893, 2902, 86),
-    base_range(2903, 2913, 86),
-    non_base_range(2914, 2915, 86),
-    base_range(2916, 2943, 86),
-    base_range(2944, 2945, 79),
-    non_base_range(2946, 2946, 79),
-    base_range(2947, 3007, 79),
-    non_base_range(3008, 3010, 79),
-    base_range(3011, 3020, 79),
-    non_base_range(3021, 3021, 79),
-    base_range(3022, 3071, 79),
-    non_base_range(3072, 3072, 81),
-    base_range(3073, 3075, 81),
-    non_base_range(3076, 3076, 81),
-    base_range(3077, 3133, 81),
-    non_base_range(3134, 3136, 81),
-    base_range(3137, 3141, 81),
-    non_base_range(3142, 3158, 81),
-    base_range(3159, 3169, 81),
-    non_base_range(3170, 3171, 81),
-    base_range(3172, 3199, 81),
-    base_range(3200, 3200, 48),
-    non_base_range(3201, 3201, 48),
-    base_range(3202, 3259, 48),
-    non_base_range(3260, 3260, 48),
-    base_range(3261, 3262, 48),
-    non_base_range(3263, 3263, 48),
-    base_range(3264, 3269, 48),
-    non_base_range(3270, 3270, 48),
-    base_range(3271, 3275, 48),
-    non_base_range(3276, 3277, 48),
-    base_range(3278, 3297, 48),
-    non_base_range(3298, 3299, 48),
-    base_range(3300, 3327, 48),
-    non_base_range(3328, 3329, 64),
-    base_range(3330, 3386, 64),
-    non_base_range(3387, 3388, 64),
-    base_range(3389, 3404, 64),
-    non_base_range(3405, 3406, 64),
-    base_range(3407, 3425, 64),
-    non_base_range(3426, 3427, 64),
-    base_range(3428, 3455, 64),
-    base_range(3456, 3529, 77),
-    non_base_range(3530, 3530, 77),
-    base_range(3531, 3537, 77),
-    non_base_range(3538, 3542, 77),
-    base_range(3543, 3583, 77),
-    base_range(3584, 3632, 83),
-    non_base_range(3633, 3633, 83),
-    base_range(3634, 3635, 83),
-    non_base_range(3636, 3642, 83),
-    base_range(3643, 3654, 83),
-    non_base_range(3655, 3662, 83),
-    base_range(3663, 3711, 83),
-    base_range(3712, 3760, 49),
-    non_base_range(3761, 3761, 49),
-    base_range(3762, 3763, 49),
-    non_base_range(3764, 3772, 49),
-    base_range(3773, 3783, 49),
-    non_base_range(3784, 3789, 49),
-    base_range(3790, 3839, 49),
-    base_range(3840, 3863, 88),
-    non_base_range(3864, 3865, 88),
-    base_range(3866, 3892, 88),
-    non_base_range(3893, 3893, 88),
-    base_range(3894, 3894, 88),
-    non_base_range(3895, 3895, 88),
-    base_range(3896, 3896, 88),
-    non_base_range(3897, 3897, 88),
-    base_range(3898, 3901, 88),
-    non_base_range(3902, 3903, 88),
-    base_range(3904, 3952, 88),
-    non_base_range(3953, 3966, 88),
-    base_range(3967, 3967, 88),
-    non_base_range(3968, 3972, 88),
-    base_range(3973, 3973, 88),
-    non_base_range(3974, 3975, 88),
-    base_range(3976, 3980, 88),
-    non_base_range(3981, 4028, 88),
-    base_range(4029, 4095, 88),
-    base_range(4096, 4140, 67),
-    non_base_range(4141, 4144, 67),
-    base_range(4145, 4145, 67),
-    non_base_range(4146, 4151, 67),
-    base_range(4152, 4153, 67),
-    non_base_range(4154, 4154, 67),
-    base_range(4155, 4156, 67),
-    non_base_range(4157, 4158, 67),
-    base_range(4159, 4183, 67),
-    non_base_range(4184, 4185, 67),
-    base_range(4186, 4189, 67),
-    non_base_range(4190, 4192, 67),
-    base_range(4193, 4208, 67),
-    non_base_range(4209, 4212, 67),
-    base_range(4213, 4225, 67),
-    non_base_range(4226, 4226, 67),
-    base_range(4227, 4228, 67),
-    non_base_range(4229, 4230, 67),
-    base_range(4231, 4236, 67),
-    non_base_range(4237, 4237, 67),
-    base_range(4238, 4255, 67),
+    base_range(2816, 2816, 87),
+    non_base_range(2817, 2818, 87),
+    base_range(2819, 2875, 87),
+    non_base_range(2876, 2876, 87),
+    base_range(2877, 2878, 87),
+    non_base_range(2879, 2879, 87),
+    base_range(2880, 2880, 87),
+    non_base_range(2881, 2884, 87),
+    base_range(2885, 2892, 87),
+    non_base_range(2893, 2902, 87),
+    base_range(2903, 2913, 87),
+    non_base_range(2914, 2915, 87),
+    base_range(2916, 2943, 87),
+    base_range(2944, 2945, 80),
+    non_base_range(2946, 2946, 80),
+    base_range(2947, 3007, 80),
+    non_base_range(3008, 3010, 80),
+    base_range(3011, 3020, 80),
+    non_base_range(3021, 3021, 80),
+    base_range(3022, 3071, 80),
+    non_base_range(3072, 3072, 82),
+    base_range(3073, 3075, 82),
+    non_base_range(3076, 3076, 82),
+    base_range(3077, 3133, 82),
+    non_base_range(3134, 3136, 82),
+    base_range(3137, 3141, 82),
+    non_base_range(3142, 3158, 82),
+    base_range(3159, 3169, 82),
+    non_base_range(3170, 3171, 82),
+    base_range(3172, 3199, 82),
+    base_range(3200, 3200, 49),
+    non_base_range(3201, 3201, 49),
+    base_range(3202, 3259, 49),
+    non_base_range(3260, 3260, 49),
+    base_range(3261, 3262, 49),
+    non_base_range(3263, 3263, 49),
+    base_range(3264, 3269, 49),
+    non_base_range(3270, 3270, 49),
+    base_range(3271, 3275, 49),
+    non_base_range(3276, 3277, 49),
+    base_range(3278, 3297, 49),
+    non_base_range(3298, 3299, 49),
+    base_range(3300, 3327, 49),
+    non_base_range(3328, 3329, 65),
+    base_range(3330, 3386, 65),
+    non_base_range(3387, 3388, 65),
+    base_range(3389, 3404, 65),
+    non_base_range(3405, 3406, 65),
+    base_range(3407, 3425, 65),
+    non_base_range(3426, 3427, 65),
+    base_range(3428, 3455, 65),
+    base_range(3456, 3529, 78),
+    non_base_range(3530, 3530, 78),
+    base_range(3531, 3537, 78),
+    non_base_range(3538, 3542, 78),
+    base_range(3543, 3583, 78),
+    base_range(3584, 3632, 84),
+    non_base_range(3633, 3633, 84),
+    base_range(3634, 3635, 84),
+    non_base_range(3636, 3642, 84),
+    base_range(3643, 3654, 84),
+    non_base_range(3655, 3662, 84),
+    base_range(3663, 3711, 84),
+    base_range(3712, 3760, 50),
+    non_base_range(3761, 3761, 50),
+    base_range(3762, 3763, 50),
+    non_base_range(3764, 3772, 50),
+    base_range(3773, 3783, 50),
+    non_base_range(3784, 3789, 50),
+    base_range(3790, 3839, 50),
+    base_range(3840, 3863, 89),
+    non_base_range(3864, 3865, 89),
+    base_range(3866, 3892, 89),
+    non_base_range(3893, 3893, 89),
+    base_range(3894, 3894, 89),
+    non_base_range(3895, 3895, 89),
+    base_range(3896, 3896, 89),
+    non_base_range(3897, 3897, 89),
+    base_range(3898, 3901, 89),
+    non_base_range(3902, 3903, 89),
+    base_range(3904, 3952, 89),
+    non_base_range(3953, 3966, 89),
+    base_range(3967, 3967, 89),
+    non_base_range(3968, 3972, 89),
+    base_range(3973, 3973, 89),
+    non_base_range(3974, 3975, 89),
+    base_range(3976, 3980, 89),
+    non_base_range(3981, 4028, 89),
+    base_range(4029, 4095, 89),
+    base_range(4096, 4140, 68),
+    non_base_range(4141, 4144, 68),
+    base_range(4145, 4145, 68),
+    non_base_range(4146, 4151, 68),
+    base_range(4152, 4153, 68),
+    non_base_range(4154, 4154, 68),
+    base_range(4155, 4156, 68),
+    non_base_range(4157, 4158, 68),
+    base_range(4159, 4183, 68),
+    non_base_range(4184, 4185, 68),
+    base_range(4186, 4189, 68),
+    non_base_range(4190, 4192, 68),
+    base_range(4193, 4208, 68),
+    non_base_range(4209, 4212, 68),
+    base_range(4213, 4225, 68),
+    non_base_range(4226, 4226, 68),
+    base_range(4227, 4228, 68),
+    non_base_range(4229, 4230, 68),
+    base_range(4231, 4236, 68),
+    non_base_range(4237, 4237, 68),
+    base_range(4238, 4255, 68),
     base_range(4256, 4301, 28),
     base_range(4304, 4351, 27),
-    base_range(4352, 4607, 89),
+    base_range(4352, 4607, 90),
     base_range(4608, 4956, 26),
     non_base_range(4957, 4959, 26),
     base_range(4960, 5023, 26),
@@ -1236,47 +1250,47 @@ pub(super) const STYLE_RANGES: &[StyleRange] = &[
     base_range(5952, 5969, 6),
     non_base_range(5970, 5971, 6),
     base_range(5972, 5983, 6),
-    base_range(6016, 6070, 46),
-    non_base_range(6071, 6077, 46),
-    base_range(6078, 6085, 46),
-    non_base_range(6086, 6086, 46),
-    base_range(6087, 6088, 46),
-    non_base_range(6089, 6099, 46),
-    base_range(6100, 6108, 46),
-    non_base_range(6109, 6109, 46),
-    base_range(6110, 6143, 46),
-    base_range(6144, 6276, 66),
-    non_base_range(6277, 6278, 66),
-    base_range(6279, 6312, 66),
-    non_base_range(6313, 6313, 66),
-    base_range(6314, 6319, 66),
+    base_range(6016, 6070, 47),
+    non_base_range(6071, 6077, 47),
+    base_range(6078, 6085, 47),
+    non_base_range(6086, 6086, 47),
+    base_range(6087, 6088, 47),
+    non_base_range(6089, 6099, 47),
+    base_range(6100, 6108, 47),
+    non_base_range(6109, 6109, 47),
+    base_range(6110, 6143, 47),
+    base_range(6144, 6276, 67),
+    non_base_range(6277, 6278, 67),
+    base_range(6279, 6312, 67),
+    non_base_range(6313, 6313, 67),
+    base_range(6314, 6319, 67),
     base_range(6320, 6399, 8),
-    base_range(6400, 6431, 85),
-    non_base_range(6432, 6434, 85),
-    base_range(6435, 6438, 85),
-    non_base_range(6439, 6452, 85),
-    base_range(6453, 6454, 85),
-    non_base_range(6455, 6459, 85),
-    base_range(6460, 6479, 85),
-    base_range(6624, 6655, 47),
-    non_base_range(6832, 6846, 60),
-    non_base_range(7040, 7042, 78),
-    base_range(7043, 7072, 78),
-    non_base_range(7073, 7085, 78),
-    base_range(7086, 7103, 78),
-    base_range(7248, 7295, 70),
+    base_range(6400, 6431, 86),
+    non_base_range(6432, 6434, 86),
+    base_range(6435, 6438, 86),
+    non_base_range(6439, 6452, 86),
+    base_range(6453, 6454, 86),
+    non_base_range(6455, 6459, 86),
+    base_range(6460, 6479, 86),
+    base_range(6624, 6655, 48),
+    non_base_range(6832, 6846, 61),
+    non_base_range(7040, 7042, 79),
+    base_range(7043, 7072, 79),
+    non_base_range(7073, 7085, 79),
+    base_range(7086, 7103, 79),
+    base_range(7248, 7295, 71),
     base_range(7296, 7311, 23),
     base_range(7312, 7359, 27),
-    base_range(7360, 7375, 78),
-    base_range(7424, 7467, 60),
-    base_range(7468, 7521, 62),
-    base_range(7522, 7530, 61),
-    base_range(7531, 7543, 60),
-    base_range(7544, 7544, 62),
-    base_range(7545, 7578, 60),
-    base_range(7579, 7615, 62),
-    non_base_range(7616, 7679, 60),
-    base_range(7680, 7935, 60),
+    base_range(7360, 7375, 79),
+    base_range(7424, 7467, 61),
+    base_range(7468, 7521, 63),
+    base_range(7522, 7530, 62),
+    base_range(7531, 7543, 61),
+    base_range(7544, 7544, 63),
+    base_range(7545, 7578, 61),
+    base_range(7579, 7615, 63),
+    non_base_range(7616, 7679, 61),
+    base_range(7680, 7935, 61),
     base_range(7936, 8124, 41),
     non_base_range(8125, 8129, 41),
     base_range(8130, 8140, 41),
@@ -1288,39 +1302,39 @@ pub(super) const STYLE_RANGES: &[StyleRange] = &[
     base_range(8176, 8188, 41),
     non_base_range(8189, 8190, 41),
     base_range(8191, 8191, 41),
-    base_range(8192, 8214, 60),
-    non_base_range(8215, 8215, 60),
-    base_range(8216, 8253, 60),
-    non_base_range(8254, 8254, 60),
-    base_range(8255, 8303, 60),
-    base_range(8304, 8319, 62),
-    base_range(8320, 8348, 61),
-    base_range(8352, 8376, 60),
+    base_range(8192, 8214, 61),
+    non_base_range(8215, 8215, 61),
+    base_range(8216, 8253, 61),
+    non_base_range(8254, 8254, 61),
+    base_range(8255, 8303, 61),
+    base_range(8304, 8319, 63),
+    base_range(8320, 8348, 62),
+    base_range(8352, 8376, 61),
     base_range(8377, 8377, 24),
-    base_range(8378, 8399, 60),
-    base_range(8528, 8591, 60),
+    base_range(8378, 8399, 61),
+    base_range(8528, 8591, 61),
     base_range(11264, 11359, 29),
-    base_range(11360, 11387, 60),
-    base_range(11388, 11388, 61),
-    base_range(11389, 11389, 62),
-    base_range(11390, 11391, 60),
+    base_range(11360, 11387, 61),
+    base_range(11388, 11388, 62),
+    base_range(11389, 11389, 63),
+    base_range(11390, 11391, 61),
     base_range(11392, 11502, 11),
     non_base_range(11503, 11505, 11),
     base_range(11506, 11519, 11),
     base_range(11520, 11565, 28),
-    base_range(11568, 11647, 82),
+    base_range(11568, 11647, 83),
     base_range(11648, 11743, 26),
     non_base_range(11744, 11775, 23),
-    base_range(11776, 11903, 60),
-    base_range(11904, 12255, 89),
-    base_range(12272, 12329, 89),
-    non_base_range(12330, 12335, 89),
-    base_range(12336, 12687, 89),
-    non_base_range(12688, 12703, 89),
-    base_range(12704, 12799, 89),
-    base_range(13056, 40959, 89),
-    base_range(42192, 42239, 63),
-    base_range(42240, 42559, 84),
+    base_range(11776, 11903, 61),
+    base_range(11904, 12255, 90),
+    base_range(12272, 12329, 90),
+    non_base_range(12330, 12335, 90),
+    base_range(12336, 12687, 90),
+    non_base_range(12688, 12703, 90),
+    base_range(12704, 12799, 90),
+    base_range(13056, 40959, 90),
+    base_range(42192, 42239, 64),
+    base_range(42240, 42559, 85),
     base_range(42560, 42606, 23),
     non_base_range(42607, 42623, 23),
     base_range(42624, 42653, 23),
@@ -1328,59 +1342,59 @@ pub(super) const STYLE_RANGES: &[StyleRange] = &[
     base_range(42656, 42735, 4),
     non_base_range(42736, 42737, 4),
     base_range(42738, 42751, 4),
-    base_range(42784, 42863, 60),
-    base_range(42864, 42864, 62),
-    base_range(42865, 42887, 60),
-    non_base_range(42888, 42888, 60),
-    base_range(42889, 42999, 60),
-    base_range(43000, 43001, 62),
-    non_base_range(43002, 43002, 60),
-    base_range(43003, 43007, 60),
-    base_range(43008, 43009, 87),
-    non_base_range(43010, 43010, 87),
-    base_range(43011, 43013, 87),
-    non_base_range(43014, 43014, 87),
-    base_range(43015, 43018, 87),
-    non_base_range(43019, 43019, 87),
-    base_range(43020, 43044, 87),
-    non_base_range(43045, 43046, 87),
-    base_range(43047, 43055, 87),
-    non_base_range(43136, 43137, 75),
-    base_range(43138, 43187, 75),
-    non_base_range(43188, 43205, 75),
-    base_range(43206, 43231, 75),
+    base_range(42784, 42863, 61),
+    base_range(42864, 42864, 63),
+    base_range(42865, 42887, 61),
+    non_base_range(42888, 42888, 61),
+    base_range(42889, 42999, 61),
+    base_range(43000, 43001, 63),
+    non_base_range(43002, 43002, 61),
+    base_range(43003, 43007, 61),
+    base_range(43008, 43009, 88),
+    non_base_range(43010, 43010, 88),
+    base_range(43011, 43013, 88),
+    non_base_range(43014, 43014, 88),
+    base_range(43015, 43018, 88),
+    non_base_range(43019, 43019, 88),
+    base_range(43020, 43044, 88),
+    non_base_range(43045, 43046, 88),
+    base_range(43047, 43055, 88),
+    non_base_range(43136, 43137, 76),
+    base_range(43138, 43187, 76),
+    non_base_range(43188, 43205, 76),
+    base_range(43206, 43231, 76),
     non_base_range(43232, 43249, 24),
     base_range(43250, 43262, 24),
     non_base_range(43263, 43263, 24),
-    base_range(43264, 43301, 45),
-    non_base_range(43302, 43309, 45),
-    base_range(43310, 43311, 45),
-    base_range(43360, 43391, 89),
-    base_range(43488, 43492, 67),
-    non_base_range(43493, 43493, 67),
-    base_range(43494, 43519, 67),
-    base_range(43616, 43643, 67),
-    non_base_range(43644, 43644, 67),
-    base_range(43645, 43647, 67),
-    base_range(43648, 43695, 80),
-    non_base_range(43696, 43696, 80),
-    base_range(43697, 43697, 80),
-    non_base_range(43698, 43700, 80),
-    base_range(43701, 43702, 80),
-    non_base_range(43703, 43704, 80),
-    base_range(43705, 43709, 80),
-    non_base_range(43710, 43711, 80),
-    base_range(43712, 43712, 80),
-    non_base_range(43713, 43713, 80),
-    base_range(43714, 43743, 80),
+    base_range(43264, 43301, 46),
+    non_base_range(43302, 43309, 46),
+    base_range(43310, 43311, 46),
+    base_range(43360, 43391, 90),
+    base_range(43488, 43492, 68),
+    non_base_range(43493, 43493, 68),
+    base_range(43494, 43519, 68),
+    base_range(43616, 43643, 68),
+    non_base_range(43644, 43644, 68),
+    base_range(43645, 43647, 68),
+    base_range(43648, 43695, 81),
+    non_base_range(43696, 43696, 81),
+    base_range(43697, 43697, 81),
+    non_base_range(43698, 43700, 81),
+    base_range(43701, 43702, 81),
+    non_base_range(43703, 43704, 81),
+    base_range(43705, 43709, 81),
+    non_base_range(43710, 43711, 81),
+    base_range(43712, 43712, 81),
+    non_base_range(43713, 43713, 81),
+    base_range(43714, 43743, 81),
     base_range(43776, 43823, 26),
-    base_range(43824, 43867, 60),
-    base_range(43868, 43871, 62),
-    base_range(43872, 43887, 60),
+    base_range(43824, 43867, 61),
+    base_range(43868, 43871, 63),
+    base_range(43872, 43887, 61),
     base_range(43888, 43967, 10),
-    base_range(44032, 55295, 89),
-    base_range(63744, 64255, 89),
-    base_range(64256, 64262, 60),
+    base_range(44032, 55295, 90),
+    base_range(63744, 64255, 90),
+    base_range(64256, 64262, 61),
     base_range(64275, 64279, 2),
     base_range(64285, 64285, 44),
     non_base_range(64286, 64286, 44),
@@ -1388,8 +1402,8 @@ pub(super) const STYLE_RANGES: &[StyleRange] = &[
     base_range(64336, 64433, 1),
     non_base_range(64434, 64449, 1),
     base_range(64450, 65023, 1),
-    base_range(65040, 65055, 89),
-    base_range(65072, 65103, 89),
+    base_range(65040, 65055, 90),
+    base_range(65072, 65103, 90),
     non_base_range(65136, 65136, 1),
     base_range(65137, 65137, 1),
     non_base_range(65138, 65138, 1),
@@ -1406,35 +1420,36 @@ pub(super) const STYLE_RANGES: &[StyleRange] = &[
     base_range(65149, 65149, 1),
     non_base_range(65150, 65150, 1),
     base_range(65151, 65279, 1),
-    base_range(65280, 65519, 89),
+    base_range(65280, 65519, 90),
     base_range(66208, 66271, 9),
     base_range(66352, 66383, 30),
     base_range(66560, 66639, 25),
-    base_range(66640, 66687, 76),
-    base_range(66688, 66735, 73),
-    base_range(66736, 66815, 72),
+    base_range(66640, 66687, 77),
+    base_range(66688, 66735, 74),
+    base_range(66736, 66815, 73),
     base_range(67584, 67647, 12),
     base_range(68352, 68408, 3),
     non_base_range(68409, 68415, 3),
-    base_range(68608, 68687, 71),
-    base_range(68864, 68927, 74),
+    base_range(68608, 68687, 72),
+    base_range(68864, 68927, 75),
     non_base_range(69888, 69890, 7),
     base_range(69891, 69926, 7),
     non_base_range(69927, 69940, 7),
     base_range(69941, 69957, 7),
     non_base_range(69958, 69958, 7),
     base_range(69959, 69967, 7),
-    base_range(71264, 71295, 66),
-    base_range(93760, 93855, 65),
-    base_range(110592, 110895, 89),
-    base_range(119552, 119647, 89),
-    base_range(119808, 120831, 60),
+    base_range(71264, 71295, 67),
+    base_range(93760, 93855, 66),
+    base_range(110592, 110895, 90),
+    base_range(119552, 119647, 90),
+    base_range(119808, 120831, 61),
     non_base_range(122880, 122927, 29),
+    base_range(123136, 123215, 45),
     non_base_range(125184, 125258, 0),
     base_range(125259, 125279, 0),
     base_range(126464, 126719, 1),
-    base_range(131072, 173791, 89),
-    base_range(173824, 191471, 89),
-    base_range(194560, 195103, 89),
+    base_range(131072, 173791, 90),
+    base_range(173824, 191471, 90),
+    base_range(194560, 195103, 90),
 ];
 

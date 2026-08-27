@@ -18,10 +18,10 @@
 use super::bitpage::BitPage;
 use super::bitpage::RangeIter;
 use super::bitpage::PAGE_BITS;
+use alloc::vec::Vec;
 use core::sync::atomic::AtomicUsize;
 use std::cmp::Ordering;
 use std::hash::Hash;
-
 use std::ops::RangeInclusive;
 
 // log_2(PAGE_BITS)

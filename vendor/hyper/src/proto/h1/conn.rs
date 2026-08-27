@@ -6,7 +6,7 @@ use std::marker::{PhantomData, Unpin};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 #[cfg(feature = "server")]
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::rt::{Read, Write};
 use bytes::{Buf, Bytes};
@@ -218,7 +218,7 @@ where
         #[cfg(feature = "server")]
         if !self.state.h1_header_read_timeout_running {
             if let Some(h1_header_read_timeout) = self.state.h1_header_read_timeout {
-                let deadline = Instant::now() + h1_header_read_timeout;
+                let deadline = self.state.timer.now() + h1_header_read_timeout;
                 self.state.h1_header_read_timeout_running = true;
                 match self.state.h1_header_read_timeout_fut {
                     Some(ref mut h1_header_read_timeout_fut) => {
@@ -393,7 +393,8 @@ where
                             };
                             (reading, Poll::Ready(maybe_frame))
                         } else if frame.is_trailers() {
-                            (Reading::Closed, Poll::Ready(Some(Ok(frame))))
+                            debug!("incoming body completed with trailers");
+                            (Reading::KeepAlive, Poll::Ready(Some(Ok(frame))))
                         } else {
                             trace!("discarding unknown frame");
                             (Reading::Closed, Poll::Ready(None))
@@ -528,7 +529,7 @@ where
                 return
             }
             Reading::Init => (),
-        };
+        }
 
         match self.state.writing {
             Writing::Body(..) => return,
@@ -544,7 +545,7 @@ where
                             if self.state.is_idle() {
                                 self.state.close();
                             } else {
-                                self.close_read()
+                                self.close_read();
                             }
                             return;
                         }
@@ -832,7 +833,7 @@ where
     }
 
     pub(crate) fn poll_shutdown(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        match ready!(Pin::new(self.io.io_mut()).poll_shutdown(cx)) {
+        match ready!(self.io.poll_shutdown(cx)) {
             Ok(()) => {
                 trace!("shut down IO complete");
                 Poll::Ready(Ok(()))
@@ -910,7 +911,7 @@ impl<I: Unpin, B, T> Unpin for Conn<I, B, T> {}
 
 struct State {
     allow_half_close: bool,
-    /// Re-usable HeaderMap to reduce allocating new ones.
+    /// Re-usable `HeaderMap` to reduce allocating new ones.
     cached_headers: Option<HeaderMap>,
     /// If an error occurs when there wasn't a direct way to return it
     /// back to the user, this is set.
@@ -947,15 +948,15 @@ struct State {
     /// Set to true when the Dispatcher should poll read operations
     /// again. See the `maybe_notify` method for more.
     notify_read: bool,
-    /// State of allowed reads
+    /// State of allowed reads.
     reading: Reading,
-    /// State of allowed writes
+    /// State of allowed writes.
     writing: Writing,
     /// An expected pending HTTP upgrade.
     upgrade: Option<crate::upgrade::Pending>,
-    /// Either HTTP/1.0 or 1.1 connection
+    /// Either HTTP/1.0 or 1.1 connection.
     version: Version,
-    /// Flag to track if trailer fields are allowed to be sent
+    /// Flag to track if trailer fields are allowed to be sent.
     allow_trailer_fields: bool,
 }
 
@@ -1083,14 +1084,14 @@ impl State {
                 }
             }
             (&Reading::Closed, &Writing::KeepAlive) | (&Reading::KeepAlive, &Writing::Closed) => {
-                self.close()
+                self.close();
             }
             _ => (),
         }
     }
 
     fn disable_keep_alive(&mut self) {
-        self.keep_alive.disable()
+        self.keep_alive.disable();
     }
 
     fn busy(&mut self) {

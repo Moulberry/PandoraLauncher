@@ -17,12 +17,11 @@ this module and use fallback implementation instead.
 Refs:
 - RISC-V Instruction Set Manual
   "Zacas" Extension for Atomic Compare-and-Swap (CAS) Instructions
-  https://github.com/riscv/riscv-isa-manual/blob/riscv-isa-release-8b9dc50-2024-08-30/src/zacas.adoc
+  https://docs.riscv.org/reference/isa/v20260120/unpriv/zacas.html
 - RISC-V Atomics ABI Specification
-  https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/draft-20240829-13bfa9f54634cb60d86b9b333e109f077805b4b3/riscv-atomic.adoc
+  https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/draft-20250812-301374e92976e298e676e7129a6212926b2299ce/riscv-atomic.adoc
 
-Generated asm:
-- riscv32imac (+zacas) https://godbolt.org/z/9bTdfhKre
+See tests/asm-test/asm/portable-atomic for generated assembly.
 */
 
 // TODO: merge duplicated code with atomic128/riscv64.rs
@@ -43,6 +42,8 @@ mod detect;
 use core::arch::asm;
 use core::sync::atomic::Ordering;
 
+#[cfg(portable_atomic_no_strict_provenance)]
+use crate::utils::ptr::PtrExt as _;
 use crate::utils::{Pair, U64};
 
 macro_rules! debug_assert_zacas {
@@ -57,7 +58,7 @@ macro_rules! debug_assert_zacas {
 // `.option arch, +zacas` directive requires LLVM 20, so we use .4byte directive for old LLVM.
 // Note that `.insn <value>` directive requires LLVM 19.
 // https://github.com/llvm/llvm-project/commit/2a086dce691e3cc34a2fc27f4fb255bb2cbbfac9
-// https://github.com/riscv-non-isa/riscv-asm-manual/blob/ad0de8c004e29c9a7ac33cfd054f4d4f9392f2fb/src/asm-manual.adoc#arch
+// https://github.com/riscv-non-isa/riscv-asm-manual/blob/v0.0.1/src/asm-manual.adoc#arch
 #[cfg(not(portable_atomic_pre_llvm_20))]
 macro_rules! start_zacas {
     () => {
@@ -159,7 +160,7 @@ unsafe fn atomic_load(src: *mut u64, order: Ordering) -> u64 {
 }
 #[inline]
 unsafe fn atomic_load_zacas(src: *mut u64, order: Ordering) -> u64 {
-    debug_assert!(src as usize % 8 == 0);
+    debug_assert!(src.addr() % 8 == 0);
     debug_assert_zacas!();
     let (out_lo, out_hi);
 
@@ -299,7 +300,7 @@ unsafe fn atomic_compare_exchange_zacas(
     success: Ordering,
     failure: Ordering,
 ) -> (u64, bool) {
-    debug_assert!(dst as usize % 8 == 0);
+    debug_assert!(dst.addr() % 8 == 0);
     debug_assert_zacas!();
     let order = crate::utils::upgrade_success_ordering(success, failure);
     let old = U64 { whole: old };
@@ -612,7 +613,6 @@ const IS_ALWAYS_LOCK_FREE: bool =
 atomic64!(AtomicI64, i64, atomic_max, atomic_min);
 atomic64!(AtomicU64, u64, atomic_umax, atomic_umin);
 
-#[allow(clippy::undocumented_unsafe_blocks, clippy::wildcard_imports)]
 #[cfg(test)]
 mod tests {
     use super::*;

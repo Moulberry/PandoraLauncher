@@ -321,19 +321,19 @@ pub(crate) fn decompress(
 
             match s.smallDecompress {
                 DecompressMode::Small => {
-                    // SAFETY: we assume allocation is safe
                     let ll16_len = usize::from(s.blockSize100k) * 100000;
                     let Some(ll16) = DSlice::alloc(allocator, ll16_len) else {
                         error!(BZ_MEM_ERROR);
                     };
 
-                    // SAFETY: we assume allocation is safe
+                    // Assign here so that error! deallocates it when the allocation fails.
+                    s.ll16 = ll16;
+
                     let ll4_len = (1 + usize::from(s.blockSize100k) * 100000) >> 1;
                     let Some(ll4) = DSlice::alloc(allocator, ll4_len) else {
                         error!(BZ_MEM_ERROR);
                     };
 
-                    s.ll16 = ll16;
                     s.ll4 = ll4;
                 }
                 DecompressMode::Fast => {

@@ -1,6 +1,6 @@
 # blocking
 
-[![Build](https://github.com/smol-rs/blocking/workflows/Build%20and%20test/badge.svg)](
+[![Build](https://github.com/smol-rs/blocking/actions/workflows/ci.yml/badge.svg)](
 https://github.com/smol-rs/blocking/actions)
 [![License](https://img.shields.io/badge/license-Apache--2.0_OR_MIT-blue.svg)](
 https://github.com/smol-rs/blocking)
@@ -26,8 +26,8 @@ next job or shuts down after a certain timeout.
 The default number of threads (set to 500) can be altered by setting BLOCKING_MAX_THREADS environment variable with value between 1 and 10000.
 
 [IOCP]: https://en.wikipedia.org/wiki/Input/output_completion_port
-[AIO]: http://man7.org/linux/man-pages/man2/io_submit.2.html
-[io_uring]: https://lwn.net/Articles/776703
+[AIO]: https://man7.org/linux/man-pages/man2/io_submit.2.html
+[io_uring]: https://lwn.net/Articles/776703/
 
 ## Examples
 
@@ -81,8 +81,8 @@ let out = unblock(|| Command::new("dir").output()).await?;
 
 Licensed under either of
 
- * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+ * Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or https://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or https://opensource.org/license/mit)
 
 at your option.
 

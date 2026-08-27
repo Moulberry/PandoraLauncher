@@ -9,9 +9,9 @@ use core::{
 };
 
 use super::RangeError;
-use crate::codepointinvlist::utils::deconstruct_range;
 use crate::codepointinvlist::CodePointInversionList;
 use crate::codepointinvlist::CodePointInversionListBuilder;
+use crate::codepointinvlist::utils::deconstruct_range;
 use potential_utf::PotentialCodePoint;
 use zerovec::ZeroVec;
 
@@ -25,7 +25,7 @@ fn try_from_range<'data>(
             PotentialCodePoint::from_u24(till),
         ];
         let inv_list: ZeroVec<PotentialCodePoint> = ZeroVec::alloc_from_slice(&set);
-        #[allow(clippy::unwrap_used)] // valid
+        #[expect(clippy::unwrap_used)] // valid
         Ok(CodePointInversionList::try_from_inversion_list(inv_list).unwrap())
     } else {
         Err(RangeError(from, till))

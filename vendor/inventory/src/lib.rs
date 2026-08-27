@@ -147,12 +147,12 @@
 //! }
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/inventory/0.3.21")]
+#![doc(html_root_url = "https://docs.rs/inventory/0.3.24")]
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(
     clippy::doc_markdown,
-    clippy::empty_enum,
+    clippy::empty_enums,
     clippy::expl_impl_clone_on_copy,
     clippy::let_underscore_untyped,
     clippy::let_unit_value,
@@ -160,10 +160,6 @@
     clippy::new_without_default,
     clippy::semicolon_if_nothing_returned, // https://github.com/rust-lang/rust-clippy/issues/7324
 )]
-
-// Not public API.
-#[doc(hidden)]
-pub extern crate core;
 
 use core::cell::UnsafeCell;
 use core::marker::PhantomData;
@@ -255,7 +251,7 @@ impl Registry {
             unsafe {
                 *new.next.get() = head.as_ref();
             }
-            let new_ptr = new as *const Node as *mut Node;
+            let new_ptr = ptr::addr_of!(*new).cast_mut();
             match self
                 .head
                 .compare_exchange(head, new_ptr, Ordering::Release, Ordering::Relaxed)
@@ -369,7 +365,7 @@ const _: () = {
         fn next(&mut self) -> Option<Self::Item> {
             let node = self.node?;
             unsafe {
-                let value_ptr = (node.value as *const dyn ErasedNode).cast::<T>();
+                let value_ptr = ptr::addr_of!(*node.value).cast::<T>();
                 self.node = *node.next.get();
                 Some(&*value_ptr)
             }
@@ -488,11 +484,25 @@ macro_rules! submit {
 }
 
 // Not public API.
-#[cfg(target_family = "wasm")]
 #[doc(hidden)]
 pub mod __private {
     #[doc(hidden)]
+    pub use core::option::Option;
+
+    #[cfg(target_family = "wasm")]
+    #[doc(hidden)]
     pub use rustversion::attr;
+
+    // Type alias to sidestep clippy::disallowed_types in downstream projects
+    // that use Loom.
+    #[doc(hidden)]
+    pub type UnsafeCell<T> = core::cell::UnsafeCell<T>;
+
+    // Type alias to sidestep clippy::disallowed_types in downstream projects
+    // that use Loom.
+    #[cfg(target_family = "wasm")]
+    #[doc(hidden)]
+    pub type AtomicBool = core::sync::atomic::AtomicBool;
 }
 
 // Not public API.
@@ -504,9 +514,9 @@ macro_rules! __do_submit {
         const _: () = {
             static __INVENTORY: $crate::Node = $crate::Node {
                 value: &{ $($value)* },
-                next: $crate::core::cell::UnsafeCell::new($crate::core::option::Option::None),
+                next: $crate::__private::UnsafeCell::new($crate::__private::Option::None),
                 #[cfg(target_family = "wasm")]
-                initialized: $crate::core::sync::atomic::AtomicBool::new(false),
+                initialized: $crate::__private::AtomicBool::new(false),
             };
 
             #[cfg_attr(any(target_os = "linux", target_os = "android"), link_section = ".text.startup")]
@@ -532,7 +542,9 @@ macro_rules! __do_submit {
                         target_os = "haiku",
                         target_os = "illumos",
                         target_os = "netbsd",
+                        target_os = "nto",
                         target_os = "openbsd",
+                        target_os = "vxworks",
                         target_os = "none",
                     )
                 ),

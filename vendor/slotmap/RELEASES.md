@@ -1,3 +1,25 @@
+Version 1.1.1
+=============
+
+  - Added `as_slices` and `as_mut_slices` to `DenseSlotMap`. The other methods
+    added in 1.1.0 (`keys_as_slice`, `values_as_slice` and
+    `values_as_mut_slice`) will likely be removed in 2.0.
+
+Version 1.1.0
+=============
+
+ - Bumped MSRV to 1.58.
+ - Fixed memory leak in `clone_from`.
+ - Added `keys_as_slice`, `values_as_slice`, and `values_as_mut_slice` to
+   `DenseSlotMap`.
+ - Ensured that `is_null()` keys print as `null` in their `Debug` representation.
+ - Made `KeyData::new` and `KeyData::from_ffi` const.
+ - Resolved a Miri error in `get_disjoint_mut` under the Stacked Borrows model.
+ - Added `detach` and `reattach` methods to `SlotMap` and `DenseSlotMap` which
+   let you temporarily remove key/value pairs from the slot map before
+   adding them back.
+ - Deprecated `HopSlotMap`, preparing for removal in 2.0.
+
 Version 1.0.7
 =============
 

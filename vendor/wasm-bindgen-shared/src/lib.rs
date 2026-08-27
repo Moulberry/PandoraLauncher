@@ -13,7 +13,7 @@ pub mod tys;
 // This gets changed whenever our schema changes.
 // At this time versions of wasm-bindgen and wasm-bindgen-cli are required to have the exact same
 // SCHEMA_VERSION in order to work together.
-pub const SCHEMA_VERSION: &str = "0.2.119";
+pub const SCHEMA_VERSION: &str = "0.2.122";
 
 #[macro_export]
 macro_rules! shared_api {
@@ -61,6 +61,7 @@ macro_rules! shared_api {
             String(ImportString<'a>),
             Type(ImportType<'a>),
             Enum(StringEnum<'a>),
+            DynamicUnion(DynamicUnion<'a>),
         }
 
         struct ImportFunction<'a> {
@@ -119,6 +120,7 @@ macro_rules! shared_api {
             variant_values: Vec<&'a str>,
             comments: Vec<&'a str>,
             generate_typescript: bool,
+            private: bool,
             js_namespace: Option<Vec<&'a str>>,
         }
 
@@ -127,6 +129,17 @@ macro_rules! shared_api {
             Public,
             Private,
         }
+
+        struct DynamicUnion<'a> {
+            name: &'a str,
+            variant_strings: Vec<&'a str>,
+            variant_type_cnt: u32,
+            comments: Vec<&'a str>,
+            generate_typescript: bool,
+            private: bool,
+            fallback: bool,
+        }
+
 
         struct Export<'a> {
             class: Option<&'a str>,
@@ -174,13 +187,15 @@ macro_rules! shared_api {
 
         struct Struct<'a> {
             name: &'a str,
-            rust_name: &'a str,
             fields: Vec<StructField<'a>>,
             comments: Vec<&'a str>,
             is_inspectable: bool,
             generate_typescript: bool,
             js_namespace: Option<Vec<&'a str>>,
             private: bool,
+            extends: Option<&'a str>,
+            extends_js_class: Option<&'a str>,
+            extends_js_namespace: Option<Vec<&'a str>>,
         }
 
         struct StructField<'a> {
@@ -242,8 +257,46 @@ pub fn unwrap_function(struct_name: &str) -> String {
     name
 }
 
+/// Convert a JS-side name into a form suitable as a wasm-side export
+/// symbol suffix. Plain identifier names pass through unchanged. The
+/// bracket form `"[Symbol.<ident>]"` collapses to `Symbol_<ident>`. Any
+/// other non-alphanumeric characters are replaced with `_` so that the
+/// result is always a valid C identifier suffix.
+fn export_name_suffix(name: &str) -> alloc::borrow::Cow<'_, str> {
+    if name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+        return alloc::borrow::Cow::Borrowed(name);
+    }
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+        } else if c == '.' || c == '[' || c == ']' {
+            // Bracket / dotted forms collapse cleanly; we represent
+            // `[Symbol.iterator]` as `Symbol_iterator` (the `[` and `]`
+            // drop, the `.` becomes `_`).
+            if c == '.' {
+                out.push('_');
+            }
+        } else {
+            out.push('_');
+        }
+    }
+    alloc::borrow::Cow::Owned(out)
+}
+
+/// Symbol name of the wasm export that upcasts a `*const WasmRefCell<Child>`
+/// pointer to a cloned `Rc<WasmRefCell<Parent>>` raw pointer. Used by the
+/// macro codegen and by cli-support's JS emission to call each other.
+pub fn upcast_function(child_struct: &str, parent_struct: &str) -> String {
+    let mut name = "__wbg_upcast_".to_string();
+    name.extend(child_struct.chars().flat_map(|s| s.to_lowercase()));
+    name.push_str("_to_");
+    name.extend(parent_struct.chars().flat_map(|s| s.to_lowercase()));
+    name
+}
+
 pub fn free_function_export_name(function_name: &str) -> String {
-    function_name.to_string()
+    export_name_suffix(function_name).into_owned()
 }
 
 pub fn struct_function_export_name(struct_: &str, f: &str) -> String {
@@ -252,7 +305,7 @@ pub fn struct_function_export_name(struct_: &str, f: &str) -> String {
         .flat_map(|s| s.to_lowercase())
         .collect::<String>();
     name.push('_');
-    name.push_str(f);
+    name.push_str(&export_name_suffix(f));
     name
 }
 
@@ -260,7 +313,7 @@ pub fn struct_field_get(struct_: &str, f: &str) -> String {
     let mut name = String::from("__wbg_get_");
     name.extend(struct_.chars().flat_map(|s| s.to_lowercase()));
     name.push('_');
-    name.push_str(f);
+    name.push_str(&export_name_suffix(f));
     name
 }
 
@@ -268,7 +321,15 @@ pub fn struct_field_set(struct_: &str, f: &str) -> String {
     let mut name = String::from("__wbg_set_");
     name.extend(struct_.chars().flat_map(|s| s.to_lowercase()));
     name.push('_');
-    name.push_str(f);
+    name.push_str(&export_name_suffix(f));
+    name
+}
+
+pub fn dynamic_union_variant(union_name: &str, variant_idx: u32) -> String {
+    let mut name = String::from("__wbg_dynamic_union_");
+    name.extend(union_name.chars().flat_map(|s| s.to_lowercase()));
+    name.push('_');
+    name.push_str(&variant_idx.to_string());
     name
 }
 

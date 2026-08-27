@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
+edition = "2024"
 rust-version = "1.85"
 name = "accesskit_unix"
-version = "0.21.0"
+version = "0.21.1"
 authors = ["The AccessKit contributors"]
 build = false
 autolib = false
@@ -31,6 +31,7 @@ keywords = [
 categories = ["gui"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/AccessKit/accesskit"
+resolver = "2"
 
 [features]
 async-io = [
@@ -53,7 +54,7 @@ path = "src/lib.rs"
 version = "0.24.0"
 
 [dependencies.accesskit_atspi_common]
-version = "0.18.0"
+version = "0.18.1"
 
 [dependencies.async-channel]
 version = "2.1.1"

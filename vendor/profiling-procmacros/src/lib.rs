@@ -14,7 +14,7 @@ pub fn function(
     let body = &function.block;
     let new_body: syn::Block = impl_block(body, &instrumented_function_name);
 
-    function.block = Box::new(new_body);
+    *function.block = new_body;
 
     (quote! {
         #function

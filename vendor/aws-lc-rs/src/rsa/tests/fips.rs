@@ -7,74 +7,13 @@ use crate::fips::{assert_fips_status_indicator, FipsServiceStatus};
 use crate::rsa::{KeyPair, KeySize, PrivateDecryptingKey};
 
 macro_rules! generate_key {
-    ($name:ident, KeyPair, $size:expr) => {
+    ($name:ident, $type:ident, $size:expr) => {
         #[test]
         fn $name() {
-            // Using the non-fips generator will not set the indicator
-            #[cfg(not(feature = "fips"))]
+            // Key generation should set the approved indicator
             let _ =
-                assert_fips_status_indicator!(KeyPair::generate($size), FipsServiceStatus::Unset)
+                assert_fips_status_indicator!($type::generate($size), FipsServiceStatus::Approved)
                     .expect("key generated");
-
-            // Using the fips generator should set the indicator
-            #[cfg(feature = "fips")]
-            let _ = assert_fips_status_indicator!(
-                KeyPair::generate($size),
-                FipsServiceStatus::Approved
-            )
-            .expect("key generated");
-        }
-    };
-    ($name:ident, PrivateDecryptingKey, $size:expr) => {
-        #[test]
-        fn $name() {
-            // Using the non-fips generator will not set the indicator
-            #[cfg(not(feature = "fips"))]
-            let _ = assert_fips_status_indicator!(
-                PrivateDecryptingKey::generate($size),
-                FipsServiceStatus::Unset
-            )
-            .expect("key generated");
-
-            // Using the fips generator should set the indicator
-            #[cfg(feature = "fips")]
-            let _ = assert_fips_status_indicator!(
-                PrivateDecryptingKey::generate($size),
-                FipsServiceStatus::Approved
-            )
-            .expect("key generated");
-        }
-    };
-    ($name:ident, KeyPair, $size:expr, false) => {
-        #[test]
-        fn $name() {
-            // Using the non-fips generator will not set the indicator
-            let _ =
-                assert_fips_status_indicator!(KeyPair::generate($size), FipsServiceStatus::Unset);
-
-            // Using the fips generator should set the indicator
-            let _ = assert_fips_status_indicator!(
-                KeyPair::generate_fips($size),
-                FipsServiceStatus::NonApproved
-            )
-            .expect_err("key size not allowed");
-        }
-    };
-    ($name:ident, PrivateDecryptingKey, $size:expr, false) => {
-        #[test]
-        fn $name() {
-            // Using the non-fips generator will not set the indicator
-            let _ = assert_fips_status_indicator!(
-                PrivateDecryptingKey::generate($size),
-                FipsServiceStatus::Unset
-            );
-
-            // Using the fips generator should set the indicator
-            let _ = assert_fips_status_indicator!(
-                PrivateDecryptingKey::generate_fips($size),
-                FipsServiceStatus::NonApproved
-            )
-            .expect_err("key size not allowed");
         }
     };
 }

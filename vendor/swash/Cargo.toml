@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "swash"
-version = "0.2.6"
+version = "0.2.10"
 authors = ["Chad Brokaw <cbrokaw@gmail.com>"]
 build = false
 autolib = false
@@ -75,7 +75,7 @@ version = "0.1.1"
 optional = true
 
 [dependencies.skrifa]
-version = ">= 0.31.1, <= 0.37"
+version = ">= 0.31.1, <= 0.44"
 default-features = false
 
 [dependencies.yazi]

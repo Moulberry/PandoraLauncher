@@ -31,7 +31,7 @@ mod tests {
 
     #[test]
     fn sbix_strikes_count_overflow_table() {
-        // Contains an invalid `num_strikes` values which would move the cursor outside the able.
+        // Contains an invalid `num_strikes` values which would move the cursor outside the table.
         // See https://issues.chromium.org/issues/347835680 for the ClusterFuzz report.
         // Failure only reproduces on 32-bit, for example, run with:
         // cargo test --target=i686-unknown-linux-gnu "sbix_strikes_count_overflow_table"
@@ -40,8 +40,9 @@ mod tests {
             .push(0u16) // flags
             .push(u32::MAX); // num_strikes
 
-        let table = Sbix::read(sbix.data().into(), 5);
+        let table = Sbix::read(sbix.data().into(), 5).unwrap();
+        assert_eq!(table.num_strikes(), u32::MAX);
         // Must not panic with "attempt to multiply with overflow".
-        assert!(table.is_err());
+        assert_eq!(table.strike_offsets().len(), 0);
     }
 }

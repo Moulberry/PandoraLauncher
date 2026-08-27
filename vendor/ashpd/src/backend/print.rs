@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::{
-    AppID, WindowIdentifierType,
+    MaybeAppID, WindowIdentifierType,
     backend::{
         Result,
         request::{Request, RequestImpl},
@@ -23,7 +23,7 @@ pub trait PrintImpl: RequestImpl {
     async fn prepare_print(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         parent_window: Option<WindowIdentifierType>,
         title: String,
         settings: Settings,
@@ -35,7 +35,7 @@ pub trait PrintImpl: RequestImpl {
     async fn print(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         parent_window: Option<WindowIdentifierType>,
         title: String,
         fd: zvariant::OwnedFd,
@@ -71,7 +71,7 @@ impl PrintInterface {
     async fn prepare_print(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         title: String,
         settings: Settings,
@@ -107,7 +107,7 @@ impl PrintInterface {
     async fn print(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         title: String,
         fd: zvariant::OwnedFd,

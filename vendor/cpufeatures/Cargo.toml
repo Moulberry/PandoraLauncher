@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "cpufeatures"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["RustCrypto Developers"]
 build = false
 autolib = false

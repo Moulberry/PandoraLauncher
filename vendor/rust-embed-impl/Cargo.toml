@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "rust-embed-impl"
-version = "8.11.0"
+version = "8.12.0"
 authors = ["pyrossh"]
 build = false
 autolib = false
@@ -22,7 +22,7 @@ autotests = false
 autobenches = false
 description = "Rust Custom Derive Macro which loads files into the rust binary at compile time during release and loads the file from the fs during dev"
 documentation = "https://docs.rs/rust-embed"
-readme = "readme.md"
+readme = "README.md"
 keywords = [
     "http",
     "rocket",
@@ -40,12 +40,14 @@ debug-embed = []
 deterministic-timestamps = []
 include-exclude = ["rust-embed-utils/include-exclude"]
 interpolate-folder-path = ["shellexpand"]
-mime-guess = ["rust-embed-utils/mime-guess"]
 
 [lib]
 name = "rust_embed_impl"
 path = "src/lib.rs"
 proc-macro = true
+
+[dependencies.mime_guess]
+version = "2.0.4"
 
 [dependencies.proc-macro2]
 version = "1"
@@ -54,7 +56,7 @@ version = "1"
 version = "1"
 
 [dependencies.rust-embed-utils]
-version = "8.11.0"
+version = "8.12.0"
 
 [dependencies.shellexpand]
 version = "3"

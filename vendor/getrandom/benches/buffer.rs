@@ -1,5 +1,5 @@
 //! Basic benchmarks
-#![feature(test, maybe_uninit_uninit_array_transpose)]
+#![feature(test)]
 extern crate test;
 
 use std::{

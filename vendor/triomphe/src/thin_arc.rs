@@ -11,6 +11,7 @@ use core::ptr;
 
 use super::{Arc, ArcInner, HeaderSlice, HeaderSliceWithLengthProtected, HeaderWithLength};
 use crate::header::HeaderSliceWithLengthUnchecked;
+use crate::AllocError;
 
 /// A "thin" `Arc` containing dynamically sized data
 ///
@@ -158,6 +159,19 @@ impl<H, T> ThinArc<H, T> {
         Arc::into_thin(Arc::from_header_and_iter(header, items))
     }
 
+    /// Fallible version of [`ThinArc::from_header_and_iter`].
+    ///
+    /// Returns `Err(AllocError)` instead of aborting on allocation failure.
+    pub fn try_from_header_and_iter<I>(header: H, items: I) -> Result<Self, AllocError>
+    where
+        I: Iterator<Item = T> + ExactSizeIterator,
+    {
+        let header = HeaderWithLength::new(header, items.len());
+        Ok(Arc::into_thin(Arc::try_from_header_and_iter(
+            header, items,
+        )?))
+    }
+
     /// Creates a `ThinArc` for a HeaderSlice using the given header struct and
     /// a slice to copy.
     pub fn from_header_and_slice(header: H, items: &[T]) -> Self
@@ -166,6 +180,19 @@ impl<H, T> ThinArc<H, T> {
     {
         let header = HeaderWithLength::new(header, items.len());
         Arc::into_thin(Arc::from_header_and_slice(header, items))
+    }
+
+    /// Fallible version of [`ThinArc::from_header_and_slice`].
+    ///
+    /// Returns `Err(AllocError)` instead of aborting on allocation failure.
+    pub fn try_from_header_and_slice(header: H, items: &[T]) -> Result<Self, AllocError>
+    where
+        T: Copy,
+    {
+        let header = HeaderWithLength::new(header, items.len());
+        Ok(Arc::into_thin(Arc::try_from_header_and_slice(
+            header, items,
+        )?))
     }
 
     /// Returns the address on the heap of the ThinArc itself -- not the T
@@ -415,6 +442,20 @@ mod tests {
         assert!(y.slice.is_empty());
         assert_eq!(x.header.header, 100);
         assert!(x.slice.is_empty());
+    }
+
+    #[test]
+    fn try_from_header_and_iter_thin() {
+        let a = ThinArc::try_from_header_and_iter(42u32, vec![1u16, 2, 3].into_iter()).unwrap();
+        assert_eq!(a.header.header, 42);
+        assert_eq!(&a.slice, [1, 2, 3]);
+    }
+
+    #[test]
+    fn try_from_header_and_slice_thin() {
+        let a = ThinArc::try_from_header_and_slice(42u32, &[1u16, 2, 3]).unwrap();
+        assert_eq!(a.header.header, 42);
+        assert_eq!(&a.slice, [1, 2, 3]);
     }
 
     #[test]

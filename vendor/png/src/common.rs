@@ -53,7 +53,7 @@ impl ColorType {
     pub(crate) fn checked_raw_row_length(self, depth: BitDepth, width: u32) -> Option<usize> {
         // No overflow can occur in 64 bits, we multiply 32-bit with 5 more bits.
         let bits = u64::from(width) * u64::from(self.samples_u8()) * u64::from(depth.into_u8());
-        TryFrom::try_from(1 + (bits + 7) / 8).ok()
+        TryFrom::try_from(1 + bits.div_ceil(8)).ok()
     }
 
     pub(crate) fn raw_row_length_from_width(self, depth: BitDepth, width: u32) -> usize {
@@ -320,7 +320,7 @@ impl AnimationControl {
 /// the appropriate DEFLATE compression mode and PNG filter.
 ///
 /// If you need more control over the encoding parameters,
-/// you can set the [DeflateCompression] and [Filter] manually.
+/// you can set the [`DeflateCompression`] and [`Filter`] manually.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub enum Compression {
@@ -338,7 +338,7 @@ pub enum Compression {
     /// implementation tuned for PNG](https://crates.io/crates/fdeflate), while still providing
     /// better compression ratio than the fastest modes of other encoders.
     ///
-    /// Like `Compression::Fast` this can currently produce files larger than `NoCompression` in
+    /// Like [`Compression::Fastest`] this can currently produce files larger than `NoCompression` in
     /// streaming mode when given incompressible data. This may change in the future.
     Fast,
     /// Balances encoding speed and compression ratio
@@ -353,11 +353,11 @@ impl Default for Compression {
     }
 }
 
-/// Advanced compression settings with more customization options than [Compression].
+/// Advanced compression settings with more customization options than [`Compression`].
 ///
 /// Note that this setting only affects DEFLATE compression.
 /// Another setting that influences the compression ratio and lets you choose
-/// between encoding speed and compression ratio is the [Filter].
+/// between encoding speed and compression ratio is the [`Filter`].
 ///
 /// ### Stability guarantees
 ///
@@ -375,7 +375,7 @@ pub enum DeflateCompression {
     /// Useful for incompressible images, or when speed is paramount and you don't care about size
     /// at all.
     ///
-    /// This mode also disables filters, forcing [Filter::NoFilter].
+    /// This mode also disables filters, forcing [`Filter::NoFilter`].
     NoCompression,
 
     /// Excellent for creating lightly compressed PNG images very quickly.
@@ -420,12 +420,12 @@ impl DeflateCompression {
 }
 
 /// An unsigned integer scaled version of a floating point value,
-/// equivalent to an integer quotient with fixed denominator (100_000)).
+/// equivalent to an integer quotient with [fixed denominator][ScaledFloat::SCALING]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScaledFloat(u32);
 
 impl ScaledFloat {
-    const SCALING: f32 = 100_000.0;
+    pub const SCALING: f32 = 100_000.0;
 
     /// Gets whether the value is within the clamped range of this type.
     pub fn in_range(value: f32) -> bool {

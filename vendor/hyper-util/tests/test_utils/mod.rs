@@ -1,10 +1,10 @@
+use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use futures_channel::mpsc;
-use futures_util::task::{Context, Poll};
-use futures_util::Future;
 use futures_util::TryFutureExt;
 use hyper::Uri;
 use tokio::io::{self, AsyncRead, AsyncWrite, ReadBuf};

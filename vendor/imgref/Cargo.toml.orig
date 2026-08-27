@@ -9,9 +9,10 @@ license = "CC0-1.0 OR Apache-2.0"
 name = "imgref"
 readme = "README.md"
 repository = "https://github.com/kornelski/imgref"
-version = "1.12.0"
+version = "1.12.3"
 edition = "2021"
-rust-version = "1.61"
+rust-version = "1.63"
+include = ["src/**/*.rs", "README.md", "Cargo.toml", "LICENSE-APACHE", "LICENSE-CC0"]
 
 [features]
 default = ["deprecated"]

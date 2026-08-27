@@ -6,7 +6,7 @@ use serde::Serialize;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use crate::{
-    AppID, PortalError,
+    MaybeAppID, PortalError,
     backend::request::{Request, RequestImpl},
     desktop::{HandleToken, Response},
     zbus::object_server::SignalEmitter,
@@ -58,20 +58,20 @@ pub trait BackgroundSignalEmitter: Send + Sync {
 #[async_trait]
 pub trait BackgroundImpl: RequestImpl {
     #[doc(alias = "GetAppState")]
-    async fn get_app_state(&self) -> Result<HashMap<AppID, AppState>, PortalError>;
+    async fn get_app_state(&self) -> Result<HashMap<MaybeAppID, AppState>, PortalError>;
 
     #[doc(alias = "NotifyBackground")]
     async fn notify_background(
         &self,
         token: HandleToken,
-        app_id: AppID,
+        app_id: MaybeAppID,
         name: &str,
     ) -> Result<Background, PortalError>;
 
     #[doc(alias = "EnableAutostart")]
     async fn enable_autostart(
         &self,
-        app_id: AppID,
+        app_id: MaybeAppID,
         enable: bool,
         commandline: Vec<String>,
         flags: BitFlags<AutoStartFlags>,
@@ -120,7 +120,7 @@ impl BackgroundInterface {
     }
 
     #[zbus(out_args("apps"))]
-    async fn get_app_state(&self) -> Result<HashMap<AppID, AppState>, PortalError> {
+    async fn get_app_state(&self) -> Result<HashMap<MaybeAppID, AppState>, PortalError> {
         #[cfg(feature = "tracing")]
         tracing::debug!("Background::GetAppState");
 
@@ -135,7 +135,7 @@ impl BackgroundInterface {
     async fn notify_background(
         &self,
         handle: OwnedObjectPath,
-        app_id: AppID,
+        app_id: MaybeAppID,
         name: String,
     ) -> Result<Response<Background>, PortalError> {
         let imp = Arc::clone(&self.imp);
@@ -157,7 +157,7 @@ impl BackgroundInterface {
     #[zbus(out_args("result"))]
     async fn enable_autostart(
         &self,
-        app_id: AppID,
+        app_id: MaybeAppID,
         enable: bool,
         commandline: Vec<String>,
         flags: BitFlags<AutoStartFlags>,

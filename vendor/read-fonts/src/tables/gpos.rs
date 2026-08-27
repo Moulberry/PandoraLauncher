@@ -75,6 +75,8 @@ pub enum PositionSubtables<'a> {
     MarkToMark(PosSubtables<'a, MarkMarkPosFormat1<'a>>),
     Contextual(PosSubtables<'a, PositionSequenceContext<'a>>),
     ChainContextual(PosSubtables<'a, PositionChainContext<'a>>),
+    /// An extension lookup did not have any subtables
+    EmptyExtension,
 }
 
 impl<'a> PositionLookup<'a> {
@@ -111,9 +113,19 @@ impl<'a> PositionLookup<'a> {
                 offsets, data,
             ))),
             9 => {
-                let first = offsets.first().ok_or(ReadError::OutOfBounds)?.get();
-                let ext: ExtensionPosFormat1<()> = first.resolve(data)?;
-                match ext.extension_lookup_type() {
+                // look through subtable offsets to try and find a lookup type.
+                // this is robust in the case where the first subtable offset is
+                // malformed, but a later one is okay.
+                let Some(lookup_type) = offsets.iter().find_map(|off| {
+                    off.get()
+                        .resolve::<ExtensionPosFormat1<()>>(data)
+                        .ok()
+                        .map(|ext| ext.extension_lookup_type())
+                }) else {
+                    return Ok(PositionSubtables::EmptyExtension);
+                };
+
+                match lookup_type {
                     1 => Ok(PositionSubtables::Single(Subtables::new_ext(offsets, data))),
                     2 => Ok(PositionSubtables::Pair(Subtables::new_ext(offsets, data))),
                     3 => Ok(PositionSubtables::Cursive(Subtables::new_ext(
@@ -164,7 +176,7 @@ impl PairPosFormat2<'_> {
         // Compute an offset into the 2D array of positioning records
         let record_offset = (class1 as usize * record_size * self.class2_count() as usize)
             + (class2 as usize * record_size)
-            + self.shape().class1_records_byte_range().start;
+            + self.class1_records_byte_range().start;
         Ok([
             Value::read(data, record_offset, format1, context)?,
             Value::read(data, record_offset + format1_len, format2, context)?,
@@ -195,5 +207,20 @@ mod tests {
                 assert_eq!(value_records, values);
             }
         }
+    }
+
+    #[test]
+    fn default_for_generics() {
+        let ExtensionSubtable::Single(inner) = ExtensionSubtable::default() else {
+            panic!("this is quite bad");
+        };
+
+        // this is invalid, but we the default impl for the extension offset
+        // will be the first variant of the enum anyway
+        assert_eq!(inner.extension_lookup_type(), 0);
+
+        let SinglePos::Format1(_hmm) = inner.extension().unwrap_or_default() else {
+            panic!("unexpected");
+        };
     }
 }

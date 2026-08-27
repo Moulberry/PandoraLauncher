@@ -613,7 +613,7 @@ impl<S: Scalar> QuadraticBezierSegment<S> {
     /// point along curve. To get the intersection points, sample the curve
     /// at the corresponding values.
     pub fn line_intersections_t(&self, line: &Line<S>) -> ArrayVec<S, 2> {
-        // take the quadratic bezier formulation and inject it in
+        // Take the quadratic bezier formulation and inject it in
         // the line equation ax + by + c = 0.
         let eqn = line.equation();
         let i = eqn.a() * self.from.x + eqn.b() * self.from.y;
@@ -629,6 +629,11 @@ impl<S: Scalar> QuadraticBezierSegment<S> {
         if a == S::ZERO {
             // Linear equation bt + c = 0.
             let t = c / b;
+            // Note: if b is zero, then t is NaN and we return without any
+            // intersection. This is on purpose although debatable. See the
+            // comment in `line_intersections_degenerate_curve_on_line`.
+            // This happens if the the curve is a line segment colinear with
+            // `line`.
             if t >= S::ZERO && t <= S::ONE {
                 result.push(t);
                 return result;
@@ -899,12 +904,12 @@ impl<S: Scalar> QuadraticBezierSegment<S> {
 // It's not useful to users of the crate but removing it is a breaking change so it
 // stays empty for now.
 pub struct FlatteningParameters<S> {
-    _marker: std::marker::PhantomData<S>
+    _marker: core::marker::PhantomData<S>
 }
 
 impl<S: Scalar> FlatteningParameters<S> {
     pub fn new(_curve: &QuadraticBezierSegment<S>, _tolerance: S) -> Self {
-        Self { _marker: std::marker::PhantomData }
+        Self { _marker: core::marker::PhantomData }
     }
 }
 
@@ -1067,9 +1072,10 @@ impl<S: Scalar> Iterator for FlattenedT<S> {
             return Some(S::ONE)
         }
 
+        let t = self.t;
         self.t += self.step;
 
-        Some(self.t)
+        Some(t)
     }
 
     #[inline]
@@ -1413,6 +1419,48 @@ fn test_flattening_straight_line() {
 }
 
 #[test]
+fn test_flattened_t_values_are_monotonic() {
+    use crate::point;
+
+    // A curve with enough curvature to require several segments.
+    let curve = QuadraticBezierSegment {
+        from: point(0.0f32, 0.0),
+        ctrl: point(50.0, 100.0),
+        to: point(100.0, 0.0),
+    };
+
+    let iter = FlattenedT::new(&curve, 0.01);
+    let count = iter.segments;
+    assert!(count >= 3, "need at least 3 segments for this test, got {}", count);
+
+    let step = 1.0 / count as f32;
+    let mut iter = FlattenedT::new(&curve, 0.01);
+    let mut prev = 0.0f32;
+    let mut n = 0u32;
+
+    while let Some(t) = iter.next() {
+        // Values must be strictly monotonically increasing.
+        assert!(t > prev, "t values must be strictly increasing: {} <= {}", t, prev);
+        prev = t;
+        n += 1;
+    }
+
+    // Must produce exactly `count` values.
+    assert_eq!(n, count);
+
+    // First value must be close to 1/count (not 2/count).
+    let first = FlattenedT::new(&curve, 0.01).next().unwrap();
+    assert!(
+        (first - step).abs() < 1e-3,
+        "first t value should be ~{}, got {}",
+        step, first,
+    );
+
+    // Last value must be exactly 1.0.
+    assert_eq!(prev, 1.0);
+}
+
+#[test]
 fn issue_678() {
     let points = [
         [-7768.80859375f32, -35563.80859375],
@@ -1483,6 +1531,51 @@ fn line_intersections_t() {
     }
     assert_eq!(i2.len(), 2);
     assert_eq!(i1.len(), 2);
+}
+
+#[test]
+fn line_intersections_degenerate_curve_on_line() {
+    // A degenerate quadratic bézier where all three control points are
+    // collinear and lie on the line. This makes both the quadratic (a)
+    // and linear (b) coefficients zero in the intersection equation,
+    // so the code path `c / b` computes 0/0 = NaN.
+    // The function should return valid t values (not NaN/Inf), since
+    // every point of the curve lies on the line.
+
+    // All points on the x-axis.
+    let curve = QuadraticBezierSegment {
+        from: point(0.0f64, 0.0),
+        ctrl: point(1.0, 0.0),
+        to: point(2.0, 0.0),
+    };
+
+    // The x-axis itself.
+    let line = Line {
+        point: point(0.0, 0.0),
+        vector: crate::vector(1.0, 0.0),
+    };
+
+    let intersections = curve.line_intersections_t(&line);
+
+    // The curve lies entirely on the line, so no returned t should be NaN or Inf.
+    for &t in intersections.iter() {
+        assert!(
+            t.is_finite(),
+            "Expected finite t value, got {:?}", t
+        );
+        assert!(
+            t >= 0.0 && t <= 1.0,
+            "Expected t in [0, 1], got {:?}", t
+        );
+    }
+
+    // This is contentious: the curve lies entirely on the line so we could
+    // consider that all points are intersection points, or just pick one point
+    // (for example the mid point) as the intersection, but instead we consider
+    // that the curve does not intersect the line.
+    // We could decide to change this behavior in the future. For now this is
+    // consistent with the line-line intersection code.
+    assert!(intersections.is_empty());
 }
 
 #[test]

@@ -11,7 +11,7 @@ Add `serde_fmt` to your `Cargo.toml`:
 
 ```toml,ignore
 [dependencies.serde_fmt]
-version = "1.0.3"
+version = "1.1.0"
 ```
 
 By default, this library doesn't depend on the standard library.
@@ -19,16 +19,16 @@ You can enable support with the `std` Cargo feature:
 
 ```toml,ignore
 [dependencies.serde_fmt]
-version = "1.0.3"
+version = "1.1.0"
 features = ["std"]
 ```
 
 # Formatting a `Serialize`
 
-Use the [`to_debug`] function to treat a [`serde::Serialize`] like a [`std::fmt::Debug`]:
+Use the [`to_debug`] function to treat a [`serde_core::Serialize`] like a [`std::fmt::Debug`]:
 
 ```rust
-# use serde::Serialize;
+# use serde_core::Serialize;
 fn takes_serialize(v: impl Serialize) {
     // You can dump any `Serialize` using the
     // standard `dbg!` macro
@@ -39,7 +39,7 @@ fn takes_serialize(v: impl Serialize) {
 ```
 */
 
-#![doc(html_root_url = "https://docs.rs/serde_fmt/1.0.3")]
+#![doc(html_root_url = "https://docs.rs/serde_fmt/1.1.0")]
 #![cfg_attr(not(test), no_std)]
 
 #[cfg(all(not(test), not(feature = "std")))]
@@ -50,20 +50,20 @@ extern crate std;
 
 use crate::std::fmt::{self, Debug, Display};
 
-use serde::ser::{
+use serde_core::ser::{
     self, Serialize, SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant,
     SerializeTuple, SerializeTupleStruct, SerializeTupleVariant, Serializer,
 };
 
 /**
-Format a [`serde::Serialize`] into a [`std::fmt::Write`].
+Format a [`serde_core::Serialize`] into a [`std::fmt::Write`].
 */
 pub fn to_writer(v: impl Serialize, mut w: impl fmt::Write) -> fmt::Result {
     w.write_fmt(format_args!("{:?}", to_debug(v)))
 }
 
 /**
-Treat a type implementing [`serde::Serialize`] like a type implementing [`std::fmt::Debug`].
+Treat a type implementing [`serde_core::Serialize`] like a type implementing [`std::fmt::Debug`].
 */
 pub fn to_debug<T>(v: T) -> ToDebug<T>
 where
@@ -505,10 +505,10 @@ extern crate serde_derive;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::ser::Error as _;
+    use serde_core::ser::Error as _;
     use serde_derive::*;
 
-    fn check_fmt(v: (impl fmt::Debug + Serialize)) {
+    fn check_fmt(v: impl fmt::Debug + Serialize) {
         assert_eq!(format!("{:?}", v), format!("{:?}", to_debug(v)));
     }
 

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.76"
+rust-version = "1.81"
 name = "triomphe"
-version = "0.1.15"
+version = "0.1.16"
 authors = [
     "Manish Goregaokar <manishsmail@gmail.com>",
     "The Servo Project Developers",

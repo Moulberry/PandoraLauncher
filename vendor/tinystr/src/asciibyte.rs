@@ -137,9 +137,45 @@ pub enum AsciiByte {
 }
 
 impl AsciiByte {
-    // Convert [u8; N] to [AsciiByte; N]
+    /// Convert `[u8; N]` to `[AsciiByte; N]`
+    ///
+    /// # Safety
+    ///
+    /// All bytes MUST be in the range 0 to 127 inclusive.
     #[inline]
     pub const unsafe fn to_ascii_byte_array<const N: usize>(bytes: &[u8; N]) -> [AsciiByte; N] {
         *(bytes as *const [u8; N] as *const [AsciiByte; N])
+    }
+
+    #[inline]
+    pub(crate) fn from_decimal_digit(digit: u8) -> AsciiByte {
+        // Note: This code optimizes nicely with no branches.
+        match digit {
+            0 => AsciiByte::B48,
+            1 => AsciiByte::B49,
+            2 => AsciiByte::B50,
+            3 => AsciiByte::B51,
+            4 => AsciiByte::B52,
+            5 => AsciiByte::B53,
+            6 => AsciiByte::B54,
+            7 => AsciiByte::B55,
+            8 => AsciiByte::B56,
+            9 => AsciiByte::B57,
+            _ => {
+                debug_assert!(false, "not a single digit: {digit}");
+                AsciiByte::B32 // Space
+            }
+        }
+    }
+
+    #[inline]
+    pub(crate) const fn to_ascii_uppercase(self) -> Self {
+        // SAFETY: AsciiByte is repr(u8) and has same size as u8
+        unsafe { core::mem::transmute::<u8, AsciiByte>((self as u8).to_ascii_uppercase()) }
+    }
+
+    pub(crate) const fn to_ascii_lowercase(self) -> Self {
+        // SAFETY: AsciiByte is repr(u8) and has same size as u8
+        unsafe { core::mem::transmute::<u8, AsciiByte>((self as u8).to_ascii_lowercase()) }
     }
 }

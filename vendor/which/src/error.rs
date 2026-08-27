@@ -31,6 +31,10 @@ impl fmt::Display for Error {
 #[non_exhaustive]
 pub enum NonFatalError {
     Io(io::Error),
+    /// The Windows PATHEXT environment variable was not populated with any usable extensions,
+    /// and the query did not specify a file extension. This is technically legal but probably not
+    /// intentional.
+    PathExtNotPopulated,
 }
 
 impl std::error::Error for NonFatalError {}
@@ -39,6 +43,7 @@ impl fmt::Display for NonFatalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(e) => write!(f, "{e}"),
+            Self::PathExtNotPopulated => write!(f, "PATHEXT environment variable is not populated, and the query did not specify a file extension"),
         }
     }
 }

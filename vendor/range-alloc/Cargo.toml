@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "range-alloc"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["the gfx-rs Developers"]
 build = false
 autolib = false
@@ -23,7 +23,7 @@ autobenches = false
 description = "Generic range allocator"
 homepage = "https://github.com/gfx-rs/range-alloc"
 documentation = "https://docs.rs/range-alloc"
-readme = false
+readme = "README.md"
 keywords = ["allocator"]
 categories = ["memory-management"]
 license = "MIT OR Apache-2.0"

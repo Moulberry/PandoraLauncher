@@ -1,6 +1,8 @@
-use super::pixel::{ComponentSlice, ComponentMap};
-use crate::alt::{BGR, BGRA, GRB, Gray, GrayAlpha, ARGB, ABGR};
-use crate::{RGB, RGBA};
+#[allow(deprecated)]
+use super::pixel::ComponentSlice;
+use super::pixel::ComponentMap;
+use crate::alt::{BGR, BGRA, GRB, ARGB, ABGR};
+use crate::{RGB, RGBA, Gray, GrayAlpha};
 use core::{mem, slice};
 
 mod array;
@@ -286,9 +288,9 @@ impl<T: Clone> From<Gray<T>> for RGB<T> {
     #[allow(deprecated)]
     fn from(other: Gray<T>) -> Self {
         Self {
-            r: other.0.clone(),
-            g: other.0.clone(),
-            b: other.0,
+            r: other.clone().value(),
+            g: other.clone().value(),
+            b: other.value(),
         }
     }
 }
@@ -298,23 +300,23 @@ impl<T: Clone> From<Gray<T>> for RGBA<T, u8> {
     #[allow(deprecated)]
     fn from(other: Gray<T>) -> Self {
         Self {
-            r: other.0.clone(),
-            g: other.0.clone(),
-            b: other.0,
+            r: other.clone().value(),
+            g: other.clone().value(),
+            b: other.value(),
             a: 255,
         }
     }
 }
 
-impl<T: Clone, A> From<GrayAlpha<T, A>> for RGBA<T, A> {
+impl<T: Clone, A: Clone> From<GrayAlpha<T, A>> for RGBA<T, A> {
     #[inline(always)]
     #[allow(deprecated)]
     fn from(other: GrayAlpha<T, A>) -> Self {
         Self {
-            r: other.0.clone(),
-            g: other.0.clone(),
-            b: other.0,
-            a: other.1,
+            r: other.v.clone(),
+            g: other.v.clone(),
+            b: other.v.clone(),
+            a: other.a.clone(),
         }
     }
 }
@@ -332,7 +334,8 @@ impl<T> AsRef<T> for Gray<T> {
 impl<T> AsRef<[T]> for RGB<T> {
     #[inline(always)]
     fn as_ref(&self) -> &[T] {
-        self.as_slice()
+        #[allow(deprecated)]
+        ComponentSlice::as_slice(self)
     }
 }
 
@@ -347,7 +350,8 @@ impl<T> AsRef<[T; 3]> for RGB<T> {
 impl<T> AsRef<[T]> for RGBA<T> {
     #[inline(always)]
     fn as_ref(&self) -> &[T] {
-        self.as_slice()
+        #[allow(deprecated)]
+        ComponentSlice::as_slice(self)
     }
 }
 
@@ -405,7 +409,8 @@ impl<T> AsMut<T> for Gray<T> {
 impl<T> AsMut<[T]> for RGB<T> {
     #[inline(always)]
     fn as_mut(&mut self) -> &mut [T] {
-        self.as_mut_slice()
+        #[allow(deprecated)]
+        ComponentSlice::as_mut_slice(self)
     }
 }
 
@@ -420,7 +425,8 @@ impl<T> AsMut<[T; 3]> for RGB<T> {
 impl<T> AsMut<[T]> for RGBA<T> {
     #[inline(always)]
     fn as_mut(&mut self) -> &mut [T] {
-        self.as_mut_slice()
+        #[allow(deprecated)]
+        ComponentSlice::as_mut_slice(self)
     }
 }
 
@@ -445,60 +451,4 @@ impl<T> AsMut<[T; 2]> for GrayAlpha<T> {
     fn as_mut(&mut self) -> &mut [T; 2] {
         unsafe { &mut *(self as *mut Self).cast() }
     }
-}
-
-#[test]
-fn argb_converts() {
-    let argb = ARGB { a: 0xffu8, r: 0xfa, g: 0xfb, b: 0xfc };
-    let rgba = RGBA { a: 0xffu8, r: 0xfa, g: 0xfb, b: 0xfc };
-
-    assert_eq!(RGBA::from(argb), rgba);
-    assert_eq!(ARGB::from(rgba), argb);
-    assert_eq!(rgba.rgb(), argb.rgb());
-
-    let bgra = BGRA { a: 0xffu8, r: 0x1f, g: 0x2f, b: 0x3f };
-    let abgr = ABGR { a: 0xffu8, r: 0x1f, g: 0x2f, b: 0x3f };
-
-    assert_eq!(BGRA::from(abgr), bgra);
-    assert_eq!(ABGR::from(bgra), abgr);
-}
-
-#[test]
-fn converts() {
-    assert_eq!([1,2].as_gray(), [Gray::new(1), Gray::new(2)]);
-    assert_eq!([3].as_gray_mut(), [Gray::new(3)]);
-    assert_eq!([1,2].as_gray_alpha(), [GrayAlpha::new(1, 2)]);
-    // excess bytes are ignored
-    assert_eq!([1,2,3].as_gray_alpha_mut(), [GrayAlpha::new(1, 2)]);
-    assert_eq!([1,2,3,4].as_gray_alpha_mut(), [GrayAlpha::new(1, 2), GrayAlpha::new(3, 4)]);
-
-    assert_eq!(RGBA::new(1u8,2,3,255), RGB::new(1u8,2,3).into());
-    assert_eq!(RGBA::new(1u16,2,3,65535), RGB::new(1u16,2,3).into());
-    assert_eq!(BGRA{r:1u8,g:2u8,b:3u8,a:255u8}, BGR{r:1u8,g:2u8,b:3u8}.into());
-    assert_eq!(BGRA{r:1u8,g:2u8,b:3u8,a:255u8}, RGB{r:1u8,g:2u8,b:3u8}.into());
-    assert_eq!(RGBA {r:1u8,g:2,b:3,a:4u8}, BGRA{r:1u8,g:2u8,b:3u8,a:4u8}.into());
-    assert_eq!(BGR {r:1u8,g:2,b:3u8}, RGB {r:1u8,g:2,b:3u8}.into());
-    assert_eq!(RGB {r:1u16,g:0x5678,b:0xABCDu16}, BGR {r:1u16,g:0x5678,b:0xABCDu16}.into());
-    assert_eq!(BGR {r:0x1234567u32,g:2,b:3u32}, RGB {r:0x1234567u32,g:2,b:3u32}.into());
-
-    assert_eq!(&[1u8,2,3,4], RGBA {r:1u8,g:2,b:3,a:4u8}.as_slice());
-    assert_eq!(&[1u8,2,3,4], RGBA {r:1u8,g:2,b:3,a:4u8}.as_ref());
-    assert_eq!(&[1u8,2,3], RGB {r:1u8,g:2,b:3}.as_slice());
-    assert_eq!(&[1u8,2,3], RGB {r:1u8,g:2,b:3}.as_ref());
-
-    assert_eq!(&[1u8,2,3], RGB {r:1u8,g:2,b:3}.as_mut_slice());
-    assert_eq!(&[1u8,2,3], RGB {r:1u8,g:2,b:3}.as_mut());
-}
-
-
-#[test]
-#[cfg(feature = "unstable-experimental")]
-fn as_refs() {
-    let mut r = RGBA::new(1u8,2,3,4u8);
-    assert_eq!(&[1,2,3,4], AsRef::<[u8; 4]>::as_ref(&r));
-    assert_eq!([1,2,3,4], *AsMut::<[u8; 4]>::as_mut(&mut r));
-
-    let mut r = GrayAlpha::new(1u8,4u8);
-    assert_eq!(&[1,4], AsRef::<[u8; 2]>::as_ref(&r));
-    assert_eq!([1,4], *AsMut::<[u8; 2]>::as_mut(&mut r));
 }

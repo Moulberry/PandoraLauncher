@@ -6,8 +6,6 @@ use link_section::TypedSection;
 
 #[allow(non_camel_case_types)]
 struct FOO;
-#[doc(hidden)]
-use ::link_section::__in_section_helper_macro_generic as FOO;
 impl FOO {
     /// Get a `const` reference to the underlying section. In
     /// non-const contexts, `deref` is sufficient.
@@ -16,6 +14,7 @@ impl FOO {
             {
                 let section =
                     {
+                        ;
                         ::link_section::__support::PtrBounds::new({
                                 #[allow(missing_unsafe_on_extern)]
                                 extern "C" {
@@ -70,9 +69,9 @@ fn foo() {
     const _: fn() =
         const {
                 type __InSecStoredTy =
-                    <FOO as ::link_section::__support::SectionItemType>::Item;
+                    <::link_section::TypedSection<fn()> as
+                    ::link_section::__support::SectionItemType>::Item;
                 const __LINK_SECTION_CONST_ITEM_VALUE: __InSecStoredTy = foo;
-                ;
                 #[used]
                 #[export_name =
                 "__LINK_SECTION_CONST_ITEM_Pexpand_probe_Mexpand_probe_L11_C1"]

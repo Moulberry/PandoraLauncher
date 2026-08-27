@@ -13,12 +13,22 @@
 edition = "2021"
 rust-version = "1.57"
 name = "bytes"
-version = "1.11.1"
+version = "1.12.1"
 authors = [
     "Carl Lerche <me@carllerche.com>",
     "Sean McArthur <sean@seanmonstar.com>",
 ]
 build = false
+include = [
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "Cargo.toml",
+    "src/**/*.rs",
+    "tests/**/*.rs",
+    "clippy.toml",
+]
 autolib = false
 autobins = false
 autoexamples = false
@@ -99,18 +109,6 @@ path = "tests/test_serde.rs"
 [[test]]
 name = "test_take"
 path = "tests/test_take.rs"
-
-[[bench]]
-name = "buf"
-path = "benches/buf.rs"
-
-[[bench]]
-name = "bytes"
-path = "benches/bytes.rs"
-
-[[bench]]
-name = "bytes_mut"
-path = "benches/bytes_mut.rs"
 
 [dependencies.extra-platforms]
 version = "1.3"

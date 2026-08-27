@@ -8,7 +8,7 @@ categories = ["algorithms", "science", "no-std"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/rust-num/num-iter"
 name = "num-iter"
-version = "0.1.45"
+version = "0.1.46"
 readme = "README.md"
 exclude = ["/ci/*", "/.github/*"]
 edition = "2018"
@@ -35,6 +35,3 @@ std = ["num-integer/std", "num-traits/std"]
 
 # vestigial features, now always in effect
 i128 = []
-
-[build-dependencies]
-autocfg = "1"

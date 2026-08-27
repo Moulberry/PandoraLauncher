@@ -1,3 +1,7 @@
+// The whole module is already deprecated (see `gvariant` in `lib.rs`); every item here
+// necessarily references its now-deprecated siblings.
+#![allow(deprecated)]
+
 use serde::{
     Serialize,
     ser::{self, SerializeMap, SerializeSeq, SerializeTuple},
@@ -366,6 +370,11 @@ where
 }
 
 #[doc(hidden)]
+#[deprecated(
+    since = "5.15.0",
+    note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+            `zgvariant` crate instead."
+)]
 pub struct SeqSerializer<'ser, 'b, W> {
     ser: &'b mut Serializer<'ser, W>,
     start: usize,
@@ -428,6 +437,11 @@ where
 }
 
 #[doc(hidden)]
+#[deprecated(
+    since = "5.15.0",
+    note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+            `zgvariant` crate instead."
+)]
 pub struct StructSerializer<'ser, 'b, W> {
     ser: &'b mut Serializer<'ser, W>,
     start: usize,
@@ -506,7 +520,7 @@ where
                 "a struct".to_string(),
             ));
         };
-        let struct_field = fields.iter().nth(1).and_then(|f| {
+        let struct_field = fields.get(1).and_then(|f| {
             if matches!(f, Signature::Structure(_)) {
                 Some(f)
             } else {
@@ -546,7 +560,7 @@ where
                 }
             }
             Signature::Structure(fields) => {
-                let signature = fields.iter().nth(self.field_idx).ok_or_else(|| {
+                let signature = fields.get(self.field_idx).ok_or_else(|| {
                     Error::SignatureMismatch(signature.clone(), "a struct".to_string())
                 })?;
                 self.field_idx += 1;
@@ -603,6 +617,13 @@ where
             Some(offsets) => offsets,
             None => return Ok(()),
         };
+
+        if self.ser.0.signature.is_fixed_sized() {
+            debug_assert!(offsets.is_empty());
+            let alignment = self.ser.0.signature.alignment(Format::GVariant);
+            self.ser.0.add_padding(alignment)?;
+        }
+
         let struct_len = self.ser.0.bytes_written - self.start;
         if struct_len == 0 {
             // Empty sequence
@@ -621,6 +642,11 @@ where
 
 #[doc(hidden)]
 /// Allows us to serialize a struct as an ARRAY.
+#[deprecated(
+    since = "5.15.0",
+    note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+            `zgvariant` crate instead."
+)]
 pub enum StructSeqSerializer<'ser, 'b, W> {
     Struct(StructSerializer<'ser, 'b, W>),
     Seq(SeqSerializer<'ser, 'b, W>),
@@ -680,6 +706,11 @@ serialize_struct_anon_fields!(SerializeTuple serialize_element);
 serialize_struct_anon_fields!(SerializeTupleStruct serialize_field);
 serialize_struct_anon_fields!(SerializeTupleVariant serialize_field);
 
+#[deprecated(
+    since = "5.15.0",
+    note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+            `zgvariant` crate instead."
+)]
 pub struct MapSerializer<'ser, 'b, W> {
     seq: SeqSerializer<'ser, 'b, W>,
     key_signature: &'ser Signature,
@@ -720,6 +751,11 @@ where
         self.seq.ser.0.signature = self.value_signature;
         value.serialize(&mut *self.seq.ser)?;
         self.seq.ser.0.signature = self.key_signature;
+
+        // A fixed-sized dictionary entry should be padded to its alignment.
+        if self.seq.offsets.is_none() {
+            self.seq.ser.0.add_padding(self.seq.element_alignment)?;
+        }
 
         if let Some(key_offset) = key_offset {
             let entry_size = self.seq.ser.0.bytes_written - self.key_start.unwrap_or(0);

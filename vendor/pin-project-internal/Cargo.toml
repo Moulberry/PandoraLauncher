@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.56"
+rust-version = "1.71"
 name = "pin-project-internal"
-version = "1.1.10"
+version = "1.1.13"
 build = false
 autolib = false
 autobins = false
@@ -89,6 +89,10 @@ priority = 1
 level = "allow"
 priority = 1
 
+[lints.clippy.collapsible_match]
+level = "allow"
+priority = 1
+
 [lints.clippy.declare_interior_mutable_const]
 level = "allow"
 priority = 1
@@ -102,10 +106,6 @@ level = "allow"
 priority = 1
 
 [lints.clippy.incompatible_msrv]
-level = "allow"
-priority = 1
-
-[lints.clippy.lint_groups_priority]
 level = "allow"
 priority = 1
 
@@ -169,10 +169,6 @@ priority = 1
 level = "allow"
 priority = 1
 
-[lints.clippy.unreadable_literal]
-level = "allow"
-priority = 1
-
 [lints.rust]
 deprecated_safe = "warn"
 improper_ctypes = "warn"
@@ -182,6 +178,7 @@ rust_2018_idioms = "warn"
 single_use_lifetimes = "warn"
 unnameable_types = "warn"
 unreachable_pub = "warn"
+unsafe_op_in_unsafe_fn = "warn"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

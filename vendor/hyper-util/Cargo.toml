@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.63"
+rust-version = "1.64"
 name = "hyper-util"
-version = "0.1.17"
+version = "0.1.20"
 authors = ["Sean McArthur <sean@seanmonstar.com>"]
 build = false
 autolib = false
@@ -61,6 +61,11 @@ client-legacy = [
     "dep:libc",
     "dep:futures-util",
 ]
+client-pool = [
+    "client",
+    "dep:futures-util",
+    "dep:tower-layer",
+]
 client-proxy = [
     "client",
     "dep:base64",
@@ -75,6 +80,7 @@ default = []
 full = [
     "client",
     "client-legacy",
+    "client-pool",
     "client-proxy",
     "client-proxy-system",
     "server",
@@ -156,9 +162,6 @@ version = "1.7.1"
 version = "0.3"
 optional = true
 
-[dependencies.futures-core]
-version = "0.3"
-
 [dependencies.futures-util]
 version = "0.3.16"
 optional = true
@@ -171,7 +174,7 @@ version = "1.0"
 version = "1.0.0"
 
 [dependencies.hyper]
-version = "1.6.0"
+version = "1.8.0"
 
 [dependencies.ipnet]
 version = "2.9"
@@ -197,6 +200,10 @@ optional = true
 version = "1"
 optional = true
 default-features = false
+
+[dependencies.tower-layer]
+version = "0.3"
+optional = true
 
 [dependencies.tower-service]
 version = "0.3"
@@ -237,13 +244,16 @@ features = [
 [dev-dependencies.tokio-test]
 version = "0.4"
 
+[dev-dependencies.tower-test]
+version = "0.4"
+
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dev-dependencies.pnet_datalink]
 version = "0.35.0"
 
 [target.'cfg(target_os = "macos")'.dependencies.system-configuration]
-version = "0.6.1"
+version = "0.7"
 optional = true
 
 [target."cfg(windows)".dependencies.windows-registry]
-version = "0.5"
+version = ">=0.3, <0.7"
 optional = true

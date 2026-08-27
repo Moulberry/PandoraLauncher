@@ -20,7 +20,7 @@ _CET_ENDBR
 
 	testl	$7,%r9d
 	jnz	L$mul_enter
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	_OPENSSL_ia32cap_P(%rip),%r11
 	movl	8(%r11),%r11d
 #endif
@@ -462,7 +462,7 @@ bn_mul4x_mont_gather5:
 	movq	%rsp,%rax
 
 L$mul4x_enter:
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	andl	$0x80108,%r11d
 	cmpl	$0x80108,%r11d
 	je	L$mulx4x_enter
@@ -1100,7 +1100,7 @@ _bn_power5:
 _CET_ENDBR
 	movq	%rsp,%rax
 
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	_OPENSSL_ia32cap_P(%rip),%r11
 	movl	8(%r11),%r11d
 	andl	$0x80108,%r11d
@@ -2072,7 +2072,7 @@ L$sqr4x_sub_entry:
 	.byte	0xf3,0xc3
 
 
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 
 .p2align	5
 bn_mulx4x_mont_gather5:

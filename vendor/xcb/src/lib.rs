@@ -239,12 +239,18 @@
 //!
 //! The following Cargo features are available
 //!
-//! ## `xlib_xcb`
+//! ## `dl`
+//!
+//! When this feature is activated, libxcb will be loaded dynamically at runtime with dlopen,
+//! instead of using dynamic linking.
+//!
+//! ## `xlib_xcb` or `xlib_xcb_dl`
 //!
 //! This feature activates the use of `xlib::Display` to connect to XCB, therefore making
 //! available both Xlib and XCB functions to the same connection.
 //! While XCB is sufficient to handle all communication with the X server, some things can
 //! still only be done by Xlib. E.g. hardware initialization for OpenGL is done by Xlib only.
+//! Use `xlib_xcb_dl` instead to load the xlib library dynamically with dlopen.
 //!
 //! ## `debug_atom_names`
 //!
@@ -328,13 +334,15 @@ pub mod ffi {
     pub(crate) mod base;
     pub(crate) mod ext;
 
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     pub(crate) mod xlib_xcb;
+
+    pub(crate) mod dl;
 
     pub use base::*;
     pub use ext::*;
 
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     pub use xlib_xcb::*;
 }
 

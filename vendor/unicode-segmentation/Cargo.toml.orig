@@ -1,7 +1,7 @@
 [package]
 
 name = "unicode-segmentation"
-version = "1.12.0"
+version = "1.13.3"
 authors = ["kwantam <kwantam@gmail.com>", "Manish Goregaokar <manishsmail@gmail.com>"]
 
 edition = "2018"
@@ -15,15 +15,26 @@ description = """
 This crate provides Grapheme Cluster, Word and Sentence boundaries
 according to Unicode Standard Annex #29 rules.
 """
+rust-version = "1.85.0"
 
-exclude = ["/.github", "/benches/texts", "/scripts/**.rs", "*.txt"]
+include = [
+    "COPYRIGHT", 
+    "LICENSE-MIT", 
+    "LICENSE-APACHE", 
+    "Cargo.toml", 
+    "src/**/*.rs", 
+    "README.md",
+    "tests/**/*.rs",
+    "benches/**/*.rs",
+]
 
 [features]
 no_std = [] # This is a no-op, preserved for backward compatibility only.
 
 [dev-dependencies]
-quickcheck = "0.7"
+quickcheck = "1.0"
 criterion = "0.5"
+proptest = "1.7.0"
 
 [[bench]]
 name = "chars"
@@ -36,3 +47,8 @@ harness = false
 [[bench]]
 name = "word_bounds"
 harness = false
+
+[[bench]]
+name = "unicode_word_indices"
+harness = false
+

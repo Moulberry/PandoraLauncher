@@ -93,12 +93,13 @@ see [examples] directory for more examples and generated code.
 #![no_std]
 #![doc(test(
     no_crate_inject,
-    attr(
-        deny(warnings, rust_2018_idioms, single_use_lifetimes),
-        allow(dead_code, unused_variables)
-    )
+    attr(allow(
+        dead_code,
+        unused_variables,
+        clippy::undocumented_unsafe_blocks,
+        clippy::unused_trait_names,
+    ))
 ))]
-#![warn(unsafe_op_in_unsafe_fn)]
 #![warn(
     // Lints that may help when writing public library.
     missing_debug_implementations,
@@ -107,9 +108,9 @@ see [examples] directory for more examples and generated code.
     clippy::exhaustive_enums,
     clippy::exhaustive_structs,
     clippy::impl_trait_in_params,
-    // clippy::missing_inline_in_public_items,
     clippy::std_instead_of_alloc,
     clippy::std_instead_of_core,
+    // clippy::missing_inline_in_public_items,
 )]
 #![allow(clippy::needless_doctest_main)]
 
@@ -171,6 +172,7 @@ pub use pin_project_internal::pinned_drop;
 ///     field_2: V,
 /// }
 ///
+/// # #[allow(clippy::undocumented_unsafe_blocks)]
 /// unsafe impl<K, V> UnsafeUnpin for Struct<K, V> where K: Unpin + Clone {}
 /// ```
 ///
@@ -205,7 +207,7 @@ pub mod __private {
     // # Why this trait is private and `#[pinned_drop]` attribute is needed?
     //
     // Implementing `PinnedDrop::drop` is safe, but calling it is not safe.
-    // This is because destructors can be called multiple times in safe code and
+    // This is because if calling it is safe destructors can be called multiple times in safe code and
     // [double dropping is unsound][rust-lang/rust#62360].
     //
     // Ideally, it would be desirable to be able to forbid manual calls in

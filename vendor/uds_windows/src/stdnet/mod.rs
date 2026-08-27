@@ -1,12 +1,12 @@
 use std::ascii;
+use std::ffi::CStr;
 use std::fmt;
 use std::io;
 use std::mem;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 use std::path::Path;
 
-use winapi::shared::ws2def::SOCKADDR;
-use winapi::um::winsock2::WSAGetLastError;
+use windows_sys::Win32::Networking::WinSock::{WSAGetLastError, SOCKADDR};
 
 mod ext;
 mod net;
@@ -15,24 +15,19 @@ mod socket;
 mod c {
     use std::ffi::CStr;
     use std::fmt;
-    use winapi::{
-        self,
-        shared::{ntdef::CHAR, ws2def::ADDRESS_FAMILY},
-    };
-
-    pub const AF_UNIX: ADDRESS_FAMILY = winapi::shared::ws2def::AF_UNIX as _;
+    pub use windows_sys::Win32::Networking::WinSock::{ADDRESS_FAMILY, AF_UNIX};
 
     #[allow(non_camel_case_types)]
     #[derive(Copy, Clone)]
     #[repr(C)]
     pub struct sockaddr_un {
         pub sun_family: ADDRESS_FAMILY,
-        pub sun_path: [CHAR; 108],
+        pub sun_path: [u8; 108],
     }
 
     impl fmt::Debug for sockaddr_un {
         fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-            let path = unsafe { CStr::from_ptr(&self.sun_path as *const _).to_str() };
+            let path = unsafe { CStr::from_ptr(&self.sun_path as *const _ as *const i8).to_str() };
             fmt.debug_struct("sockaddr_un")
                 .field("sun_family", &self.sun_family)
                 .field("sun_path", &path.unwrap_or("???"))
@@ -72,7 +67,7 @@ pub unsafe fn sockaddr_un(path: &Path) -> io::Result<(c::sockaddr_un, c_int)> {
         ));
     }
     for (dst, src) in addr.sun_path.iter_mut().zip(bytes.iter()) {
-        *dst = *src as c_char;
+        *dst = *src;
     }
     // null byte for pathname addresses is already there because we zeroed the
     // struct
@@ -178,7 +173,6 @@ impl SocketAddr {
     /// let addr = socket.local_addr().expect("Couldn't get local address");
     /// assert_eq!(addr.is_unnamed(), false);
     /// ```
-
     // TODO: Is this following section relevant on Windows? Removed from the
     //       docs for now...
     // An unnamed address:
@@ -208,7 +202,6 @@ impl SocketAddr {
     /// let addr = socket.local_addr().expect("Couldn't get local address");
     /// assert_eq!(addr.as_pathname(), Some(Path::new("/tmp/sock")));
     /// ```
-
     // TODO: Is this following section relevant on Windows? Removed from the
     //       docs for now...
     // Without a pathname:
@@ -228,10 +221,10 @@ impl SocketAddr {
         }
     }
 
-    fn address(&self) -> AddressKind {
+    fn address(&self) -> AddressKind<'_> {
         let len = self.len as usize - sun_path_offset(&self.addr);
         // sockaddr_un::sun_path on Windows is a Win32 UTF-8 file system path
-        let path = unsafe { mem::transmute::<&[c_char], &[u8]>(&self.addr.sun_path) };
+        let path = &self.addr.sun_path[..];
 
         // macOS seems to return a len of 16 and a zeroed sun_path for unnamed addresses
         if len == 0
@@ -242,7 +235,6 @@ impl SocketAddr {
         } else if self.addr.sun_path[0] == 0 {
             AddressKind::Abstract(&path[1..len])
         } else {
-            use std::ffi::CStr;
             let pathname = unsafe { CStr::from_bytes_with_nul_unchecked(&path[..len]) };
             AddressKind::Pathname(Path::new(pathname.to_str().unwrap()))
         }
@@ -281,7 +273,7 @@ pub fn from_path(path: &Path) -> io::Result<SocketAddr> {
 
 struct AsciiEscaped<'a>(&'a [u8]);
 
-impl<'a> fmt::Display for AsciiEscaped<'a> {
+impl fmt::Display for AsciiEscaped<'_> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "\"")?;
         for byte in self.0.iter().cloned().flat_map(ascii::escape_default) {

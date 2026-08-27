@@ -1,7 +1,6 @@
 //! Examples from the `README`.
-#![cfg_attr(linktime_used_linker, feature(used_with_arg))]
 // Ensure we don't blow a low recursion limit.
-#![recursion_limit = "61"]
+#![recursion_limit = "62"]
 
 use ctor::ctor;
 use std::collections::HashMap;

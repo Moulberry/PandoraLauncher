@@ -31,6 +31,12 @@ use crate::proto::*;
 use bytes::Bytes;
 use std::time::Duration;
 
+#[derive(Debug, Eq, PartialEq)]
+pub(super) enum BufferStatus {
+    Complete,
+    CodecFull,
+}
+
 #[derive(Debug)]
 pub struct Config {
     /// Initial maximum number of locally initiated streams.
@@ -72,6 +78,11 @@ pub struct Config {
     ///
     /// When this gets exceeded, we issue GOAWAYs.
     pub local_max_error_reset_streams: Option<usize>,
+
+    /// connection-level budget (in bytes) for DATA framing overhead.
+    ///
+    /// Default 25600 bytes
+    pub data_frame_budget: usize,
 }
 
 trait DebugStructExt<'a, 'b> {

@@ -145,6 +145,8 @@
              summary="the pixel format and a set value are incompatible"/>
       <entry name="inert" value="4"
              summary="forbidden request on inert object"/>
+      <entry name="chroma_location" value="5"
+             summary="invalid chroma location"/>
     </enum>
 
     <request name="destroy" type="destructor">
@@ -411,6 +413,9 @@
         Set the chroma location type which defines the position of downsampled
         chroma samples, corresponding to Chroma420SampleLocType code points in
         H.273.
+
+        An invalid chroma location enum value raises the "chroma_location"
+        protocol error.
 
         A call to wl_surface.commit verifies that the pixel format and chroma
         location type in the committed surface contents are compatible, if

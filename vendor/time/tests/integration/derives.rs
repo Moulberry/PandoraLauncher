@@ -1,201 +1,249 @@
 use std::cmp::Ordering;
 use std::collections::hash_map::DefaultHasher;
+use std::fmt::Debug;
 use std::hash::Hash;
 
-use time::error::{self, ConversionRange, IndeterminateOffset, TryFromParsed};
-use time::ext::NumericalDuration;
-use time::format_description::{self, modifier, well_known, Component, BorrowedFormatItem, OwnedFormatItem};
-use time::macros::{date, offset, time, utc_datetime, datetime};
-use time::parsing::Parsed;
-use time::{Duration, Error, Month, Time, Weekday};
+use rstest::rstest;
 #[expect(deprecated)]
 use time::Instant;
-
-macro_rules! assert_cloned_eq {
-    ($x:expr) => {
-        assert_eq!($x.clone(), $x)
-    };
-}
+use time::error::{self, ConversionRange, IndeterminateOffset, TryFromParsed};
+use time::ext::NumericalDuration;
+use time::format_description::{
+    self, BorrowedFormatItem, Component, OwnedFormatItem, modifier, well_known,
+};
+use time::macros::{date, datetime, offset, time, utc_datetime};
+use time::parsing::Parsed;
+use time::{Error, Month, SignedDuration, Time, Weekday};
 
 fn component_range_error() -> error::ComponentRange {
     Time::from_hms(24, 0, 0).expect_err("24 is not a valid hour")
 }
 
 fn invalid_format_description() -> error::InvalidFormatDescription {
-    format_description::parse("[").expect_err("format description is invalid")
+    format_description::parse_borrowed::<3>("[").expect_err("format description is invalid")
 }
 
-#[expect(clippy::cognitive_complexity, reason = "all test the same thing")]
-#[test]
-fn clone() {
-    #[expect(deprecated)]
-    let instant = Instant::now();
-    assert_cloned_eq!(date!(2021-001));
-    assert_cloned_eq!(time!(0:00));
-    assert_cloned_eq!(offset!(UTC));
-    assert_cloned_eq!(datetime!(2021-001 0:00));
-    assert_cloned_eq!(datetime!(2021-001 0:00 UTC));
-    assert_cloned_eq!(utc_datetime!(2021-001 0:00));
-    assert_cloned_eq!(Weekday::Monday);
-    assert_cloned_eq!(Month::January);
-    assert_cloned_eq!(Duration::ZERO);
-    assert_cloned_eq!(instant);
-    assert_cloned_eq!(IndeterminateOffset);
-    assert_cloned_eq!(ConversionRange);
-    assert_cloned_eq!(invalid_format_description());
-    assert_cloned_eq!(TryFromParsed::InsufficientInformation);
-    #[expect(clippy::clone_on_copy)] // needed for coverage
-    let _ = Parsed::new().clone();
-    assert_cloned_eq!(error::Parse::ParseFromDescription(
-        error::ParseFromDescription::InvalidComponent("foo")
-    ));
-    assert_cloned_eq!(error::DifferentVariant);
-    assert_cloned_eq!(error::InvalidVariant);
-    assert_cloned_eq!(error::ParseFromDescription::InvalidComponent("foo"));
-    assert_cloned_eq!(Component::OffsetSecond(modifier::OffsetSecond::default()));
-    assert_cloned_eq!(well_known::Rfc2822);
-    assert_cloned_eq!(well_known::Rfc3339);
-    assert_cloned_eq!(well_known::Iso8601::DEFAULT);
-    assert_cloned_eq!(well_known::iso8601::FormattedComponents::None);
-    assert_cloned_eq!(well_known::iso8601::DateKind::Calendar);
-    assert_cloned_eq!(well_known::iso8601::TimePrecision::Hour {
-        decimal_digits: None
-    });
-    assert_cloned_eq!(well_known::iso8601::OffsetPrecision::Hour);
-    assert_cloned_eq!(well_known::iso8601::FormattedComponents::None);
-    assert_cloned_eq!(component_range_error());
-    assert_cloned_eq!(BorrowedFormatItem::Literal(b""));
-
-    assert_cloned_eq!(modifier::Day::default());
-    assert_cloned_eq!(modifier::MonthRepr::default());
-    assert_cloned_eq!(modifier::Month::default());
-    assert_cloned_eq!(modifier::Ordinal::default());
-    assert_cloned_eq!(modifier::WeekdayRepr::default());
-    assert_cloned_eq!(modifier::Weekday::default());
-    assert_cloned_eq!(modifier::WeekNumberRepr::default());
-    assert_cloned_eq!(modifier::WeekNumber::default());
-    assert_cloned_eq!(modifier::YearRepr::default());
-    assert_cloned_eq!(modifier::Year::default());
-    assert_cloned_eq!(modifier::Hour::default());
-    assert_cloned_eq!(modifier::Minute::default());
-    assert_cloned_eq!(modifier::Period::default());
-    assert_cloned_eq!(modifier::Second::default());
-    assert_cloned_eq!(modifier::SubsecondDigits::default());
-    assert_cloned_eq!(modifier::Subsecond::default());
-    assert_cloned_eq!(modifier::OffsetHour::default());
-    assert_cloned_eq!(modifier::OffsetMinute::default());
-    assert_cloned_eq!(modifier::OffsetSecond::default());
-    assert_cloned_eq!(modifier::Padding::default());
+#[rstest]
+#[expect(deprecated)]
+#[case(Instant::now())]
+#[case(date!(2021-001))]
+#[case(time!(0:00))]
+#[case(offset!(UTC))]
+#[case(datetime!(2021-001 0:00))]
+#[case(datetime!(2021-001 0:00 UTC))]
+#[case(utc_datetime!(2021-001 0:00))]
+#[case(Weekday::Monday)]
+#[case(Month::January)]
+#[case(SignedDuration::ZERO)]
+#[case(IndeterminateOffset)]
+#[case(ConversionRange)]
+#[case(invalid_format_description())]
+#[case(TryFromParsed::InsufficientInformation)]
+#[case(error::Parse::ParseFromDescription(error::ParseFromDescription::InvalidComponent("foo")))]
+#[case(error::DifferentVariant)]
+#[case(error::InvalidVariant)]
+#[case(error::ParseFromDescription::InvalidComponent("foo"))]
+#[case(Component::OffsetSecond(modifier::OffsetSecond::default()))]
+#[case(well_known::Rfc2822)]
+#[case(well_known::Rfc3339)]
+#[case(well_known::Iso8601::DEFAULT)]
+#[case(well_known::iso8601::FormattedComponents::None)]
+#[case(well_known::iso8601::DateKind::Calendar)]
+#[case(well_known::iso8601::TimePrecision::Hour { decimal_digits: None })]
+#[case(well_known::iso8601::OffsetPrecision::Hour)]
+#[case(well_known::iso8601::FormattedComponents::None)]
+#[case(component_range_error())]
+#[case(BorrowedFormatItem::StringLiteral(""))]
+#[case(modifier::Day::default())]
+#[case(modifier::MonthNumerical::default())]
+#[case(modifier::MonthShort::default())]
+#[case(modifier::MonthLong::default())]
+#[expect(deprecated)]
+#[case(modifier::MonthRepr::default())]
+#[expect(deprecated)]
+#[case(modifier::Month::default())]
+#[case(modifier::Ordinal::default())]
+#[expect(deprecated)]
+#[case(modifier::WeekdayRepr::default())]
+#[case(modifier::WeekdayShort::default())]
+#[case(modifier::WeekdayLong::default())]
+#[case(modifier::WeekdaySunday::default())]
+#[case(modifier::WeekdayMonday::default())]
+#[expect(deprecated)]
+#[case(modifier::Weekday::default())]
+#[expect(deprecated)]
+#[case(modifier::WeekNumberRepr::default())]
+#[case(modifier::WeekNumberIso::default())]
+#[case(modifier::WeekNumberSunday::default())]
+#[case(modifier::WeekNumberMonday::default())]
+#[expect(deprecated)]
+#[case(modifier::WeekNumber::default())]
+#[expect(deprecated)]
+#[case(modifier::YearRepr::default())]
+#[case(modifier::CalendarYearFullExtendedRange::default())]
+#[case(modifier::CalendarYearFullStandardRange::default())]
+#[case(modifier::IsoYearFullExtendedRange::default())]
+#[case(modifier::IsoYearFullStandardRange::default())]
+#[case(modifier::CalendarYearCenturyExtendedRange::default())]
+#[case(modifier::CalendarYearCenturyStandardRange::default())]
+#[case(modifier::IsoYearCenturyExtendedRange::default())]
+#[case(modifier::IsoYearCenturyStandardRange::default())]
+#[case(modifier::CalendarYearLastTwo::default())]
+#[case(modifier::IsoYearLastTwo::default())]
+#[expect(deprecated)]
+#[case(modifier::Year::default())]
+#[case(modifier::Hour12::default())]
+#[case(modifier::Hour24::default())]
+#[expect(deprecated)]
+#[case(modifier::Hour::default())]
+#[case(modifier::Minute::default())]
+#[case(modifier::Period::default())]
+#[case(modifier::Second::default())]
+#[case(modifier::SubsecondDigits::default())]
+#[case(modifier::Subsecond::default())]
+#[case(modifier::OffsetHour::default())]
+#[case(modifier::OffsetMinute::default())]
+#[case(modifier::OffsetSecond::default())]
+#[case(modifier::Padding::default())]
+fn clone(#[case] value: impl Clone + PartialEq + Debug) {
+    assert_eq!(value.clone(), value);
 }
 
-#[test]
-fn hash() {
+#[rstest]
+#[case(Parsed::new())]
+fn clone_coverage(#[case] value: impl Clone) {
+    #[expect(clippy::redundant_clone, reason = "intended for test coverage")]
+    drop(value.clone());
+}
+
+#[rstest]
+#[case(date!(2021-001))]
+#[case(time!(0:00))]
+#[case(offset!(UTC))]
+#[case(datetime!(2021-001 0:00))]
+#[case(datetime!(2021-001 0:00 UTC))]
+#[case(utc_datetime!(2021-001 0:00))]
+#[case(Weekday::Monday)]
+#[case(Month::January)]
+#[expect(deprecated)]
+#[case(Instant::now())]
+#[case(SignedDuration::ZERO)]
+#[case(component_range_error())]
+fn hash(#[case] value: impl Hash) {
     let mut hasher = DefaultHasher::new();
-    date!(2021-001).hash(&mut hasher);
-    time!(0:00).hash(&mut hasher);
-    offset!(UTC).hash(&mut hasher);
-    datetime!(2021-001 0:00).hash(&mut hasher);
-    datetime!(2021-001 0:00 UTC).hash(&mut hasher);
-    utc_datetime!(2021-001 0:00).hash(&mut hasher);
-    Weekday::Monday.hash(&mut hasher);
-    Month::January.hash(&mut hasher);
-    #[expect(deprecated)]
-    Instant::now().hash(&mut hasher);
-    Duration::ZERO.hash(&mut hasher);
-    component_range_error().hash(&mut hasher);
+    value.hash(&mut hasher);
 }
 
-#[test]
-fn partial_ord() {
-    #[expect(deprecated)]
-    let instant = Instant::now();
-    assert_eq!(offset!(UTC).partial_cmp(&offset!(+1)), Some(Ordering::Less));
-    assert_eq!(
-        offset!(+1).partial_cmp(&offset!(UTC)),
-        Some(Ordering::Greater)
-    );
-    assert_eq!(
-        (instant - 1.seconds()).partial_cmp(&instant),
-        Some(Ordering::Less)
-    );
-    assert_eq!(
-        (instant + 1.seconds()).partial_cmp(&instant),
-        Some(Ordering::Greater)
-    );
+#[rstest]
+#[case(offset!(UTC), offset!(+1), Ordering::Less)]
+#[case(offset!(+1), offset!(UTC), Ordering::Greater)]
+#[expect(deprecated)]
+#[case(Instant::now() - 1.seconds(), Instant::now(), Ordering::Less)]
+#[expect(deprecated)]
+#[case(Instant::now() + 1.seconds(), Instant::now(), Ordering::Greater)]
+fn partial_ord<T>(#[case] a: T, #[case] b: T, #[case] ordering: Ordering)
+where
+    T: PartialOrd,
+{
+    assert_eq!(a.partial_cmp(&b), Some(ordering));
 }
 
-#[test]
-fn ord() {
-    assert_eq!(offset!(UTC).cmp(&offset!(+1)), Ordering::Less);
-    assert_eq!(offset!(+1).cmp(&offset!(UTC)), Ordering::Greater);
-    assert_eq!(offset!(UTC).cmp(&offset!(UTC)), Ordering::Equal);
+#[rstest]
+#[case(offset!(UTC), offset!(+1), Ordering::Less)]
+#[case(offset!(+1), offset!(UTC), Ordering::Greater)]
+#[case(offset!(UTC), offset!(UTC), Ordering::Equal)]
+fn ord(#[case] a: time::UtcOffset, #[case] b: time::UtcOffset, #[case] ordering: Ordering) {
+    assert_eq!(a.cmp(&b), ordering);
 }
 
-#[test]
-fn debug() {
-    macro_rules! debug_all {
-        () => {};
-        (#[$meta:meta] $x:expr; $($rest:tt)*) => {
-            #[$meta]
-            let _unused = format!("{:?}", $x);
-            debug_all!($($rest)*);
-        };
-        ($x:expr; $($rest:tt)*) => {
-            let _unused = format!("{:?}", $x);
-            debug_all!($($rest)*);
-        };
-    }
-
-    debug_all! {
-        utc_datetime!(2021-001 0:00);
-        Duration::ZERO;
-        IndeterminateOffset;
-        ConversionRange;
-        TryFromParsed::InsufficientInformation;
-        Parsed::new();
-        #[expect(deprecated)]
-        Instant::now();
-        error::ParseFromDescription::InvalidComponent("foo");
-        error::Format::InvalidComponent("foo");
-        well_known::Rfc2822;
-        well_known::Rfc3339;
-        well_known::Iso8601::DEFAULT;
-        well_known::iso8601::FormattedComponents::None;
-        well_known::iso8601::DateKind::Calendar;
-        well_known::iso8601::TimePrecision::Hour { decimal_digits: None };
-        well_known::iso8601::OffsetPrecision::Hour;
-        well_known::iso8601::Config::DEFAULT;
-        component_range_error();
-        Error::ConversionRange(ConversionRange);
-
-        modifier::Day::default();
-        modifier::MonthRepr::default();
-        modifier::Month::default();
-        modifier::Ordinal::default();
-        modifier::WeekdayRepr::default();
-        modifier::Weekday::default();
-        modifier::WeekNumberRepr::default();
-        modifier::WeekNumber::default();
-        modifier::YearRepr::default();
-        modifier::Year::default();
-        modifier::Hour::default();
-        modifier::Minute::default();
-        modifier::Period::default();
-        modifier::Second::default();
-        modifier::SubsecondDigits::default();
-        modifier::Subsecond::default();
-        modifier::OffsetHour::default();
-        modifier::OffsetMinute::default();
-        modifier::OffsetSecond::default();
-        modifier::Padding::default();
-
-        BorrowedFormatItem::Literal(b"abcdef");
-        BorrowedFormatItem::Compound(&[BorrowedFormatItem::Component(Component::Day(modifier::Day::default()))]);
-        BorrowedFormatItem::Optional(&BorrowedFormatItem::Compound(&[]));
-        BorrowedFormatItem::First(&[]);
-        OwnedFormatItem::from(BorrowedFormatItem::Literal(b"abcdef"));
-        OwnedFormatItem::from(BorrowedFormatItem::Compound(&[BorrowedFormatItem::Component(Component::Day(modifier::Day::default()))]));
-        OwnedFormatItem::from(BorrowedFormatItem::Optional(&BorrowedFormatItem::Compound(&[])));
-        OwnedFormatItem::from(BorrowedFormatItem::First(&[]));
-    }
+#[rstest]
+#[case(utc_datetime!(2021-001 0:00))]
+#[case(SignedDuration::ZERO)]
+#[case(IndeterminateOffset)]
+#[case(ConversionRange)]
+#[case(TryFromParsed::InsufficientInformation)]
+#[case(Parsed::new())]
+#[expect(deprecated)]
+#[case(Instant::now())]
+#[case(error::ParseFromDescription::InvalidComponent("foo"))]
+#[case(error::Format::InvalidComponent("foo"))]
+#[case(well_known::Rfc2822)]
+#[case(well_known::Rfc3339)]
+#[case(well_known::Iso8601::DEFAULT)]
+#[case(well_known::iso8601::FormattedComponents::None)]
+#[case(well_known::iso8601::DateKind::Calendar)]
+#[case(well_known::iso8601::TimePrecision::Hour { decimal_digits: None })]
+#[case(well_known::iso8601::OffsetPrecision::Hour)]
+#[case(well_known::iso8601::Config::DEFAULT)]
+#[case(component_range_error())]
+#[case(Error::ConversionRange(ConversionRange))]
+#[case(modifier::Day::default())]
+#[expect(deprecated)]
+#[case(modifier::MonthRepr::default())]
+#[case(modifier::MonthNumerical::default())]
+#[case(modifier::MonthShort::default())]
+#[case(modifier::MonthLong::default())]
+#[expect(deprecated)]
+#[case(modifier::Month::default())]
+#[case(modifier::Ordinal::default())]
+#[expect(deprecated)]
+#[case(modifier::WeekdayRepr::default())]
+#[case(modifier::WeekdayShort::default())]
+#[case(modifier::WeekdayLong::default())]
+#[case(modifier::WeekdaySunday::default())]
+#[case(modifier::WeekdayMonday::default())]
+#[expect(deprecated)]
+#[case(modifier::Weekday::default())]
+#[expect(deprecated)]
+#[case(modifier::WeekNumberRepr::default())]
+#[case(modifier::WeekNumberIso::default())]
+#[case(modifier::WeekNumberSunday::default())]
+#[case(modifier::WeekNumberMonday::default())]
+#[expect(deprecated)]
+#[case(modifier::WeekNumber::default())]
+#[expect(deprecated)]
+#[case(modifier::YearRepr::default())]
+#[case(modifier::CalendarYearFullExtendedRange::default())]
+#[case(modifier::CalendarYearFullStandardRange::default())]
+#[case(modifier::IsoYearFullExtendedRange::default())]
+#[case(modifier::IsoYearFullStandardRange::default())]
+#[case(modifier::CalendarYearCenturyExtendedRange::default())]
+#[case(modifier::CalendarYearCenturyStandardRange::default())]
+#[case(modifier::IsoYearCenturyExtendedRange::default())]
+#[case(modifier::IsoYearCenturyStandardRange::default())]
+#[case(modifier::CalendarYearLastTwo::default())]
+#[case(modifier::IsoYearLastTwo::default())]
+#[expect(deprecated)]
+#[case(modifier::Year::default())]
+#[case(modifier::Hour12::default())]
+#[case(modifier::Hour24::default())]
+#[expect(deprecated)]
+#[case(modifier::Hour::default())]
+#[case(modifier::Minute::default())]
+#[case(modifier::Period::default())]
+#[case(modifier::Second::default())]
+#[case(modifier::SubsecondDigits::default())]
+#[case(modifier::Subsecond::default())]
+#[case(modifier::OffsetHour::default())]
+#[case(modifier::OffsetMinute::default())]
+#[case(modifier::OffsetSecond::default())]
+#[case(modifier::Padding::default())]
+#[expect(deprecated)]
+#[case(BorrowedFormatItem::Literal(b"abcdef"))]
+#[case(BorrowedFormatItem::StringLiteral("abcdef"))]
+#[case(BorrowedFormatItem::Compound(
+    const { &[BorrowedFormatItem::Component(Component::Day(modifier::Day::default()))] }
+))]
+#[case(BorrowedFormatItem::Optional(&BorrowedFormatItem::Compound(&[])))]
+#[case(BorrowedFormatItem::First(&[]))]
+#[expect(deprecated)]
+#[case(OwnedFormatItem::from(BorrowedFormatItem::Literal(b"abcdef")))]
+#[case(OwnedFormatItem::from(BorrowedFormatItem::StringLiteral("abcdef")))]
+#[case(OwnedFormatItem::from(BorrowedFormatItem::Compound(
+    &[BorrowedFormatItem::Component(Component::Day(modifier::Day::default()))]
+)))]
+#[case(OwnedFormatItem::from(BorrowedFormatItem::Optional(&BorrowedFormatItem::Compound(&[]))))]
+#[case(OwnedFormatItem::from(BorrowedFormatItem::First(&[])))]
+fn debug(#[case] value: impl Debug) {
+    let _unused = format!("{value:?}");
 }

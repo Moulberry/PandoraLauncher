@@ -450,6 +450,8 @@ impl Builder {
             .request_name_with_flags(self.name, self.flags)
             .await?;
 
+        connection.closed().await;
+
         Ok(())
     }
 }

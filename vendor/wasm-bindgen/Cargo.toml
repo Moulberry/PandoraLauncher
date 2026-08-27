@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.77"
 name = "wasm-bindgen"
-version = "0.2.120"
+version = "0.2.127"
 authors = ["The wasm-bindgen Developers"]
 build = "build.rs"
 include = [
@@ -76,10 +76,10 @@ version = "1.0"
 optional = true
 
 [dependencies.wasm-bindgen-macro]
-version = "=0.2.120"
+version = "=0.2.127"
 
 [dependencies.wasm-bindgen-shared]
-version = "=0.2.120"
+version = "=0.2.127"
 
 [dev-dependencies.once_cell]
 version = "1"
@@ -118,4 +118,5 @@ check-cfg = [
     "cfg(wasm_bindgen_unstable_test_coverage)",
     "cfg(wasm_bindgen_use_js_sys)",
     "cfg(xxx_debug_only_print_generated_code)",
+    "cfg(legacy_eh)",
 ]

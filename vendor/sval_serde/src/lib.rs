@@ -17,6 +17,7 @@ Without the `alloc` feature, any values that require buffering will instead
 produce errors during serialization.
 */
 
+#![doc(html_logo_url = "https://raw.githubusercontent.com/sval-rs/sval/main/asset/logo.svg")]
 #![no_std]
 #![deny(missing_docs)]
 

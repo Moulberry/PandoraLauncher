@@ -18,7 +18,11 @@ use crate::vector::Vector2D;
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
-use num_traits::{Float, NumCast};
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
+#[cfg(any(feature = "std", feature = "libm"))]
+use num_traits::Float;
+use num_traits::NumCast;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -76,6 +80,13 @@ impl<T: Hash, U> Hash for Rect<T, U> {
     fn hash<H: Hasher>(&self, h: &mut H) {
         self.origin.hash(h);
         self.size.hash(h);
+    }
+}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, U> MallocSizeOf for Rect<T, U> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.origin.size_of(ops) + self.size.size_of(ops)
     }
 }
 
@@ -328,10 +339,12 @@ where
     ///
     /// Note: This function has a behavior that can be surprising because
     /// the right-most and bottom-most points are exactly on the edge
-    /// of the rectangle while the `contains` function is has exclusive
+    /// of the rectangle while the [`Rect::contains`] function is has exclusive
     /// semantic on these edges. This means that the right-most and bottom-most
-    /// points provided to `from_points` will count as not contained by the rect.
+    /// points provided to [`Rect::from_points`] will count as not contained by the rect.
     /// This behavior may change in the future.
+    ///
+    /// See [`Box2D::from_points`] for more details.
     pub fn from_points<I>(points: I) -> Self
     where
         I: IntoIterator,
@@ -598,6 +611,7 @@ impl<T: NumCast + Copy, U> Rect<T, U> {
     }
 }
 
+#[cfg(any(feature = "std", feature = "libm"))]
 impl<T: Float, U> Rect<T, U> {
     /// Returns `true` if all members are finite.
     #[inline]
@@ -660,12 +674,22 @@ where
     }
 }
 
+impl<T, U> From<Box2D<T, U>> for Rect<T, U>
+where
+    T: Copy + Sub<T, Output = T>,
+{
+    fn from(b: Box2D<T, U>) -> Self {
+        b.to_rect()
+    }
+}
+
 /// Shorthand for `Rect::new(Point2D::new(x, y), Size2D::new(w, h))`.
 pub const fn rect<T, U>(x: T, y: T, w: T, h: T) -> Rect<T, U> {
     Rect::new(Point2D::new(x, y), Size2D::new(w, h))
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod tests {
     use crate::default::{Point2D, Rect, Size2D};
     use crate::side_offsets::SideOffsets2D;
@@ -905,7 +929,7 @@ mod tests {
                 }
                 y += 0.1;
             }
-            x += 0.1
+            x += 0.1;
         }
     }
 

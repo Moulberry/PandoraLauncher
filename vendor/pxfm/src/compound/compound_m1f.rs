@@ -160,7 +160,7 @@ fn exp2m1_fast(t: f64) -> f64 {
     // now |r| <= 2^-6
     // 2^t = 2^k * exp2_U[i][0] * 2^r
     let mut s = f64::from_bits(COMPOUNDF_EXP2_U[i as usize].1);
-    let su = unsafe { ((k.to_int_unchecked::<i64>() as u64).wrapping_add(0x3ffu64)) << 52 }; // k is already integer
+    let su = (((k as i64) as u64).wrapping_add(0x3ffu64)) << 52;
     s *= f64::from_bits(su);
     let q_poly = compoundf_expf_poly(r);
     v = q_poly.to_bits();
@@ -238,7 +238,8 @@ fn compoundf_exp2m1_accurate(x_dd: DoubleDouble, x: f32, y: f32) -> f32 {
         // let k = Dekker::from_exact_sub(z0, 1.);
         // return k.to_f64() as f32;
 
-        return exp2m1_accurate_tiny(x_dd.to_f64()) as f32;
+        use crate::exponents::GenericExpfBackend;
+        return exp2m1_accurate_tiny(x_dd.to_f64(), &GenericExpfBackend {}) as f32;
     }
 
     let r = x_dd.hi - k; // |r| <= 1/2, exact

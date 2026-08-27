@@ -6,10 +6,9 @@ use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{self, Poll};
+use std::task::{self, ready, Poll};
 use std::time::Duration;
 
-use futures_core::ready;
 use futures_util::future::Either;
 use http::uri::{Scheme, Uri};
 use pin_project_lite::pin_project;
@@ -397,7 +396,7 @@ impl<R> HttpConnector<R> {
     /// - macOS, iOS, visionOS, watchOS, and tvOS
     ///
     /// [VRF]: https://www.kernel.org/doc/Documentation/networking/vrf.txt
-    /// [`man 7 socket`] https://man7.org/linux/man-pages/man7/socket.7.html
+    /// [`man 7 socket`]: https://man7.org/linux/man-pages/man7/socket.7.html
     /// [`man 7p ip`]: https://docs.oracle.com/cd/E86824_01/html/E54777/ip-7p.html
     #[cfg(any(
         target_os = "android",

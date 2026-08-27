@@ -2,26 +2,25 @@
 use async_broadcast::{InactiveReceiver, Receiver, Sender as Broadcaster, broadcast};
 use enumflags2::BitFlags;
 use event_listener::{Event, EventListener};
-use ordered_stream::{OrderedFuture, OrderedStream, PollResult};
 use std::{
     collections::HashMap,
-    io::{self, ErrorKind},
-    num::NonZeroU32,
-    pin::Pin,
-    sync::{Arc, OnceLock, Weak},
-    task::{Context, Poll},
+    future::Future,
+    io,
+    sync::{
+        Arc, OnceLock, Weak,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 use tracing::{Instrument, debug, info_span, instrument, trace, trace_span, warn};
 use zbus_names::{BusName, ErrorName, InterfaceName, MemberName, OwnedUniqueName, WellKnownName};
 use zvariant::ObjectPath;
 
-use futures_core::Future;
 use futures_lite::StreamExt;
+use ordered_stream::OrderedFuture;
 
 use crate::{
-    DBusError, Error, Executor, MatchRule, MessageStream, ObjectServer, OwnedGuid, OwnedMatchRule,
-    Result, Task,
+    DBusError, Error, Executor, MatchRule, ObjectServer, OwnedGuid, OwnedMatchRule, Result, Task,
     async_lock::{Mutex, Semaphore, SemaphorePermit},
     fdo::{ConnectionCredentials, ReleaseNameReply, RequestNameFlags, RequestNameReply},
     is_flatpak,
@@ -36,14 +35,16 @@ pub mod socket;
 pub use socket::Socket;
 
 mod socket_reader;
-use socket_reader::SocketReader;
+use socket_reader::{SocketReader, SocketStatus};
+
+mod pending_method_calls;
+use pending_method_calls::PendingMethodCalls;
 
 pub(crate) mod handshake;
 pub use handshake::AuthMechanism;
 use handshake::Authenticated;
 
 const DEFAULT_MAX_QUEUED: usize = 64;
-const DEFAULT_MAX_METHOD_RETURN_QUEUED: usize = 8;
 
 /// Inner state shared by Connection and WeakConnection
 #[derive(Debug)]
@@ -56,7 +57,7 @@ pub(crate) struct ConnectionInner {
     unique_name: OnceLock<OwnedUniqueName>,
     registered_names: Mutex<HashMap<WellKnownName<'static>, NameStatus>>,
 
-    activity_event: Arc<Event>,
+    socket_status: Arc<SocketStatus>,
     socket_write: Mutex<Box<dyn socket::WriteHalf>>,
 
     // Our executor
@@ -67,8 +68,8 @@ pub(crate) struct ConnectionInner {
     socket_reader_task: OnceLock<Task<()>>,
 
     pub(crate) msg_receiver: InactiveReceiver<Result<Message>>,
-    pub(crate) method_return_receiver: InactiveReceiver<Result<Message>>,
     msg_senders: Arc<Mutex<HashMap<Option<OwnedMatchRule>, MsgBroadcaster>>>,
+    pending_method_calls: PendingMethodCalls,
 
     subscriptions: Mutex<Subscriptions>,
 
@@ -214,80 +215,6 @@ pub struct Connection {
     pub(crate) inner: Arc<ConnectionInner>,
 }
 
-/// A method call whose completion can be awaited or joined with other streams.
-///
-/// This is useful for cache population method calls, where joining the [`JoinableStream`] with
-/// an update signal stream can be used to ensure that cache updates are not overwritten by a cache
-/// population whose task is scheduled later.
-#[derive(Debug)]
-pub(crate) struct PendingMethodCall {
-    stream: Option<MessageStream>,
-    serial: NonZeroU32,
-}
-
-impl Future for PendingMethodCall {
-    type Output = Result<Message>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        self.poll_before(cx, None).map(|ret| {
-            ret.map(|(_, r)| r).unwrap_or_else(|| {
-                Err(crate::Error::InputOutput(
-                    io::Error::new(ErrorKind::BrokenPipe, "socket closed").into(),
-                ))
-            })
-        })
-    }
-}
-
-impl OrderedFuture for PendingMethodCall {
-    type Output = Result<Message>;
-    type Ordering = zbus::message::Sequence;
-
-    fn poll_before(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        before: Option<&Self::Ordering>,
-    ) -> Poll<Option<(Self::Ordering, Self::Output)>> {
-        let this = self.get_mut();
-        if let Some(stream) = &mut this.stream {
-            loop {
-                match Pin::new(&mut *stream).poll_next_before(cx, before) {
-                    Poll::Ready(PollResult::Item {
-                        data: Ok(msg),
-                        ordering,
-                    }) => {
-                        if msg.header().reply_serial() != Some(this.serial) {
-                            continue;
-                        }
-                        let res = match msg.message_type() {
-                            Type::Error => Err(msg.into()),
-                            Type::MethodReturn => Ok(msg),
-                            _ => continue,
-                        };
-                        this.stream = None;
-                        return Poll::Ready(Some((ordering, res)));
-                    }
-                    Poll::Ready(PollResult::Item {
-                        data: Err(e),
-                        ordering,
-                    }) => {
-                        return Poll::Ready(Some((ordering, Err(e))));
-                    }
-
-                    Poll::Ready(PollResult::NoneBefore) => {
-                        return Poll::Ready(None);
-                    }
-                    Poll::Ready(PollResult::Terminated) => {
-                        return Poll::Ready(None);
-                    }
-                    Poll::Pending => return Poll::Pending,
-                }
-            }
-        }
-        Poll::Ready(None)
-    }
-}
-
 impl Connection {
     /// Send `msg` to the peer.
     pub async fn send(&self, msg: &Message) -> Result<()> {
@@ -296,7 +223,7 @@ impl Connection {
             return Err(Error::Unsupported);
         }
 
-        self.inner.activity_event.notify(usize::MAX);
+        self.inner.socket_status.activity_event.notify(usize::MAX);
         let mut write = self.inner.socket_write.lock().await;
 
         write.send_message(msg).await
@@ -364,7 +291,12 @@ impl Connection {
         method_name: M,
         flags: BitFlags<Flags>,
         body: &B,
-    ) -> Result<Option<PendingMethodCall>>
+    ) -> Result<
+        Option<
+            impl Future<Output = Result<Message>>
+            + OrderedFuture<Output = Result<Message>, Ordering = crate::message::Sequence>,
+        >,
+    >
     where
         D: TryInto<BusName<'d>>,
         P: TryInto<ObjectPath<'p>>,
@@ -393,19 +325,16 @@ impl Connection {
         }
         let msg = builder.build(body)?;
 
-        let msg_receiver = self.inner.method_return_receiver.activate_cloned();
-        let stream = Some(MessageStream::for_subscription_channel(
-            msg_receiver,
-            // This is a lie but we only use the stream internally so it's fine.
-            None,
-            self,
-        ));
         let serial = msg.primary_header().serial_num();
-        self.send(&msg).await?;
         if flags.contains(Flags::NoReplyExpected) {
+            self.send(&msg).await?;
+
             Ok(None)
         } else {
-            Ok(Some(PendingMethodCall { stream, serial }))
+            let pending_call = self.inner.pending_method_calls.register_call(serial);
+            self.send(&msg).await?;
+
+            Ok(Some(pending_call))
         }
     }
 
@@ -682,7 +611,7 @@ impl Connection {
                     loop {
                         let signal = lost_stream.next().await;
                         let inner = match weak_conn.upgrade() {
-                            Some(conn) => conn.inner.clone(),
+                            Some(conn) => conn.inner,
                             None => break,
                         };
 
@@ -733,7 +662,7 @@ impl Connection {
                         loop {
                             let signal = acquired_stream.next().await;
                             let inner = match weak_conn.upgrade() {
-                                Some(conn) => conn.inner.clone(),
+                                Some(conn) => conn.inner,
                                 None => break,
                             };
                             match signal {
@@ -1168,22 +1097,17 @@ impl Connection {
         let mut msg_senders = HashMap::new();
         msg_senders.insert(None, msg_sender);
 
-        // The special method return & error channel.
-        let (method_return_sender, method_return_receiver) =
-            create_msg_broadcast_channel!(DEFAULT_MAX_METHOD_RETURN_QUEUED);
-        let rule = MatchRule::builder()
-            .msg_type(Type::MethodReturn)
-            .build()
-            .into();
-        msg_senders.insert(Some(rule), method_return_sender.clone());
-        let rule = MatchRule::builder().msg_type(Type::Error).build().into();
-        msg_senders.insert(Some(rule), method_return_sender);
         let msg_senders = Arc::new(Mutex::new(msg_senders));
+        let pending_method_calls = PendingMethodCalls::default();
         let subscriptions = Mutex::new(HashMap::new());
 
         let connection = Self {
             inner: Arc::new(ConnectionInner {
-                activity_event: Arc::new(Event::new()),
+                socket_status: Arc::new(SocketStatus {
+                    activity_event: Event::new(),
+                    closed: AtomicBool::new(false),
+                    closed_event: Event::new(),
+                }),
                 socket_write: Mutex::new(auth.socket_write),
                 server_guid: auth.server_guid,
                 #[cfg(unix)]
@@ -1197,8 +1121,8 @@ impl Connection {
                 executor,
                 socket_reader_task: OnceLock::new(),
                 msg_senders,
+                pending_method_calls,
                 msg_receiver,
-                method_return_receiver,
                 registered_names: Mutex::new(HashMap::new()),
                 drop_event: Event::new(),
                 method_timeout,
@@ -1227,7 +1151,31 @@ impl Connection {
     ///
     /// This function is meant for the caller to implement idle or timeout on inactivity.
     pub fn monitor_activity(&self) -> EventListener {
-        self.inner.activity_event.listen()
+        self.inner.socket_status.activity_event.listen()
+    }
+
+    /// Returns `true` if the connection has been closed.
+    ///
+    /// A connection is considered closed either when the remote peer disconnects, an I/O error
+    /// occurs on the socket, or [`Connection::close`] is called.
+    pub fn is_closed(&self) -> bool {
+        self.inner.socket_status.closed.load(Ordering::Relaxed)
+    }
+
+    /// Waits until the connection is closed.
+    ///
+    /// A connection is considered closed either when the remote peer disconnects, an I/O error
+    /// occurs on the socket, or [`Connection::close`] is called.
+    ///
+    /// Returns immediately if the connection is already closed.
+    pub async fn closed(&self) {
+        loop {
+            let listener = self.inner.socket_status.closed_event.listen();
+            if self.inner.socket_status.closed.load(Ordering::Acquire) {
+                return;
+            }
+            listener.await;
+        }
     }
 
     /// Return the peer credentials.
@@ -1282,14 +1230,21 @@ impl Connection {
     ///
     /// After this call, all reading and writing operations will fail.
     pub async fn close(self) -> Result<()> {
-        self.inner.activity_event.notify(usize::MAX);
-        self.inner
+        self.inner.socket_status.activity_event.notify(usize::MAX);
+        let result = self
+            .inner
             .socket_write
             .lock()
             .await
             .close()
             .await
-            .map_err(Into::into)
+            .map_err(Into::into);
+        self.inner
+            .socket_status
+            .closed
+            .store(true, Ordering::Release);
+        self.inner.socket_status.closed_event.notify(usize::MAX);
+        result
     }
 
     /// Gracefully close the connection, waiting for all other references to be dropped.
@@ -1354,10 +1309,11 @@ impl Connection {
                 SocketReader::new(
                     socket_read,
                     inner.msg_senders.clone(),
+                    inner.pending_method_calls.clone(),
                     already_read,
                     #[cfg(unix)]
                     already_received_fds,
-                    inner.activity_event.clone(),
+                    inner.socket_status.clone(),
                 )
                 .spawn(&inner.executor),
             )
@@ -1716,12 +1672,12 @@ mod p2p_tests {
             let p0 = listener.incoming().next().unwrap().unwrap();
 
             (
-                Builder::tcp_stream(p0)
+                Builder::async_io_tcp_stream(p0)
                     .server(guid)
                     .unwrap()
                     .p2p()
                     .auth_mechanism(AuthMechanism::Anonymous),
-                Builder::tcp_stream(p1).p2p(),
+                Builder::async_io_tcp_stream(p1).p2p(),
             )
         };
 
@@ -1773,33 +1729,67 @@ mod p2p_tests {
 
         let (p0, p1) = UnixStream::pair().unwrap();
 
+        #[cfg(not(feature = "tokio"))]
+        let (b1, b0) = (
+            Builder::async_io_unix_stream(p1),
+            Builder::async_io_unix_stream(p0),
+        );
+        #[cfg(feature = "tokio")]
+        let (b1, b0) = (Builder::unix_stream(p1), Builder::unix_stream(p0));
+
+        futures_util::try_join!(b1.p2p().build(), b0.server(guid).unwrap().p2p().build(),)
+    }
+
+    // With both backends compiled in, exercise the async-io one end to end. `utils::block_on`
+    // establishes a tokio runtime (so the other tests hit the tokio arm), so drive this with
+    // `async_io::block_on` and hand the builder async-io streams: the connection must then latch
+    // the async-io backend and spin up its internal driver thread.
+    #[cfg(all(unix, feature = "tokio", feature = "async-io"))]
+    #[test]
+    #[timeout(15000)]
+    fn unix_p2p_async_io_backend() {
+        async_io::block_on(async {
+            let (server1, client1) = async_io_unix_p2p_pipe().await.unwrap();
+            assert!(server1.executor().needs_internal_driver());
+            assert!(client1.executor().needs_internal_driver());
+            let (server2, client2) = async_io_unix_p2p_pipe().await.unwrap();
+
+            test_p2p(server1, client1, server2, client2).await.unwrap();
+        });
+    }
+
+    #[cfg(all(unix, feature = "tokio", feature = "async-io"))]
+    async fn async_io_unix_p2p_pipe() -> Result<(Connection, Connection)> {
+        use std::os::unix::net::UnixStream;
+
+        let guid = Guid::generate();
+        let (p0, p1) = UnixStream::pair().unwrap();
+
         futures_util::try_join!(
-            Builder::unix_stream(p1).p2p().build(),
-            Builder::unix_stream(p0).server(guid).unwrap().p2p().build(),
+            Builder::async_io_unix_stream(p1).p2p().build(),
+            Builder::async_io_unix_stream(p0)
+                .server(guid)
+                .unwrap()
+                .p2p()
+                .build(),
         )
     }
 
-    #[cfg(any(
-        all(feature = "vsock", not(feature = "tokio")),
-        feature = "tokio-vsock"
-    ))]
+    #[cfg(any(feature = "vsock", feature = "tokio-vsock"))]
     #[test]
     #[timeout(15000)]
     fn vsock_connect() {
         let _ = crate::utils::block_on(test_vsock_connect()).unwrap();
     }
 
-    #[cfg(any(
-        all(feature = "vsock", not(feature = "tokio")),
-        feature = "tokio-vsock"
-    ))]
+    #[cfg(any(feature = "vsock", feature = "tokio-vsock"))]
     async fn test_vsock_connect() -> Result<(Connection, Connection)> {
         #[cfg(feature = "tokio-vsock")]
         use futures_util::StreamExt;
 
         let guid = Guid::generate();
 
-        #[cfg(all(feature = "vsock", not(feature = "tokio")))]
+        #[cfg(all(feature = "vsock", not(feature = "tokio-vsock")))]
         let listener = vsock::VsockListener::bind_with_cid_port(vsock::VMADDR_CID_LOCAL, u32::MAX)?;
         #[cfg(feature = "tokio-vsock")]
         let listener = tokio_vsock::VsockListener::bind(tokio_vsock::VsockAddr::new(1, u32::MAX))?;
@@ -1808,7 +1798,7 @@ mod p2p_tests {
         let addr = format!("vsock:cid={},port={},guid={guid}", addr.cid(), addr.port());
 
         let server = async {
-            #[cfg(all(feature = "vsock", not(feature = "tokio")))]
+            #[cfg(all(feature = "vsock", not(feature = "tokio-vsock")))]
             let server =
                 crate::Task::spawn_blocking(move || listener.incoming().next(), "").await?;
             #[cfg(feature = "tokio-vsock")]
@@ -1828,20 +1818,14 @@ mod p2p_tests {
         futures_util::try_join!(server, client)
     }
 
-    #[cfg(any(
-        all(feature = "vsock", not(feature = "tokio")),
-        feature = "tokio-vsock"
-    ))]
+    #[cfg(any(feature = "vsock", feature = "tokio-vsock"))]
     #[test]
     #[timeout(15000)]
     fn vsock_p2p() {
         crate::utils::block_on(test_vsock_p2p()).unwrap();
     }
 
-    #[cfg(any(
-        all(feature = "vsock", not(feature = "tokio")),
-        feature = "tokio-vsock"
-    ))]
+    #[cfg(any(feature = "vsock", feature = "tokio-vsock"))]
     async fn test_vsock_p2p() -> Result<()> {
         let (server1, client1) = vsock_p2p_pipe().await?;
         let (server2, client2) = vsock_p2p_pipe().await?;
@@ -1849,7 +1833,7 @@ mod p2p_tests {
         test_p2p(server1, client1, server2, client2).await
     }
 
-    #[cfg(all(feature = "vsock", not(feature = "tokio")))]
+    #[cfg(all(feature = "vsock", not(feature = "tokio-vsock")))]
     async fn vsock_p2p_pipe() -> Result<(Connection, Connection)> {
         let guid = Guid::generate();
 

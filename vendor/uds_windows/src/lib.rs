@@ -1,12 +1,6 @@
 //! Unix domain sockets for Windows
 
 #[cfg(windows)]
-extern crate winapi;
-
-#[cfg(windows)]
-extern crate tempfile;
-
-#[cfg(windows)]
 mod stdnet;
 
 #[cfg(windows)]

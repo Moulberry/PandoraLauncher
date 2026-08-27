@@ -27,6 +27,10 @@ pub type ManagedObjects =
 /// under the `path` it's added at. You can use this fact to minimize the signal emissions by
 /// populating the entire (sub)tree under `path` before registering an object manager.
 ///
+/// Because registering it reads the properties of every object under `path`, adding an
+/// `ObjectManager` at an ancestor of an interface from within that interface's own `&mut self`
+/// method will deadlock. See [`ObjectServer::at`](crate::ObjectServer::at) for details.
+///
 /// [om]: https://dbus.freedesktop.org/doc/dbus-specification.html#standard-interfaces-objectmanager
 #[derive(Debug, Clone)]
 pub struct ObjectManager;

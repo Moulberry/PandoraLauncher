@@ -1,3 +1,11 @@
+# Version 1.14.0
+
+- Bump MSRV to 1.65. (#146)
+- Fix docs.rs build. (#152)
+- Upstreaming parts of the Hermit `no_std` patchset:
+  - Use `Self` where possible (#155)
+  - Import items from `core` and `alloc` if possible (#160)
+
 # Version 1.13.3
 
 - Avoid places where the code had a possibility to block or panic. (#147)

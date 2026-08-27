@@ -1,10 +1,10 @@
 error: #[pin_project] attribute may not be used on #[repr(packed)] types
   --> tests/ui/pin_project/packed_sneaky-2.rs:6:1
    |
-6  | / hidden_repr_macro! { //~ ERROR may not be used on #[repr(packed)] types
-7  | |     #[pin_project]
-8  | |     struct B {
-9  | |         #[pin]
+ 6 | / hidden_repr_macro! { //~ ERROR may not be used on #[repr(packed)] types
+ 7 | |     #[pin_project]
+ 8 | |     struct B {
+ 9 | |         #[pin]
 ...  |
 12 | | }
    | |_^

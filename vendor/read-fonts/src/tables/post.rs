@@ -8,7 +8,7 @@ impl<'a> Post<'a> {
     pub fn num_names(&self) -> usize {
         match self.version() {
             Version16Dot16::VERSION_1_0 => DEFAULT_GLYPH_NAMES.len(),
-            Version16Dot16::VERSION_2_0 => self.num_glyphs().unwrap() as usize,
+            Version16Dot16::VERSION_2_0 => self.num_glyphs().unwrap_or_default() as usize,
             _ => 0,
         }
     }
@@ -23,10 +23,7 @@ impl<'a> Post<'a> {
                     return DEFAULT_GLYPH_NAMES.get(idx).copied();
                 }
                 let idx = idx - DEFAULT_GLYPH_NAMES.len();
-                match self.string_data().unwrap().get(idx) {
-                    Some(Ok(s)) => Some(s.0),
-                    _ => None,
-                }
+                self.string_data()?.get(idx)?.ok().map(|s| s.0)
             }
             _ => None,
         }
@@ -138,23 +135,71 @@ mod tests {
         assert_eq!(table.glyph_name(GlyphId16::new(9)), Some("hola"));
     }
 
-    #[test]
-    fn parse_versioned_fields() {
-        fn make_basic_post(version: Version16Dot16) -> BeBuffer {
-            BeBuffer::new()
-                .push(version)
-                .push(Fixed::from_i32(5))
-                .extend([FWord::new(6), FWord::new(7)]) //underline pos/thickness
-                .push(0u32) // isFixedPitch
-                .extend([7u32, 8, 9, 10]) // min/max mem x
+    fn make_basic_post(version: Version16Dot16, include_num_glyphs: bool) -> BeBuffer {
+        let buf = BeBuffer::new()
+            .push(version)
+            .push(Fixed::from_i32(5))
+            .extend([FWord::new(6), FWord::new(7)]) //underline pos/thickness
+            .push(0u32) // isFixedPitch
+            .extend([7u32, 8, 9, 10]); // min/max mem x
+        if include_num_glyphs {
+            buf.push(0u16)
+        } else {
+            buf
         }
+    }
 
-        // basic table should not parse in v2.0, because that adds another field:
-        let buf = make_basic_post(Version16Dot16::VERSION_2_0);
-        assert!(Post::read(buf.data().into()).is_err());
+    #[test]
+    fn parse_versioned_fields_v1() {
+        // v1, even if it has the extra field will not read it:
 
-        // but it should be fine on version 3.0, which does not require any extra fields:
-        let buf = make_basic_post(Version16Dot16::VERSION_3_0);
-        assert!(Post::read(buf.data().into()).is_ok());
+        let buf = make_basic_post(Version16Dot16::VERSION_1_0, true);
+        let postv1 = Post::read(buf.data().into()).unwrap();
+        assert!(postv1.num_glyphs().is_none());
+    }
+
+    #[test]
+    fn parse_versioned_fields_v2() {
+        let buf = make_basic_post(Version16Dot16::VERSION_2_0, false);
+        let postv2 = Post::read(buf.data().into()).unwrap();
+        // v2 will fail to read if data is missing
+        assert!(postv2.num_glyphs().is_none());
+
+        // but read if data is present
+        let buf = make_basic_post(Version16Dot16::VERSION_2_0, true);
+        let postv2 = Post::read(buf.data().into()).unwrap();
+        // v2 will fail to read if data is missing
+        assert_eq!(postv2.num_glyphs(), Some(0));
+    }
+
+    #[test]
+    fn parse_versioned_fields_v3() {
+        // v3 will again not read since this field is not compatible
+        let buf = make_basic_post(Version16Dot16::VERSION_3_0, true);
+        let postv3 = Post::read(buf.data().into()).unwrap();
+        assert!(postv3.num_glyphs().is_none());
+    }
+
+    #[test]
+    fn num_names_defaults_to_zero_without_num_glyphs() {
+        let buf = make_basic_post(Version16Dot16::VERSION_2_0, false);
+        let post = Post::read(buf.data().into()).unwrap();
+        // Just don't panic
+        assert_eq!(post.num_names(), 0);
+    }
+
+    #[test]
+    fn glyph_name_missing_string_data_returns_none() {
+        let buf = BeBuffer::new()
+            .push(Version16Dot16::VERSION_2_0)
+            .push(Fixed::from_i32(5))
+            .extend([FWord::new(6), FWord::new(7)])
+            .push(0u32)
+            .extend([7u32, 8, 9, 10])
+            .push(1u16)
+            .push(258u16);
+        let post = Post::read(buf.data().into()).unwrap();
+        // Just don't panic
+        assert_eq!(post.glyph_name(GlyphId16::new(0)), None);
     }
 }

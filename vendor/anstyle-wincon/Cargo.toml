@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.66.0"
 name = "anstyle-wincon"
-version = "3.0.10"
+version = "3.0.11"
 build = false
 include = [
     "build.rs",
@@ -101,13 +101,13 @@ path = "examples/set-wincon.rs"
 version = "1.0.0"
 
 [dev-dependencies.lexopt]
-version = "0.3.0"
+version = "0.3.1"
 
 [target."cfg(windows)".dependencies.once_cell_polyfill]
-version = "1.56.0"
+version = "1.56.1"
 
 [target."cfg(windows)".dependencies.windows-sys]
-version = "0.60.0"
+version = ">=0.60.2, <0.62"
 features = [
     "Win32_System_Console",
     "Win32_Foundation",
@@ -166,7 +166,6 @@ str_to_string = "warn"
 string_add = "warn"
 string_add_assign = "warn"
 string_lit_as_bytes = "warn"
-string_to_string = "warn"
 todo = "warn"
 trait_duplication_in_bounds = "warn"
 uninlined_format_args = "warn"

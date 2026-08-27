@@ -403,13 +403,26 @@ pub const IN_EXCL_UNLINK: u32 = 0x04000000;
 /// Update existing watch mask, instead of replacing it
 ///
 /// This bit can be set in [`inotify_add_watch`]'s `mask` parameter, to
-/// configure the watch.
+/// configure the watch. Conflicts with [`IN_MASK_CREATE`].
 ///
 /// See [man page] for additional details.
 ///
 /// [`inotify_add_watch`]: fn.inotify_add_watch.html
+/// [`IN_MASK_CREATE`]: constant.IN_MASK_CREATE.html
 /// [man page]: http://man7.org/linux/man-pages/man7/inotify.7.html
 pub const IN_MASK_ADD: u32 = 0x20000000;
+
+/// Only create watches, errors on existing watches.
+///
+/// This bit can be set in [`inotify_add_watch`]'s `mask` parameter, to
+/// configure the watch. Conflicts with [`IN_MASK_ADD`].
+///
+/// See [man page] for additional details.
+///
+/// [`inotify_add_watch`]: fn.inotify_add_watch.html
+/// [`IN_MASK_ADD`]: constant.IN_MASK_ADD.html
+/// [man page]: http://man7.org/linux/man-pages/man7/inotify.7.html
+pub const IN_MASK_CREATE: u32 = 0x10000000;
 
 /// Remove watch after one event
 ///
@@ -654,6 +667,7 @@ extern {
     /// - [`IN_DONT_FOLLOW`]
     /// - [`IN_EXCL_UNLINK`]
     /// - [`IN_MASK_ADD`]
+    /// - [`IN_MASK_CREATE`]
     /// - [`IN_ONESHOT`]
     /// - [`IN_ONLYDIR`]
     ///
@@ -684,6 +698,7 @@ extern {
     /// [`IN_DONT_FOLLOW`]: constant.IN_DONT_FOLLOW.html
     /// [`IN_EXCL_UNLINK`]: constant.IN_EXCL_UNLINK.html
     /// [`IN_MASK_ADD`]: constant.IN_MASK_ADD.html
+    /// [`IN_MASK_CREATE`]: constant.IN_MASK_CREATE.html
     /// [`IN_ONESHOT`]: constant.IN_ONESHOT.html
     /// [`IN_ONLYDIR`]: constant.IN_ONLYDIR.html
     /// [`inotify_rm_watch`]: fn.inotify_rm_watch.html

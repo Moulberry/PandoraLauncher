@@ -1,4 +1,4 @@
-use annotate_snippets::{renderer::DecorStyle, AnnotationKind, Group, Level, Renderer, Snippet};
+use annotate_snippets::{AnnotationKind, Group, Level, Renderer, Snippet, renderer::DecorStyle};
 
 fn main() {
     let source = r#"# Docstring followed by a newline

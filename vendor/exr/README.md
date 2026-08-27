@@ -1,7 +1,7 @@
 [![Rust Crate](https://img.shields.io/crates/v/exr.svg)](https://crates.io/crates/exr)
 [![Crates.io MSRV](https://img.shields.io/crates/msrv/exr?label=minimum%20rust%20version)](https://doc.rust-lang.org/cargo/reference/manifest.html#the-rust-version-field)
 [![Rust Docs](https://docs.rs/exr/badge.svg)](https://docs.rs/exr)
-[![Wasm Ready](https://img.shields.io/badge/wasm-supported-%236d0)](https://github.com/johannesvollmer/exrs/actions?query=branch%3Amaster)
+[![NPM](https://img.shields.io/npm/v/exrs?style=flat&color=green)](https://www.npmjs.com/package/exrs)
 [![downloads](https://img.shields.io/crates/d/exr)](https://crates.io/crates/exr)
 [![Lines of Code](https://tokei.rs/b1/github/johannesvollmer/exrs?category=code)](https://tokei.rs)
 
@@ -54,10 +54,9 @@ __What we can do:__
         - [x] rle (lossless)
         - [x] piz (lossless) (huge thanks to @dgsantana)
         - [x] pxr24 (lossless for f16 and u32)
-            - [x] little-endian architectures
-            - [ ] big-endian architectures __(help wanted)__
         - [x] b44, b44a (huge thanks to @narann)
-        - [ ] dwaa, dwab __(help wanted)__
+        - [x] dwaa, dwab (hunge thanks to @zinezockt)
+        - [ ] HTJ2K32, HTJ2K256
 
 - Nice Things
     - [x] no unsafe code, no undefined behaviour
@@ -113,7 +112,7 @@ __What we can do:__
         - [x] PIZ
         - [x] RXR24
         - [x] B44, B44A
-        - [ ] DWAA, DWAB
+        - [x] dwaa, dwab
 
 - [ ] Writing images
     - [x] Scan Lines
@@ -164,7 +163,7 @@ __What we can do:__
 Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
-exr = "1.74.0"
+exr = "1.74.2"
 
 # also, optionally add this to your crate for smaller binary size
 # and better runtime performance
@@ -248,9 +247,34 @@ to reduce memory exhaustion attacks.
 -   [Awesome Contributors!](CONTRIBUTORS.md)
 
 ### Wasm
-This crate supports the `wasm-unknown-unknown` target.
-Until WASM has threads, decoding and encoding will be slower for compressed files.
-Of course, you will need to read from byte buffers instead of file handles.
+
+This crate supports the `wasm32-unknown-unknown` target for use in browsers and Node.js.
+
+#### npm Package
+
+For JavaScript/TypeScript projects, install the [`exrs`](https://www.npmjs.com/package/exrs) package from npm:
+
+```bash
+npm install exrs
+```
+
+```javascript
+import { init, encodeExr, decodeExr } from 'exrs';
+
+await init();
+
+const bytes = encodeExr({
+  width: 1920,
+  height: 1080,
+  layers: [{ name: 'rgba', channels: 'rgba', data: rgbaPixels }]
+});
+```
+
+See the [exrs-wasm documentation](exrs-wasm/js/README.md) for the full API reference.
+
+#### Notes
+- Until WASM has threads, decoding and encoding will be slower for compressed files
+- Read from byte buffers (`Uint8Array`) instead of file handles
 
 ### Motivation
 
@@ -276,11 +300,11 @@ and they offer several advantages over this Rust implementation:
 ### Specification
 
 This library is modeled after the
-official [`OpenEXRFileLayout.pdf`](http://www.openexr.com/documentation.html)
-document. Unspecified behavior is concluded from the C++ library.
+official [`OpenEXR Documentation`](https://openexr.com/en/latest/)
+document. Saved older PDFs in /specification. Unspecified behavior is concluded from the C++ library.
 
 ### Roadmap
-1. Support all compression formats (missing format: DWAA/DWAB)
+1. Support all compression formats
 1. Support subsampling
 1. Support Deep Data
 1. Automatic conversion between color spaces
@@ -290,6 +314,27 @@ document. Unspecified behavior is concluded from the C++ library.
 ## Contributing
 This project has awesome contributors and is welcoming for
 contributions on [Github](https://github.com/johannesvollmer/exrs).
+
+### Code Formatting
+
+This repository uses Rustfmt's standard style. Continuous Integration checks formatting on every pull request and will fail if files are not properly formatted.
+
+How to format locally:
+
+- Format the entire workspace in-place:
+  - `cargo +nightly fmt --all`
+- Check formatting without changing files (what CI runs):
+  - `cargo +nightly fmt --all -- --check`
+
+If `cargo +nightly fmt` is not found, install the Rustfmt component via Rustup:
+
+- Install Rustfmt for your current toolchain:
+  - `rustup component add rustfmt`
+- If needed, ensure the stable toolchain is installed, then add Rustfmt explicitly:
+  - `rustup toolchain install nightly`
+  - `rustup component add --toolchain nightly rustfmt`
+
+You may also configure your editor to run `cargo +nightly fmt` on save.
 
 ### Running Tests
 
@@ -308,3 +353,80 @@ You may also need to install the toolchain beforehand, using
 and `rustup target add powerpc-unknown-linux-gnu`.
  
 To benchmark the library, simply run `cargo bench`.
+
+#### SIMD tests (Intel SDE)
+
+The DWA DCT/IDCT code has SIMD kernels (AVX2 and SSE2) that are selected at
+runtime via [`pulp`](https://crates.io/crates/pulp), mirroring OpenEXR's own
+cpuid dispatch. Each tier has its own feature-gated unit-test module in
+`src/compression/dwa/idct.rs`:
+
+- `mod avx2_tests` — requires the `avx2-tests` feature, exercises the AVX2 kernel
+- `mod sse2_tests` — requires the `sse2-tests` feature, exercises the SSE2 kernel
+
+These tests are **opt-in** and are excluded from the normal `cargo test` run. A
+test only passes if the requested tier is actually available on the CPU it runs
+on, so the AVX2 test needs an AVX2-capable CPU and the SSE2 test additionally
+asserts that AVX2 is *not* present (so it verifies the fallback path).
+
+Because most machines only expose their native tier, we run these tests under
+[Intel SDE](https://www.intel.com/content/www/us/en/developer/articles/tool/software-development-emulator.html)
+(Software Development Emulator), which emulates a chosen microarchitecture. This
+is exactly what the `SIMD tests` CI workflow does: Cargo still builds a generic
+x86/x86-64 binary, and SDE only changes the runtime CPUID/features seen by
+`pulp`. To reproduce it locally:
+
+1. **Install Intel SDE.** Download it from the link above and put the `sde64`
+   binary on your `PATH` (or note its full path). SDE runs on x86-64 Linux,
+   macOS, and Windows.
+
+2. **Build the library test binary without running it,** then locate the executable:
+
+   ```bash
+   # AVX2
+   cargo test --lib --features avx2-tests --no-run
+
+   # SSE2
+   cargo test --lib --features sse2-tests --no-run
+   ```
+
+   Cargo prints the path to the compiled unit-test binary (under
+   `target/debug/deps/exr-<hash>`). Since these are now in-crate unit tests, you
+   select a tier by passing a test-name **filter** (there is no per-file test
+   binary). A short substring like `avx2`/`sse2` is enough — it matches the
+   respective `mod avx2_tests`/`mod sse2_tests`.
+
+3. **Run that binary under SDE,** selecting a chip that exposes the target tier
+   and filtering to the tier's test module:
+
+   ```bash
+   # AVX2 — Haswell is the first microarchitecture with AVX2 + FMA
+   sde64 -hsw -- target/debug/deps/exr-<hash> --nocapture avx2
+
+   # SSE2 — Merom is the lowest 64-bit chip SDE models: it has SSE2 but no AVX,
+   #        so pulp falls back to the SSE2 kernel
+   sde64 -mrm -- target/debug/deps/exr-<hash> --nocapture sse2
+   ```
+
+   The CI workflow asserts the run reports the exact expected number of passing
+   tests, so a mistyped filter (which libtest would report as `0 passed` while
+   still exiting `0`) fails the job instead of silently passing.
+
+> [!IMPORTANT]
+> Do **not** set a global `RUSTFLAGS="-C target-feature=+avx2"` (or similar) to
+> run these tests. This is a runtime-dispatched library: forcing a target
+> feature globally would bake AVX2 into otherwise-portable code, break the
+> plain x86-64 baseline, and make the fallback tests meaningless. The kernels
+> already carry their own per-function `#[target_feature]`, so no global flag is
+> needed. SDE alone controls which tier the runtime dispatch selects.
+
+If your own CPU already exposes the required tier, you can skip SDE and run the
+tests directly, e.g. on an AVX2-capable machine:
+
+```bash
+cargo test --lib --features avx2-tests -- avx2
+```
+
+The SSE2 module additionally asserts that AVX2 is *absent*, so it only passes
+under SDE (or a CPU without AVX2) — running it directly on a modern machine will
+trip that assertion by design.

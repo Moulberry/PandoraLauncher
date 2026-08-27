@@ -7,7 +7,7 @@ use crate::store::*;
 use alloc::vec::Vec;
 use core::fmt;
 use core::marker::PhantomData;
-use serde::{
+use serde_core::{
     de::{MapAccess, SeqAccess, Visitor},
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -35,7 +35,7 @@ where
                 let mut seq = serializer.serialize_seq(Some(self.len()))?;
                 // Note that we can't require StoreIterable for R, see below.
                 for index in 0..self.len() {
-                    #[allow(clippy::unwrap_used)] // looping over 0..len
+                    #[expect(clippy::unwrap_used)] // looping over 0..len
                     seq.serialize_element(&self.get_indexed(index).unwrap())?;
                 }
                 return seq.end();
@@ -51,7 +51,7 @@ where
         // flexibility for other types.
         let mut map = serializer.serialize_map(Some(self.len()))?;
         for index in 0..self.len() {
-            #[allow(clippy::unwrap_used)] // looping over 0..len
+            #[expect(clippy::unwrap_used)] // looping over 0..len
             let (k, v) = self.get_indexed(index).unwrap();
             map.serialize_entry(k, v)?;
         }
@@ -59,8 +59,8 @@ where
     }
 }
 
-/// Modified example from https://serde.rs/deserialize-map.html
-#[allow(clippy::type_complexity)]
+/// Modified example from <https://serde.rs/deserialize-map.html>
+#[expect(clippy::type_complexity)]
 struct LiteMapVisitor<K, V, R> {
     marker: PhantomData<fn() -> LiteMap<K, V, R>>,
 }
@@ -224,7 +224,7 @@ mod test {
         assert_eq!(map, deserialized);
     }
 
-    /// Test that a LiteMap<_, _, Vec> is deserialized with an exact capacity
+    /// Test that a [`LiteMap<_, _, Vec>`] is deserialized with an exact capacity
     /// if the deserializer provides a size hint information, like postcard here.
     #[test]
     fn test_deserialize_capacity() {

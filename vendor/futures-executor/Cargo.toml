@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.71"
 name = "futures-executor"
-version = "0.3.32"
+version = "0.3.34"
 build = false
 autolib = false
 autobins = false
@@ -57,15 +57,15 @@ name = "thread_notify"
 path = "benches/thread_notify.rs"
 
 [dependencies.futures-core]
-version = "0.3.32"
+version = "0.3.34"
 default-features = false
 
 [dependencies.futures-task]
-version = "0.3.32"
+version = "0.3.34"
 default-features = false
 
 [dependencies.futures-util]
-version = "0.3.32"
+version = "0.3.34"
 default-features = false
 
 [dev-dependencies]

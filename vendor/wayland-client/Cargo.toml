@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.65"
+rust-version = "1.71"
 name = "wayland-client"
-version = "0.31.11"
+version = "0.31.15"
 authors = ["Elinor Berger <elinor@safaradeg.net>"]
 build = "build.rs"
 autolib = false
@@ -41,6 +41,11 @@ rustdoc-args = [
     "--cfg",
     "docsrs",
 ]
+
+[features]
+dlopen = ["wayland-backend/dlopen"]
+libwayland_1_23 = ["wayland-backend/libwayland_client_1_23"]
+system = ["wayland-backend/client_system"]
 
 [lib]
 name = "wayland_client"
@@ -70,10 +75,10 @@ version = "1.0.2"
 features = ["event"]
 
 [dependencies.wayland-backend]
-version = "0.3.11"
+version = "0.3.15"
 
 [dependencies.wayland-scanner]
-version = "0.31.7"
+version = "0.31.10"
 
 [dev-dependencies.futures-channel]
 version = "0.3.16"

@@ -1,7 +1,7 @@
 use wayland_backend::sys::client::Backend;
 use wayland_client::{
     Proxy, QueueHandle,
-    protocol::{wl_registry, wl_surface::WlSurface},
+    protocol::{wl_registry, wl_seat::WlSeat, wl_surface::WlSurface},
 };
 use wayland_protocols::xdg::activation::v1::client::{
     xdg_activation_token_v1::{Event, XdgActivationTokenV1},
@@ -35,7 +35,30 @@ impl ActivationToken {
         let backend = surface.backend().upgrade()?;
         let conn = wayland_client::Connection::from_backend(backend);
 
-        Self::new_wayland_inner(app_id, conn, surface).await
+        Self::new_wayland_inner(app_id, conn, surface, None, None).await
+    }
+
+    #[cfg(feature = "wayland")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "wayland")))]
+    /// Create an instance of [`ActivationToken`] from a Wayland surface with
+    /// serial and seat.
+    ///
+    /// The serial and seat information prove that the activation is in response
+    /// to a recent user action. Some compositors might refuse to activate
+    /// windows when the token doesn't have a valid and recent event serial.
+    ///
+    /// The serial typically comes from input events like `wl_pointer.button` or
+    /// `wl_keyboard.key`.
+    pub async fn from_surface_with_serial(
+        app_id: Option<AppID>,
+        surface: &WlSurface,
+        serial: u32,
+        seat: &WlSeat,
+    ) -> Option<Self> {
+        let backend = surface.backend().upgrade()?;
+        let conn = wayland_client::Connection::from_backend(backend);
+
+        Self::new_wayland_inner(app_id, conn, surface, Some(serial), Some(seat)).await
     }
 
     #[cfg(feature = "wayland")]
@@ -66,24 +89,83 @@ impl ActivationToken {
 
         let surface = WlSurface::from_id(&conn, obj_id).ok()?;
 
-        Self::new_wayland_inner(app_id, conn, &surface).await
+        Self::new_wayland_inner(app_id, conn, &surface, None, None).await
+    }
+
+    #[cfg(feature = "wayland")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "wayland")))]
+    /// Create an instance of [`ActivationToken`] from a Wayland surface with
+    /// serial and seat.
+    ///
+    /// The serial and seat information prove that the activation is in response
+    /// to a recent user action. Some compositors might refuse to activate
+    /// windows when the token doesn't have a valid and recent event serial.
+    ///
+    /// The serial typically comes from input events like `wl_pointer.button` or
+    /// `wl_keyboard.key`.
+    ///
+    /// # Safety
+    ///
+    /// Both surface, display, and seat pointers have to be valid.
+    pub async unsafe fn from_wayland_raw_with_serial(
+        app_id: Option<AppID>,
+        surface_ptr: *mut std::ffi::c_void,
+        display_ptr: *mut std::ffi::c_void,
+        serial: u32,
+        seat_ptr: *mut std::ffi::c_void,
+    ) -> Option<Self> {
+        if surface_ptr.is_null() || display_ptr.is_null() {
+            return None;
+        }
+
+        let backend = unsafe { Backend::from_foreign_display(display_ptr as *mut _) };
+        let conn = wayland_client::Connection::from_backend(backend);
+        let surface_obj_id = unsafe {
+            wayland_backend::sys::client::ObjectId::from_ptr(
+                WlSurface::interface(),
+                surface_ptr as *mut _,
+            )
+        }
+        .ok()?;
+
+        let surface = WlSurface::from_id(&conn, surface_obj_id).ok()?;
+
+        let seat = if !seat_ptr.is_null() {
+            let seat_obj_id = unsafe {
+                wayland_backend::sys::client::ObjectId::from_ptr(
+                    WlSeat::interface(),
+                    seat_ptr as *mut _,
+                )
+            }
+            .ok()?;
+
+            Some(WlSeat::from_id(&conn, seat_obj_id).ok()?)
+        } else {
+            None
+        };
+        Self::new_wayland_inner(app_id, conn, &surface, Some(serial), seat.as_ref()).await
     }
 
     async fn new_wayland_inner(
         app_id: Option<AppID>,
         conn: wayland_client::Connection,
         surface: &WlSurface,
+        serial: Option<u32>,
+        seat: Option<&WlSeat>,
     ) -> Option<Self> {
         let (sender, receiver) = futures_channel::oneshot::channel::<Option<Self>>();
 
         // Cheap clone, protocol objects are essentially smart pointers
         let surface = surface.clone();
-        std::thread::spawn(move || match wayland_export_token(app_id, conn, &surface) {
-            Ok(window_handle) => sender.send(Some(window_handle)).unwrap(),
-            Err(_err) => {
-                #[cfg(feature = "tracing")]
-                tracing::info!("Could not get wayland window identifier: {_err}");
-                sender.send(None).unwrap();
+        let seat = seat.cloned();
+        std::thread::spawn(move || {
+            match wayland_export_token(app_id, conn, &surface, serial, seat.as_ref()) {
+                Ok(window_handle) => sender.send(Some(window_handle)).unwrap(),
+                Err(_err) => {
+                    #[cfg(feature = "tracing")]
+                    tracing::info!("Could not get wayland window identifier: {_err}");
+                    sender.send(None).unwrap();
+                }
             }
         });
 
@@ -153,6 +235,8 @@ fn wayland_export_token(
     app_id: Option<AppID>,
     conn: wayland_client::Connection,
     surface: &WlSurface,
+    serial: Option<u32>,
+    seat: Option<&WlSeat>,
 ) -> Result<ActivationToken, Box<dyn std::error::Error>> {
     let display = conn.display();
     let mut event_queue = conn.new_event_queue();
@@ -166,7 +250,11 @@ fn wayland_export_token(
             wl_token.set_app_id(app_id.to_string());
         }
         wl_token.set_surface(surface);
-        // TODO wl_token.set_serial(serial, &seat);
+        if let Some(serial) = serial
+            && let Some(seat) = seat
+        {
+            wl_token.set_serial(serial, seat);
+        }
         wl_token.commit();
 
         event_queue.roundtrip(&mut state)?;

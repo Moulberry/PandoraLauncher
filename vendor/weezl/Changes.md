@@ -1,3 +1,17 @@
+## Version 0.1.12
+
+- Further adjusted a debug assertion for TIFF compatibility. It still had one
+  of its OR conditions formulated incorrectly, relying on equality of the
+  code word mask and the size switch code. In TIFF we hit the limit of the
+  code dictionary (all 12-bit words) one code later than we would detect a
+  code switch that we need to ignore.
+
+## Version 0.1.11
+
+- Adjusted a debug assertion that handled 1-bit code sizes incorrectly in the
+  decoder (relevant for TIFF but non-standard for GIF). In that case the size
+  switch semantics are a bit messy.
+
 ## Version 0.1.10
 
 - Reverted changes made in 0.1.9 to the behavior of the decoder under non

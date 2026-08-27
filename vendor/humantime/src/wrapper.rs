@@ -46,6 +46,18 @@ pub struct Duration(StdDuration);
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Timestamp(SystemTime);
 
+impl Duration {
+    /// Create a new instance from a [`StdDuration`]. This can be used in a `const` context.
+    ///
+    /// ```rust
+    /// # use humantime::Duration;
+    /// const DEFAULT_TIMEOUT: Duration = Duration::new(core::time::Duration::from_secs(60));
+    /// ```
+    pub const fn new(value: StdDuration) -> Self {
+        Self(value)
+    }
+}
+
 impl AsRef<StdDuration> for Duration {
     fn as_ref(&self) -> &StdDuration {
         &self.0

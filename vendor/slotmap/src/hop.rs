@@ -1,6 +1,3 @@
-// Needed because assigning to non-Copy union is unsafe in stable but not in nightly.
-#![allow(unused_unsafe)]
-
 //! Contains the faster iteration, slower insertion/removal slot map
 //! implementation.
 //!
@@ -14,18 +11,17 @@
 //!
 //! [`SlotMap`]: crate::SlotMap
 
-#[cfg(all(nightly, any(doc, feature = "unstable")))]
+#![allow(deprecated)]
+
 use alloc::collections::TryReserveError;
 use alloc::vec::Vec;
 use core::fmt;
 use core::iter::FusedIterator;
 use core::marker::PhantomData;
-use core::mem::ManuallyDrop;
-#[allow(unused_imports)] // MaybeUninit is only used on nightly at the moment.
-use core::mem::MaybeUninit;
+use core::mem::{ManuallyDrop, MaybeUninit};
 use core::ops::{Index, IndexMut};
 
-use crate::util::{Never, UnwrapUnchecked};
+use crate::util::{Never, PanicOnDrop, UnwrapNever};
 use crate::{DefaultKey, Key, KeyData};
 
 // Metadata to maintain the freelist.
@@ -70,7 +66,7 @@ impl<T> Slot<T> {
         self.version % 2 == 1
     }
 
-    pub fn get(&self) -> SlotContent<T> {
+    pub fn get(&self) -> SlotContent<'_, T> {
         unsafe {
             if self.occupied() {
                 Occupied(&*self.u.value)
@@ -80,7 +76,7 @@ impl<T> Slot<T> {
         }
     }
 
-    pub fn get_mut(&mut self) -> SlotContentMut<T> {
+    pub fn get_mut(&mut self) -> SlotContentMut<'_, T> {
         unsafe {
             if self.occupied() {
                 OccupiedMut(&mut *self.u.value)
@@ -119,12 +115,16 @@ impl<T: Clone> Clone for Slot<T> {
         match (self.get_mut(), source.get()) {
             (OccupiedMut(self_val), Occupied(source_val)) => self_val.clone_from(source_val),
             (VacantMut(self_free), Vacant(&source_free)) => *self_free = source_free,
-            (_, Occupied(value)) => {
+            (OccupiedMut(_), Vacant(&free)) => unsafe {
+                // SAFETY: we are occupied.
+                ManuallyDrop::drop(&mut self.u.value);
+                self.u = SlotUnion { free };
+            },
+            (VacantMut(_), Occupied(value)) => {
                 self.u = SlotUnion {
                     value: ManuallyDrop::new(value.clone()),
                 }
             },
-            (_, Vacant(&free)) => self.u = SlotUnion { free },
         }
         self.version = source.version;
     }
@@ -144,6 +144,10 @@ impl<T: fmt::Debug> fmt::Debug for Slot<T> {
 /// Hop slot map, storage with stable unique keys.
 ///
 /// See [crate documentation](crate) for more details.
+#[deprecated(
+    since = "1.1.0",
+    note = "Use `SlotMap` or `DenseSlotMap` instead, the `HopSlotMap` is no longer maintained and will be removed in 2.0."
+)]
 #[derive(Debug)]
 pub struct HopSlotMap<K: Key, V> {
     slots: Vec<Slot<V>>,
@@ -318,8 +322,6 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// sm.try_reserve(32).unwrap();
     /// assert!(sm.capacity() >= 33);
     /// ```
-    #[cfg(all(nightly, any(doc, feature = "unstable")))]
-    #[cfg_attr(all(nightly, doc), doc(cfg(feature = "unstable")))]
     pub fn try_reserve(&mut self, additional: usize) -> Result<(), TryReserveError> {
         // One slot is reserved for the freelist sentinel.
         let needed = (self.len() + additional).saturating_sub(self.slots.len() - 1);
@@ -363,7 +365,8 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// ```
     #[inline(always)]
     pub fn insert(&mut self, value: V) -> K {
-        unsafe { self.try_insert_with_key::<_, Never>(move |_| Ok(value)).unwrap_unchecked_() }
+        self.try_insert_with_key::<_, Never>(move |_| Ok(value))
+            .unwrap_never()
     }
 
     // Helper function to make using the freelist painless.
@@ -395,7 +398,8 @@ impl<K: Key, V> HopSlotMap<K, V> {
     where
         F: FnOnce(K) -> V,
     {
-        unsafe { self.try_insert_with_key::<_, Never>(move |k| Ok(f(k))).unwrap_unchecked_() }
+        self.try_insert_with_key::<_, Never>(move |k| Ok(f(k)))
+            .unwrap_never()
     }
 
     /// Inserts a value given by `f` into the slot map. The key where the
@@ -425,7 +429,7 @@ impl<K: Key, V> HopSlotMap<K, V> {
     {
         // In case f panics, we don't make any changes until we have the value.
         let new_num_elems = self.num_elems + 1;
-        if new_num_elems == core::u32::MAX {
+        if new_num_elems == u32::MAX {
             panic!("HopSlotMap number of elements overflow");
         }
 
@@ -644,8 +648,8 @@ impl<K: Key, V> HopSlotMap<K, V> {
         self.drain();
     }
 
-    /// Clears the slot map, returning all key-value pairs in arbitrary order as
-    /// an iterator. Keeps the allocated memory for reuse.
+    /// Clears the slot map, returning all key-value pairs in an arbitrary order
+    /// as an iterator. Keeps the allocated memory for reuse.
     ///
     /// When the iterator is dropped all elements in the slot map are removed,
     /// even if the iterator was not fully consumed. If the iterator is not
@@ -662,7 +666,7 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// assert_eq!(sm.len(), 0);
     /// assert_eq!(v, vec![(k, 0)]);
     /// ```
-    pub fn drain(&mut self) -> Drain<K, V> {
+    pub fn drain(&mut self) -> Drain<'_, K, V> {
         Drain {
             cur: unsafe { self.slots.get_unchecked(0).u.free.other_end as usize + 1 },
             sm: self,
@@ -758,7 +762,11 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// ```
     pub unsafe fn get_unchecked_mut(&mut self, key: K) -> &mut V {
         debug_assert!(self.contains_key(key));
-        &mut self.slots.get_unchecked_mut(key.data().idx as usize).u.value
+        &mut self
+            .slots
+            .get_unchecked_mut(key.data().idx as usize)
+            .u
+            .value
     }
 
     /// Returns mutable references to the values corresponding to the given
@@ -783,16 +791,12 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// assert_eq!(sm[ka], "apples");
     /// assert_eq!(sm[kb], "butter");
     /// ```
-    #[cfg(has_min_const_generics)]
     pub fn get_disjoint_mut<const N: usize>(&mut self, keys: [K; N]) -> Option<[&mut V; N]> {
-        // Create an uninitialized array of `MaybeUninit`. The `assume_init` is
-        // safe because the type we are claiming to have initialized here is a
-        // bunch of `MaybeUninit`s, which do not require initialization.
-        let mut ptrs: [MaybeUninit<*mut V>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+        let mut ptrs: [MaybeUninit<*mut V>; N] = [(); N].map(|_| MaybeUninit::uninit());
+        let slots_ptr = self.slots.as_mut_ptr();
 
         let mut i = 0;
         while i < N {
-            // We can avoid this clone after min_const_generics and array_map.
             let kd = keys[i].data();
             if !self.contains_key(kd.into()) {
                 break;
@@ -802,7 +806,7 @@ impl<K: Key, V> HopSlotMap<K, V> {
             // mark it as unoccupied so duplicate keys would show up as invalid.
             // This gives us a linear time disjointness check.
             unsafe {
-                let slot = self.slots.get_unchecked_mut(kd.idx as usize);
+                let slot = &mut *slots_ptr.add(kd.idx as usize);
                 slot.version ^= 1;
                 ptrs[i] = MaybeUninit::new(&mut *slot.u.value);
             }
@@ -813,13 +817,13 @@ impl<K: Key, V> HopSlotMap<K, V> {
         for k in &keys[..i] {
             let idx = k.data().idx as usize;
             unsafe {
-                self.slots.get_unchecked_mut(idx).version ^= 1;
+                (*slots_ptr.add(idx)).version ^= 1;
             }
         }
 
         if i == N {
             // All were valid and disjoint.
-            Some(unsafe { core::mem::transmute_copy::<_, [&mut V; N]>(&ptrs) })
+            Some(ptrs.map(|p| unsafe { &mut *p.assume_init() }))
         } else {
             None
         }
@@ -847,20 +851,18 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// assert_eq!(sm[ka], "apples");
     /// assert_eq!(sm[kb], "butter");
     /// ```
-    #[cfg(has_min_const_generics)]
     pub unsafe fn get_disjoint_unchecked_mut<const N: usize>(
         &mut self,
         keys: [K; N],
     ) -> [&mut V; N] {
-        // Safe, see get_disjoint_mut.
-        let mut ptrs: [MaybeUninit<*mut V>; N] = MaybeUninit::uninit().assume_init();
-        for i in 0..N {
-            ptrs[i] = MaybeUninit::new(self.get_unchecked_mut(keys[i]));
-        }
-        core::mem::transmute_copy::<_, [&mut V; N]>(&ptrs)
+        let slots_ptr = self.slots.as_mut_ptr();
+        keys.map(|k| unsafe {
+            let slot = &mut *slots_ptr.add(k.data().idx as usize);
+            &mut *slot.u.value
+        })
     }
 
-    /// An iterator visiting all key-value pairs in arbitrary order. The
+    /// An iterator visiting all key-value pairs in an arbitrary order. The
     /// iterator element type is `(K, &'a V)`.
     ///
     /// # Examples
@@ -876,7 +878,7 @@ impl<K: Key, V> HopSlotMap<K, V> {
     ///     println!("key: {:?}, val: {}", k, v);
     /// }
     /// ```
-    pub fn iter(&self) -> Iter<K, V> {
+    pub fn iter(&self) -> Iter<'_, K, V> {
         Iter {
             cur: unsafe { self.slots.get_unchecked(0).u.free.other_end as usize + 1 },
             num_left: self.len(),
@@ -885,7 +887,7 @@ impl<K: Key, V> HopSlotMap<K, V> {
         }
     }
 
-    /// An iterator visiting all key-value pairs in arbitrary order, with
+    /// An iterator visiting all key-value pairs in an arbitrary order, with
     /// mutable references to the values. The iterator element type is
     /// `(K, &'a mut V)`.
     ///
@@ -908,7 +910,7 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// assert_eq!(sm[k1], 20);
     /// assert_eq!(sm[k2], -30);
     /// ```
-    pub fn iter_mut(&mut self) -> IterMut<K, V> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
         IterMut {
             cur: 0,
             num_left: self.len(),
@@ -917,8 +919,8 @@ impl<K: Key, V> HopSlotMap<K, V> {
         }
     }
 
-    /// An iterator visiting all keys in arbitrary order. The iterator element
-    /// type is `K`.
+    /// An iterator visiting all keys in an arbitrary order. The iterator
+    /// element type is `K`.
     ///
     /// # Examples
     ///
@@ -933,12 +935,12 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// let check: HashSet<_> = vec![k0, k1, k2].into_iter().collect();
     /// assert_eq!(keys, check);
     /// ```
-    pub fn keys(&self) -> Keys<K, V> {
+    pub fn keys(&self) -> Keys<'_, K, V> {
         Keys { inner: self.iter() }
     }
 
-    /// An iterator visiting all values in arbitrary order. The iterator element
-    /// type is `&'a V`.
+    /// An iterator visiting all values in an arbitrary order. The iterator
+    /// element type is `&'a V`.
     ///
     /// # Examples
     ///
@@ -953,12 +955,12 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// let check: HashSet<_> = vec![&10, &20, &30].into_iter().collect();
     /// assert_eq!(values, check);
     /// ```
-    pub fn values(&self) -> Values<K, V> {
+    pub fn values(&self) -> Values<'_, K, V> {
         Values { inner: self.iter() }
     }
 
-    /// An iterator visiting all values mutably in arbitrary order. The iterator
-    /// element type is `&'a mut V`.
+    /// An iterator visiting all values mutably in an arbitrary order. The
+    /// iterator element type is `&'a mut V`.
     ///
     /// # Examples
     ///
@@ -974,7 +976,7 @@ impl<K: Key, V> HopSlotMap<K, V> {
     /// let check: HashSet<_> = vec![3, 6, 9].into_iter().collect();
     /// assert_eq!(values, check);
     /// ```
-    pub fn values_mut(&mut self) -> ValuesMut<K, V> {
+    pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
         ValuesMut {
             inner: self.iter_mut(),
         }
@@ -993,8 +995,12 @@ where
     }
 
     fn clone_from(&mut self, source: &Self) {
+        // There is no way to recover from a botched clone of slots due to a
+        // panic. So we abort by double-panicking.
+        let guard = PanicOnDrop("abort - a panic during SlotMap::clone_from is unrecoverable");
         self.slots.clone_from(&source.slots);
         self.num_elems = source.num_elems;
+        core::mem::forget(guard);
     }
 }
 
@@ -1063,7 +1069,7 @@ impl<'a, K: 'a + Key, V: 'a> Clone for Iter<'a, K, V> {
             cur: self.cur,
             num_left: self.num_left,
             slots: self.slots,
-            _k: self._k.clone(),
+            _k: self._k,
         }
     }
 }
@@ -1125,7 +1131,7 @@ impl<'a, K: Key, V> Iterator for Drain<'a, K, V> {
     fn next(&mut self) -> Option<(K, V)> {
         // All unchecked indices are safe due to the invariants of the freelist
         // and that self.sm.len() guarantees there is another element.
-        if self.sm.len() == 0 {
+        if self.sm.is_empty() {
             return None;
         }
 
@@ -1137,7 +1143,9 @@ impl<'a, K: Key, V> Iterator for Drain<'a, K, V> {
             None => 0,
         };
 
-        let key = KeyData::new(idx as u32, unsafe { self.sm.slots.get_unchecked(idx).version });
+        let key = KeyData::new(idx as u32, unsafe {
+            self.sm.slots.get_unchecked(idx).version
+        });
         Some((key.into(), unsafe { self.sm.remove_from_slot(idx) }))
     }
 
@@ -1375,7 +1383,7 @@ mod serialize {
             let serde_slot: SerdeSlot<T> = Deserialize::deserialize(deserializer)?;
             let occupied = serde_slot.version % 2 == 1;
             if occupied ^ serde_slot.value.is_some() {
-                return Err(de::Error::custom(&"inconsistent occupation in Slot"));
+                return Err(de::Error::custom("inconsistent occupation in Slot"));
             }
 
             Ok(Self {
@@ -1411,13 +1419,13 @@ mod serialize {
             D: Deserializer<'de>,
         {
             let mut slots: Vec<Slot<V>> = Deserialize::deserialize(deserializer)?;
-            if slots.len() >= u32::max_value() as usize {
-                return Err(de::Error::custom(&"too many slots"));
+            if slots.len() >= u32::MAX as usize {
+                return Err(de::Error::custom("too many slots"));
             }
 
             // Ensure the first slot exists and is empty for the sentinel.
-            if slots.get(0).map_or(true, |slot| slot.version % 2 == 1) {
-                return Err(de::Error::custom(&"first slot not empty"));
+            if slots.first().map_or(true, |slot| slot.version % 2 == 1) {
+                return Err(de::Error::custom("first slot not empty"));
             }
 
             slots[0].u.free = FreeListEntry {
@@ -1439,15 +1447,13 @@ mod serialize {
                 let back = i - 1;
 
                 // Update freelist.
-                unsafe {
-                    slots[back].u.free.other_end = front as u32;
-                    slots[prev].u.free.next = front as u32;
-                    slots[front].u.free = FreeListEntry {
-                        next: 0,
-                        prev: prev as u32,
-                        other_end: back as u32,
-                    };
-                }
+                slots[back].u.free.other_end = front as u32;
+                slots[prev].u.free.next = front as u32;
+                slots[front].u.free = FreeListEntry {
+                    next: 0,
+                    prev: prev as u32,
+                    other_end: back as u32,
+                };
 
                 prev = front;
 
@@ -1484,7 +1490,6 @@ mod tests {
         }
     }
 
-    #[cfg(all(nightly, feature = "unstable"))]
     #[test]
     fn check_drops() {
         let drops = std::cell::RefCell::new(0usize);
@@ -1523,7 +1528,6 @@ mod tests {
         assert_eq!(*drops.borrow(), 1750);
     }
 
-    #[cfg(all(nightly, feature = "unstable"))]
     #[test]
     fn disjoint() {
         // Intended to be run with miri to find any potential UB.

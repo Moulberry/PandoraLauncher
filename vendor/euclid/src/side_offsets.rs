@@ -23,6 +23,8 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -65,6 +67,16 @@ unsafe impl<T: Zeroable, U> Zeroable for SideOffsets2D<T, U> {}
 
 #[cfg(feature = "bytemuck")]
 unsafe impl<T: Pod, U: 'static> Pod for SideOffsets2D<T, U> {}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, U> MallocSizeOf for SideOffsets2D<T, U> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.top.size_of(ops)
+            + self.right.size_of(ops)
+            + self.bottom.size_of(ops)
+            + self.left.size_of(ops)
+    }
+}
 
 impl<T: Copy, U> Copy for SideOffsets2D<T, U> {}
 
@@ -399,128 +411,134 @@ impl<T: Copy + DivAssign, U> DivAssign<Scale<T, U, U>> for SideOffsets2D<T, U> {
     }
 }
 
-#[test]
-fn from_vectors() {
-    use crate::{point2, vec2};
-    type Box2D = crate::default::Box2D<i32>;
-
-    let b = Box2D {
-        min: point2(10, 10),
-        max: point2(20, 20),
-    };
-
-    let outer = b.outer_box(SideOffsets2D::from_vectors_outer(vec2(-1, -2), vec2(3, 4)));
-    let inner = b.inner_box(SideOffsets2D::from_vectors_inner(vec2(1, 2), vec2(-3, -4)));
-
-    assert_eq!(
-        outer,
-        Box2D {
-            min: point2(9, 8),
-            max: point2(23, 24)
-        }
-    );
-    assert_eq!(
-        inner,
-        Box2D {
-            min: point2(11, 12),
-            max: point2(17, 16)
-        }
-    );
-}
-
-#[test]
-fn test_is_zero() {
-    let s1: SideOffsets2D<f32, ()> = SideOffsets2D::new_all_same(0.0);
-    assert!(s1.is_zero());
-
-    let s2: SideOffsets2D<f32, ()> = SideOffsets2D::new(1.0, 2.0, 3.0, 4.0);
-    assert!(!s2.is_zero());
-}
-
 #[cfg(test)]
-mod ops {
-    use crate::Scale;
-
-    pub enum Mm {}
-    pub enum Cm {}
-
-    type SideOffsets2D<T> = crate::default::SideOffsets2D<T>;
-    type SideOffsets2DMm<T> = crate::SideOffsets2D<T, Mm>;
-    type SideOffsets2DCm<T> = crate::SideOffsets2D<T, Cm>;
+#[cfg(any(feature = "std", feature = "libm"))]
+mod tests {
+    use crate::SideOffsets2D;
 
     #[test]
-    fn test_mul_scalar() {
-        let s = SideOffsets2D::new(1.0, 2.0, 3.0, 4.0);
+    fn from_vectors() {
+        use crate::{point2, vec2};
+        type Box2D = crate::default::Box2D<i32>;
 
-        let result = s * 3.0;
+        let b = Box2D {
+            min: point2(10, 10),
+            max: point2(20, 20),
+        };
 
-        assert_eq!(result, SideOffsets2D::new(3.0, 6.0, 9.0, 12.0));
+        let outer = b.outer_box(SideOffsets2D::from_vectors_outer(vec2(-1, -2), vec2(3, 4)));
+        let inner = b.inner_box(SideOffsets2D::from_vectors_inner(vec2(1, 2), vec2(-3, -4)));
+
+        assert_eq!(
+            outer,
+            Box2D {
+                min: point2(9, 8),
+                max: point2(23, 24)
+            }
+        );
+        assert_eq!(
+            inner,
+            Box2D {
+                min: point2(11, 12),
+                max: point2(17, 16)
+            }
+        );
     }
 
     #[test]
-    fn test_mul_assign_scalar() {
-        let mut s = SideOffsets2D::new(1.0, 2.0, 3.0, 4.0);
+    fn test_is_zero() {
+        let s1: SideOffsets2D<f32, ()> = SideOffsets2D::new_all_same(0.0);
+        assert!(s1.is_zero());
 
-        s *= 2.0;
-
-        assert_eq!(s, SideOffsets2D::new(2.0, 4.0, 6.0, 8.0));
+        let s2: SideOffsets2D<f32, ()> = SideOffsets2D::new(1.0, 2.0, 3.0, 4.0);
+        assert!(!s2.is_zero());
     }
 
-    #[test]
-    fn test_mul_scale() {
-        let s = SideOffsets2DMm::new(0.0, 1.0, 3.0, 2.0);
-        let cm_per_mm: Scale<f32, Mm, Cm> = Scale::new(0.1);
+    #[cfg(test)]
+    mod ops {
+        use crate::Scale;
 
-        let result = s * cm_per_mm;
+        pub enum Mm {}
+        pub enum Cm {}
 
-        assert_eq!(result, SideOffsets2DCm::new(0.0, 0.1, 0.3, 0.2));
-    }
+        type SideOffsets2D<T> = crate::default::SideOffsets2D<T>;
+        type SideOffsets2DMm<T> = crate::SideOffsets2D<T, Mm>;
+        type SideOffsets2DCm<T> = crate::SideOffsets2D<T, Cm>;
 
-    #[test]
-    fn test_mul_assign_scale() {
-        let mut s = SideOffsets2DMm::new(2.0, 4.0, 6.0, 8.0);
-        let scale: Scale<f32, Mm, Mm> = Scale::new(0.1);
+        #[test]
+        fn test_mul_scalar() {
+            let s = SideOffsets2D::new(1.0, 2.0, 3.0, 4.0);
 
-        s *= scale;
+            let result = s * 3.0;
 
-        assert_eq!(s, SideOffsets2DMm::new(0.2, 0.4, 0.6, 0.8));
-    }
+            assert_eq!(result, SideOffsets2D::new(3.0, 6.0, 9.0, 12.0));
+        }
 
-    #[test]
-    fn test_div_scalar() {
-        let s = SideOffsets2D::new(10.0, 20.0, 30.0, 40.0);
+        #[test]
+        fn test_mul_assign_scalar() {
+            let mut s = SideOffsets2D::new(1.0, 2.0, 3.0, 4.0);
 
-        let result = s / 10.0;
+            s *= 2.0;
 
-        assert_eq!(result, SideOffsets2D::new(1.0, 2.0, 3.0, 4.0));
-    }
+            assert_eq!(s, SideOffsets2D::new(2.0, 4.0, 6.0, 8.0));
+        }
 
-    #[test]
-    fn test_div_assign_scalar() {
-        let mut s = SideOffsets2D::new(10.0, 20.0, 30.0, 40.0);
+        #[test]
+        fn test_mul_scale() {
+            let s = SideOffsets2DMm::new(0.0, 1.0, 3.0, 2.0);
+            let cm_per_mm: Scale<f32, Mm, Cm> = Scale::new(0.1);
 
-        s /= 10.0;
+            let result = s * cm_per_mm;
 
-        assert_eq!(s, SideOffsets2D::new(1.0, 2.0, 3.0, 4.0));
-    }
+            assert_eq!(result, SideOffsets2DCm::new(0.0, 0.1, 0.3, 0.2));
+        }
 
-    #[test]
-    fn test_div_scale() {
-        let s = SideOffsets2DCm::new(0.1, 0.2, 0.3, 0.4);
-        let cm_per_mm: Scale<f32, Mm, Cm> = Scale::new(0.1);
+        #[test]
+        fn test_mul_assign_scale() {
+            let mut s = SideOffsets2DMm::new(2.0, 4.0, 6.0, 8.0);
+            let scale: Scale<f32, Mm, Mm> = Scale::new(0.1);
 
-        let result = s / cm_per_mm;
+            s *= scale;
 
-        assert_eq!(result, SideOffsets2DMm::new(1.0, 2.0, 3.0, 4.0));
-    }
+            assert_eq!(s, SideOffsets2DMm::new(0.2, 0.4, 0.6, 0.8));
+        }
 
-    #[test]
-    fn test_div_assign_scale() {
-        let mut s = SideOffsets2DMm::new(0.1, 0.2, 0.3, 0.4);
-        let scale: Scale<f32, Mm, Mm> = Scale::new(0.1);
+        #[test]
+        fn test_div_scalar() {
+            let s = SideOffsets2D::new(10.0, 20.0, 30.0, 40.0);
 
-        s /= scale;
+            let result = s / 10.0;
 
-        assert_eq!(s, SideOffsets2DMm::new(1.0, 2.0, 3.0, 4.0));
+            assert_eq!(result, SideOffsets2D::new(1.0, 2.0, 3.0, 4.0));
+        }
+
+        #[test]
+        fn test_div_assign_scalar() {
+            let mut s = SideOffsets2D::new(10.0, 20.0, 30.0, 40.0);
+
+            s /= 10.0;
+
+            assert_eq!(s, SideOffsets2D::new(1.0, 2.0, 3.0, 4.0));
+        }
+
+        #[test]
+        fn test_div_scale() {
+            let s = SideOffsets2DCm::new(0.1, 0.2, 0.3, 0.4);
+            let cm_per_mm: Scale<f32, Mm, Cm> = Scale::new(0.1);
+
+            let result = s / cm_per_mm;
+
+            assert_eq!(result, SideOffsets2DMm::new(1.0, 2.0, 3.0, 4.0));
+        }
+
+        #[test]
+        fn test_div_assign_scale() {
+            let mut s = SideOffsets2DMm::new(0.1, 0.2, 0.3, 0.4);
+            let scale: Scale<f32, Mm, Mm> = Scale::new(0.1);
+
+            s /= scale;
+
+            assert_eq!(s, SideOffsets2DMm::new(1.0, 2.0, 3.0, 4.0));
+        }
     }
 }

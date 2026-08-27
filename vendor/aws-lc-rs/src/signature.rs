@@ -17,11 +17,19 @@
 //! reduce the risks of algorithm agility and to provide consistency with ECDSA
 //! and `EdDSA`.
 //!
-//! Currently this module does not support digesting the message to be signed
-//! separately from the public key operation, as it is currently being
-//! optimized for Ed25519 and for the implementation of protocols that do not
-//! requiring signing large messages. An interface for efficiently supporting
-//! larger messages may be added later.
+//! For most use cases, prefer passing the full message to the signing and
+//! verification APIs, which hash it as part of the operation. Signing and
+//! verifying a separately-computed digest is also supported for ECDSA and RSA:
+//! [`EcdsaKeyPair::sign_digest`] and [`RsaKeyPair::sign_digest`] sign a
+//! caller-provided digest, and [`ParsedPublicKey::verify_digest_sig`] (or
+//! [`VerificationAlgorithm::verify_digest_sig`]) verifies one. This is useful
+//! when the digest is produced elsewhere. Construct the `Digest` from the
+//! externally-computed bytes with [`Digest::import_less_safe`], which shifts to
+//! the caller the responsibility of ensuring the digest really is the hash of
+//! the intended message.
+//!
+//! This module is optimized for signing messages that are available in full,
+//! rather than streaming or incrementally-hashed large messages.
 //!
 //!
 //! # Algorithm Details
@@ -97,6 +105,19 @@
 //! signature using the secure random number generator passed to `sign()`.
 //!
 //!
+//! ## `ML_DSA_*` Details: ML-DSA (FIPS 204) Signatures
+//!
+//! The signature is the raw ML-DSA signature encoding described in [FIPS 204].
+//! Signing and verification use the "pure" ML-DSA mode with an empty context
+//! string. The pre-hash (HashML-DSA) mode is not supported, and neither is the
+//! "external mu" variant, in which the message representative `mu` is computed
+//! separately and signed or verified in place of the message.
+//!
+//! The public key may be provided either as the raw public key bytes or as a
+//! DER-encoded X.509 `SubjectPublicKeyInfo` structure; both encodings are
+//! accepted by `UnparsedPublicKey` and `ParsedPublicKey`.
+//!
+//!
 //! [SEC 1: Elliptic Curve Cryptography, Version 2.0]:
 //!     http://www.secg.org/sec1-v2.pdf
 //! [NIST Special Publication 800-56A, revision 2]:
@@ -111,6 +132,8 @@
 //!     https://tools.ietf.org/html/rfc3447#section-8.1
 //! [RFC 3447 Appendix-A.1.1]:
 //!     https://tools.ietf.org/html/rfc3447#appendix-A.1.1
+//! [FIPS 204]:
+//!     https://csrc.nist.gov/pubs/fips/204/final
 //!
 //!
 //! # Examples
@@ -142,6 +165,31 @@
 //!     let peer_public_key =
 //!         signature::UnparsedPublicKey::new(&signature::ED25519, peer_public_key_bytes);
 //!     peer_public_key.verify(MESSAGE, sig.as_ref())?;
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Signing and verifying with ML-DSA-44
+//!
+//! ```
+//! use aws_lc_rs::encoding::AsDer;
+//! use aws_lc_rs::signature::{KeyPair, PqdsaKeyPair, UnparsedPublicKey, ML_DSA_44, ML_DSA_44_SIGNING};
+//!
+//! fn main() -> Result<(), aws_lc_rs::error::Unspecified> {
+//!     let signing_alg = &ML_DSA_44_SIGNING;
+//!     let key_pair = PqdsaKeyPair::generate(signing_alg)?;
+//!
+//!     // Sign the message "hello, world".
+//!     const MESSAGE: &[u8] = b"hello, world";
+//!     let mut signature = vec![0; signing_alg.signature_len()];
+//!     let signature_len = key_pair.sign(MESSAGE, &mut signature)?;
+//!     assert_eq!(signature_len, signature.len());
+//!
+//!     // Verify the signature.
+//!     let public_key_bytes = key_pair.public_key().as_der()?;
+//!     let public_key = UnparsedPublicKey::new(&ML_DSA_44, public_key_bytes.as_ref());
+//!     public_key.verify(MESSAGE, &signature)?;
 //!
 //!     Ok(())
 //! }
@@ -258,14 +306,17 @@ pub use crate::ed25519::{
     Ed25519KeyPair, EdDSAParameters, PublicKey as Ed25519PublicKey, Seed as Ed25519Seed,
     ED25519_PUBLIC_KEY_LEN,
 };
+pub use crate::pqdsa::key_pair::{PqdsaKeyPair, PqdsaPrivateKey};
+pub use crate::pqdsa::signature::{
+    PqdsaSigningAlgorithm, PqdsaVerificationAlgorithm, PublicKey as PqdsaPublicKey,
+};
 
 use crate::digest::Digest;
 use crate::ec::encoding::parse_ec_public_key;
 use crate::ed25519::parse_ed25519_public_key;
 use crate::encoding::{AsDer, PublicKeyX509Der};
 use crate::error::{KeyRejected, Unspecified};
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
-use crate::pqdsa::{parse_pqdsa_public_key, signature::PqdsaVerificationAlgorithm};
+use crate::pqdsa::{parse_pqdsa_public_key, AlgorithmID as PqdsaAlgorithmID};
 use crate::ptr::LcPtr;
 use crate::rsa::key::parse_rsa_public_key;
 use crate::{digest, ec, error, hex, rsa, sealed};
@@ -672,20 +723,14 @@ pub(crate) fn parse_public_key(
             unsafe { &*(algorithm as *const dyn VerificationAlgorithm).cast::<RsaParameters>() };
         parsed_algorithm = rsa_alg;
         parse_rsa_public_key(bytes)?
+    } else if algorithm.type_id() == TypeId::of::<PqdsaVerificationAlgorithm>() {
+        #[allow(clippy::cast_ptr_alignment)]
+        let pqdsa_alg = unsafe {
+            &*(algorithm as *const dyn VerificationAlgorithm).cast::<PqdsaVerificationAlgorithm>()
+        };
+        parsed_algorithm = pqdsa_alg;
+        parse_pqdsa_public_key(bytes, pqdsa_alg.id)?
     } else {
-        #[cfg(all(feature = "unstable", not(feature = "fips")))]
-        if algorithm.type_id() == TypeId::of::<PqdsaVerificationAlgorithm>() {
-            #[allow(clippy::cast_ptr_alignment)]
-            let pqdsa_alg = unsafe {
-                &*(algorithm as *const dyn VerificationAlgorithm)
-                    .cast::<PqdsaVerificationAlgorithm>()
-            };
-            parsed_algorithm = pqdsa_alg;
-            parse_pqdsa_public_key(bytes, pqdsa_alg.id)?
-        } else {
-            unreachable!()
-        }
-        #[cfg(any(not(feature = "unstable"), feature = "fips"))]
         unreachable!()
     };
 
@@ -1110,6 +1155,33 @@ pub const ECDSA_P256K1_SHA3_256_ASN1_SIGNING: EcdsaSigningAlgorithm =
 
 /// Verification of Ed25519 signatures.
 pub const ED25519: EdDSAParameters = EdDSAParameters {};
+
+/// Verification of ML-DSA-44 signatures.
+pub const ML_DSA_44: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
+    id: &PqdsaAlgorithmID::ML_DSA_44,
+};
+
+/// Verification of ML-DSA-65 signatures.
+pub const ML_DSA_65: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
+    id: &PqdsaAlgorithmID::ML_DSA_65,
+};
+
+/// Verification of ML-DSA-87 signatures.
+pub const ML_DSA_87: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
+    id: &PqdsaAlgorithmID::ML_DSA_87,
+};
+
+/// Signing using ML-DSA-44.
+pub const ML_DSA_44_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_44);
+
+/// Signing using ML-DSA-65.
+pub const ML_DSA_65_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_65);
+
+/// Signing using ML-DSA-87.
+pub const ML_DSA_87_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_87);
+
+#[cfg(test)]
+mod parsed_public_key_tests;
 
 #[cfg(test)]
 mod tests {

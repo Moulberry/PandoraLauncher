@@ -17,7 +17,11 @@ use crate::vector::Vector3D;
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
-use num_traits::{Float, NumCast};
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
+#[cfg(any(feature = "std", feature = "libm"))]
+use num_traits::Float;
+use num_traits::NumCast;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -90,6 +94,13 @@ unsafe impl<T: Zeroable, U> Zeroable for Box3D<T, U> {}
 #[cfg(feature = "bytemuck")]
 unsafe impl<T: Pod, U: 'static> Pod for Box3D<T, U> {}
 
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, U> MallocSizeOf for Box3D<T, U> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.min.size_of(ops) + self.max.size_of(ops)
+    }
+}
+
 impl<T, U> Box3D<T, U> {
     /// Constructor.
     #[inline]
@@ -155,9 +166,32 @@ where
             && self.max.z > other.min.z
     }
 
-    /// Returns `true` if this box3d contains the point `p`. A point is considered
-    /// in the box3d if it lies on the front, left or top faces, but outside if it lies
-    /// on the back, right or bottom faces.
+    /// Returns `true` if this [`Box3D`] contains the point `p`.
+    ///
+    /// Points on the front, left, and top faces are inside the box, whereas
+    /// points on the back, right, and bottom faces are outside the box.
+    /// See [`Box3D::contains_inclusive`] for a variant that also includes those
+    /// latter points.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use euclid::default::{Box3D, Point3D};
+    ///
+    /// let cube = Box3D::new(Point3D::origin(), Point3D::new(2, 2, 2));
+    ///
+    /// assert!(cube.contains(Point3D::new(1, 1, 1)));
+    ///
+    /// assert!(cube.contains(Point3D::new(0, 1, 1))); // front face
+    /// assert!(cube.contains(Point3D::new(1, 0, 1))); // left face
+    /// assert!(cube.contains(Point3D::new(1, 1, 0))); // top face
+    /// assert!(cube.contains(Point3D::new(0, 0, 0)));
+    ///
+    /// assert!(!cube.contains(Point3D::new(2, 1, 1))); // back face
+    /// assert!(!cube.contains(Point3D::new(1, 2, 1))); // right face
+    /// assert!(!cube.contains(Point3D::new(1, 1, 2))); // bottom face
+    /// assert!(!cube.contains(Point3D::new(2, 2, 2)));
+    /// ```
     #[inline]
     pub fn contains(&self, other: Point3D<T, U>) -> bool {
         (self.min.x <= other.x)
@@ -168,8 +202,30 @@ where
             & (other.z < self.max.z)
     }
 
-    /// Returns `true` if this box3d contains the point `p`. A point is considered
-    /// in the box3d if it lies on any face of the box3d.
+    /// Returns `true` if this [`Box3D`] contains the point `p`.
+    ///
+    /// This is like [`Box3D::contains`], but points on the back, right,
+    /// and bottom faces are also inside the box.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use euclid::default::{Box3D, Point3D};
+    ///
+    /// let cube = Box3D::new(Point3D::origin(), Point3D::new(2, 2, 2));
+    ///
+    /// assert!(cube.contains_inclusive(Point3D::new(1, 1, 1)));
+    ///
+    /// assert!(cube.contains_inclusive(Point3D::new(0, 1, 1))); // front face
+    /// assert!(cube.contains_inclusive(Point3D::new(1, 0, 1))); // left face
+    /// assert!(cube.contains_inclusive(Point3D::new(1, 1, 0))); // top face
+    /// assert!(cube.contains_inclusive(Point3D::new(0, 0, 0))); // front-left-top corner
+    ///
+    /// assert!(cube.contains_inclusive(Point3D::new(2, 1, 1))); // back face
+    /// assert!(cube.contains_inclusive(Point3D::new(1, 2, 1))); // right face
+    /// assert!(cube.contains_inclusive(Point3D::new(1, 1, 2))); // bottom face
+    /// assert!(cube.contains_inclusive(Point3D::new(2, 2, 2))); // back-right-bottom corner
+    /// ```
     #[inline]
     pub fn contains_inclusive(&self, other: Point3D<T, U>) -> bool {
         (self.min.x <= other.x)
@@ -325,7 +381,54 @@ impl<T, U> Box3D<T, U>
 where
     T: Copy + Zero + PartialOrd,
 {
-    /// Returns the smallest box containing all of the provided points.
+    /// Returns the smallest box enclosing all of the provided points.
+    ///
+    /// The top/bottom/left/right/front/back-most points are exactly on the box's edges.
+    /// Since [`Box3D::contains`] excludes points that are on the right/bottom/back-most
+    /// faces, not all points passed to [`Box3D::from_points`] are
+    /// contained in the returned [`Box3D`] when probed with [`Box3D::contains`], but
+    /// are when probed with [`Box3D::contains_inclusive`].
+    ///
+    /// For example:
+    ///
+    /// ```
+    /// use euclid::default::{Point3D, Box3D};
+    ///
+    /// let a = Point3D::origin();
+    /// let b = Point3D::new(1, 2, 3);
+    /// let box3 = Box3D::from_points([a, b]);
+    ///
+    /// assert_eq!(box3.width(), 1);
+    /// assert_eq!(box3.height(), 2);
+    /// assert_eq!(box3.depth(), 3);
+    ///
+    /// assert!(box3.contains(a));
+    /// assert!(!box3.contains(b));
+    /// assert!(box3.contains_inclusive(b));
+    /// ```
+    ///
+    /// In particular, calling [`Box3D::from_points`] with a single point
+    /// results in an empty [`Box3D`]:
+    ///
+    /// ```
+    /// use euclid::default::{Point3D, Box3D};
+    ///
+    /// let a = Point3D::new(1, 0, 1);
+    /// let box3 = Box3D::from_points([a]);
+    ///
+    /// assert!(box3.is_empty());
+    /// assert!(!box3.contains(a));
+    /// assert!(box3.contains_inclusive(a));
+    /// ```
+    ///
+    /// The [`Box3D`] enclosing no points is also empty:
+    ///
+    /// ```
+    /// use euclid::default::{Box3D, Point3D};
+    ///
+    /// let box3 = Box3D::from_points(std::iter::empty::<Point3D<i32>>());
+    /// assert!(box3.is_empty());
+    /// ```
     pub fn from_points<I>(points: I) -> Self
     where
         I: IntoIterator,
@@ -342,22 +445,22 @@ where
         for point in points {
             let p = point.borrow();
             if p.x < min_x {
-                min_x = p.x
+                min_x = p.x;
             }
             if p.x > max_x {
-                max_x = p.x
+                max_x = p.x;
             }
             if p.y < min_y {
-                min_y = p.y
+                min_y = p.y;
             }
             if p.y > max_y {
-                max_y = p.y
+                max_y = p.y;
             }
             if p.z < min_z {
-                min_z = p.z
+                min_z = p.z;
             }
             if p.z > max_z {
-                max_z = p.z
+                max_z = p.z;
             }
         }
 
@@ -637,6 +740,7 @@ impl<T: NumCast + Copy, U> Box3D<T, U> {
     }
 }
 
+#[cfg(any(feature = "std", feature = "libm"))]
 impl<T: Float, U> Box3D<T, U> {
     /// Returns `true` if all members are finite.
     #[inline]
@@ -723,6 +827,7 @@ pub fn box3d<T: Copy, U>(
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod tests {
     use crate::default::{Box3D, Point3D};
     use crate::{point3, size3, vec3};

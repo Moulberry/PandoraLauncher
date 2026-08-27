@@ -95,7 +95,7 @@
 //! }
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/erased-serde/0.4.9")]
+#![doc(html_root_url = "https://docs.rs/erased-serde/0.4.10")]
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(

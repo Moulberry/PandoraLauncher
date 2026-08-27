@@ -7,6 +7,19 @@ on:
     branches: [ master, dev ]
 
 jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    name: check rustfmt formatting
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install rustfmt component
+        run: rustup component add --toolchain nightly rustfmt
+      - name: Verify formatting
+        run: cargo +nightly fmt --all -- --check
+
   ubuntu:
     runs-on: ubuntu-latest
     name: test on ubuntu
@@ -14,16 +27,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - uses: dtolnay/rust-toolchain@stable
     - name: Cache Cargo Dependencies
       uses: Swatinem/rust-cache@v1.3.0
     - name: Build without default features
-      run: cargo build --no-default-features --verbose
+      run: cargo +stable build --no-default-features --verbose
     - name: Run tests without default features
-      run: cargo test --no-default-features --verbose
+      run: cargo +stable test --no-default-features --verbose
     - name: Build with rayon feature
-      run: cargo build --features rayon --verbose
+      run: cargo +stable build --features rayon --verbose
     - name: Run tests with rayon feature
-      run: cargo test --features rayon --verbose
+      run: cargo +stable test --features rayon --verbose
 
 
   macos:
@@ -33,16 +47,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
       - name: Cache Cargo Dependencies
         uses: Swatinem/rust-cache@v1.3.0
       - name: Build without default features
-        run: cargo build --no-default-features --verbose
+        run: cargo +stable build --no-default-features --verbose
       - name: Run tests without default features
-        run: cargo test --no-default-features --verbose
+        run: cargo +stable test --no-default-features --verbose
       - name: Build with rayon feature
-        run: cargo build --features rayon --verbose
+        run: cargo +stable build --features rayon --verbose
       - name: Run tests with rayon feature
-        run: cargo test --features rayon --verbose
+        run: cargo +stable test --features rayon --verbose
 
   verify-msrv:
     strategy:
@@ -57,9 +72,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install foresterre/cargo-msrv
-        run: cargo install cargo-msrv
+        run: cargo +stable install cargo-msrv
 
       - uses: dtolnay/rust-toolchain@nightly
       - name: Generate Cargo.lock with minimal-version dependencies
@@ -80,6 +96,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Install or use cached cross-rs/cross
         uses: baptiste0928/cargo-install@v1
@@ -112,6 +129,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - uses: dtolnay/rust-toolchain@stable
 
     - name: Cache Cargo Dependencies
       uses: Swatinem/rust-cache@v1.3.0
@@ -120,8 +138,114 @@ jobs:
       run: rustup target add wasm32-unknown-unknown
 
     - name: Build without default features
-      run: cargo build --verbose --no-default-features --target wasm32-unknown-unknown
+      run: cargo +stable build --verbose --no-default-features --target wasm32-unknown-unknown
 
     - name: Run tests without default features
-      run: cargo test --verbose --no-default-features
+      run: cargo +stable test --verbose --no-default-features
 
+  sde:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: avx2
+            feature: avx2-tests
+            filter: "avx2"
+            # Bump when adding/removing avx tests
+            expected_tests: 4
+            # Haswell: first microarchitecture with AVX2+FMA.
+            # `-C target-feature` unset explicitly to force runtime dispatching
+            sde_cpu: "-hsw"
+
+          - name: sse2
+            feature: sse2-tests
+            filter: "sse2"
+            # Bump when adding/removing sse tests
+            expected_tests: 2
+            # Merom: the lowest 64-bit chip SDE models. Has SSE2 but no AVX,
+            # `-C target-feature` unset explicitly to force runtime dispatching
+            sde_cpu: "-mrm"
+
+    name: test ${{ matrix.name }} using simd cpu emulator
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Setup Intel SDE
+        uses: petarpetrovt/setup-sde@v5.0
+        with:
+          environmentVariableName: SDE_PATH
+          sdeVersion: 10.8.0
+
+      - name: Check SDE
+        run: |
+          "$SDE_PATH"/sde64 --version
+
+      - name: Build ${{ matrix.name }} library unit-test binary only
+        run: |
+          set -euo pipefail
+
+          cargo test --lib --features "${{ matrix.feature }}" --no-run --message-format=json \
+            | jq -r 'select(.reason == "compiler-artifact" and (.target.kind | index("lib")) and .profile.test == true and .executable != null) | .executable' \
+            | tail -n 1 > /tmp/simd-test-bin
+
+          test -s /tmp/simd-test-bin
+          cat /tmp/simd-test-bin
+
+      - name: Run ${{ matrix.name }} tier tests under Intel SDE
+        run: |
+          set -euo pipefail
+
+          TEST_BIN="$(cat /tmp/simd-test-bin)"
+          # pipefail makes a real test failure (non-zero exit) fail the step through the tee.
+          "$SDE_PATH"/sde64 "${{ matrix.sde_cpu }}" -- "$TEST_BIN" --nocapture "${{ matrix.filter }}" \
+            | tee /tmp/simd-test-out
+
+          # A name filter that matches nothing still exits 0 ("0 passed"), so assert the
+          # exact expected count. -F fixed-string match on the "ok. N passed;" summary
+          # fragment is unambiguous (no 4-vs-14 collision; also implies all matched passed).
+          if ! grep -qF "test result: ok. ${{ matrix.expected_tests }} passed;" /tmp/simd-test-out; then
+            echo "::error::expected exactly ${{ matrix.expected_tests }} passing tests for filter '${{ matrix.filter }}' — update matrix.expected_tests or investigate the filter/gating"
+            exit 1
+          fi
+
+  js:
+    runs-on: ubuntu-latest
+    name: test on wasm32 via javascript api
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: exrs-wasm
+
+      - name: Install wasm-pack
+        run: cargo +stable install wasm-pack
+
+      # todo: cache?
+      - name: Install
+        run: npm ci
+        working-directory: exrs-wasm/js
+
+      - name: Build and test wasm package
+        run: npm run test
+        working-directory: exrs-wasm/js

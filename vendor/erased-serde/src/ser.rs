@@ -1292,7 +1292,7 @@ where
     }
 
     fn erased_skip_field(&mut self, key: &'static str) -> Result<(), ErrorImpl> {
-        let erase::Serializer::Struct(serializer) = self else {
+        let erase::Serializer::StructVariant(serializer) = self else {
             unreachable!();
         };
         serializer.skip_field(key).map_err(|err| {

@@ -1209,6 +1209,7 @@ DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_128_gcm) {
   out->cleanup = aead_aes_gcm_cleanup;
   out->seal_scatter = aead_aes_gcm_seal_scatter;
   out->open_gather = aead_aes_gcm_open_gather;
+  out->copy = aead_ctx_copy_state_trivial;
 }
 
 DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_192_gcm) {
@@ -1225,6 +1226,7 @@ DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_192_gcm) {
   out->cleanup = aead_aes_gcm_cleanup;
   out->seal_scatter = aead_aes_gcm_seal_scatter;
   out->open_gather = aead_aes_gcm_open_gather;
+  out->copy = aead_ctx_copy_state_trivial;
 }
 
 DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_256_gcm) {
@@ -1241,6 +1243,7 @@ DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_256_gcm) {
   out->cleanup = aead_aes_gcm_cleanup;
   out->seal_scatter = aead_aes_gcm_seal_scatter;
   out->open_gather = aead_aes_gcm_open_gather;
+  out->copy = aead_ctx_copy_state_trivial;
 }
 
 static int aead_aes_gcm_init_randnonce(EVP_AEAD_CTX *ctx, const uint8_t *key,
@@ -1345,6 +1348,7 @@ DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_128_gcm_randnonce) {
   out->cleanup = aead_aes_gcm_cleanup;
   out->seal_scatter = aead_aes_gcm_seal_scatter_randnonce;
   out->open_gather = aead_aes_gcm_open_gather_randnonce;
+  out->copy = aead_ctx_copy_state_trivial;
 }
 
 DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_256_gcm_randnonce) {
@@ -1361,6 +1365,7 @@ DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_256_gcm_randnonce) {
   out->cleanup = aead_aes_gcm_cleanup;
   out->seal_scatter = aead_aes_gcm_seal_scatter_randnonce;
   out->open_gather = aead_aes_gcm_open_gather_randnonce;
+  out->copy = aead_ctx_copy_state_trivial;
 }
 
 struct aead_aes_gcm_tls12_ctx {

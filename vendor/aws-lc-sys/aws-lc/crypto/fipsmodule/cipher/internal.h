@@ -98,6 +98,17 @@ struct evp_aead_st {
   int (*serialize_state)(const EVP_AEAD_CTX *ctx, CBB *cbb);
 
   int (*deserialize_state)(const EVP_AEAD_CTX *ctx, CBS *cbs);
+
+  // copy, if non-NULL, duplicates the post-init state of |in| into |out| and
+  // is invoked by |EVP_AEAD_CTX_copy|. When it is called, the generic layer
+  // has already set |out->aead| and |out->tag_len| and has zeroed the rest of
+  // |out|. The callback is responsible for populating |out->state| (and
+  // |out->state_offset| where the layout depends on alignment). It must fully
+  // duplicate any state and must not leave |out| aliasing a heap resource
+  // owned by |in|. It returns one on success and zero on error. A NULL |copy|
+  // means the AEAD does not support |EVP_AEAD_CTX_copy|; this is the safe
+  // default for AEADs whose state owns heap resources.
+  int (*copy)(EVP_AEAD_CTX *out, const EVP_AEAD_CTX *in);
 };
 
 struct evp_cipher_st {
@@ -145,6 +156,15 @@ ctr128_f aes_ctr_set_key(AES_KEY *aes_key, GCM128_KEY *gcm_key,
                          block128_f *out_block, const uint8_t *key,
                          size_t key_bytes);
 
+// aead_ctx_copy_state_trivial is a ready-made |copy| callback (see
+// |evp_aead_st|) for AEADs whose per-key state is fully self-contained within
+// |ctx->state| and owns no heap resources reachable through |state.ptr|. It
+// duplicates |state| verbatim and preserves |state_offset|. It MUST NOT be used
+// by AEADs whose live state depends on the runtime address of |ctx->state|
+// (i.e. those that consult |state_offset| to locate an over-aligned
+// sub-context); such AEADs must supply a bespoke |copy| that relocates the
+// state to the destination's alignment.
+int aead_ctx_copy_state_trivial(EVP_AEAD_CTX *out, const EVP_AEAD_CTX *in);
 
 // EXPERIMENTAL functions for use in the TLS Transfer function. See
 // |SSL_to_bytes| for more details.

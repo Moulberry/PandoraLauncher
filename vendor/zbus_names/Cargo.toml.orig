@@ -1,6 +1,6 @@
 [package]
 name = "zbus_names"
-version = "4.3.2"
+version = "4.3.4"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
 edition = { workspace = true }
 rust-version = { workspace = true }
@@ -15,7 +15,7 @@ readme = "README.md"
 [dependencies]
 zvariant = { path = "../zvariant", features = [
     "enumflags2",
-], version = "5.10.1" }
+], version = "5.13.1" }
 
 serde.workspace = true
 winnow.workspace = true

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.56"
+rust-version = "1.71"
 name = "async-trait"
-version = "0.1.89"
+version = "0.1.92"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 build = false
 exclude = ["build.rs"]
@@ -37,6 +37,7 @@ repository = "https://github.com/dtolnay/async-trait"
 targets = ["x86_64-unknown-linux-gnu"]
 rustdoc-args = [
     "--generate-link-to-definition",
+    "--generate-macro-expansion",
     "--extern-html-root-url=core=https://doc.rust-lang.org",
     "--extern-html-root-url=alloc=https://doc.rust-lang.org",
     "--extern-html-root-url=std=https://doc.rust-lang.org",
@@ -63,7 +64,7 @@ version = "1.0.74"
 version = "1.0.35"
 
 [dependencies.syn]
-version = "2.0.46"
+version = "3"
 features = [
     "clone-impls",
     "full",
@@ -87,5 +88,5 @@ version = "0.1.40"
 version = "0.1.27"
 
 [dev-dependencies.trybuild]
-version = "1.0.81"
+version = "1.0.108"
 features = ["diff"]

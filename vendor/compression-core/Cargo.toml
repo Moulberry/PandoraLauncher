@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "compression-core"
-version = "0.4.29"
+version = "0.4.32"
 authors = [
     "Wim Looman <wim@nemo157.com>",
     "Allen Bui <fairingrey@gmail.com>",

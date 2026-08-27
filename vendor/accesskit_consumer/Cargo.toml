@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "accesskit_consumer"
-version = "0.37.0"
+version = "0.38.0"
 authors = ["The AccessKit contributors"]
 build = false
 autolib = false

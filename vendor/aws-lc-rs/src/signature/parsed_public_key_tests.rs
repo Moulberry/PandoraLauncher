@@ -12,8 +12,7 @@ use crate::signature::{
 use crate::{rand, test};
 use std::any::Any;
 
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
-use crate::unstable::signature::{
+use crate::signature::{
     PqdsaKeyPair, ML_DSA_44, ML_DSA_44_SIGNING, ML_DSA_65, ML_DSA_65_SIGNING, ML_DSA_87,
     ML_DSA_87_SIGNING,
 };
@@ -367,7 +366,6 @@ fn test_parsed_public_key_cross_verification() {
     }
 }
 
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
 #[test]
 fn test_parsed_public_key_ml_dsa_44() {
     let key_pair = PqdsaKeyPair::generate(&ML_DSA_44_SIGNING).unwrap();
@@ -386,7 +384,6 @@ fn test_parsed_public_key_ml_dsa_44() {
     assert!(parsed.verify_sig(b"wrong message", &signature).is_err());
 }
 
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
 #[test]
 fn test_parsed_public_key_ml_dsa_65() {
     let key_pair = PqdsaKeyPair::generate(&ML_DSA_65_SIGNING).unwrap();
@@ -405,7 +402,6 @@ fn test_parsed_public_key_ml_dsa_65() {
     assert!(parsed.verify_sig(b"wrong message", &signature).is_err());
 }
 
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
 #[test]
 fn test_parsed_public_key_ml_dsa_87() {
     let key_pair = PqdsaKeyPair::generate(&ML_DSA_87_SIGNING).unwrap();
@@ -424,7 +420,6 @@ fn test_parsed_public_key_ml_dsa_87() {
     assert!(parsed.verify_sig(b"wrong message", &signature).is_err());
 }
 
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
 #[test]
 fn test_parsed_public_key_pqdsa_with_x509_der() {
     use crate::encoding::AsDer;
@@ -442,7 +437,6 @@ fn test_parsed_public_key_pqdsa_with_x509_der() {
     assert!(parsed.verify_sig(message, &signature).is_ok());
 }
 
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
 #[test]
 fn test_parsed_public_key_pqdsa_invalid_key() {
     // Test with wrong size key for ML-DSA-44 (expects 1312 bytes)
@@ -453,7 +447,6 @@ fn test_parsed_public_key_pqdsa_invalid_key() {
     assert!(ParsedPublicKey::new(&ML_DSA_44, invalid_key).is_err());
 }
 
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
 #[test]
 fn test_parsed_public_key_pqdsa_algorithm_mismatch() {
     let key_pair = PqdsaKeyPair::generate(&ML_DSA_44_SIGNING).unwrap();
@@ -466,7 +459,6 @@ fn test_parsed_public_key_pqdsa_algorithm_mismatch() {
     assert!(ParsedPublicKey::new(&ED25519, public_key_bytes).is_err());
 }
 
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
 #[test]
 fn test_parsed_public_key_pqdsa_cross_verification() {
     let key_pair = PqdsaKeyPair::generate(&ML_DSA_44_SIGNING).unwrap();
@@ -493,7 +485,6 @@ fn test_parsed_public_key_pqdsa_cross_verification() {
     );
 }
 
-#[cfg(all(feature = "unstable", not(feature = "fips")))]
 #[test]
 fn test_parsed_public_key_pqdsa_verify_digest() {
     let key_pair = PqdsaKeyPair::generate(&ML_DSA_44_SIGNING).unwrap();

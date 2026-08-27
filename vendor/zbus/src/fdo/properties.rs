@@ -82,14 +82,14 @@ impl Properties {
             Some(&header),
             &emitter,
         ) {
-            zbus::object_server::DispatchResult::RequiresMut => {}
-            zbus::object_server::DispatchResult::NotFound => {
+            zbus::object_server::DispatchResult2::RequiresMut => {}
+            zbus::object_server::DispatchResult2::NotFound => {
                 return Err(Error::UnknownProperty(format!(
                     "Unknown property '{property_name}'"
                 )));
             }
-            zbus::object_server::DispatchResult::Async(f) => {
-                return f.await.map_err(Into::into);
+            zbus::object_server::DispatchResult2::Async(f) => {
+                return f.await;
             }
         }
         let res = iface

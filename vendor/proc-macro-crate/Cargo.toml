@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.67.0"
+rust-version = "1.82.0"
 name = "proc-macro-crate"
-version = "3.4.0"
+version = "3.5.0"
 authors = ["Bastian Köcher <git@kchr.de>"]
 build = false
 autolib = false
@@ -45,7 +45,7 @@ name = "workspace_deps"
 path = "tests/workspace_deps.rs"
 
 [dependencies.toml_edit]
-version = "0.23.2"
+version = "0.25.0"
 features = ["parse"]
 default-features = false
 

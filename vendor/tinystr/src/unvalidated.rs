@@ -34,9 +34,36 @@ impl<const N: usize> UnvalidatedTinyAsciiStr<N> {
     }
 
     #[inline]
-    /// Unsafely converts into a [`TinyAsciiStr`].
+    /// Creates one of these from a byte slice. Fails if the bytes are too long, but
+    /// does not check whether the bytes are a valid ASCII string.
+    pub fn try_from_utf8(bytes: &[u8]) -> Result<Self, ParseError> {
+        if bytes.len() > N {
+            return Err(ParseError::TooLong {
+                max: N,
+                len: bytes.len(),
+            });
+        }
+        let mut target = [0u8; N];
+        target[0..bytes.len()].copy_from_slice(bytes);
+        Ok(Self(target))
+    }
+
+    #[inline]
+    /// Creates one of these from a raw byte array.
     pub const fn from_utf8_unchecked(bytes: [u8; N]) -> Self {
         Self(bytes)
+    }
+
+    #[inline]
+    /// Returns the empty string.
+    pub const fn default() -> Self {
+        TinyAsciiStr::EMPTY.to_unvalidated()
+    }
+}
+
+impl<const N: usize> Default for UnvalidatedTinyAsciiStr<N> {
+    fn default() -> Self {
+        Self::default()
     }
 }
 
@@ -55,12 +82,12 @@ impl<const N: usize> From<TinyAsciiStr<N>> for UnvalidatedTinyAsciiStr<N> {
 }
 
 #[cfg(feature = "serde")]
-impl<const N: usize> serde::Serialize for UnvalidatedTinyAsciiStr<N> {
+impl<const N: usize> serde_core::Serialize for UnvalidatedTinyAsciiStr<N> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: serde_core::Serializer,
     {
-        use serde::ser::Error;
+        use serde_core::ser::Error;
         self.try_into_tinystr()
             .map_err(|_| S::Error::custom("invalid ascii in UnvalidatedTinyAsciiStr"))?
             .serialize(serializer)
@@ -70,13 +97,13 @@ impl<const N: usize> serde::Serialize for UnvalidatedTinyAsciiStr<N> {
 macro_rules! deserialize {
     ($size:literal) => {
         #[cfg(feature = "serde")]
-        impl<'de, 'a> serde::Deserialize<'de> for UnvalidatedTinyAsciiStr<$size>
+        impl<'de, 'a> serde_core::Deserialize<'de> for UnvalidatedTinyAsciiStr<$size>
         where
             'de: 'a,
         {
             fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
             where
-                D: serde::Deserializer<'de>,
+                D: serde_core::Deserializer<'de>,
             {
                 if deserializer.is_human_readable() {
                     Ok(TinyAsciiStr::deserialize(deserializer)?.to_unvalidated())

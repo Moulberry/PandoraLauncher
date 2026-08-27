@@ -10,8 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
+edition = "2021"
+rust-version = "1.76"
 name = "embed-resource"
-version = "3.0.6"
+version = "3.0.11"
 authors = [
     "наб <nabijaczleweli@nabijaczleweli.xyz>",
     "Cat Plus Plus <piotrlegnica@piotrl.pl>",
@@ -39,6 +41,10 @@ authors = [
     "Daniel Schaefer <dhs@frame.work>",
     "Rene Leonhardt",
     "ssrlive",
+    "Kan-Ru Chen <kanru@kanru.info>",
+    "Tony <legendmastertony@gmail.com>",
+    "Berrysoft <Strawberry_Str@hotmail.com>",
+    "Marcus Ahlberg <marcus.ahlberg@kvaser.com>",
 ]
 build = false
 exclude = ["*.enc"]
@@ -71,14 +77,17 @@ path = "src/lib.rs"
 name = "embed-resource"
 path = "src/main.rs"
 
+[dependencies.cc]
+version = "1.2"
+
 [dependencies.rustc_version]
 version = "0.4"
 
 [dependencies.toml]
-version = "0.9"
+version = "1"
 
-[target.'cfg(all(target_os = "windows", target_env = "msvc"))'.dependencies.cc]
-version = "1.2"
+[target.'cfg(all(target_os = "windows", not(target_env = "msvc")))'.dependencies.memchr]
+version = "2.7"
 
 [target.'cfg(all(target_os = "windows", target_env = "msvc"))'.dependencies.vswhom]
 version = "0.1"
@@ -86,9 +95,6 @@ version = "0.1"
 [target.'cfg(all(target_os = "windows", target_env = "msvc"))'.dependencies.winreg]
 version = "0.55"
 default-features = false
-
-[target.'cfg(not(target_os = "windows"))'.dependencies.cc]
-version = "1.2"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies.memchr]
 version = "2.7"

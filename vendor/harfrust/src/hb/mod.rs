@@ -45,6 +45,7 @@ mod ot_shape_normalize;
 pub mod ot_shape_plan;
 mod ot_shaper;
 mod ot_shaper_arabic;
+#[rustfmt::skip]
 mod ot_shaper_arabic_table;
 mod ot_shaper_hangul;
 mod ot_shaper_hebrew;
@@ -68,6 +69,8 @@ mod tables;
 mod tag;
 mod tag_table;
 mod text_parser;
+#[rustfmt::skip]
+mod unicode_emoji_table;
 #[rustfmt::skip]
 mod ucd_table;
 mod unicode;

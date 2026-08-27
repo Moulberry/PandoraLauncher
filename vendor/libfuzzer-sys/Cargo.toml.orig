@@ -6,7 +6,18 @@ license = "(MIT OR Apache-2.0) AND NCSA"
 name = "libfuzzer-sys"
 readme = "./README.md"
 repository = "https://github.com/rust-fuzz/libfuzzer"
-version = "0.4.10"
+version = "0.4.13"
+exclude = [
+    ".github",
+    "ci",
+    "libfuzzer/CMakeLists.txt", # no cmake used
+    "libfuzzer/build.sh", # we use the cc crate for building
+    "libfuzzer/scripts/unbalanced_allocs.py",
+    "libfuzzer/standalone/StandaloneFuzzTargetMain.c", # that's the main function, we don't want it
+    "libfuzzer/tests/CMakeLists.txt",
+    "rust-toolchain", # downstream crates will ignore it anyway
+    "update-libfuzzer.sh", # there is no need for downstream crates to execute this script
+]
 
 [dependencies]
 arbitrary = "1"
@@ -29,5 +40,5 @@ members = [
 ]
 
 [dev-dependencies]
-flate2 = "1.0.24"
-rand = "0.8.5"
+flate2 = "1.1"
+rand = { version = "0.10", default-features = false }

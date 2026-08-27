@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.85"
 name = "link-section"
-version = "0.17.2"
+version = "0.19.3"
 authors = ["Matt Mastracci <matthew@mastracci.com>"]
 build = false
 autolib = false
@@ -54,6 +54,10 @@ name = "link-section-dyn"
 path = "examples/dyn.rs"
 
 [[example]]
+name = "link-section-empty"
+path = "examples/empty.rs"
+
+[[example]]
 name = "link-section-example"
 path = "examples/example.rs"
 
@@ -82,7 +86,7 @@ name = "macrotest"
 path = "tests/macrotest.rs"
 
 [dependencies.linktime-proc-macro]
-version = "0.1.0"
+version = "0.2.3"
 features = ["link_section"]
 optional = true
 

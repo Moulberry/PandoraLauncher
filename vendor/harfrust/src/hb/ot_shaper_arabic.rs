@@ -44,8 +44,8 @@ pub enum hb_arabic_joining_type_t {
     // We don't have C, like harfbuzz, because Rust doesn't allow duplicated enum variants.
     GroupAlaph = 4,
     GroupDalathRish = 5,
-    T = 7,
-    X = 8, // means: use general-category to choose between U or T.
+    T = 6,
+    X = 7, // means: use general-category to choose between U or T.
 }
 
 fn get_joining_type(u: Codepoint, gc: GeneralCategory) -> hb_arabic_joining_type_t {

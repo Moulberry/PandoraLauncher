@@ -27,7 +27,6 @@ struct RunCommandMock {
     responses: HashMap<Vec<String>, String>,
 }
 
-
 #[derive(Copy, Clone, Debug)]
 enum Arch {
     ARM64,
@@ -77,7 +76,10 @@ impl Env {
             env: None,
             vars: HashMap::new(),
             cwd: env::current_dir().unwrap(),
-            tmp: tempfile::Builder::new().prefix("clang_sys_test").tempdir().unwrap(),
+            tmp: tempfile::Builder::new()
+                .prefix("clang_sys_test")
+                .tempdir()
+                .unwrap(),
             files: vec![],
             commands: Default::default(),
         }
@@ -96,7 +98,8 @@ impl Env {
 
     fn var(mut self, name: &str, value: Option<&str>) -> Self {
         let previous = env::var(name).ok();
-        self.vars.insert(name.into(), (value.map(|v| v.into()), previous));
+        self.vars
+            .insert(name.into(), (value.map(|v| v.into()), previous));
         self
     }
 
@@ -141,7 +144,11 @@ impl Env {
 
         let mut key = vec![command];
         key.extend(args);
-        self.commands.lock().unwrap().responses.insert(key, response.into());
+        self.commands
+            .lock()
+            .unwrap()
+            .responses
+            .insert(key, response.into());
 
         self
     }
@@ -173,7 +180,9 @@ impl Env {
             let args = args.iter().map(|a| a.to_string()).collect::<Vec<_>>();
 
             let mut commands = commands.lock().unwrap();
-            commands.invocations.push((command.clone(), path, args.clone()));
+            commands
+                .invocations
+                .push((command.clone(), path, args.clone()));
 
             let mut key = vec![command];
             key.extend(args);
@@ -209,7 +218,7 @@ impl Drop for Env {
 #[test]
 fn test_all() {
     // Run tests serially since they alter the environment.
-    
+
     test_linux_directory_preference();
     test_linux_version_preference();
     test_linux_directory_and_version_preference();
@@ -228,7 +237,10 @@ macro_rules! assert_error {
     ($result:expr, $contents:expr $(,)?) => {
         if let Err(error) = $result {
             if !error.contains($contents) {
-                panic!("expected error to contain {:?}, received: {error:?}", $contents);
+                panic!(
+                    "expected error to contain {:?}, received: {error:?}",
+                    $contents
+                );
             }
         } else {
             panic!("expected error, received: {:?}", $result);
@@ -336,7 +348,7 @@ fn test_windows_arm64_on_x86_64() {
         .enable();
 
     assert_error!(
-        dynamic::find(true), 
+        dynamic::find(true),
         "invalid: [(Program Files\\LLVM\\bin\\libclang.dll: invalid DLL (ARM64)",
     );
 }
@@ -350,7 +362,7 @@ fn test_windows_x86_64_on_arm64() {
         .enable();
 
     assert_error!(
-        dynamic::find(true), 
+        dynamic::find(true),
         "invalid: [(Program Files\\LLVM\\bin\\libclang.dll: invalid DLL (x86-64)",
     );
 }

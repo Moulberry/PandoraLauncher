@@ -961,6 +961,7 @@ impl<Builder: PathBuilder> PathBuilder for Flattened<Builder> {
 
     fn begin(&mut self, at: Point, attributes: Attributes) -> EndpointId {
         self.current_position = at;
+        self.prev_attributes.copy_from_slice(attributes);
         self.builder.begin(at, attributes)
     }
 
@@ -1299,7 +1300,7 @@ impl<Builder: PathBuilder> WithSvg<Builder> {
         let arc_start = arc.from();
         if self.need_moveto {
             self.move_to(arc_start);
-        } else if (arc_start - self.current_position).square_length() < 0.01 {
+        } else if (arc_start - self.current_position).square_length() > 0.01 {
             self.builder.line_to(arc_start, &self.attribute_buffer);
         }
 

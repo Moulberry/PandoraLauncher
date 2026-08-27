@@ -118,3 +118,5 @@ impl core::fmt::Display for HintError {
         write!(f, "@{}:{opcode}{colon} {}", self.pc, self.kind)
     }
 }
+
+impl core::error::Error for HintError {}

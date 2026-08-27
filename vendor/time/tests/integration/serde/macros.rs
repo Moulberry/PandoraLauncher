@@ -1,13 +1,15 @@
+use rstest::rstest;
+use serde_test2::Compact;
 #[rustfmt::skip] // Tries to remove the leading `::`, which breaks compilation.
 use ::serde::{Deserialize, Serialize};
-use serde_test::{
-    assert_de_tokens, assert_de_tokens_error, assert_ser_tokens_error, assert_tokens, Configure,
-    Token,
+use serde_test2::{
+    Configure, Token, assert_de_tokens, assert_de_tokens_error, assert_ser_tokens_error,
+    assert_tokens,
 };
-use time::format_description::well_known::{iso8601, Iso8601};
 use time::format_description::BorrowedFormatItem;
+use time::format_description::well_known::{Iso8601, iso8601};
 use time::macros::{date, datetime, offset, time};
-use time::{serde, Date, OffsetDateTime, PrimitiveDateTime, Time, UtcOffset};
+use time::{Date, OffsetDateTime, PlainDateTime, Time, UtcOffset, serde};
 
 // Not used in the tests, but ensures that the macro compiles.
 #[expect(dead_code)]
@@ -28,8 +30,8 @@ mod nested {
          sign:mandatory]:[offset_minute]"
     );
     time::serde::format_description!(
-        pub primitive_dt_format,
-        PrimitiveDateTime,
+        pub plain_dt_format,
+        PlainDateTime,
         "custom format: [year]-[month]-[day] [hour]:[minute]:[second]"
     );
     time::serde::format_description!(
@@ -58,8 +60,8 @@ serde::format_description!(
 struct TestCustomFormat {
     #[serde(with = "nested::offset_dt_format")]
     offset_dt: OffsetDateTime,
-    #[serde(with = "nested::primitive_dt_format::option")]
-    primitive_dt: Option<PrimitiveDateTime>,
+    #[serde(with = "nested::plain_dt_format::option")]
+    plain_dt: Option<PlainDateTime>,
     #[serde(with = "date_format")]
     date: Date,
     #[serde(with = "nested::time_format::option")]
@@ -70,130 +72,130 @@ struct TestCustomFormat {
     time_alt: Time,
 }
 
-#[test]
-fn custom_serialize() {
-    let value = TestCustomFormat {
+#[rstest]
+#[case(
+    TestCustomFormat {
         offset_dt: datetime!(2000-01-01 00:00 -4:00),
-        primitive_dt: Some(datetime!(2000-01-01 00:00)),
+        plain_dt: Some(datetime!(2000-01-01 00:00)),
         date: date!(2000-01-01),
         time: None,
         offset: offset!(-4),
         time_alt: time!(12:34),
-    };
-    assert_tokens(
-        &value.compact(),
-        &[
-            Token::Struct {
-                name: "TestCustomFormat",
-                len: 6,
-            },
-            Token::Str("offset_dt"),
-            Token::BorrowedStr("custom format: 2000-01-01 00:00:00 -04:00"),
-            Token::Str("primitive_dt"),
-            Token::Some,
-            Token::BorrowedStr("custom format: 2000-01-01 00:00:00"),
-            Token::Str("date"),
-            Token::BorrowedStr("custom format: 2000-01-01"),
-            Token::Str("time"),
-            Token::None,
-            Token::Str("offset"),
-            Token::BorrowedStr("custom format: -04:00"),
-            Token::Str("time_alt"),
-            Token::BorrowedStr("12:34"),
-            Token::StructEnd,
-        ],
-    );
+    }.compact(),
+    &[
+        Token::Struct {
+            name: "TestCustomFormat",
+            len: 6,
+        },
+        Token::Str("offset_dt"),
+        Token::BorrowedStr("custom format: 2000-01-01 00:00:00 -04:00"),
+        Token::Str("plain_dt"),
+        Token::Some,
+        Token::BorrowedStr("custom format: 2000-01-01 00:00:00"),
+        Token::Str("date"),
+        Token::BorrowedStr("custom format: 2000-01-01"),
+        Token::Str("time"),
+        Token::None,
+        Token::Str("offset"),
+        Token::BorrowedStr("custom format: -04:00"),
+        Token::Str("time_alt"),
+        Token::BorrowedStr("12:34"),
+        Token::StructEnd,
+    ]
+)]
+fn custom_serialize(#[case] value: Compact<TestCustomFormat>, #[case] tokens: &[Token]) {
+    assert_tokens(&value, tokens);
 }
 
-#[test]
-fn custom_serialize_error() {
-    // Deserialization error due to parse problem.
-    assert_de_tokens_error::<TestCustomFormat>(
-        &[
-            Token::Struct {
-                name: "TestCustomFormat",
-                len: 5,
-            },
-            Token::Str("offset_dt"),
-            Token::BorrowedStr("custom format: 2000-01-01 0:00:00 -04:00"),
-        ],
-        "the 'hour' component could not be parsed",
-    );
-    // Parse problem in optional field.
-    assert_de_tokens_error::<TestCustomFormat>(
-        &[
-            Token::Struct {
-                name: "TestCustomFormat",
-                len: 5,
-            },
-            Token::Str("offset_dt"),
-            Token::BorrowedStr("custom format: 2000-01-01 00:00:00 -04:00"),
-            Token::Str("primitive_dt"),
-            Token::Some,
-            Token::BorrowedStr("custom format: 2000-01-01 0:00:00 -04:00"),
-        ],
-        "the 'hour' component could not be parsed",
-    );
-    // Type error
-    assert_de_tokens_error::<TestCustomFormat>(
-        &[
-            Token::Struct {
-                name: "TestCustomFormat",
-                len: 5,
-            },
-            Token::Str("offset_dt"),
-            Token::Bool(false),
-        ],
-        "invalid type: boolean `false`, expected a(n) `OffsetDateTime` in the format \"custom \
-         format: [year]-[month]-[day] [hour]:[minute]:[second] [offset_hour \
-         sign:mandatory]:[offset_minute]\"",
-    );
-    assert_de_tokens_error::<TestCustomFormat>(
-        &[
-            Token::Struct {
-                name: "TestCustomFormat",
-                len: 5,
-            },
-            Token::Str("offset_dt"),
-            Token::BorrowedStr("custom format: 2000-01-01 00:00:00 -04:00"),
-            Token::Str("primitive_dt"),
-            Token::Bool(false),
-        ],
-        "invalid type: boolean `false`, expected an `Option<PrimitiveDateTime>` in the format \
-         \"custom format: [year]-[month]-[day] [hour]:[minute]:[second]\"",
-    );
+#[rstest]
+#[case(
+    &[
+        Token::Struct {
+            name: "TestCustomFormat",
+            len: 6,
+        },
+        Token::Str("offset_dt"),
+        Token::BorrowedStr("custom format: 2000-01-01 0:00:00 -04:00"),
+    ],
+    "the 'hour' component could not be parsed",
+)]
+#[case(
+    &[
+        Token::Struct {
+            name: "TestCustomFormat",
+            len: 6,
+        },
+        Token::Str("offset_dt"),
+        Token::BorrowedStr("custom format: 2000-01-01 00:00:00 -04:00"),
+        Token::Str("plain_dt"),
+        Token::Some,
+        Token::BorrowedStr("custom format: 2000-01-01 0:00:00 -04:00"),
+    ],
+    "the 'hour' component could not be parsed"
+)]
+#[case(
+    &[
+        Token::Struct {
+            name: "TestCustomFormat",
+            len: 6,
+        },
+        Token::Str("offset_dt"),
+        Token::Bool(false),
+    ],
+    "invalid type: boolean `false`, expected a(n) `OffsetDateTime` in the format \"custom format: \
+    [year]-[month]-[day] [hour]:[minute]:[second] [offset_hour sign:mandatory]:[offset_minute]\""
+)]
+#[case(
+    &[
+        Token::Struct {
+            name: "TestCustomFormat",
+            len: 6,
+        },
+        Token::Str("offset_dt"),
+        Token::BorrowedStr("custom format: 2000-01-01 00:00:00 -04:00"),
+        Token::Str("plain_dt"),
+        Token::Bool(false),
+    ],
+    "invalid type: boolean `false`, expected an `Option<PlainDateTime>` in the format \"custom \
+    format: [year]-[month]-[day] [hour]:[minute]:[second]\""
+)]
+fn custom_deserialize_error(#[case] tokens: &[Token], #[case] error: &str) {
+    assert_de_tokens_error::<TestCustomFormat>(tokens, error);
 }
 
-// This format string has offset_hour and offset_minute, but is for formatting PrimitiveDateTime.
+// This format string has offset_hour and offset_minute, but is for formatting PlainDateTime.
 serde::format_description!(
-    primitive_date_time_format_bad,
-    PrimitiveDateTime,
+    plain_date_time_format_bad,
+    PlainDateTime,
     "[offset_hour]:[offset_minute]"
 );
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-struct TestCustomFormatPrimitiveDateTimeBad {
-    #[serde(with = "primitive_date_time_format_bad")]
-    dt: PrimitiveDateTime,
+struct TestCustomFormatPlainDateTimeBad {
+    #[serde(with = "plain_date_time_format_bad")]
+    dt: PlainDateTime,
 }
 
-#[test]
-fn custom_serialize_bad_type_error() {
-    let value = TestCustomFormatPrimitiveDateTimeBad {
+#[rstest]
+#[case(
+    TestCustomFormatPlainDateTimeBad {
         dt: datetime!(2000-01-01 00:00),
-    };
-
-    assert_ser_tokens_error::<TestCustomFormatPrimitiveDateTimeBad>(
-        &value,
-        &[
-            Token::Struct {
-                name: "TestCustomFormatPrimitiveDateTimeBad",
-                len: 1,
-            },
-            Token::Str("dt"),
-        ],
-        "The type being formatted does not contain sufficient information to format a component.",
-    );
+    },
+    &[
+        Token::Struct {
+            name: "TestCustomFormatPlainDateTimeBad",
+            len: 1,
+        },
+        Token::Str("dt"),
+    ],
+    "The type being formatted does not contain sufficient information to format a component.",
+)]
+fn custom_serialize_bad_type_error(
+    #[case] value: TestCustomFormatPlainDateTimeBad,
+    #[case] tokens: &[Token],
+    #[case] error: &str,
+) {
+    assert_ser_tokens_error::<TestCustomFormatPlainDateTimeBad>(&value, tokens, error);
 }
 
 // Test the behavior of versioning.
@@ -214,7 +216,7 @@ struct TestVersioning {
     time_4: Time,
 }
 
-#[test]
+#[rstest]
 fn versioning() {
     let value = TestVersioning {
         time_1: Time::MIDNIGHT,
@@ -263,43 +265,46 @@ struct TestNested {
     time_2: Time,
 }
 
-#[test]
-fn nested() {
-    let value = TestNested {
+#[rstest]
+#[case(
+    TestNested {
         time_1: time!(12:34:56),
         time_2: time!(12:34:56),
-    };
-    assert_tokens(
-        &value,
-        &[
-            Token::Struct {
-                name: "TestNested",
-                len: 2,
-            },
-            Token::Str("time_1"),
-            Token::Str("12:34:56"),
-            Token::Str("time_2"),
-            Token::Str("12:34:56"),
-            Token::StructEnd,
-        ],
-    );
+    },
+    &[
+        Token::Struct {
+            name: "TestNested",
+            len: 2,
+        },
+        Token::Str("time_1"),
+        Token::Str("12:34:56"),
+        Token::Str("time_2"),
+        Token::Str("12:34:56"),
+        Token::StructEnd,
+    ]
+)]
+fn nested_roundtrip(#[case] value: TestNested, #[case] tokens: &[Token]) {
+    assert_tokens(&value, tokens);
+}
 
-    let expected = TestNested {
+#[rstest]
+#[case(
+    TestNested {
         time_1: time!(12:34),
         time_2: time!(12:34),
-    };
-    assert_de_tokens(
-        &expected,
-        &[
-            Token::Struct {
-                name: "TestNested",
-                len: 2,
-            },
-            Token::Str("time_1"),
-            Token::Str("12:34"),
-            Token::Str("time_2"),
-            Token::Str("12:34"),
-            Token::StructEnd,
-        ],
-    );
+    },
+    &[
+        Token::Struct {
+            name: "TestNested",
+            len: 2,
+        },
+        Token::Str("time_1"),
+        Token::Str("12:34"),
+        Token::Str("time_2"),
+        Token::Str("12:34"),
+        Token::StructEnd,
+    ]
+)]
+fn nested_deserialize(#[case] value: TestNested, #[case] tokens: &[Token]) {
+    assert_de_tokens(&value, tokens);
 }

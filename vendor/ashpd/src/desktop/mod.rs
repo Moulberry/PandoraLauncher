@@ -153,12 +153,20 @@ pub mod wallpaper;
 )]
 #[cfg_attr(
     docsrs,
-    doc(cfg(any(feature = "screencast", feature = "remote_desktop")))
+    doc(cfg(any(
+        feature = "screencast",
+        feature = "remote_desktop",
+        feature = "input_capture"
+    )))
 )]
-#[cfg(any(feature = "screencast", feature = "remote_desktop"))]
+#[cfg(any(
+    feature = "screencast",
+    feature = "remote_desktop",
+    feature = "input_capture"
+))]
 #[doc(alias = "XdpPersistMode")]
 #[repr(u32)]
-/// Persistence mode for a screencast or remote desktop session.
+/// Persistence mode for a screencast, remote desktop, or input capture session.
 pub enum PersistMode {
     #[doc(alias = "XDP_PERSIST_MODE_NONE")]
     #[default]

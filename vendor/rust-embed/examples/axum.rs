@@ -1,65 +1,69 @@
 use axum::{
   extract::Path,
-  http::{header, StatusCode},
+  http::{HeaderMap, StatusCode},
   response::{Html, IntoResponse, Response},
   routing::{get, Router},
 };
 use rust_embed::Embed;
 use std::net::SocketAddr;
 
+#[derive(Embed)]
+#[folder = "examples/public/"]
+#[compression = "zstd"]
+struct Asset;
+
 #[tokio::main]
 async fn main() {
-  // Define our app routes, including a fallback option for anything not matched.
   let app = Router::new()
     .route("/", get(index_handler))
     .route("/index.html", get(index_handler))
     .route("/dist/{*file}", get(static_handler))
     .fallback_service(get(not_found));
 
-  // Start listening on the given address.
   let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
   println!("listening on {}", addr);
   let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
   axum::serve(listener, app.into_make_service()).await.unwrap();
 }
 
-// We use static route matchers ("/" and "/index.html") to serve our home
-// page.
-async fn index_handler() -> impl IntoResponse {
-  static_handler(Path("index.html".to_string())).await
+async fn index_handler(headers: HeaderMap) -> impl IntoResponse {
+  serve_asset("index.html", &headers)
 }
 
-// We use a wildcard matcher ("/dist/*file") to match against everything
-// within our defined assets directory. This is the directory on our Asset
-// struct below, where folder = "examples/public/".
-async fn static_handler(Path(path): Path<String>) -> impl IntoResponse {
-  StaticFile(path)
+async fn static_handler(Path(path): Path<String>, headers: HeaderMap) -> impl IntoResponse {
+  serve_asset(&path, &headers)
 }
 
-// Finally, we use a fallback route for anything that didn't match.
 async fn not_found() -> Html<&'static str> {
   Html("<h1>404</h1><p>Not Found</p>")
 }
 
-#[derive(Embed)]
-#[folder = "examples/public/"]
-struct Asset;
-
-pub struct StaticFile<T>(pub T);
-
-impl<T> IntoResponse for StaticFile<T>
-where
-  T: Into<String>,
-{
-  fn into_response(self) -> Response {
-    let path = self.0.into();
-
-    match Asset::get(path.as_str()) {
-      Some(content) => {
-        let mime = mime_guess::from_path(path).first_or_octet_stream();
-        ([(header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
-      }
-      None => (StatusCode::NOT_FOUND, "404 Not Found").into_response(),
+#[cfg_attr(not(feature = "compression"), allow(unused_variables, reason = "headers for compression path only"))]
+fn serve_asset(path: &str, headers: &HeaderMap) -> Response {
+  #[cfg(feature = "compression")]
+  if let Some(compressed) = Asset::compressed(path) {
+    let encoding = compressed.content_encoding();
+    let accept = headers.get(axum::http::header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).unwrap_or("");
+    if accept.contains(encoding) {
+      return (
+        [
+          #[cfg(feature = "mime-guess")]
+          (axum::http::header::CONTENT_TYPE, compressed.metadata.mimetype()),
+          (axum::http::header::CONTENT_ENCODING, encoding),
+        ],
+        compressed.data.compressed().to_vec(),
+      )
+        .into_response();
     }
+  }
+
+  match Asset::get(path) {
+    Some(content) => (
+      #[cfg(feature = "mime-guess")]
+      [(axum::http::header::CONTENT_TYPE, content.metadata.mimetype())],
+      content.data,
+    )
+      .into_response(),
+    None => (StatusCode::NOT_FOUND, "404 Not Found").into_response(),
   }
 }

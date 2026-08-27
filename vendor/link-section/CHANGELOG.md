@@ -5,6 +5,91 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.3] - 2026-08-09
+
+### Changed
+
+- Bump `linktime-proc-macro` dependency to 0.2.3 (consistent 64-bit hash chunks
+  and cross-crate section-name fix).
+
+### Documentation
+
+- Documented the `crate_path` override and surfaced the generated attribute
+  reference (including `crate_path`) in the crate docs and README.
+
+### Fixed
+
+- Fix cross-crate section-name error on Rust versions 1.88-1.94 (https://github.com/mmastrac/linktime/pull/509)
+- Fix undefined behavior on WASM when a `const` item is submitted to a `reference`
+  section: the item's cell lacked the fix-up slot the section-wide layout expects,
+  so materialisation read past the cell and could write through a garbage slot
+  pointer (https://github.com/mmastrac/linktime/pull/511).
+
+## [0.19.2] - 2026-07-29
+
+### Changed
+
+- Bump `linktime-proc-macro` dependency to 0.2.1 (makes link-section names more stable).
+
+## [0.19.1] - 2026-07-15
+
+### Fixed
+
+- Fix for semicolons accidentally inserted in WASM expression macro (generates a
+  warning on nightly).
+
+## [0.19.0] - 2026-07-06
+
+### Fixed
+
+- WASM: item counts no longer collapse under fat LTO. Items are gathered through
+  address-significant intrusive list nodes that survive LTO. Fixes
+  [#488](https://github.com/mmastrac/linktime/issues/488).
+
+### Changed
+
+- WASM: the `read_custom_section` host import is no longer required. Sections
+  are gathered in-module via `.init_array.0` submissions and an `.init_array.1`
+  finalizer; the `#[ctor]` priority contract is unchanged.
+- WASM: each item now lives in a single intrusive `LinkCell<T>` static (value
+  plus trailing list metadata) instead of a separate value static and cell.
+
+### Removed
+
+- `Ref::as_ptr` and `MovableRef::as_ptr` are now `pub(crate)`. They exposed raw
+  pointer plumbing that was never meant to be public API; use `Deref` (or
+  `offset_of` for section-membership checks) instead. This is a breaking change.
+
+## [0.18.3] - 2026-06-23
+
+### Fixed
+
+- Windows/COFF: section start/end pointers are now opacified with `black_box`,
+  fixing a miscompile where an optimizing (LTO) build could prove a gathered
+  slice (e.g. `ScatteredSlice<&'static T>`) reads as all-zero and fold it to
+  null values, crashing on use (`0xC0000005`). Fixes
+  [#479](https://github.com/mmastrac/linktime/issues/479).
+
+## [0.18.2] - 2026-06-06
+
+### Changed
+
+- Empty sections are now automatically supported on all platforms other than AIX.
+
+## [0.18.1] - 2026-05-30
+
+### Changed
+
+- Fixed WASM import module for `read_custom_section` and `atexit`.
+
+## [0.18.0] - 2026-05-28
+
+### Changed
+
+- `proc_macro` feature is now required for any non-`unsafe` section.
+- Non-`unsafe` sections now generate a unique ID for the submission site which
+allows multiple sections to share the same identifier.
+
 ## [0.17.2] - 2026-05-18
 
 ### Changed

@@ -1,11 +1,11 @@
+use crate::RawString;
+use crate::Value;
 use crate::parser::array::on_array;
 use crate::parser::inline_table::on_inline_table;
 use crate::parser::prelude::*;
 use crate::repr::{Formatted, Repr};
-use crate::RawString;
-use crate::Value;
 
-/// ```bnf
+/// ```abnf
 /// val = string / boolean / array / inline-table / date-time / float / integer
 /// ```
 pub(crate) fn value(
@@ -55,7 +55,10 @@ pub(crate) fn value(
         }
     }
 
-    Value::from(0)
+    let value_raw = RawString::with_span(0..0);
+    let mut f = Formatted::new(0);
+    f.set_repr_unchecked(Repr::new_unchecked(value_raw));
+    Value::Integer(f)
 }
 
 pub(crate) fn on_scalar(

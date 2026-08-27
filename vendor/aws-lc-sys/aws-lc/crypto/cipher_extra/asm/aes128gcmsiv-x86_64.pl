@@ -2264,6 +2264,12 @@ ___
 }
 aes256gcmsiv_kdf();
 
-if ($avx) { print $code; }
+# Emit .text when AVX is disabled; NASM rejects objects with no sections
+# (nasm.us 3392738).
+if ($avx) {
+  print $code;
+} else {
+  print ".text\n";
+}
 
 close STDOUT or die "error closing STDOUT: $!";

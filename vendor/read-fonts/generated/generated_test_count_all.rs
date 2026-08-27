@@ -5,52 +5,67 @@
 #[allow(unused_imports)]
 use crate::codegen_prelude::*;
 
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct CountAll16Marker {
-    remainder_byte_len: usize,
-}
-
-impl CountAll16Marker {
-    pub fn some_field_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn remainder_byte_range(&self) -> Range<usize> {
-        let start = self.some_field_byte_range().end;
-        start..start + self.remainder_byte_len
-    }
-}
-
-impl MinByteRange for CountAll16Marker {
+impl<'a> MinByteRange<'a> for CountAll16<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.remainder_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for CountAll16<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let remainder_byte_len = cursor.remaining_bytes() / u16::RAW_BYTE_LEN * u16::RAW_BYTE_LEN;
-        cursor.advance_by(remainder_byte_len);
-        cursor.finish(CountAll16Marker { remainder_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
-pub type CountAll16<'a> = TableRef<'a, CountAll16Marker>;
+#[derive(Clone)]
+pub struct CountAll16<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> CountAll16<'a> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     pub fn some_field(&self) -> u16 {
-        let range = self.shape.some_field_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.some_field_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     pub fn remainder(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.remainder_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.remainder_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn some_field_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn remainder_byte_range(&self) -> Range<usize> {
+        let start = self.some_field_byte_range().end;
+        let end =
+            start + self.data.len().saturating_sub(start) / u16::RAW_BYTE_LEN * u16::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(CountAll16::MIN_SIZE));
+
+impl Default for CountAll16<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -76,52 +91,67 @@ impl<'a> std::fmt::Debug for CountAll16<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct CountAll32Marker {
-    remainder_byte_len: usize,
-}
-
-impl CountAll32Marker {
-    pub fn some_field_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn remainder_byte_range(&self) -> Range<usize> {
-        let start = self.some_field_byte_range().end;
-        start..start + self.remainder_byte_len
-    }
-}
-
-impl MinByteRange for CountAll32Marker {
+impl<'a> MinByteRange<'a> for CountAll32<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.remainder_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for CountAll32<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let remainder_byte_len = cursor.remaining_bytes() / u32::RAW_BYTE_LEN * u32::RAW_BYTE_LEN;
-        cursor.advance_by(remainder_byte_len);
-        cursor.finish(CountAll32Marker { remainder_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
-pub type CountAll32<'a> = TableRef<'a, CountAll32Marker>;
+#[derive(Clone)]
+pub struct CountAll32<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> CountAll32<'a> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     pub fn some_field(&self) -> u16 {
-        let range = self.shape.some_field_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.some_field_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     pub fn remainder(&self) -> &'a [BigEndian<u32>] {
-        let range = self.shape.remainder_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.remainder_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn some_field_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn remainder_byte_range(&self) -> Range<usize> {
+        let start = self.some_field_byte_range().end;
+        let end =
+            start + self.data.len().saturating_sub(start) / u32::RAW_BYTE_LEN * u32::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(CountAll32::MIN_SIZE));
+
+impl Default for CountAll32<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 

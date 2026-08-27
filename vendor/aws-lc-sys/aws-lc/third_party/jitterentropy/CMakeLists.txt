@@ -63,5 +63,10 @@ set(JITTER_COMPILE_FLAGS "${JITTER_COMPILE_FLAGS} ${JITTER_ENETROPY_PREFIX_INCLU
 set_source_files_properties(${JITTER_SOURCES} PROPERTIES COMPILE_FLAGS "${JITTER_COMPILE_FLAGS}")
 add_library(jitterentropy OBJECT ${JITTER_SOURCES})
 
+# These objects are linked into libcrypto itself, so this code is part of the
+# implementation, not a consumer: without this, a shared build decorates the
+# AWS-LC functions it calls as dllimport and MinGW's ld fails on __imp_ refs.
+target_compile_definitions(jitterentropy PRIVATE BORINGSSL_IMPLEMENTATION)
+
 target_include_directories(jitterentropy BEFORE PRIVATE "${PROJECT_SOURCE_DIR}/third_party/jitterentropy/jitterentropy-library")
 target_add_awslc_include_paths(TARGET jitterentropy SCOPE PRIVATE)

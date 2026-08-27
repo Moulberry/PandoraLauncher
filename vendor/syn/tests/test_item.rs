@@ -1,4 +1,5 @@
 #![recursion_limit = "256"]
+#![feature(negative_impls)]
 #![allow(
     clippy::elidable_lifetime_names,
     clippy::needless_lifetimes,
@@ -40,7 +41,9 @@ fn test_macro_variable_attr() {
             },
         ],
         vis: Visibility::Inherited,
+        modifiers: FnModifiers,
         sig: Signature {
+            safety: Safety::Default,
             ident: "f",
             generics: Generics,
             output: ReturnType::Default,
@@ -59,12 +62,13 @@ fn test_negative_impl() {
     let tokens = quote! {
         impl ! {}
     };
-    snapshot!(tokens as Item, @r#"
+    snapshot!(tokens as Item, @"
     Item::Impl {
+        modifiers: ImplModifiers,
         generics: Generics,
         self_ty: Type::Never,
     }
-    "#);
+    ");
 
     let tokens = quote! {
         impl !Trait {}
@@ -79,17 +83,17 @@ fn test_negative_impl() {
     };
     snapshot!(tokens as Item, @r#"
     Item::Impl {
+        modifiers: ImplModifiers {
+            polarity: Some,
+        },
         generics: Generics,
-        trait_: Some((
-            Some,
-            Path {
-                segments: [
-                    PathSegment {
-                        ident: "Trait",
-                    },
-                ],
-            },
-        )),
+        trait_: Some(Path {
+            segments: [
+                PathSegment {
+                    ident: "Trait",
+                },
+            ],
+        }),
         self_ty: Type::Path {
             path: Path {
                 segments: [
@@ -116,17 +120,15 @@ fn test_macro_variable_impl() {
 
     snapshot!(tokens as Item, @r#"
     Item::Impl {
+        modifiers: ImplModifiers,
         generics: Generics,
-        trait_: Some((
-            None,
-            Path {
-                segments: [
-                    PathSegment {
-                        ident: "Trait",
-                    },
-                ],
-            },
-        )),
+        trait_: Some(Path {
+            segments: [
+                PathSegment {
+                    ident: "Trait",
+                },
+            ],
+        }),
         self_ty: Type::Group {
             elem: Type::Path {
                 path: Path {
@@ -151,6 +153,7 @@ fn test_supertraits() {
     snapshot!(tokens as ItemTrait, @r#"
     ItemTrait {
         vis: Visibility::Inherited,
+        modifiers: TraitModifiers,
         ident: "Trait",
         generics: Generics {
             where_clause: Some(WhereClause),
@@ -163,6 +166,7 @@ fn test_supertraits() {
     snapshot!(tokens as ItemTrait, @r#"
     ItemTrait {
         vis: Visibility::Inherited,
+        modifiers: TraitModifiers,
         ident: "Trait",
         generics: Generics {
             where_clause: Some(WhereClause),
@@ -176,6 +180,7 @@ fn test_supertraits() {
     snapshot!(tokens as ItemTrait, @r#"
     ItemTrait {
         vis: Visibility::Inherited,
+        modifiers: TraitModifiers,
         ident: "Trait",
         generics: Generics {
             where_clause: Some(WhereClause),
@@ -183,6 +188,7 @@ fn test_supertraits() {
         colon_token: Some,
         supertraits: [
             TypeParamBound::Trait(TraitBound {
+                modifiers: TraitBoundModifiers,
                 path: Path {
                     segments: [
                         PathSegment {
@@ -200,6 +206,7 @@ fn test_supertraits() {
     snapshot!(tokens as ItemTrait, @r#"
     ItemTrait {
         vis: Visibility::Inherited,
+        modifiers: TraitModifiers,
         ident: "Trait",
         generics: Generics {
             where_clause: Some(WhereClause),
@@ -207,6 +214,7 @@ fn test_supertraits() {
         colon_token: Some,
         supertraits: [
             TypeParamBound::Trait(TraitBound {
+                modifiers: TraitBoundModifiers,
                 path: Path {
                     segments: [
                         PathSegment {
@@ -233,10 +241,12 @@ fn test_type_empty_bounds() {
     snapshot!(tokens as ItemTrait, @r#"
     ItemTrait {
         vis: Visibility::Inherited,
+        modifiers: TraitModifiers,
         ident: "Foo",
         generics: Generics,
         items: [
             TraitItem::Type {
+                modifiers: TypeModifiers,
                 ident: "Bar",
                 generics: Generics,
                 colon_token: Some,
@@ -244,15 +254,6 @@ fn test_type_empty_bounds() {
         ],
     }
     "#);
-}
-
-#[test]
-fn test_impl_visibility() {
-    let tokens = quote! {
-        pub default unsafe impl union {}
-    };
-
-    snapshot!(tokens as Item, @"Item::Verbatim(`pub default unsafe impl union { }`)");
 }
 
 #[test]
@@ -264,12 +265,12 @@ fn test_impl_type_parameter_defaults() {
     };
     snapshot!(tokens as Item, @r#"
     Item::Impl {
+        modifiers: ImplModifiers,
         generics: Generics {
             lt_token: Some,
             params: [
                 GenericParam::Type(TypeParam {
                     ident: "T",
-                    eq_token: Some,
                     default: Some(Type::Tuple),
                 }),
             ],
@@ -289,13 +290,16 @@ fn test_impl_trait_trailing_plus() {
     snapshot!(tokens as Item, @r#"
     Item::Fn {
         vis: Visibility::Inherited,
+        modifiers: FnModifiers,
         sig: Signature {
+            safety: Safety::Default,
             ident: "f",
             generics: Generics,
             output: ReturnType::Type(
                 Type::ImplTrait {
                     bounds: [
                         TypeParamBound::Trait(TraitBound {
+                            modifiers: TraitBoundModifiers,
                             path: Path {
                                 segments: [
                                     PathSegment {

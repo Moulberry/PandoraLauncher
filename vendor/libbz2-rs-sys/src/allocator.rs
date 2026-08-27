@@ -106,7 +106,20 @@ pub(crate) mod c_allocator {
     pub(crate) static ALLOCATOR: (AllocFunc, FreeFunc) = (self::allocate, self::deallocate);
 
     unsafe extern "C" fn allocate(_opaque: *mut c_void, count: c_int, size: c_int) -> *mut c_void {
-        unsafe { libc::malloc((count * size) as usize) }
+        // NOTE: allocations bigger than isize::MAX are UB in LLVM.
+        let (Ok(count), Ok(size)) = (isize::try_from(count), isize::try_from(size)) else {
+            return core::ptr::null_mut();
+        };
+
+        let Some(len) = count.checked_mul(size) else {
+            return core::ptr::null_mut();
+        };
+
+        let Ok(len) = usize::try_from(len) else {
+            return core::ptr::null_mut();
+        };
+
+        unsafe { libc::malloc(len) }
     }
 
     unsafe extern "C" fn deallocate(_opaque: *mut c_void, ptr: *mut c_void) {

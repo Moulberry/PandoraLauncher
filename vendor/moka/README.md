@@ -3,11 +3,17 @@
 [![GitHub Actions][gh-actions-badge]][gh-actions]
 [![crates.io release][release-badge]][crate]
 [![docs][docs-badge]][docs]
+[![DeepWiki][deepwiki-badge]][deepwiki]
 [![dependency status][deps-rs-badge]][deps-rs]
 [![codecov][codecov-badge]][codecov]
 [![license][license-badge]](#license)
 
-> **note**
+> [!NOTE]
+> If you have any questions about Moka's APIs or internal design, you can ask the
+> AI chatbot at DeepWiki in a natural language:
+> <https://deepwiki.com/moka-rs/moka>
+
+> [!NOTE]
 > `v0.12.0` had major breaking changes on the API and internal behavior. Please read
 > the [MIGRATION-GUIDE.md][migration-guide-v012] for the details.
 
@@ -25,6 +31,7 @@ algorithm to determine which entries to evict when the capacity is exceeded.
 [gh-actions-badge]: https://github.com/moka-rs/moka/workflows/CI/badge.svg
 [release-badge]: https://img.shields.io/crates/v/moka.svg
 [docs-badge]: https://docs.rs/moka/badge.svg
+[deepwiki-badge]: https://deepwiki.com/badge.svg
 [deps-rs-badge]: https://deps.rs/repo/github/moka-rs/moka/status.svg
 [codecov-badge]: https://codecov.io/gh/moka-rs/moka/graph/badge.svg?token=7GYZNS7O67
 [license-badge]: https://img.shields.io/crates/l/moka.svg
@@ -32,6 +39,7 @@ algorithm to determine which entries to evict when the capacity is exceeded.
 [gh-actions]: https://github.com/moka-rs/moka/actions?query=workflow%3ACI
 [crate]: https://crates.io/crates/moka
 [docs]: https://docs.rs/moka
+[deepwiki]: https://deepwiki.com/moka-rs/moka
 [deps-rs]: https://deps.rs/repo/github/moka-rs/moka
 [codecov]: https://codecov.io/gh/moka-rs/moka
 
@@ -82,7 +90,7 @@ The following table shows the trade-offs between the different cache implementat
 | Per-entry variable expiration | ✅ | ❌ | ❌ |
 | Eviction listener | ✅ | ❌ | ✅ (via lifecycle hook) |
 | Lock-free, concurrent iterator | ✅ | ❌ | ❌ |
-| Lock-per-shard, concurrent iterator | ❌ | ✅ | ❌ |
+| Lock-per-shard, concurrent iterator | ❌ | ✅ | ✅ |
 
 | Performance, etc. | Moka v0.12 | Mini Moka v0.10 | Quick Cache v0.6 |
 |:------- |:---- |:--------- |:----------- |
@@ -114,7 +122,7 @@ routers. Here are some highlights:
 
 ## Recent Changes
 
-> **Note**
+> [!NOTE]
 > `v0.12.0` had major breaking changes on the API and internal behavior. Please read
 > the [MIGRATION-GUIDE.md][migration-guide-v012] for the details.
 
@@ -464,10 +472,10 @@ section ([`sync::Cache`][doc-sync-cache-expiration],
 
 Moka's minimum supported Rust versions (MSRV) are the followings:
 
-| Feature  | MSRV                       |
-|:---------|:--------------------------:|
-| `future` | Rust 1.70.0 (June 1, 2023) |
-| `sync`   | Rust 1.70.0 (June 1, 2023) |
+| Feature  | MSRV                         |
+|:---------|:----------------------------:|
+| `future` | Rust 1.71.1 (August 3, 2023) |
+| `sync`   | Rust 1.71.1 (August 3, 2023) |
 
 It will keep a rolling MSRV policy of at least 6 months. If the default features with
 a mandatory features (`future` or `sync`) are enabled, MSRV will be updated
@@ -477,7 +485,10 @@ to the latest stable.
 In both cases, increasing MSRV is _not_ considered a semver-breaking change.
 
 <!--
-- quanta v0.12.4 requires 1.70.0.
+> Be conservative with MSRV, dependency versions and semver breaks
+https://rust-team.pages.debian.net/book/upstream.html
+
+https://salsa.debian.org/rust-team/debcargo-conf/-/tree/master/src/moka/debian
 -->
 
 ## Troubleshooting

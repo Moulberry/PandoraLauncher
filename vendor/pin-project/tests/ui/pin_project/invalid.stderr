@@ -169,7 +169,7 @@ error: arguments `PinnedDrop` and `project_replace` are mutually exclusive
 error: arguments `PinnedDrop` and `project_replace` are mutually exclusive
    --> tests/ui/pin_project/invalid.rs:150:49
     |
-150 |     #[pin_project(project_replace, UnsafeUnpin, PinnedDrop)] //~ ERROR arguments `PinnedDrop` and `project_replace` are mutually exclusive
+150 |     #[pin_project(project_replace, UnsafeUnpin, PinnedDrop)] //~ ERROR arguments `PinnedDrop` and `project_replace` are mutually ex...
     |                                                 ^^^^^^^^^^
 
 error: arguments `UnsafeUnpin` and `!Unpin` are mutually exclusive

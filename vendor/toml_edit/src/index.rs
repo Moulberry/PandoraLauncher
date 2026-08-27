@@ -1,8 +1,8 @@
 use std::ops;
 
-use crate::key::Key;
 use crate::DocumentMut;
-use crate::{value, InlineTable, Item, Table, Value};
+use crate::key::Key;
+use crate::{InlineTable, Item, Table, Value, value};
 
 // copied from
 // https://github.com/serde-rs/json/blob/master/src/value/index.rs
@@ -38,7 +38,7 @@ impl Index for str {
             Item::Value(ref v) => v
                 .as_inline_table()
                 .and_then(|t| t.items.get(self))
-                .and_then(|value| if !value.is_none() { Some(value) } else { None }),
+                .filter(|value| !value.is_none()),
             _ => None,
         }
     }

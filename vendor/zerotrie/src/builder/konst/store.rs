@@ -45,6 +45,7 @@ impl<'a, T> ConstSlice<'a, T> {
 
     /// Gets the element at `index`, panicking if not present.
     pub const fn get_or_panic(&self, index: usize) -> &T {
+        #[allow(clippy::indexing_slicing)] // documented
         &self.full_slice[index + self.start]
     }
 
@@ -54,16 +55,8 @@ impl<'a, T> ConstSlice<'a, T> {
         if self.len() == 0 {
             None
         } else {
+            // Won't panic: we already handled an empty slice
             Some(self.get_or_panic(0))
-        }
-    }
-
-    /// Gets the last element or `None` if empty.
-    pub const fn last(&self) -> Option<&T> {
-        if self.len() == 0 {
-            None
-        } else {
-            Some(self.get_or_panic(self.len() - 1))
         }
     }
 
@@ -85,6 +78,7 @@ impl<'a, T> ConstSlice<'a, T> {
 
     /// Non-const function that returns this [`ConstSlice`] as a regular slice.
     #[cfg(any(test, feature = "alloc"))]
+    #[allow(clippy::indexing_slicing)] // indices in range by struct invariant
     pub fn as_slice(&self) -> &'a [T] {
         &self.full_slice[self.start..self.limit]
     }
@@ -146,7 +140,7 @@ impl<const N: usize, T> ConstArrayBuilder<N, T> {
     }
 
     /// Returns the initialized elements as a [`ConstSlice`].
-    pub const fn as_const_slice(&self) -> ConstSlice<T> {
+    pub const fn as_const_slice(&self) -> ConstSlice<'_, T> {
         ConstSlice::from_manual_slice(&self.full_array, self.start, self.limit)
     }
 
@@ -176,17 +170,18 @@ impl<const N: usize, T: Copy> ConstArrayBuilder<N, T> {
     }
 
     /// Prepends an element to the front of the builder, panicking if there is no room.
-    pub const fn const_push_front_or_panic(mut self, value: T) -> Self {
+    #[allow(clippy::indexing_slicing)] // documented
+    pub const fn const_push_front_or_panic(&mut self, value: T) {
         if self.start == 0 {
             panic!("Buffer too small");
         }
         self.start -= 1;
         self.full_array[self.start] = value;
-        self
     }
 
     /// Prepends multiple elements to the front of the builder, panicking if there is no room.
-    pub const fn const_extend_front_or_panic(mut self, other: ConstSlice<T>) -> Self {
+    #[allow(clippy::indexing_slicing)] // documented
+    pub const fn const_extend_front_or_panic(&mut self, other: ConstSlice<T>) {
         if self.start < other.len() {
             panic!("Buffer too small");
         }
@@ -196,24 +191,22 @@ impl<const N: usize, T: Copy> ConstArrayBuilder<N, T> {
             self.full_array[i] = *byte;
             i += 1;
         });
-        self
     }
 }
 
 impl<const N: usize> ConstArrayBuilder<N, u8> {
     /// Specialized function that performs `self[index] |= bits`
-    pub const fn const_bitor_assign(mut self, index: usize, bits: u8) -> Self {
+    #[allow(clippy::indexing_slicing)] // documented
+    pub(crate) const fn const_bitor_assign_or_panic(&mut self, index: usize, bits: u8) {
         self.full_array[self.start + index] |= bits;
-        self
     }
 }
 
 impl<const N: usize, T: Copy> ConstArrayBuilder<N, T> {
     /// Swaps the elements at positions `i` and `j`.
     #[cfg(feature = "alloc")]
-    pub fn swap_or_panic(mut self, i: usize, j: usize) -> Self {
+    pub fn swap_or_panic(&mut self, i: usize, j: usize) {
         self.full_array.swap(self.start + i, self.start + j);
-        self
     }
 }
 
@@ -226,6 +219,7 @@ macro_rules! const_for_each {
     ($safe_const_slice:expr, $item:tt, $inner:expr) => {{
         let mut i = 0;
         while i < $safe_const_slice.len() {
+            // Won't panic: in-range loop condition
             let $item = $safe_const_slice.get_or_panic(i);
             $inner;
             i += 1;
@@ -265,8 +259,8 @@ impl<const K: usize> ConstLengthsStack<K> {
     }
 
     /// Adds a [`BranchMeta`] to the stack, panicking if there is no room.
-    #[must_use]
-    pub const fn push_or_panic(mut self, meta: BranchMeta) -> Self {
+    #[allow(clippy::indexing_slicing)] // documented
+    pub const fn push_or_panic(&mut self, meta: BranchMeta) {
         if self.idx >= K {
             panic!(concat!(
                 "AsciiTrie Builder: Need more stack (max ",
@@ -276,7 +270,6 @@ impl<const K: usize> ConstLengthsStack<K> {
         }
         self.data[self.idx] = Some(meta);
         self.idx += 1;
-        self
     }
 
     /// Returns a copy of the [`BranchMeta`] on the top of the stack, panicking if
@@ -289,6 +282,7 @@ impl<const K: usize> ConstLengthsStack<K> {
     }
 
     /// Returns a copy of the [`BranchMeta`] at the specified index.
+    #[allow(clippy::indexing_slicing)] // documented
     const fn get_or_panic(&self, index: usize) -> BranchMeta {
         if self.idx <= index {
             panic!("AsciiTrie Builder: Attempted to get too deep in a stack");
@@ -300,10 +294,8 @@ impl<const K: usize> ConstLengthsStack<K> {
     }
 
     /// Removes many [`BranchMeta`]s from the stack, returning them in a [`ConstArrayBuilder`].
-    pub const fn pop_many_or_panic(
-        mut self,
-        len: usize,
-    ) -> (Self, ConstArrayBuilder<256, BranchMeta>) {
+    #[allow(clippy::indexing_slicing)] // documented
+    pub const fn pop_many_or_panic(&mut self, len: usize) -> ConstArrayBuilder<256, BranchMeta> {
         debug_assert!(len <= 256);
         let mut result = ConstArrayBuilder::new_empty([BranchMeta::default(); 256], 256);
         let mut ix = 0;
@@ -312,14 +304,14 @@ impl<const K: usize> ConstLengthsStack<K> {
                 break;
             }
             let i = self.idx - ix - 1;
-            result = result.const_push_front_or_panic(match self.data[i] {
+            result.const_push_front_or_panic(match self.data[i] {
                 Some(x) => x,
                 None => panic!("Not enough items in the ConstLengthsStack"),
             });
             ix += 1;
         }
         self.idx -= len;
-        (self, result)
+        result
     }
 
     /// Non-const function that returns the initialized elements as a slice.
@@ -334,7 +326,7 @@ impl<const K: usize> ConstArrayBuilder<K, BranchMeta> {
         let mut result = ConstArrayBuilder::new_empty([0; K], K);
         let self_as_slice = self.as_const_slice();
         const_for_each!(self_as_slice, value, {
-            result = result.const_push_front_or_panic(value.ascii);
+            result.const_push_front_or_panic(value.ascii);
         });
         result
     }

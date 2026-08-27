@@ -1,0 +1,6 @@
+.dalligi:
+  tags:
+    - dalligi
+  script: dalligi-run
+  variables:
+    DALLIGI_MANIFEST: $CI_JOB_NAME

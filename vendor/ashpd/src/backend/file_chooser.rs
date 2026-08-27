@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::{
-    AppID, WindowIdentifierType,
+    MaybeAppID, WindowIdentifierType,
     backend::{
         Result,
         request::{Request, RequestImpl},
@@ -22,7 +22,7 @@ pub trait FileChooserImpl: RequestImpl {
     async fn open_file(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         window_identifier: Option<WindowIdentifierType>,
         title: &str,
         options: OpenFileOptions,
@@ -32,7 +32,7 @@ pub trait FileChooserImpl: RequestImpl {
     async fn save_file(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         window_identifier: Option<WindowIdentifierType>,
         title: &str,
         options: SaveFileOptions,
@@ -42,7 +42,7 @@ pub trait FileChooserImpl: RequestImpl {
     async fn save_files(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         window_identifier: Option<WindowIdentifierType>,
         title: &str,
         options: SaveFilesOptions,
@@ -76,7 +76,7 @@ impl FileChooserInterface {
     async fn open_file(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         title: String,
         options: OpenFileOptions,
@@ -107,7 +107,7 @@ impl FileChooserInterface {
     async fn save_file(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         title: String,
         options: SaveFileOptions,
@@ -138,7 +138,7 @@ impl FileChooserInterface {
     async fn save_files(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         title: String,
         options: SaveFilesOptions,

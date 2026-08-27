@@ -1,9 +1,9 @@
 use std::{
     borrow::BorrowMut, ffi::OsString, fmt::Display, os::unix::ffi::OsStrExt, path::PathBuf,
-    process::Stdio,
+    process::Stdio, sync::Arc,
 };
 
-use crate::process::Command;
+use crate::{Address, process::Command};
 
 use super::encode_percents;
 
@@ -67,14 +67,18 @@ impl Unixexec {
         self.args.as_ref()
     }
 
-    pub(super) async fn connect(&self) -> crate::Result<crate::connection::socket::Command> {
-        Command::for_unixexec(self)
+    pub(super) async fn connect(
+        &self,
+        address: &Address,
+    ) -> crate::Result<crate::connection::socket::Command> {
+        let mut child = Command::for_unixexec(self)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
-            .spawn()?
-            .borrow_mut()
-            .try_into()
+            .spawn()
+            .map_err(|e| crate::Error::Connection(Arc::new(e), address.clone()))?;
+
+        child.borrow_mut().try_into()
     }
 }
 
@@ -110,6 +114,6 @@ mod tests {
             Transport::Unixexec(unixexec) => unixexec,
             _ => unreachable!(),
         };
-        crate::utils::block_on(unixexec.connect()).unwrap();
+        crate::utils::block_on(unixexec.connect(&addr)).unwrap();
     }
 }

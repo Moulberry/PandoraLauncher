@@ -133,9 +133,8 @@
 #![allow(private_bounds)]
 
 
-#[cfg(any(not(target_os = "windows"), all(target_os = "windows", target_env = "msvc")))]
 extern crate cc;
-#[cfg(not(target_os = "windows"))]
+#[cfg(any(not(target_os = "windows"), all(target_os = "windows", not(target_env = "msvc"))))]
 extern crate memchr;
 #[cfg(all(target_os = "windows", target_env = "msvc"))]
 extern crate vswhom;
@@ -159,7 +158,7 @@ use self::windows_msvc::*;
 use self::windows_not_msvc::*;
 
 use std::{env, fs};
-use std::ffi::OsStr;
+use std::ffi::{OsString, OsStr};
 use std::borrow::Cow;
 use std::process::Command;
 use toml::Table as TomlTable;
@@ -532,6 +531,22 @@ pub fn compile_for_examples<T: AsRef<Path>,
     CompilationResult::Ok
 }
 
+/// Likewise, but only link the resource to the cdylib.
+///
+/// Only available since rustc 1.61.0, does nothing before.
+pub fn compile_for_cdylib<T: AsRef<Path>,
+                          Ms: AsRef<OsStr>,
+                          Mi: IntoIterator<Item = Ms>,
+                          Is: AsRef<OsStr>,
+                          Ii: IntoIterator<Item = Is>,
+                          P: Into<ParameterBundle<Ms, Mi, Is, Ii>>>(
+    resource_file: T, parameters: P)
+    -> CompilationResult {
+    let (_, _, out_file) = try_compile_impl!(compile_impl(resource_file.as_ref(), parameters.into()));
+    println!("cargo:rustc-link-arg-cdylib={}", out_file);
+    CompilationResult::Ok
+}
+
 /// Likewise, but link the resource into *every* artifact: binaries, cdylibs, examples, tests (`[[test]]`/`#[test]`/doctest),
 /// benchmarks, &c.
 ///
@@ -611,7 +626,7 @@ fn apply_parameters<'t, Ms: AsRef<OsStr>, Mi: IntoIterator<Item = Ms>, Is: AsRef
 /// let vs_locations = vswhom::VsFindResult::search().unwrap();
 /// let output = Command::new(midl)
 ///     .env("PATH", vs_locations.vs_exe_path.unwrap())
-///     .args(&["/out", &env::var("OUT_DIR").unwrap()])
+///     .arg("/out").arg(env::var("OUT_DIR").unwrap())
 ///     .arg("haka.pfx.idl").output().unwrap();
 ///
 /// assert!(output.status.success());
@@ -619,4 +634,166 @@ fn apply_parameters<'t, Ms: AsRef<OsStr>, Mi: IntoIterator<Item = Ms>, Is: AsRef
 /// ```
 pub fn find_windows_sdk_tool<T: AsRef<str>>(tool: T) -> Option<PathBuf> {
     find_windows_sdk_tool_impl(tool.as_ref())
+}
+
+
+#[allow(unused)]
+fn env_target_and_rc() -> Result<(String, Option<OsString>), Cow<'static, str>> {
+    let target = env::var("TARGET").map_err(|_| Cow::from("no $TARGET"))?;
+    let rc = env::var_os(&format!("RC_{}", target)).or_else(|| env::var_os(&format!("RC_{}", target.replace('-', "_")))).or_else(|| env::var_os("RC"));
+    Ok((target, rc))
+}
+
+
+#[cfg(any(not(target_os = "windows"), all(target_os = "windows", not(target_env = "msvc"))))]
+mod windres {
+    use self::super::{ParameterBundle, apply_parameters};
+    use std::process::{Command, Stdio};
+    use std::ffi::{OsString, OsStr};
+    use std::borrow::Cow;
+    use std::path::Path;
+    use memchr::memmem;
+    use std::fs;
+
+    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum CompilerType {
+        /// LLVM-RC
+        ///
+        /// Requires a separate C preprocessor step on the source RC file
+        LlvmRc { has_no_preprocess: bool, },
+        /// MinGW windres
+        WindRes,
+    }
+
+    #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct Compiler {
+        pub tp: CompilerType,
+        pub executable: Cow<'static, OsStr>,
+    }
+
+
+    fn is_runnable(s: &str) -> bool {
+        Command::new(s).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map(|mut c| c.kill()).is_ok()
+    }
+    fn if_runnable(executable: Cow<'static, str>, maketp: fn(&str) -> CompilerType) -> Result<Compiler, Cow<'static, str>> {
+        if is_runnable(&executable) {
+            Ok(Compiler {
+                tp: maketp(&executable),
+                executable: match executable {
+                    Cow::Owned(e) => Cow::Owned(OsString::from(e)),
+                    Cow::Borrowed(e) => Cow::Borrowed(OsStr::new(e)),
+                },
+            })
+        } else {
+            Err(executable)
+        }
+    }
+    impl Compiler {
+        pub fn llvm_rc(executable: Cow<'static, str>) -> Result<Compiler, Cow<'static, str>> {
+            if_runnable(executable, |executable| {
+                CompilerType::LlvmRc {
+                    has_no_preprocess: Command::new(executable)
+                        .arg("/?")
+                        .output()
+                        .ok()
+                        .map(|out| memmem::find(&out.stdout, b"no-preprocess").is_some())
+                        .unwrap_or(false),
+                }
+            })
+        }
+        pub fn windres(executable: Cow<'static, str>) -> Result<Compiler, Cow<'static, str>> {
+            if_runnable(executable, |_| CompilerType::WindRes)
+        }
+
+        pub fn compile<Ms: AsRef<OsStr>, Mi: IntoIterator<Item = Ms>, Is: AsRef<OsStr>, Ii: IntoIterator<Item = Is>, Wp: FnOnce(&mut Command) -> &mut Command>(
+            &self, out_dir: &str, prefix: &str, out_file: String, resource: &str, parameters: ParameterBundle<Ms, Mi, Is, Ii>, fo: &str, c: &str,
+            no_preprocess: &str, windres_params: Wp)
+            -> Result<String, Cow<'static, str>> {
+            match self.tp {
+                CompilerType::LlvmRc { has_no_preprocess } => {
+                    let preprocessed_path = format!("{}/{}-preprocessed.rc", out_dir, prefix);
+                    fs::write(&preprocessed_path,
+                              cc_xc(apply_parameters_cc(cc::Build::new().define("RC_INVOKED", None), parameters))
+                                  .file(resource)
+                                  .cargo_metadata(false)
+                                  .include(out_dir)
+                                  .expand()).map_err(|e| e.to_string())?;
+
+                    try_command(Command::new(&*self.executable)
+                                .args(&[fo, &out_file])
+                                .args(&[c, "65001"]) // UTF-8, cf. https://github.com/nabijaczleweli/rust-embed-resource/pull/73
+                                .args(if has_no_preprocess {
+                                    // We already preprocessed using CC. llvm-rc preprocessing
+                                    // requires having clang in PATH, which more exotic toolchains
+                                    // may not necessarily have.
+                                    Some(no_preprocess)
+                                } else {
+                                    None
+                                })
+                                .args(&["--", &preprocessed_path])
+                                .stdin(Stdio::piped())
+                                .current_dir(or_curdir(Path::new(resource).parent().expect("Resource parent nonexistent?"))),
+                                Path::new(&self.executable),
+                                "compile",
+                                &preprocessed_path,
+                                &out_file)?;
+                }
+                CompilerType::WindRes => {
+                    try_command(apply_parameters(windres_params(Command::new(&*self.executable)
+                                                     .args(&["--input", resource, "--output", &out_file, "--include-dir", out_dir, "--output-format=coff"])),
+                                                 "-D",
+                                                 "-I",
+                                                 parameters),
+                                Path::new(&self.executable),
+                                "compile",
+                                resource,
+                                &out_file)?;
+                }
+            }
+            Ok(out_file)
+        }
+    }
+
+
+    fn apply_parameters_cc<'t, Ms: AsRef<OsStr>, Mi: IntoIterator<Item = Ms>, Is: AsRef<OsStr>, Ii: IntoIterator<Item = Is>>(to: &'t mut cc::Build,
+                                                                                                                             parameters: ParameterBundle<Ms,
+                                                                                                                                                         Mi,
+                                                                                                                                                         Is,
+                                                                                                                                                         Ii>)
+                                                                                                                             -> &'t mut cc::Build {
+        for m in parameters.macros {
+            let mut m = m.as_ref().to_str().expect("macros must be UTF-8 in this configuration").splitn(2, '=');
+            to.define(m.next().unwrap(), m.next());
+        }
+        for id in parameters.include_dirs {
+            to.include(id.as_ref());
+        }
+        to
+    }
+
+    fn cc_xc(to: &mut cc::Build) -> &mut cc::Build {
+        if to.get_compiler().is_like_msvc() {
+            // clang-cl
+            to.flag("-Xclang");
+        }
+        to.flag("-xc");
+        to
+    }
+
+    fn try_command(cmd: &mut Command, exec: &Path, action: &str, whom: &str, whre: &str) -> Result<(), Cow<'static, str>> {
+        match cmd.status() {
+            Ok(stat) if stat.success() => Ok(()),
+            Ok(stat) => Err(format!("{} failed to {} \"{}\" into \"{}\" with {}", exec.display(), action, whom, whre, stat).into()),
+            Err(e) => Err(format!("Couldn't execute {} to {} \"{}\" into \"{}\": {}", exec.display(), action, whom, whre, e).into()),
+        }
+    }
+
+    fn or_curdir(directory: &Path) -> &Path {
+        if directory == Path::new("") {
+            Path::new(".")
+        } else {
+            directory
+        }
+    }
+
 }

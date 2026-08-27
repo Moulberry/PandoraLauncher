@@ -13,7 +13,7 @@ Add `sval` to your `Cargo.toml`:
 
 ```toml
 [dependencies.sval]
-version = "2.15.0"
+version = "2.21.1"
 ```
 
 By default, `sval` doesn't depend on Rust's standard library or integrate with its collection types.
@@ -21,7 +21,7 @@ To include them, add the `alloc` or `std` Cargo features:
 
 ```toml
 [dependencies.sval]
-version = "2.15.0"
+version = "2.21.1"
 features = ["std"]
 ```
 
@@ -30,7 +30,7 @@ Add the `derive` Cargo feature to enable them:
 
 ```toml
 [dependencies.sval]
-version = "2.15.0"
+version = "2.21.1"
 features = ["derive"]
 ```
 
@@ -74,6 +74,7 @@ The [`tags`] module contains built-in tags.
 Other libraries may define their own tags too.
 */
 
+#![doc(html_logo_url = "https://raw.githubusercontent.com/sval-rs/sval/main/asset/logo.svg")]
 #![no_std]
 #![deny(missing_docs)]
 
@@ -87,9 +88,10 @@ extern crate core;
 
 #[cfg(all(feature = "alloc", not(feature = "std")))]
 mod std {
+    #[allow(unused_imports)]
     pub use crate::{
         alloc::{borrow, boxed, collections, string, vec},
-        core::{cmp, convert, fmt, hash, marker, mem, ops, result, str, write},
+        core::{cmp, convert, fmt, hash, marker, mem, ops, option, result, str, write},
     };
 }
 
@@ -134,3 +136,10 @@ pub fn stream_computed<'sval>(
 }
 
 // NOTE: Tests for implementations of `Value` are in `sval_test`
+
+#[doc(hidden)]
+pub mod __private {
+    // Internal to `#[derive]` macros
+
+    pub use crate::std::{option, result};
+}

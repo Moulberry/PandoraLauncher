@@ -74,6 +74,7 @@ pub(crate) type XString = <Xstr as ToOwned>::Owned;
 /// are not needed for the code to compile,
 /// since we don't have significant amounts of generic code.
 /// But they serve as compiler-checked documentation.
+#[allow(unused)]
 pub(crate) trait XstrRequirements: AsRefXstrExt where str: AsRef<Self>, PathBuf: PathBufExt {
 }
 
@@ -86,7 +87,7 @@ pub(crate) trait XstrRequirements: AsRefXstrExt where str: AsRef<Self>, PathBuf:
 /// This is implemented (only) for `S: AsRef<Xstr>`.
 pub(crate) trait AsRefXstrExt {
     /// Convert an input string into our working form
-    fn into_winput(&self) -> WInput;
+    fn into_winput(&self) -> WInput<'_>;
 
     /// Convert an unmodified input string back into the public output type
     ///
@@ -132,20 +133,20 @@ pub(crate) trait WstrExt: where for <'s> &'s Self: WstrRefExt {
     /// Used for variable name lookups.  Our variable lookup API passes Unicode variable names
     /// to the caller.
     /// (Any non-Unicode we find is therefore, by definition, an undefined variable).
-    fn as_str(&self) -> Option<&str>;
+    fn wstr_as_str(&self) -> Option<&str>;
 
     /// Length, in a form suitable for slicing
     ///
     /// Calling this `len` is only reasonable because the `Wstr` type either
     /// doesn't have a `len` method of its own (true of `RawOsStr`, for paths),
     /// or has one which works the same (true of `str`, for strings).
-    fn len(&self) -> usize;
+    fn wstr_len(&self) -> usize;
 
     /// Convert to an `OString`, as used for error reporting etc.
-    fn to_ostring(&self) -> OString;
+    fn wstr_to_ostring(&self) -> OString;
 
     /// Like `str::strip_prefix`, but available on our str MSRV 1.31
-    fn strip_prefix(&self, c: char) -> Option<&Self>;
+    fn wstr_strip_prefix(&self, c: char) -> Option<&Self>;
 }
 
 /// Method on the reference [`&Wstr`](Wstr)
@@ -173,7 +174,7 @@ pub(crate) trait WstrRefExt {
     ///
     ///  * The return value from [`.wstr_len()`](CharsExt::wstr_len)
     ///    can be used in slicing calculations.
-    fn chars_approx(self) -> Self::Chars;
+    fn wstr_chars_approx(self) -> Self::Chars;
 }
 
 /// Methods on the characters iterator from [`Wstr.chars_approx()`](WstrRefExt::chars_approx)
@@ -188,6 +189,7 @@ pub(crate) trait CharsExt {
 /// with suitable semantics.
 pub(crate) trait OStringExt {
     /// Append a plain `str` (used for literal text)
+    #[allow(unused)] // false positive, depending on Rust version &/ cargo features
     fn push_str(&mut self, x: &str);
 
     /// Append a `Wstr` (used for copying through pieces of the input)

@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
-rust-version = "1.80"
+edition = "2024"
+rust-version = "1.85"
 name = "avif-serialize"
-version = "0.8.6"
+version = "0.8.9"
 authors = ["Kornel Lesiński <kornel@geekhood.net>"]
 build = false
 include = [
@@ -59,7 +59,7 @@ path = "src/lib.rs"
 version = "0.7.6"
 
 [dev-dependencies.avif-parse]
-version = "1.4.0"
+version = "2.0"
 
 [dev-dependencies.mp4parse]
 version = "0.17"

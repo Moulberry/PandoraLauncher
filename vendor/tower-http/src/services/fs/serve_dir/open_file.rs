@@ -10,7 +10,7 @@ use http_range_header::RangeUnsatisfiableError;
 use std::{
     ffi::OsStr,
     fs::Metadata,
-    io::{self, SeekFrom},
+    io::{self, ErrorKind, SeekFrom},
     ops::RangeInclusive,
     path::{Path, PathBuf},
 };
@@ -23,6 +23,7 @@ pub(super) enum OpenFileOutput {
     PreconditionFailed,
     NotModified,
     InvalidRedirectUri,
+    InvalidFilename,
 }
 
 pub(super) struct FileOpened {
@@ -110,7 +111,15 @@ pub(super) async fn open_file(
         })))
     } else {
         let (mut file, maybe_encoding) =
-            open_file_with_fallback(path_to_file, negotiated_encodings).await?;
+            match open_file_with_fallback(path_to_file, negotiated_encodings).await {
+                Ok(result) => result,
+
+                Err(err) if is_invalid_filename_error(&err) => {
+                    return Ok(OpenFileOutput::InvalidFilename)
+                }
+                Err(err) => return Err(err),
+            };
+
         let meta = file.metadata().await?;
         let last_modified = meta.modified().ok().map(LastModified::from);
         if let Some(output) = check_modified_headers(
@@ -139,6 +148,26 @@ pub(super) async fn open_file(
             last_modified,
         })))
     }
+}
+
+fn is_invalid_filename_error(err: &io::Error) -> bool {
+    // Only applies to NULL bytes
+    if err.kind() == ErrorKind::InvalidInput {
+        return true;
+    }
+
+    // FIXME: Remove when MSRV >= 1.87.
+    // `io::ErrorKind::InvalidFilename` is stabilized in v1.87
+    #[cfg(windows)]
+    if let Some(raw_err) = err.raw_os_error() {
+        // https://github.com/rust-lang/rust/blob/70e2b4a4d197f154bed0eb3dcb5cac6a948ff3a3/library/std/src/sys/pal/windows/mod.rs
+        // Lines 81 and 115
+        if (raw_err == 123) || (raw_err == 161) || (raw_err == 206) {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn check_modified_headers(
@@ -319,8 +348,10 @@ fn append_slash_on_path(uri: Uri) -> Result<Uri, OpenFileOutput> {
         uri_builder.path_and_query("/")
     };
 
-    uri_builder.build().map_err(|err| {
-        tracing::error!(?err, "redirect uri failed to build");
+    uri_builder.build().map_err(|_err| {
+        #[cfg(feature = "tracing")]
+        tracing::error!(err = ?_err, "redirect uri failed to build");
+
         OpenFileOutput::InvalidRedirectUri
     })
 }

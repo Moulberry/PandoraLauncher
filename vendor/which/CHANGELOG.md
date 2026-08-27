@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## 8.0.6
+
+- Bug fix: [#128](https://github.com/harryfei/which-rs/pull/128) Resolve relative PATH entries against the user provided CWD when available, rather than the process CWD.
+  Thanks [@RSS1102](https://github.com/RSS1102) for your contribution to which!
+
+## 8.0.5
+
+- Bug fix: [#126](https://github.com/harryfei/which-rs/pull/126) Do not use current directory for search when provided path is absolute. Thanks [@weifanglab](https://github.com/weifanglab) for your contribution to which!
+
+## 8.0.4
+
+- On Windows we now emit a `NonFatalError` if the `PATHEXT` environment variable is not populated, and the query did not specify a file extension.
+
+## 8.0.3
+
+- Add fallback implementation of `is_valid_executable` allowing `which-rs` to compile on targets which are not Unix, Windows, WASI, or Redox. Thanks [@pmikolajczyk41](https://github.com/pmikolajczyk41) for your contribution to which!
+
+## 8.0.2
+
+- Dependency on `home_env` removed, the implementation found in rust 1.85.0 for a home directory has been fixed.
+  Thanks, [@madsmtm],(https://github.com/madsmtm) for this contribution to which!
+- Dependency on `winsafe` removed, code for Windows API is now handwritten.
+- Dependency on `rustix` removed, we now depend on `libc` directly to reduce compile times.
+
+## 8.0.1
+
+- Fix Windows bug reported in https://github.com/harryfei/which-rs/issues/108#issuecomment-3998654328
+
+## 8.0.0
+
+- Add new `Sys` trait to allow abstracting over the underlying filesystem. Particularly useful for `wasm32-unknown-unknown` targets. Thanks [@dsherret](https://github.com/dsherret) for this contribution to which!
+- Add more debug level tracing for otherwise silent I/O errors.
+- Call the `NonFatalHandler` in more places to catch previously ignored I/O errors.  
+- Remove use of the `either` dependency.
+
 ## 7.0.3
 
 - Update rustix to version 1.0. Congrats to rustix on this milestone, and thanks [@mhils](https://github.com/mhils) for this contribution to which!

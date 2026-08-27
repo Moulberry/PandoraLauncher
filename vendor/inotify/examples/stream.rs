@@ -1,31 +1,21 @@
-use std::{
-    fs::File,
-    io,
-    thread,
-    time::Duration,
-};
+use std::{fs::File, io, thread, time::Duration};
 
-use futures_util::StreamExt;
-use inotify::{
-    Inotify,
-    WatchMask,
-};
+use inotify::{Inotify, StreamExt, WatchMask};
 use tempfile::TempDir;
 
 #[tokio::main]
 async fn main() -> Result<(), io::Error> {
-    let inotify = Inotify::init()
-        .expect("Failed to initialize inotify");
+    let inotify = Inotify::init().expect("Failed to initialize inotify");
 
     let dir = TempDir::new()?;
 
-    inotify.watches().add(dir.path(), WatchMask::CREATE | WatchMask::MODIFY)?;
+    inotify
+        .watches()
+        .add(dir.path(), WatchMask::CREATE | WatchMask::MODIFY)?;
 
-    thread::spawn::<_, Result<(), io::Error>>(move || {
-        loop {
-            File::create(dir.path().join("file"))?;
-            thread::sleep(Duration::from_millis(500));
-        }
+    thread::spawn::<_, Result<(), io::Error>>(move || loop {
+        File::create(dir.path().join("file"))?;
+        thread::sleep(Duration::from_millis(500));
     });
 
     let mut buffer = [0; 1024];

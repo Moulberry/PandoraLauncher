@@ -31,6 +31,8 @@ pub use self::{activation_token::ActivationToken, window_identifier::WindowIdent
 mod app_id;
 mod registry;
 mod uri;
+#[cfg(feature = "backend")]
+pub use self::app_id::MaybeAppID;
 pub use self::{
     app_id::AppID,
     registry::{register_host_app, register_host_app_with_connection},

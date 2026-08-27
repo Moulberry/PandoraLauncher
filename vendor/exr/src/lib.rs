@@ -1,5 +1,3 @@
-
-
 //! Read and write OpenEXR images.
 //! This library uses no foreign code or unsafe Rust.
 //!
@@ -12,17 +10,13 @@
     future_incompatible,
     unused_extern_crates,
     unused,
-
     missing_copy_implementations,
     missing_debug_implementations,
-
     clippy::all,
-    clippy::restriction,
     clippy::pedantic,
     clippy::nursery,
-    clippy::cargo,
+    clippy::cargo
 )]
-
 #![deny(
     unused_variables,
     unused_assignments,
@@ -32,69 +26,72 @@
     trivial_numeric_casts,
     redundant_semicolons
 )]
-
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod io; // public to allow for custom attribute byte parsing
 
-pub mod math;
 pub mod compression;
-pub mod meta;
 pub mod image;
+pub mod math;
+pub mod meta;
 
-pub mod error;
 pub mod block;
+pub mod error;
 
 #[macro_use]
 extern crate smallvec;
 
 /// Export the most important items from `exrs`.
-/// _Note: This includes a type called `Result`, possibly overwriting the default `std::Result` type usage._
+/// _Note: This includes a type called `Result`, possibly overwriting the
+/// default `std::Result` type usage._
 pub mod prelude {
 
-    /// Import this specifically if you want to be explicit but still use the extension traits.
+    /// Import this specifically if you want to be explicit but still use the
+    /// extension traits.
     pub mod traits {
-        pub use crate::image::write::{WritableImage, channels::GetPixel};
-        pub use crate::image::read::{
-            read, any_channels::ReadSamples, image::ReadLayers,
-            image::ReadImage, layers::ReadChannels,
-            specific_channels::{ReadSpecificChannel}
+        pub use crate::image::{
+            crop::{ApplyCroppedView, Crop, CropResult, CropWhere, CroppedChannels, InspectSample},
+            read::{
+                any_channels::ReadSamples,
+                image::{ReadImage, ReadLayers},
+                layers::ReadChannels,
+                read,
+                specific_channels::ReadSpecificChannel,
+            },
+            write::{channels::GetPixel, WritableImage},
         };
-
-        pub use crate::image::crop::{Crop, CropWhere, CropResult, InspectSample, CroppedChannels, ApplyCroppedView};
     }
-
-    pub use traits::*;
-
-    pub use crate::image::write::{write_rgb_file, write_rgba_file};
-    pub use crate::image::read::{
-        read_first_rgba_layer_from_file,
-        read_all_rgba_layers_from_file,
-        read_all_data_from_file,
-        read_all_flat_layers_from_file,
-        read_first_flat_layer_from_file
-    };
-
-    // image data structures
-    pub use crate::image::*;
-    pub use crate::meta::{ attribute, MetaData, header::{ LayerAttributes, ImageAttributes } };
-    pub use crate::block::samples::Sample;
-    pub use crate::meta::attribute::{
-        AttributeValue, Compression, Text, IntegerBounds,
-        LineOrder, SampleType, TileDescription, ChannelDescription
-    };
-
-    // common math
-    pub use crate::math::Vec2;
-
-    // error handling
-    pub use crate::error::{ Result, Error };
 
     // re-export external stuff
     pub use half::f16;
     pub use smallvec::SmallVec;
+    pub use traits::*;
+
+    // error handling
+    pub use crate::error::{Error, Result};
+    pub use crate::image::{
+        read::{
+            read_all_data_from_file, read_all_flat_layers_from_file,
+            read_all_rgba_layers_from_file, read_first_flat_layer_from_file,
+            read_first_rgba_layer_from_file,
+        },
+        write::{write_rgb_file, write_rgba_file},
+    };
+    // common math
+    pub use crate::math::Vec2;
+    // image data structures
+    pub use crate::{
+        block::samples::Sample,
+        image::*,
+        meta::{
+            attribute,
+            attribute::{
+                AttributeValue, ChannelDescription, Compression, IntegerBounds, LineOrder,
+                SampleType, Text, TileDescription,
+            },
+            header::{ImageAttributes, LayerAttributes},
+            MetaData,
+        },
+    };
 }
-
-
-

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0 OR MIT
+//
 // Copyright 2023 The Fuchsia Authors
 //
 // Licensed under a BSD-style license <LICENSE-BSD>, Apache License, Version 2.0
@@ -20,6 +22,10 @@ use core::{
 };
 
 use super::*;
+use crate::pointer::{
+    invariant::{Exclusive, Shared, Valid},
+    SizeEq, TransmuteFromPtr,
+};
 
 /// Like [`PhantomData`], but [`Send`] and [`Sync`] regardless of whether the
 /// wrapped `T` is.
@@ -39,12 +45,31 @@ impl<T: ?Sized> Default for SendSyncPhantomData<T> {
 }
 
 impl<T: ?Sized> PartialEq for SendSyncPhantomData<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
+    fn eq(&self, _other: &Self) -> bool {
+        true
     }
 }
 
 impl<T: ?Sized> Eq for SendSyncPhantomData<T> {}
+
+impl<T: ?Sized> Clone for SendSyncPhantomData<T> {
+    fn clone(&self) -> Self {
+        SendSyncPhantomData(PhantomData)
+    }
+}
+
+#[cfg(miri)]
+extern "Rust" {
+    /// Miri-provided intrinsic that marks the pointer `ptr` as aligned to
+    /// `align`.
+    ///
+    /// This intrinsic is used to inform Miri's symbolic alignment checker that
+    /// a pointer is aligned, even if Miri cannot statically deduce that fact.
+    /// This is often required when performing raw pointer arithmetic or casts
+    /// where the alignment is guaranteed by runtime checks or invariants that
+    /// Miri is not aware of.
+    pub(crate) fn miri_promise_symbolic_alignment(ptr: *const (), align: usize);
+}
 
 pub(crate) trait AsAddress {
     fn addr(self) -> usize;
@@ -119,12 +144,14 @@ pub(crate) fn validate_aligned_to<T: AsAddress, U>(t: T) -> Result<(), Alignment
 /// on the answer it gives if this is not the case.
 #[cfg_attr(
     kani,
-    kani::requires(len <= isize::MAX as usize),
+    kani::requires(len <= DstLayout::MAX_SIZE),
     kani::requires(align.is_power_of_two()),
     kani::ensures(|&p| (len + p) % align.get() == 0),
     // Ensures that we add the minimum required padding.
     kani::ensures(|&p| p < align.get()),
 )]
+#[cfg_attr(not(zerocopy_inline_always), inline)]
+#[cfg_attr(zerocopy_inline_always, inline(always))]
 pub(crate) const fn padding_needed_for(len: usize, align: NonZeroUsize) -> usize {
     #[cfg(kani)]
     #[kani::proof_for_contract(padding_needed_for)]
@@ -140,7 +167,8 @@ pub(crate) const fn padding_needed_for(len: usize, align: NonZeroUsize) -> usize
     #[allow(clippy::arithmetic_side_effects)]
     let mask = align.get() - 1;
 
-    // To efficiently subtract this value from align, we can use the bitwise complement.
+    // To efficiently subtract this value from align, we can use the bitwise
+    // complement.
     // Note that ((!len) & (align-1)) gives us a number that with (len &
     // (align-1)) sums to align-1. So subtracting 1 from x before taking the
     // complement subtracts `len` from `align`. Some quick inspection of
@@ -171,7 +199,8 @@ pub(crate) const fn padding_needed_for(len: usize, align: NonZeroUsize) -> usize
     //
     // (declare-const len (_ BitVec 32))
     // (declare-const align (_ BitVec 32))
-    // ; Search for a case where align is a power of two and padding2 disagrees with padding1
+    // ; Search for a case where align is a power of two and padding2 disagrees
+    // ; with padding1
     // (assert (and (is-power-of-two align)
     //              (not (= (padding1 len align) (padding2 len align)))))
     // (simplify (padding1 (_ bv300 32) (_ bv32 32))) ; 20
@@ -215,7 +244,7 @@ pub(crate) const fn round_down_to_next_multiple_of_alignment(
     }
 
     let align = align.get();
-    #[cfg(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
+    #[cfg(not(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
     debug_assert!(align.is_power_of_two());
 
     // Subtraction can't underflow because `align.get() >= 1`.
@@ -224,6 +253,8 @@ pub(crate) const fn round_down_to_next_multiple_of_alignment(
     n & mask
 }
 
+#[cfg_attr(not(zerocopy_inline_always), inline)]
+#[cfg_attr(zerocopy_inline_always, inline(always))]
 pub(crate) const fn max(a: NonZeroUsize, b: NonZeroUsize) -> NonZeroUsize {
     if a.get() < b.get() {
         b
@@ -232,6 +263,8 @@ pub(crate) const fn max(a: NonZeroUsize, b: NonZeroUsize) -> NonZeroUsize {
     }
 }
 
+#[cfg_attr(not(zerocopy_inline_always), inline)]
+#[cfg_attr(zerocopy_inline_always, inline(always))]
 pub(crate) const fn min(a: NonZeroUsize, b: NonZeroUsize) -> NonZeroUsize {
     if a.get() > b.get() {
         b
@@ -281,7 +314,7 @@ pub(crate) const unsafe fn transmute_unchecked<Src, Dst>(src: Src) -> Dst {
     // SAFETY: Since `Transmute<Src, Dst>` is `#[repr(C)]`, its `src` and `dst`
     // fields both start at the same offset and the types of those fields are
     // transparent wrappers around `Src` and `Dst` [1]. Consequently,
-    // initializng `Transmute` with with `src` and then reading out `dst` is
+    // initializing `Transmute` with with `src` and then reading out `dst` is
     // equivalent to transmuting from `Src` to `Dst` [2]. Transmuting from `src`
     // to `Dst` is valid because — by contract on the caller — `src` is a valid
     // instance of `Dst`.
@@ -298,6 +331,40 @@ pub(crate) const unsafe fn transmute_unchecked<Src, Dst>(src: Src) -> Dst {
     //     representation is analogous to a transmute from the type used for
     //     writing to the type used for reading.
     unsafe { ManuallyDrop::into_inner(Transmute { src: ManuallyDrop::new(src) }.dst) }
+}
+
+/// # Safety
+///
+/// `Src` must have a greater or equal alignment to `Dst`.
+pub(crate) unsafe fn transmute_ref<Src, Dst, R>(src: &Src) -> &Dst
+where
+    Src: ?Sized,
+    Dst: SizeEq<Src>
+        + TransmuteFromPtr<Src, Shared, Valid, Valid, <Dst as SizeEq<Src>>::CastFrom, R>
+        + ?Sized,
+{
+    let dst = Ptr::from_ref(src).transmute();
+    // SAFETY: The caller promises that `Src`'s alignment is at least as large
+    // as `Dst`'s alignment.
+    let dst = unsafe { dst.assume_alignment() };
+    dst.as_ref()
+}
+
+/// # Safety
+///
+/// `Src` must have a greater or equal alignment to `Dst`.
+pub(crate) unsafe fn transmute_mut<Src, Dst, R>(src: &mut Src) -> &mut Dst
+where
+    Src: ?Sized,
+    Dst: SizeEq<Src>
+        + TransmuteFromPtr<Src, Exclusive, Valid, Valid, <Dst as SizeEq<Src>>::CastFrom, R>
+        + ?Sized,
+{
+    let dst = Ptr::from_mut(src).transmute();
+    // SAFETY: The caller promises that `Src`'s alignment is at least as large
+    // as `Dst`'s alignment.
+    let dst = unsafe { dst.assume_alignment() };
+    dst.as_mut()
 }
 
 /// Uses `allocate` to create a `Box<T>`.
@@ -323,35 +390,35 @@ pub(crate) unsafe fn new_box<T>(
 where
     T: ?Sized + crate::KnownLayout,
 {
-    let size = match T::size_for_metadata(meta) {
-        Some(size) => size,
-        None => return Err(AllocError),
-    };
-
     let align = T::LAYOUT.align.get();
-    // On stable Rust versions <= 1.64.0, `Layout::from_size_align` has a bug in
-    // which sufficiently-large allocations (those which, when rounded up to the
-    // alignment, overflow `isize`) are not rejected, which can cause undefined
-    // behavior. See #64 for details.
-    //
-    // FIXME(#67): Once our MSRV is > 1.64.0, remove this assertion.
-    #[allow(clippy::as_conversions)]
-    let max_alloc = (isize::MAX as usize).saturating_sub(align);
-    if size > max_alloc {
+    if !T::is_valid_metadata(meta) {
         return Err(AllocError);
     }
-
-    // FIXME(https://github.com/rust-lang/rust/issues/55724): Use
-    // `Layout::repeat` once it's stabilized.
-    let layout = Layout::from_size_align(size, align).or(Err(AllocError))?;
-
-    let ptr = if layout.size() != 0 {
+    let size = match T::size_for_metadata(meta) {
+        Some(size) => size,
+        // Thanks to the `!T::is_valid_metadata(meta)` check
+        // above, this branch is unreachable. Fortunately, the
+        // optimizer recognizes this, so replacing this branch
+        // with `unreachable_unchecked` produces no codegen
+        // improvements.
+        None => return Err(AllocError),
+    };
+    let ptr = if size != 0 {
+        // SAFETY:
+        // - `align` is derived from a `NonZeroUsize` and is thus non-zero.
+        // - `align` is a power of two because, by invariant on
+        //   `KnownLayout::LAYOUT` `<T as KnownLayout>::LAYOUT` accurately
+        //   reflects the layout of `T`.
+        // - `size`, by invariant on `size_for_metadata` is well-aligned for
+        //   `align` and, by the check on `T::is_valid_metadata(meta)`, is less
+        //   than `isize::MAX`.
+        let layout: Layout = unsafe { Layout::from_size_align_unchecked(size, align) };
         // SAFETY: By contract on the caller, `allocate` is either
         // `alloc::alloc::alloc` or `alloc::alloc::alloc_zeroed`. The above
         // check ensures their shared safety precondition: that the supplied
         // layout is not zero-sized type [1].
         //
-        // [1] Per https://doc.rust-lang.org/stable/std/alloc/trait.GlobalAlloc.html#tymethod.alloc:
+        // [1] Per https://doc.rust-lang.org/1.81.0/std/alloc/trait.GlobalAlloc.html#tymethod.alloc:
         //
         //     This function is unsafe because undefined behavior can result if
         //     the caller does not ensure that layout has non-zero size.
@@ -361,7 +428,6 @@ where
             None => return Err(AllocError),
         }
     } else {
-        let align = T::LAYOUT.align.get();
         // We use `transmute` instead of an `as` cast since Miri (with strict
         // provenance enabled) notices and complains that an `as` cast creates a
         // pointer with no provenance. Miri isn't smart enough to realize that
@@ -370,11 +436,13 @@ where
         //
         // SAFETY: any initialized bit sequence is a bit-valid `*mut u8`. All
         // bits of a `usize` are initialized.
-        #[allow(unknown_lints)] // For `integer_to_ptr_transmutes`
+        //
+        // `#[allow(unknown_lints)]` is for `integer_to_ptr_transmutes`
+        #[allow(unknown_lints)]
         #[allow(clippy::useless_transmute, integer_to_ptr_transmutes)]
         let dangling = unsafe { mem::transmute::<usize, *mut u8>(align) };
-        // SAFETY: `dangling` is constructed from `T::LAYOUT.align`, which is a
-        // `NonZeroUsize`, which is guaranteed to be non-zero.
+        // SAFETY: `dangling` is constructed from `align`, which is derived from
+        // a `NonZeroUsize`, which is guaranteed to be non-zero.
         //
         // `Box<[T]>` does not allocate when `T` is zero-sized or when `len` is
         // zero, but it does require a non-null dangling pointer for its
@@ -403,7 +471,7 @@ mod len_of {
     use super::*;
 
     /// A witness type for metadata of a valid instance of `&T`.
-    pub(crate) struct MetadataOf<T: ?Sized + KnownLayout> {
+    pub struct MetadataOf<T: ?Sized + KnownLayout> {
         /// # Safety
         ///
         /// The size of an instance of `&T` with the given metadata is not
@@ -414,8 +482,19 @@ mod len_of {
 
     impl<T: ?Sized + KnownLayout> Copy for MetadataOf<T> {}
     impl<T: ?Sized + KnownLayout> Clone for MetadataOf<T> {
+        #[inline]
         fn clone(&self) -> Self {
             *self
+        }
+    }
+
+    impl<T: ?Sized + KnownLayout> core::fmt::Debug for MetadataOf<T>
+    where
+        T::PointerMetadata: core::fmt::Debug,
+    {
+        #[inline]
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.debug_struct("MetadataOf").field("meta", &self.meta).finish()
         }
     }
 
@@ -489,13 +568,17 @@ mod len_of {
             T: KnownLayout<PointerMetadata = usize>,
         {
             let trailing_slice_layout = crate::trailing_slice_layout::<T>();
+
+            // FIXME(#67): Remove this allow. See NumExt for more details.
+            #[allow(
+                unstable_name_collisions,
+                clippy::incompatible_msrv,
+                clippy::multiple_unsafe_ops_per_block
+            )]
             // SAFETY: By invariant on `self`, a `&T` with metadata `self.meta`
             // describes an object of size `<= isize::MAX`. This computes the
             // size of such a `&T` without any trailing padding, and so neither
             // the multiplication nor the addition will overflow.
-            //
-            // FIXME(#67): Remove this allow. See NumExt for more details.
-            #[allow(unstable_name_collisions, clippy::incompatible_msrv)]
             let unpadded_size = unsafe {
                 let trailing_size = self.meta.unchecked_mul(trailing_slice_layout.elem_size);
                 trailing_size.unchecked_add(trailing_slice_layout.offset)
@@ -513,11 +596,19 @@ mod len_of {
         ) -> Result<(MetadataOf<T>, MetadataOf<[u8]>), MetadataCastError> {
             let layout = match meta {
                 None => T::LAYOUT,
-                // This can return `None` if the metadata describes an object
-                // which can't fit in an `isize`.
+                // This can return `Err(MetadataCastError::Size)` if the
+                // metadata describes an object which can't fit in an `isize`.
                 Some(meta) => {
+                    if !T::is_valid_metadata(meta) {
+                        return Err(MetadataCastError::Size);
+                    }
                     let size = match T::size_for_metadata(meta) {
                         Some(size) => size,
+                        // Thanks to the `!T::is_valid_metadata(meta)` check
+                        // above, this branch is unreachable. Fortunately, the
+                        // optimizer recognizes this, so replacing this branch
+                        // with `unreachable_unchecked` produces no codegen
+                        // improvements.
                         None => return Err(MetadataCastError::Size),
                     };
                     DstLayout {
@@ -582,15 +673,16 @@ mod len_of {
     }
 }
 
-pub(crate) use len_of::MetadataOf;
+pub use len_of::MetadataOf;
 
 /// Since we support multiple versions of Rust, there are often features which
 /// have been stabilized in the most recent stable release which do not yet
 /// exist (stably) on our MSRV. This module provides polyfills for those
 /// features so that we can write more "modern" code, and just remove the
 /// polyfill once our MSRV supports the corresponding feature. Without this,
-/// we'd have to write worse/more verbose code and leave FIXME comments sprinkled
-/// throughout the codebase to update to the new pattern once it's stabilized.
+/// we'd have to write worse/more verbose code and leave FIXME comments
+/// sprinkled throughout the codebase to update to the new pattern once it's
+/// stabilized.
 ///
 /// Each trait is imported as `_` at the crate root; each polyfill should "just
 /// work" at usage sites.
@@ -823,5 +915,30 @@ mod tests {
     #[should_panic]
     fn test_round_down_to_next_multiple_of_alignment_zerocopy_panic_in_const_and_vec_try_reserve() {
         round_down_to_next_multiple_of_alignment(0, NonZeroUsize::new(3).unwrap());
+    }
+    #[test]
+    fn test_send_sync_phantom_data() {
+        let x = SendSyncPhantomData::<u8>::default();
+        let y = x.clone();
+        assert!(x == y);
+        assert!(x == SendSyncPhantomData::<u8>::default());
+    }
+
+    #[test]
+    #[allow(clippy::as_conversions)]
+    fn test_as_address() {
+        let x = 0u8;
+        let r = &x;
+        let mut x_mut = 0u8;
+        let rm = &mut x_mut;
+        let p = r as *const u8;
+        let pm = rm as *mut u8;
+        let nn = NonNull::new(p as *mut u8).unwrap();
+
+        assert_eq!(AsAddress::addr(r), p as usize);
+        assert_eq!(AsAddress::addr(rm), pm as usize);
+        assert_eq!(AsAddress::addr(p), p as usize);
+        assert_eq!(AsAddress::addr(pm), pm as usize);
+        assert_eq!(AsAddress::addr(nn), p as usize);
     }
 }

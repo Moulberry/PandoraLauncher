@@ -1,3 +1,10 @@
+# Version 5.4.2
+
+- Add spinlock implementation to intrusive.rs.
+- Remove slab-based implementation of event-listener. #109
+- Fix unbounded Send/Sync implementations on StackSlot. #163
+- Misc. internal improvements.
+
 # Version 5.4.1
 
 - Fix a copy-paste error in `wait_timeout` docs (#152)

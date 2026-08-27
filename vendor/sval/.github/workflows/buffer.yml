@@ -41,7 +41,7 @@ jobs:
         run: cargo install cargo-hack
 
       - name: Powerset
-        working-directory: ./buffer
+        working-directory: ./buffer/bench
         run: cargo hack bench --feature-powerset --no-run
 
   msrv:
@@ -53,8 +53,8 @@ jobs:
 
       - name: Install Rust toolchain
         run: |
-          rustup toolchain add 1.61.0 --profile minimal
-          rustup default 1.61.0
+          rustup toolchain add 1.71.0 --profile minimal
+          rustup default 1.71.0
 
       - name: Check
         working-directory: ./buffer

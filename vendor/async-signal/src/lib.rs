@@ -134,6 +134,7 @@ mod signum {
     pub const SIGSTOP: c_int = sig!(STOP, 19);
     pub const SIGTSTP: c_int = sig!(TSTP, 20);
     pub const SIGURG: c_int = sig!(URG, 23);
+    #[cfg(not(target_os = "haiku"))]
     pub const SIGIO: c_int = sig!(IO, 29);
     pub const SIGSYS: c_int = sig!(SYS, 31);
 }
@@ -143,7 +144,8 @@ macro_rules! define_signal_enum {
         $(#[$outer:meta])*
         pub enum Signal {
             $(
-                $(#[$inner:meta])*
+                $(#[cfg($($inner_cfg:tt)*)])?
+                $(#[doc $($inner_doc:tt)*])*
                 $name:ident = $value:ident,
             )*
         }
@@ -153,7 +155,8 @@ macro_rules! define_signal_enum {
         #[repr(i32)]
         pub enum Signal {
             $(
-                $(#[$inner])*
+                $(#[cfg($($inner_cfg)*)])?
+                $(#[doc $($inner_doc)*])*
                 $name = signum::$value,
             )*
         }
@@ -163,6 +166,7 @@ macro_rules! define_signal_enum {
             fn number(self) -> std::os::raw::c_int {
                 match self {
                     $(
+                        $(#[cfg($($inner_cfg)*)])?
                         Signal::$name => signum::$value,
                     )*
                 }
@@ -173,6 +177,7 @@ macro_rules! define_signal_enum {
             fn from_number(number: std::os::raw::c_int) -> Option<Self> {
                 match number {
                     $(
+                        $(#[cfg($($inner_cfg)*)])?
                         signum::$value => Some(Signal::$name),
                     )*
                     _ => None,
@@ -246,6 +251,7 @@ define_signal_enum! {
         Prof = SIGPROF,
         /// `SIGWINCH`
         Winch = SIGWINCH,
+        #[cfg(not(target_os = "haiku"))]
         /// `SIGIO`, aka `SIGPOLL`
         #[doc(alias = "Poll")]
         Io = SIGIO,

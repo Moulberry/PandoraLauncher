@@ -113,7 +113,7 @@ __expand_check_macro! {
     ("sse4.2", "", 0, ecx, 20),
     ("popcnt", "", 0, ecx, 23),
     ("aes", "", 0, ecx, 25),
-    ("avx", "xmm", 0, ecx, 28),
+    ("avx", "ymm", 0, ecx, 28),
     ("rdrand", "", 0, ecx, 30),
 
     ("mmx", "", 0, edx, 23),

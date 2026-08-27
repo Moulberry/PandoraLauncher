@@ -12,7 +12,7 @@ use syn::visit_mut::{self, VisitMut};
 use syn::{
     parse_quote, parse_quote_spanned, Attribute, Block, FnArg, GenericArgument, GenericParam,
     Generics, Ident, ImplItem, Lifetime, LifetimeParam, Pat, PatIdent, PathArguments, Receiver,
-    ReturnType, Signature, Token, TraitItem, Type, TypeInfer, TypePath, WhereClause,
+    ReceiverKind, ReturnType, Signature, Token, TraitItem, Type, TypeInfer, TypePath, WhereClause,
 };
 
 impl ToTokens for Item {
@@ -66,7 +66,6 @@ pub fn expand(input: &mut Item, is_local: bool) {
                     if sig.asyncness.is_some() {
                         let block = &mut method.default;
                         let mut has_self = has_self_in_sig(sig);
-                        method.attrs.push(parse_quote!(#[must_use]));
                         if let Some(block) = block {
                             has_self |= has_self_in_block(block);
                             transform_block(context, sig, block);
@@ -248,30 +247,37 @@ fn transform_sig(
         let bounds: &[InferredBound] = if is_local {
             &[]
         } else if let Some(receiver) = sig.receiver() {
-            match receiver.ty.as_ref() {
-                // self: &Self
-                Type::Reference(ty) if ty.mutability.is_none() => &[InferredBound::Sync],
-                // self: Arc<Self>
-                Type::Path(ty)
-                    if {
-                        let segment = ty.path.segments.last().unwrap();
-                        segment.ident == "Arc"
-                            && match &segment.arguments {
-                                PathArguments::AngleBracketed(arguments) => {
-                                    arguments.args.len() == 1
-                                        && match &arguments.args[0] {
-                                            GenericArgument::Type(Type::Path(arg)) => {
-                                                arg.path.is_ident("Self")
-                                            }
-                                            _ => false,
-                                        }
-                                }
-                                _ => false,
-                            }
-                    } =>
-                {
-                    &[InferredBound::Sync, InferredBound::Send]
+            match &receiver.kind {
+                // &self
+                ReceiverKind::Reference(_ampersand, _lifetime, None::<Token![mut]>) => {
+                    &[InferredBound::Sync]
                 }
+                ReceiverKind::Typed(_colon, ty) => match ty.as_ref() {
+                    // self: &Self
+                    Type::Reference(ty) if ty.mutability.is_none() => &[InferredBound::Sync],
+                    // self: Arc<Self>
+                    Type::Path(ty)
+                        if {
+                            let segment = ty.path.segments.last().unwrap();
+                            segment.ident == "Arc"
+                                && match &segment.arguments {
+                                    PathArguments::AngleBracketed(arguments) => {
+                                        arguments.args.len() == 1
+                                            && match &arguments.args[0] {
+                                                GenericArgument::Type(Type::Path(arg)) => {
+                                                    arg.path.is_ident("Self")
+                                                }
+                                                _ => false,
+                                            }
+                                    }
+                                    _ => false,
+                                }
+                        } =>
+                    {
+                        &[InferredBound::Sync, InferredBound::Send]
+                    }
+                    _ => &[InferredBound::Send],
+                },
                 _ => &[InferredBound::Send],
             }
         } else {
@@ -293,9 +299,7 @@ fn transform_sig(
     for (i, arg) in sig.inputs.iter_mut().enumerate() {
         match arg {
             FnArg::Receiver(receiver) => {
-                if receiver.reference.is_none() {
-                    receiver.mutability = None;
-                }
+                receiver.mutability = None;
             }
             FnArg::Typed(arg) => {
                 if match *arg.ty {
@@ -354,11 +358,15 @@ fn transform_block(context: Context, sig: &mut Signature, block: &mut Block) {
         .map(|(i, arg)| match arg {
             FnArg::Receiver(Receiver {
                 self_token,
-                mutability,
+                mut mutability,
+                kind,
                 ..
             }) => {
                 replace_self = true;
                 let ident = Ident::new("__self", self_token.span);
+                if let ReceiverKind::Reference(_ampersand, _lifetime, reference_mutability) = kind {
+                    mutability = *reference_mutability;
+                }
                 quote!(let #mutability #ident = #self_token;)
             }
             FnArg::Typed(arg) => {
@@ -493,6 +501,7 @@ fn replace_impl_trait_with_infer(ty: &mut Type) {
         fn visit_type_mut(&mut self, ty: &mut Type) {
             if let Type::ImplTrait(impl_trait) = ty {
                 *ty = Type::Infer(TypeInfer {
+                    attrs: Vec::new(),
                     underscore_token: Token![_](impl_trait.impl_token.span),
                 });
             }

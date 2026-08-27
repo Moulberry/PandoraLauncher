@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.83"
 name = "bitstream-io"
-version = "4.9.0"
+version = "4.10.0"
 authors = ["Brian Langenberger <bjl@usa.net>"]
 build = false
 autolib = false
@@ -43,10 +43,10 @@ rustdoc-args = [
 ]
 
 [features]
-alloc = ["core2/alloc"]
+alloc = ["no_std_io2/alloc"]
 default = ["std"]
 std = [
-    "core2/std",
+    "no_std_io2/std",
     "alloc",
 ]
 
@@ -82,6 +82,5 @@ path = "tests/roundtrip.rs"
 name = "write"
 path = "tests/write.rs"
 
-[dependencies.core2]
-version = "0.4"
-default-features = false
+[dependencies.no_std_io2]
+version = "0.9"

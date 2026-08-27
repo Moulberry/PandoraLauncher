@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.62"
 name = "open"
-version = "5.3.2"
+version = "5.4.2"
 authors = ["Sebastian Thiel <byronimo@gmail.com>"]
 build = false
 include = [
@@ -38,6 +38,10 @@ keywords = [
 license = "MIT"
 repository = "https://github.com/Byron/open-rs"
 
+[features]
+insecure = []
+shellexecute-on-windows = ["dep:dunce"]
+
 [lib]
 name = "open"
 path = "src/lib.rs"
@@ -47,12 +51,6 @@ name = "open"
 path = "src/main.rs"
 test = false
 doc = false
-
-[features]
-shellexecute-on-windows = ["dep:dunce"]
-
-[target."cfg(all(unix, not(macos)))".dependencies.pathdiff]
-version = "0.2.0"
 
 [target.'cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd", target_os = "illumos", target_os = "solaris", target_os = "aix", target_os = "hurd"))'.dependencies.is-wsl]
 version = "0.4.0"

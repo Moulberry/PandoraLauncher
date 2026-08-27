@@ -2,6 +2,7 @@
 #![recursion_limit = "1024"]
 #![feature(rustc_private)]
 #![allow(
+    clippy::assert_is_empty,
     clippy::elidable_lifetime_names,
     clippy::match_like_matches_macro,
     clippy::needless_lifetimes,
@@ -26,14 +27,15 @@ use std::process::ExitCode;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::VisitMut as _;
 use syn::{
-    parse_quote, token, AngleBracketedGenericArguments, Arm, BinOp, Block, Expr, ExprArray,
-    ExprAssign, ExprAsync, ExprAwait, ExprBinary, ExprBlock, ExprBreak, ExprCall, ExprCast,
-    ExprClosure, ExprConst, ExprContinue, ExprField, ExprForLoop, ExprIf, ExprIndex, ExprLet,
-    ExprLit, ExprLoop, ExprMacro, ExprMatch, ExprMethodCall, ExprPath, ExprRange, ExprRawAddr,
-    ExprReference, ExprReturn, ExprStruct, ExprTry, ExprTryBlock, ExprTuple, ExprUnary, ExprUnsafe,
-    ExprWhile, ExprYield, GenericArgument, Label, Lifetime, Lit, LitInt, Macro, MacroDelimiter,
-    Member, Pat, PatWild, Path, PathArguments, PathSegment, PointerMutability, QSelf, RangeLimits,
-    ReturnType, Stmt, Token, Type, TypePath, UnOp,
+    parse_quote, token, AngleBracketedGenericArguments, Arm, BinOp, Block, BlockModifiers,
+    ClosureModifiers, Expr, ExprArray, ExprAssign, ExprAsync, ExprAwait, ExprBinary, ExprBlock,
+    ExprBreak, ExprCall, ExprCast, ExprClosure, ExprConst, ExprContinue, ExprField, ExprForLoop,
+    ExprIf, ExprIndex, ExprLet, ExprLit, ExprLoop, ExprMacro, ExprMatch, ExprMethodCall, ExprPath,
+    ExprRange, ExprRawAddr, ExprReference, ExprReturn, ExprStruct, ExprTry, ExprTryBlock,
+    ExprTuple, ExprUnary, ExprUnsafe, ExprWhile, ExprYield, GenericArgument, Label, Lifetime, Lit,
+    LitInt, Macro, MacroDelimiter, Member, Pat, PatGuard, PatWild, Path, PathArguments,
+    PathSegment, PointerMutability, QSelf, RangeLimits, ReturnType, Stmt, Token, Type, TypePath,
+    UnOp,
 };
 
 #[test]
@@ -342,6 +344,7 @@ fn test_closure_vs_rangefull() {
     snapshot!(tokens as Expr, @r#"
     Expr::MethodCall {
         receiver: Expr::Closure {
+            modifiers: ClosureModifiers,
             output: ReturnType::Default,
             body: Expr::Range {
                 limits: RangeLimits::HalfOpen,
@@ -499,9 +502,10 @@ fn test_ranges_bailout() {
     }
     ");
 
-    snapshot!("|| .. ?" as Expr, @r"
+    snapshot!("|| .. ?" as Expr, @"
     Expr::Try {
         expr: Expr::Closure {
+            modifiers: ClosureModifiers,
             output: ReturnType::Default,
             body: Expr::Range {
                 limits: RangeLimits::HalfOpen,
@@ -535,6 +539,7 @@ fn test_ranges_bailout() {
     snapshot!("|| .. .field" as Expr, @r#"
     Expr::Field {
         base: Expr::Closure {
+            modifiers: ClosureModifiers,
             output: ReturnType::Default,
             body: Expr::Range {
                 limits: RangeLimits::HalfOpen,
@@ -936,6 +941,7 @@ fn test_permutations() -> ExitCode {
                             lt_token: Token![<](span),
                             args: Punctuated::from_iter([GenericArgument::Type(Type::Path(
                                 TypePath {
+                                    attrs: Vec::new(),
                                     qself: None,
                                     path: Path::from(Ident::new("T", span)),
                                 },
@@ -951,6 +957,7 @@ fn test_permutations() -> ExitCode {
                 qself: Some(QSelf {
                     lt_token: Token![<](span),
                     ty: Box::new(Type::Path(TypePath {
+                        attrs: Vec::new(),
                         qself: None,
                         path: Path::from(Ident::new("T", span)),
                     })),
@@ -1082,6 +1089,7 @@ fn test_permutations() -> ExitCode {
                 expr: Box::new(expr),
                 as_token: Token![as](span),
                 ty: Box::new(Type::Path(TypePath {
+                    attrs: Vec::new(),
                     qself: None,
                     path: Path::from(Ident::new("T", span)),
                 })),
@@ -1094,13 +1102,13 @@ fn test_permutations() -> ExitCode {
                 // `|| $expr`
                 attrs: Vec::new(),
                 lifetimes: None,
+                modifiers: ClosureModifiers::default(),
                 constness: None,
-                movability: None,
                 asyncness: None,
                 capture: None,
-                or1_token: Token![|](span),
+                inputs_begin: Token![|](span),
                 inputs: Punctuated::new(),
-                or2_token: Token![|](span),
+                inputs_end: Token![|](span),
                 output: ReturnType::Default,
                 body: Box::new(expr),
             }));
@@ -1239,6 +1247,7 @@ fn test_permutations() -> ExitCode {
                 attrs: Vec::new(),
                 async_token: Token![async](span),
                 capture: None,
+                modifiers: BlockModifiers::default(),
                 block: Block {
                     brace_token: token::Brace(span),
                     stmts: Vec::new(),
@@ -1313,16 +1322,17 @@ fn test_permutations() -> ExitCode {
                 // `|| -> T {}`
                 attrs: Vec::new(),
                 lifetimes: None,
+                modifiers: ClosureModifiers::default(),
                 constness: None,
-                movability: None,
                 asyncness: None,
                 capture: None,
-                or1_token: Token![|](span),
+                inputs_begin: Token![|](span),
                 inputs: Punctuated::new(),
-                or2_token: Token![|](span),
+                inputs_end: Token![|](span),
                 output: ReturnType::Type(
                     Token![->](span),
                     Box::new(Type::Path(TypePath {
+                        attrs: Vec::new(),
                         qself: None,
                         path: Path::from(Ident::new("T", span)),
                     })),
@@ -1342,6 +1352,7 @@ fn test_permutations() -> ExitCode {
                 // `const {}`
                 attrs: Vec::new(),
                 const_token: Token![const](span),
+                modifiers: BlockModifiers::default(),
                 block: Block {
                     brace_token: token::Brace(span),
                     stmts: Vec::new(),
@@ -1488,7 +1499,6 @@ fn test_permutations() -> ExitCode {
                             attrs: Vec::new(),
                             underscore_token: Token![_](span),
                         }),
-                        guard: None,
                         fat_arrow_token: Token![=>](span),
                         body: Box::new(expr.clone()),
                         comma: None,
@@ -1506,11 +1516,15 @@ fn test_permutations() -> ExitCode {
                     brace_token: token::Brace(span),
                     arms: Vec::from([Arm {
                         attrs: Vec::new(),
-                        pat: Pat::Wild(PatWild {
+                        pat: Pat::Guard(PatGuard {
                             attrs: Vec::new(),
-                            underscore_token: Token![_](span),
+                            pat: Box::new(Pat::Wild(PatWild {
+                                attrs: Vec::new(),
+                                underscore_token: Token![_](span),
+                            })),
+                            if_token: Token![if](span),
+                            guard: Box::new(expr),
                         }),
-                        guard: Some((Token![if](span), Box::new(expr))),
                         fat_arrow_token: Token![=>](span),
                         body: Box::new(Expr::Block(ExprBlock {
                             attrs: Vec::new(),
@@ -1548,6 +1562,7 @@ fn test_permutations() -> ExitCode {
                         lt_token: Token![<](span),
                         args: Punctuated::from_iter([GenericArgument::Type(Type::Path(
                             TypePath {
+                                attrs: Vec::new(),
                                 qself: None,
                                 path: Path::from(Ident::new("T", span)),
                             },
@@ -1588,6 +1603,7 @@ fn test_permutations() -> ExitCode {
                 // `try {}`
                 attrs: Vec::new(),
                 try_token: Token![try](span),
+                modifiers: BlockModifiers::default(),
                 block: Block {
                     brace_token: token::Brace(span),
                     stmts: Vec::new(),

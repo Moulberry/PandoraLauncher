@@ -11,9 +11,9 @@
 
 [package]
 edition = "2018"
-rust-version = "1.61.0"
+rust-version = "1.83.0"
 name = "exr"
-version = "1.74.0"
+version = "1.74.2"
 authors = ["johannesvollmer <contact@johannesvollmer.com>"]
 build = false
 exclude = [
@@ -49,8 +49,11 @@ repository = "https://github.com/johannesvollmer/exrs"
 status = "actively-developed"
 
 [features]
+avx2-tests = []
 default = ["rayon"]
 rayon = ["dep:rayon-core"]
+simd-benches = []
+sse2-tests = []
 
 [lib]
 name = "exr"
@@ -156,6 +159,12 @@ name = "roundtrip"
 path = "tests/roundtrip.rs"
 
 [[bench]]
+name = "dct"
+path = "benches/dct.rs"
+harness = false
+required-features = ["simd-benches"]
+
+[[bench]]
 name = "pixel_format_conversion"
 path = "benches/pixel_format_conversion.rs"
 harness = false
@@ -190,6 +199,12 @@ version = "^0.5.2"
 
 [dependencies.miniz_oxide]
 version = "^0.8.0"
+
+[dependencies.num-complex]
+version = "0.4.6"
+
+[dependencies.pulp]
+version = "0.22.3"
 
 [dependencies.rayon-core]
 version = "^1.11.0"

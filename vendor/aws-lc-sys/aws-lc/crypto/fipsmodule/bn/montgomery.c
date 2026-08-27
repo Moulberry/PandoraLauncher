@@ -524,14 +524,14 @@ void bn_mod_mul_montgomery_small(BN_ULONG *r, const BN_ULONG *a,
 int bn_mul_mont(BN_ULONG *rp, const BN_ULONG *ap, const BN_ULONG *bp,
                 const BN_ULONG *np, const BN_ULONG *n0, size_t num)
 {
-#if !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
+#if !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2)
   if (ap == bp && bn_sqr8x_mont_capable(num)) {
     return bn_sqr8x_mont(rp, ap, bn_mulx_adx_capable(), np, n0, num);
   }
   if (bn_mulx4x_mont_capable(num)) {
     return bn_mulx4x_mont(rp, ap, bp, np, n0, num);
   }
-#endif // !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
+#endif // !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2)
   if (bn_mul4x_mont_capable(num)) {
     return bn_mul4x_mont(rp, ap, bp, np, n0, num);
   }

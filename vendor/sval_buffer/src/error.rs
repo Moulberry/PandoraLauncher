@@ -3,10 +3,10 @@ use crate::std::fmt;
 /**
 An error encountered buffering data.
 */
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Error(ErrorKind);
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum ErrorKind {
     Unsupported {
         actual: &'static str,

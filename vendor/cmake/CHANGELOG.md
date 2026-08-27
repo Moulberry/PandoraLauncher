@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.1.58](https://github.com/rust-lang/cmake-rs/compare/v0.1.57...v0.1.58) - 2026-03-26
+
+### Fixed
+
+- Fix i686-windows system import ([#276](https://github.com/rust-lang/cmake-rs/pull/276))
+
+## [0.1.57](https://github.com/rust-lang/cmake-rs/compare/v0.1.56...v0.1.57) - 2025-12-17
+
+### Fixed
+
+- Revert canonicalizing the build directory and make the path absolute instead ([#267](https://github.com/rust-lang/cmake-rs/pull/267))
+
 ## [0.1.56](https://github.com/rust-lang/cmake-rs/compare/v0.1.55...v0.1.56) - 2025-12-13
 
 ### Other

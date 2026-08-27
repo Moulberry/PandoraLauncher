@@ -5,7 +5,7 @@ use super::*;
 fn s(s: &str) -> &Xstr { s.as_ref() }
 
 /// Convert a `str` to a `OString`, for use with expected variable lookup errors
-fn mk_var_name(vn: &str) -> OString { s(vn).into_winput().as_wstr().to_ostring() }
+fn mk_var_name(vn: &str) -> OString { s(vn).into_winput().as_wstr().wstr_to_ostring() }
 
 #[cfg(feature = "tilde")]
 mod tilde_tests {

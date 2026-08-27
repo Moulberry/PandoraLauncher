@@ -7,11 +7,10 @@ use std::future::Future;
 use std::marker::PhantomPinned;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 use std::{error::Error as StdError, io, time::Duration};
 
 use bytes::Bytes;
-use futures_core::ready;
 use http::{Request, Response};
 use http_body::Body;
 use hyper::{

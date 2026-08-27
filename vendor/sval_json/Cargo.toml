@@ -12,8 +12,8 @@
 [package]
 edition = "2021"
 name = "sval_json"
-version = "2.15.0"
-authors = ["Ashley Mannix <ashleymannix@live.com.au>"]
+version = "2.21.1"
+authors = ["Ashley Mannix <hey@kodraus.com>"]
 build = false
 autolib = false
 autobins = false
@@ -55,4 +55,4 @@ version = "1"
 version = "1"
 
 [dependencies.sval]
-version = "2.15.0"
+version = "2.21.1"

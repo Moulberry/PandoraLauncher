@@ -44,7 +44,7 @@ impl AvifFile<'_> {
     }
 
     fn write_header(&mut self, out: &mut Vec<u8>) -> io::Result<()> {
-        if self.meta.iprp.ipco.ispe().map_or(true, |b| b.width == 0 || b.height == 0) {
+        if self.meta.iprp.ipco.ispe().is_none_or(|b| b.width == 0 || b.height == 0) {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "missing width/height"));
         }
 
@@ -257,6 +257,8 @@ pub enum IpcoProp {
     Ispe(IspeBox),
     AuxC(AuxCBox),
     Colr(ColrBox),
+    Clli(ClliBox),
+    Mdcv(MdcvBox),
 }
 
 impl IpcoProp {
@@ -267,6 +269,8 @@ impl IpcoProp {
             Self::Ispe(p) => p.len(),
             Self::AuxC(p) => p.len(),
             Self::Colr(p) => p.len(),
+            Self::Clli(p) => p.len(),
+            Self::Mdcv(p) => p.len(),
         }
     }
 
@@ -277,6 +281,8 @@ impl IpcoProp {
             Self::Ispe(p) => p.write(w),
             Self::AuxC(p) => p.write(w),
             Self::Colr(p) => p.write(w),
+            Self::Clli(p) => p.write(w),
+            Self::Mdcv(p) => p.write(w),
         }
     }
 }
@@ -284,7 +290,7 @@ impl IpcoProp {
 /// Item Property Container box
 #[derive(Debug, Clone)]
 pub struct IpcoBox {
-    props: ArrayVec<IpcoProp, 7>,
+    props: ArrayVec<IpcoProp, 9>,
 }
 
 impl IpcoBox {
@@ -386,7 +392,7 @@ impl MpegBox for IspeBox {
 #[derive(Debug, Clone)]
 pub struct IpmaEntry {
     pub item_id: u16,
-    pub prop_ids: ArrayVec<u8, 5>,
+    pub prop_ids: ArrayVec<u8, 7>,
 }
 
 #[derive(Debug, Clone)]
@@ -518,6 +524,71 @@ impl MpegBox for ColrBox {
         b.u8(if self.full_range_flag { 1 << 7 } else { 0 })
     }
 }
+
+/// Content Light Level Information box (`clli`), per ISOBMFF § 12.1.5 / CEA-861.3.
+///
+/// Signals the content light level of HDR content to the display.
+/// Both values are in cd/m² (nits).
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct ClliBox {
+    /// Maximum light level of any single pixel in the content (MaxCLL).
+    pub max_content_light_level: u16,
+    /// Maximum average light level of any single frame in the content (MaxFALL).
+    pub max_pic_average_light_level: u16,
+}
+
+impl MpegBox for ClliBox {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        BASIC_BOX_SIZE + 4
+    }
+
+    fn write<B: WriterBackend>(&self, w: &mut Writer<B>) -> Result<(), B::Error> {
+        let mut b = w.basic_box(self.len(), *b"clli")?;
+        b.u16(self.max_content_light_level)?;
+        b.u16(self.max_pic_average_light_level)
+    }
+}
+
+/// Mastering Display Colour Volume box (`mdcv`), per ISOBMFF § 12.1.5 / SMPTE ST 2086.
+///
+/// Describes the color volume of the mastering display used to author the content.
+/// This does not describe the content itself — see [`ClliBox`] for that.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct MdcvBox {
+    /// Display primaries in CIE 1931 xy chromaticity, encoded as the value × 50000.
+    /// For example, D65 white (0.3127, 0.3290) encodes as (15635, 16450).
+    /// Order: \[green, blue, red\] per SMPTE ST 2086.
+    pub primaries: [(u16, u16); 3],
+    /// White point in CIE 1931 xy chromaticity, same encoding as `primaries`.
+    pub white_point: (u16, u16),
+    /// Maximum luminance of the mastering display in cd/m² × 10000.
+    /// For example, 1000 cd/m² = 10_000_000.
+    pub max_luminance: u32,
+    /// Minimum luminance of the mastering display in cd/m² × 10000.
+    /// For example, 0.005 cd/m² = 50.
+    pub min_luminance: u32,
+}
+
+impl MpegBox for MdcvBox {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        BASIC_BOX_SIZE + 24
+    }
+
+    fn write<B: WriterBackend>(&self, w: &mut Writer<B>) -> Result<(), B::Error> {
+        let mut b = w.basic_box(self.len(), *b"mdcv")?;
+        for &(x, y) in &self.primaries {
+            b.u16(x)?;
+            b.u16(y)?;
+        }
+        b.u16(self.white_point.0)?;
+        b.u16(self.white_point.1)?;
+        b.u32(self.max_luminance)?;
+        b.u32(self.min_luminance)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct Av1CBox {
     pub seq_profile: u8,
@@ -582,7 +653,7 @@ pub struct IlocBox<'data> {
 #[derive(Debug, Clone)]
 pub struct IlocItem<'data> {
     pub id: u16,
-    pub extents: [IlocExtent<'data>; 1],
+    pub extents: ArrayVec<IlocExtent<'data>, 2>,
 }
 
 #[derive(Debug, Copy, Clone)]

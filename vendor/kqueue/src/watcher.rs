@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{self, Error, Result};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::path::Path;
 use std::ptr;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use kqueue_sys::constants::{EventFilter, EventFlag, FilterFlag};
@@ -36,6 +37,7 @@ pub struct Watched {
 #[derive(Debug)]
 pub struct Watcher {
     pub(crate) watched: HashMap<(Ident, EventFilter), Watched>,
+    pub(crate) decoalesced_events: Mutex<VecDeque<Event>>,
     pub(crate) queue: OwnedFd,
     pub(crate) started: bool,
     pub(crate) opts: KqueueOpts,
@@ -57,6 +59,7 @@ impl Watcher {
         } else {
             Ok(Watcher {
                 watched: HashMap::new(),
+                decoalesced_events: Mutex::new(VecDeque::new()),
                 queue: unsafe { OwnedFd::from_raw_fd(queue) },
                 started: false,
                 opts: KqueueOpts::default(),
@@ -71,6 +74,23 @@ impl Watcher {
         self
     }
 
+    /// Prunes any events from our queue of events that have been disentangled from
+    /// other kevent(2) calls. This ought to be called before adding or removing watches,
+    /// since readers may receive stale events. Typically, this queue will be very small.
+    fn prune(&mut self, ident: &Ident) {
+        if let Ident::Filename(_, filename) = ident {
+            self.decoalesced_events
+                .get_mut()
+                .unwrap()
+                .retain(|ev| !matches!(&ev.ident, Ident::Filename(_, ev_filename) if filename == ev_filename));
+        } else {
+            self.decoalesced_events
+                .get_mut()
+                .unwrap()
+                .retain(|ev| &ev.ident != ident);
+        }
+    }
+
     /// Adds a `pid` to the `Watcher` to be watched
     #[allow(clippy::missing_errors_doc)]
     pub fn add_pid(
@@ -82,6 +102,7 @@ impl Watcher {
         let ident = Ident::Pid(pid);
         let watch = Watched { flags };
 
+        self.prune(&ident);
         self.watched.insert((ident, filter), watch);
 
         Ok(())
@@ -106,23 +127,34 @@ impl Watcher {
         filter: EventFilter,
         flags: FilterFlag,
     ) -> Result<()> {
-        let file = File::open(filename.as_ref())?;
-        let filename = filename.as_ref().to_string_lossy().into_owned();
-        let ident = Ident::Filename(file.into_raw_fd(), filename);
-        let watch = Watched { flags };
+        fn inner(
+            watcher: &mut Watcher,
+            filename: &Path,
+            filter: EventFilter,
+            flags: FilterFlag,
+        ) -> Result<()> {
+            let file = File::open(filename)?;
+            let filename = filename.to_string_lossy().into_owned();
+            let ident = Ident::Filename(file.into_raw_fd(), filename);
+            let watch = Watched { flags };
 
-        // If the old filename was watched, we need to drop the old and start the new one.
-        // We swap out the old item in the hashmap, and if it's not `None`, then we make sure
-        // to close the fd
-        let key = (ident, filter);
-        if let Some((key, _)) = self.watched.remove_entry(&key) {
-            // We're round-tripping the fd, so it shouldn't be a problem. Also, kqueue will drop
-            // any events when we call close on the fd, so we do not need to call delete_kevents
-            unsafe { close(key.0.into()) };
+            // If the old filename was watched, we need to drop the old and start the new one.
+            // We swap out the old item in the hashmap, and if it's not `None`, then we make sure
+            // to close the fd
+            let key = (ident, filter);
+            if let Some((key, _)) = watcher.watched.remove_entry(&key) {
+                // We're round-tripping the fd, so it shouldn't be a problem. Also, kqueue will drop
+                // any events when we call close on the fd, so we do not need to call delete_kevents
+                unsafe { close(key.0.into()) };
+            }
+            // prune any events left over from previous watches
+            watcher.prune(&key.0);
+            watcher.watched.insert(key, watch);
+
+            Ok(())
         }
-        self.watched.insert(key, watch);
 
-        Ok(())
+        inner(self, filename.as_ref(), filter, flags)
     }
 
     /// Adds a descriptor to a `Watcher`. This or `add_file` is the preferred
@@ -134,6 +166,8 @@ impl Watcher {
         let ident = Ident::Fd(fd);
         let watch = Watched { flags };
 
+        // prune any events left over from previous watches
+        self.prune(&ident);
         self.watched.insert((ident, filter), watch);
 
         Ok(())
@@ -177,7 +211,9 @@ impl Watcher {
     #[allow(clippy::missing_errors_doc)]
     pub fn remove_pid(&mut self, pid: libc::pid_t, filter: EventFilter) -> Result<()> {
         self.watched.remove(&(Ident::Pid(pid), filter));
-        self.delete_kevents(&Ident::Pid(pid), filter)
+        let ret = self.delete_kevents(&Ident::Pid(pid), filter);
+        self.prune(&(Ident::Pid(pid)));
+        ret
     }
 
     /// Removes a filename from a `Watcher`.
@@ -193,36 +229,45 @@ impl Watcher {
         filename: P,
         filter: EventFilter,
     ) -> Result<()> {
-        // To ensure that we match the behavior of add_filename, and to avoid
-        // breaking compatish, we're going to accept strings that aren't utf-8
-        // and lossily convert them. In a v2, we should just use Paths here, idk
-        // why we didn't do that initially.
-        let filename = filename.as_ref().to_string_lossy().into_owned();
-        let ident = Ident::Filename(0, filename);
-        let key = (ident, filter);
-        let Some((key, _)) = self.watched.remove_entry(&key) else {
-            // Get name after it was moved into the ident
-            let Ident::Filename(_, ref name) = key.0 else {
-                // we literally just turned this into an ident
-                unreachable!()
-            };
-            return Err(Error::new(
-                io::ErrorKind::NotFound,
-                format!("{name:?} was not being watched"),
-            ));
-        };
+        fn inner(watcher: &mut Watcher, filename: &Path, filter: EventFilter) -> Result<()> {
+            // To ensure that we match the behavior of add_filename, and to avoid
+            // breaking compatish, we're going to accept strings that aren't utf-8
+            // and lossily convert them. In a v2, we should just use Paths here, idk
+            // why we didn't do that initially.
+            let filename = filename.to_string_lossy().into_owned();
+            let ident = Ident::Filename(0, filename);
+            let key = (ident, filter);
 
-        let ret = self.delete_kevents(&key.0, filter);
-        let fd = key.0.into();
-        unsafe { close(fd) };
-        ret
+            let Some((key, _)) = watcher.watched.remove_entry(&key) else {
+                // Get name after it was moved into the ident
+                let Ident::Filename(_, ref name) = key.0 else {
+                    // we literally just turned this into an ident
+                    unreachable!()
+                };
+                return Err(Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("{name:?} was not being watched"),
+                ));
+            };
+
+            let fd: i32 = (&(key.0)).into();
+            let ret = watcher.delete_kevents(&key.0, filter);
+            watcher.prune(&key.0);
+            unsafe { close(fd) };
+            ret
+        }
+
+        inner(self, filename.as_ref(), filter)
     }
 
     /// Removes an fd from a `Watcher`.
     #[allow(clippy::missing_errors_doc)]
     pub fn remove_fd(&mut self, fd: RawFd, filter: EventFilter) -> Result<()> {
-        self.watched.remove(&(Ident::Fd(fd), filter));
-        self.delete_kevents(&Ident::Fd(fd), filter)
+        let ident = Ident::Fd(fd);
+        self.watched.remove(&(ident.clone(), filter));
+        let ret = self.delete_kevents(&ident, filter);
+        self.prune(&ident);
+        ret
     }
 
     /// Removes a `File` from a `Watcher`
@@ -298,6 +343,10 @@ impl Watcher {
     /// Polls for a new event, with an optional timeout. If no `timeout`
     /// is passed or the `Watcher.watch` hasn't been called, then it will
     /// return immediately.
+    ///
+    /// This method may return events that you did not explicitly ask for
+    /// since the underlying kernel implementations will not filter out
+    /// events in all cases.
     #[must_use]
     pub fn poll(&self, timeout: Option<Duration>) -> Option<Event> {
         // poll will not block indefinitely
@@ -311,6 +360,10 @@ impl Watcher {
     /// Polls for a new event, with an optional timeout. If no `timeout`
     /// is passed, then it will block until an event is received. It will
     /// return immediately if `Watcher.watch` hasn't been called.
+    ///
+    /// This method may return events that you did not explicitly ask for
+    /// since the underlying kernel implementations will not filter out
+    /// events in all cases.
     #[must_use]
     pub fn poll_forever(&self, timeout: Option<Duration>) -> Option<Event> {
         if timeout.is_some() {
@@ -323,6 +376,10 @@ impl Watcher {
     /// Creates an iterator that iterates over the queue. This iterator will block
     /// until a new event is received. It will return `None` if `Watcher.watch`
     /// has not been called yet.
+    ///
+    /// This iterator may return events that you did not explicitly ask for
+    /// since the underlying kernel implementations will not filter out
+    /// events in all cases.
     #[must_use]
     pub fn iter(&self) -> EventIter<'_> {
         EventIter { watcher: self }
@@ -357,16 +414,20 @@ impl Drop for Watcher {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{self, File};
+    use std::fs::{self, File, Permissions};
     use std::io::{ErrorKind, Seek, SeekFrom, Write};
+    use std::os::unix::fs::PermissionsExt;
     use std::os::unix::io::AsRawFd;
+    use std::os::unix::process::CommandExt;
     use std::path::Path;
+    use std::process::Command;
     use std::thread;
     use std::time;
 
     use kqueue_sys::constants::*;
+    use libc::pid_t;
 
-    use crate::{EventData, Ident, Vnode, Watcher};
+    use crate::{Event, EventData, Ident, Proc, Vnode, Watcher};
 
     #[cfg(target_os = "freebsd")]
     use std::io::Read;
@@ -728,24 +789,25 @@ mod tests {
         fil.seek(SeekFrom::Start(0)).expect("couldn't seek");
 
         let (mut rr_happened, mut write_happened) = (false, false);
-        for _ in 0..2 {
-            let ev = watcher.iter().next().expect("didn't get event");
-            match ev.data {
-                EventData::ReadReady(bytes) => {
-                    assert_eq!(bytes, expected_written, "more than 3 bytes ready");
-                    if rr_happened {
-                        panic!("received {:?} more than once", ev);
+        for _ in 0..3 {
+            if let Some(ev) = watcher.poll(Some(time::Duration::from_secs(1))) {
+                match ev.data {
+                    EventData::ReadReady(bytes) => {
+                        assert_eq!(bytes, expected_written, "more than 3 bytes ready");
+                        if rr_happened {
+                            panic!("received {:?} more than once", ev);
+                        }
+                        rr_happened = true;
                     }
-                    rr_happened = true;
-                }
-                EventData::Vnode(Vnode::Write) => {
-                    if write_happened {
-                        panic!("received {:?} more than once", ev);
+                    EventData::Vnode(Vnode::Write) => {
+                        if write_happened {
+                            panic!("received {:?} more than once", ev);
+                        }
+                        write_happened = true;
                     }
-                    write_happened = true;
-                }
-                _ => panic!("got unexpected event: {:?}", ev),
-            };
+                    _ => continue,
+                };
+            }
         }
 
         assert!(rr_happened, "did not get EventData::ReadReady");
@@ -778,24 +840,25 @@ mod tests {
 
         // We don't need a seek here since it's two different fd's
         let (mut rr_happened, mut write_happened) = (false, false);
-        for _ in 0..2 {
-            let ev = watcher.iter().next().expect("didn't get event");
-            match ev.data {
-                EventData::ReadReady(bytes) => {
-                    assert_eq!(bytes, expected_written, "more than 3 bytes ready");
-                    if rr_happened {
-                        panic!("received {:?} more than once", ev);
+        for _ in 0..3 {
+            if let Some(ev) = watcher.poll(Some(time::Duration::from_secs(1))) {
+                match ev.data {
+                    EventData::ReadReady(bytes) => {
+                        assert_eq!(bytes, expected_written, "more than 3 bytes ready");
+                        if rr_happened {
+                            panic!("received {:?} more than once", ev);
+                        }
+                        rr_happened = true;
                     }
-                    rr_happened = true;
-                }
-                EventData::Vnode(Vnode::Write) => {
-                    if write_happened {
-                        panic!("received {:?} more than once", ev);
+                    EventData::Vnode(Vnode::Write) => {
+                        if write_happened {
+                            panic!("received {:?} more than once", ev);
+                        }
+                        write_happened = true;
                     }
-                    write_happened = true;
-                }
-                _ => panic!("got unexpected event: {:?}", ev),
-            };
+                    _ => continue,
+                };
+            }
         }
 
         assert!(rr_happened, "did not get EventData::ReadReady");
@@ -844,5 +907,241 @@ mod tests {
 
         assert!(matches!(ev.data, EventData::Vnode(Vnode::Write)));
         assert!(matches!(ev.ident, Ident::Fd(_)));
+    }
+
+    #[test]
+    fn test_coalesced_vnode_events() {
+        let mut fil = tempfile::NamedTempFile::new().expect("Unable to write temporary file");
+
+        let mut watcher = Watcher::new().expect("couldn't create watcher");
+        watcher
+            .add_filename(
+                fil.path(),
+                EventFilter::EVFILT_VNODE,
+                FilterFlag::NOTE_WRITE | FilterFlag::NOTE_ATTRIB,
+            )
+            .expect("couldn't add test file another time");
+        watcher.watch().expect("failed to watch");
+
+        let expected_written = 3;
+        let actual_written = fil.write("foo".as_bytes()).expect("couldn't write");
+        assert_eq!(
+            actual_written, expected_written,
+            "expected to write {expected_written} bytes, wrote: {actual_written}"
+        );
+
+        fs::set_permissions(fil.path(), Permissions::from_mode(0o200))
+            .expect("could not set permissions on tempfile");
+
+        // NB: Any matching events, including ones that include events we didn't
+        // ask for will show up. That means on FreeBSD, we also can get `NOTE_EXTEND`
+        // here. So here we do not exclusively check for just `NOTE_ATTRIB` and
+        // `NOTE_WRITE`.
+        let (mut attrib_happened, mut write_happened) = (false, false);
+        for _ in 0..3 {
+            if let Some(ev) = watcher.poll(Some(time::Duration::from_secs(1))) {
+                match ev.data {
+                    EventData::Vnode(Vnode::Attrib) => {
+                        if attrib_happened {
+                            panic!("received {:?} more than once", ev);
+                        }
+                        attrib_happened = true;
+                    }
+                    EventData::Vnode(Vnode::Write) => {
+                        if write_happened {
+                            panic!("received {:?} more than once", ev);
+                        }
+                        write_happened = true;
+                    }
+                    _ => continue,
+                };
+            }
+        }
+
+        assert!(
+            attrib_happened,
+            "did not get EventData::Vnode(Vnode::Attrib)"
+        );
+        assert!(write_happened, "did not get EventData::Vnode(Vnode::Write)");
+    }
+
+    #[test]
+    fn test_coalesced_proc_events() {
+        let mut watcher = Watcher::new().expect("could not create Watcher");
+
+        let mut child = unsafe {
+            Command::new("/bin/sh")
+                .pre_exec(|| {
+                    let mut ts = libc::timespec {
+                        tv_sec: 0,
+                        tv_nsec: 200_000_000,
+                    };
+                    let mut ret = -1;
+                    while ret == -1 && ts.tv_nsec != 0 {
+                        ret = libc::nanosleep(&ts, &mut ts);
+                    }
+                    Ok(())
+                })
+                .arg("-c")
+                .arg("/usr/bin/true")
+                .spawn()
+                .expect("could not spawn process")
+        };
+
+        #[cfg(not(target_os = "macos"))]
+        let flags = FilterFlag::NOTE_EXIT | FilterFlag::NOTE_EXEC | FilterFlag::NOTE_TRACK;
+        #[cfg(target_os = "macos")]
+        let flags = FilterFlag::NOTE_EXIT | FilterFlag::NOTE_EXEC;
+
+        watcher
+            .add_pid(child.id() as pid_t, EventFilter::EVFILT_PROC, flags)
+            .expect("could not add pid");
+        watcher.watch().expect("could not start");
+        child.wait().expect("could not wait on child");
+
+        let (mut exec_happened, mut exit_happened) = (false, false);
+        for _ in 0..3 {
+            if let Some(ev) = watcher.poll(Some(time::Duration::from_secs(1))) {
+                match ev.data {
+                    EventData::Proc(Proc::Exec) => {
+                        if exec_happened {
+                            panic!("received {:?} more than once", ev);
+                        }
+                        exec_happened = true;
+                    }
+                    EventData::Proc(Proc::Exit(_)) => {
+                        if exit_happened {
+                            panic!("received {:?} more than once", ev);
+                        }
+                        exit_happened = true;
+                    }
+                    _ => continue,
+                };
+            }
+        }
+
+        assert!(exec_happened, "did not get EventData::Proc(Proc::Exec)");
+        assert!(exit_happened, "did not get EventData::Proc(Proc::Exit(_))");
+    }
+
+    #[test]
+    fn test_remove_coalesced_filename_events() {
+        let mut fil = tempfile::NamedTempFile::new().expect("Unable to write temporary file");
+
+        let mut watcher = Watcher::new().expect("couldn't create watcher");
+        watcher
+            .add_filename(
+                fil.path(),
+                EventFilter::EVFILT_VNODE,
+                FilterFlag::NOTE_WRITE | FilterFlag::NOTE_ATTRIB,
+            )
+            .expect("couldn't add test file another time");
+        watcher.watch().expect("failed to watch");
+
+        let expected_written = 3;
+        let actual_written = fil.write("foo".as_bytes()).expect("couldn't write");
+        assert_eq!(
+            actual_written, expected_written,
+            "expected to write {expected_written} bytes, wrote: {actual_written}"
+        );
+
+        fs::set_permissions(fil.path(), Permissions::from_mode(0o200))
+            .expect("could not set permissions on tempfile");
+
+        let evt = watcher.poll(Some(time::Duration::from_millis(200)));
+        assert!(evt.is_some(), "did not get event");
+
+        watcher
+            .remove_filename(fil.path(), EventFilter::EVFILT_VNODE)
+            .expect("could not remove filename from watch");
+
+        let evt = watcher.poll(None);
+        assert!(evt.is_none(), "got unexpected event: {:?}", evt);
+    }
+
+    #[test]
+    fn remove_only_relevant_events() {
+        let mut watcher = Watcher::new().expect("couldn't create watcher");
+        watcher.decoalesced_events.lock().unwrap().push_back(Event {
+            ident: Ident::Pid(10),
+            data: EventData::Proc(Proc::Exit(1)),
+        });
+
+        watcher
+            .remove_fd(10, EventFilter::EVFILT_READ)
+            .expect_err("should error, since fd 10 isn't watched");
+
+        assert_eq!(
+            watcher.decoalesced_events.lock().unwrap().len(),
+            1,
+            "decoalesced_events should still contain one item"
+        );
+    }
+
+    #[test]
+    fn remove_stale_events_pid() {
+        let mut watcher = Watcher::new().expect("couldn't create watcher");
+        watcher.decoalesced_events.lock().unwrap().push_back(Event {
+            ident: Ident::Pid(10),
+            data: EventData::Proc(Proc::Exit(1)),
+        });
+        watcher.decoalesced_events.lock().unwrap().push_back(Event {
+            ident: Ident::Pid(100),
+            data: EventData::Proc(Proc::Exit(1)),
+        });
+
+        // we don't care if this succeeds or not, it probably won't
+        let _ = watcher.add_pid(10, EventFilter::EVFILT_PROC, FilterFlag::NOTE_EXEC);
+        assert_eq!(
+            watcher.decoalesced_events.lock().unwrap().len(),
+            1,
+            "we should have deleted previous entries from the queue"
+        );
+    }
+
+    #[test]
+    fn remove_stale_events_fd() {
+        let mut watcher = Watcher::new().expect("couldn't create watcher");
+        watcher.decoalesced_events.lock().unwrap().push_back(Event {
+            ident: Ident::Fd(200),
+            data: EventData::Vnode(Vnode::Attrib),
+        });
+        watcher.decoalesced_events.lock().unwrap().push_back(Event {
+            ident: Ident::Fd(201),
+            data: EventData::Vnode(Vnode::Attrib),
+        });
+
+        // we don't care if this succeeds or not, it probably won't
+        let _ = watcher.add_fd(200, EventFilter::EVFILT_VNODE, FilterFlag::NOTE_ATTRIB);
+        assert_eq!(
+            watcher.decoalesced_events.lock().unwrap().len(),
+            1,
+            "we should have deleted previous entries from the queue"
+        );
+    }
+
+    #[test]
+    fn remove_stale_events_filename() {
+        let mut watcher = Watcher::new().expect("couldn't create watcher");
+        watcher.decoalesced_events.lock().unwrap().push_back(Event {
+            ident: Ident::Filename(200, "Cargo.toml".to_string()),
+            data: EventData::Vnode(Vnode::Attrib),
+        });
+        watcher.decoalesced_events.lock().unwrap().push_back(Event {
+            ident: Ident::Filename(200, ".gitignore".to_string()),
+            data: EventData::Vnode(Vnode::Attrib),
+        });
+
+        // we don't care if this succeeds or not, it probably won't
+        let _ = watcher.add_filename(
+            "Cargo.toml",
+            EventFilter::EVFILT_VNODE,
+            FilterFlag::NOTE_ATTRIB,
+        );
+        assert_eq!(
+            watcher.decoalesced_events.lock().unwrap().len(),
+            1,
+            "we should have deleted previous entries from the queue"
+        );
     }
 }

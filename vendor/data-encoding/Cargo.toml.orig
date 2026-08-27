@@ -1,7 +1,6 @@
 [package]
 name = "data-encoding"
-version = "2.9.0"
-authors = ["Julien Cretin <git@ia0.eu>"]
+version = "2.11.1"
 license = "MIT"
 edition = "2018"
 rust-version = "1.48"
@@ -13,7 +12,7 @@ documentation = "https://docs.rs/data-encoding"
 description = "Efficient and customizable data-encoding functions like base64, base32, and hex"
 include = ["Cargo.toml", "LICENSE", "README.md", "src/lib.rs"]
 
-# TODO: Remove this once doc_auto_cfg is in the MSRV.
+# TODO: Remove this (and its lib and xtask counterpart) once doc_cfg is in the MSRV.
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg=docsrs"]
 

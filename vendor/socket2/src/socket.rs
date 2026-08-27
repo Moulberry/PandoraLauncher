@@ -8,10 +8,10 @@
 
 use std::fmt;
 use std::io::{self, Read, Write};
-#[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+#[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
 use std::io::{IoSlice, IoSliceMut};
 use std::mem::MaybeUninit;
-#[cfg(not(target_os = "nto"))]
+#[cfg(not(any(target_os = "nto", target_os = "nuttx")))]
 use std::net::Ipv6Addr;
 use std::net::{self, Ipv4Addr, Shutdown};
 #[cfg(any(unix, all(target_os = "wasi", not(target_env = "p1"))))]
@@ -21,10 +21,10 @@ use std::os::windows::io::{FromRawSocket, IntoRawSocket};
 use std::time::Duration;
 
 use crate::sys::{self, c_int, getsockopt, setsockopt, Bool};
-#[cfg(all(unix, not(target_os = "redox")))]
+#[cfg(all(unix, not(any(target_os = "redox", target_os = "horizon"))))]
 use crate::MsgHdrMut;
 use crate::{Domain, Protocol, SockAddr, TcpKeepalive, Type};
-#[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+#[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
 use crate::{MaybeUninitSlice, MsgHdr, RecvFlags};
 
 /// Owned wrapper around a system socket.
@@ -470,7 +470,7 @@ impl Socket {
     /// Note that the [`io::Read::read_vectored`] implementation calls this
     /// function with `buf`s of type `&mut [IoSliceMut]`, allowing initialised
     /// buffers to be used without using `unsafe`.
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     pub fn recv_vectored(
         &self,
         bufs: &mut [MaybeUninitSlice<'_>],
@@ -489,7 +489,7 @@ impl Socket {
     /// as [`recv_vectored`].
     ///
     /// [`recv_vectored`]: Socket::recv_vectored
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     pub fn recv_vectored_with_flags(
         &self,
         bufs: &mut [MaybeUninitSlice<'_>],
@@ -554,7 +554,7 @@ impl Socket {
     /// as [`recv_vectored`].
     ///
     /// [`recv_vectored`]: Socket::recv_vectored
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     pub fn recv_from_vectored(
         &self,
         bufs: &mut [MaybeUninitSlice<'_>],
@@ -573,7 +573,7 @@ impl Socket {
     /// as [`recv_vectored`].
     ///
     /// [`recv_vectored`]: Socket::recv_vectored
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     pub fn recv_from_vectored_with_flags(
         &self,
         bufs: &mut [MaybeUninitSlice<'_>],
@@ -632,7 +632,7 @@ impl Socket {
     /// <https://github.com/microsoft/Windows-classic-samples/blob/7cbd99ac1d2b4a0beffbaba29ea63d024ceff700/Samples/Win7Samples/netds/winsock/recvmsg/rmmc.cpp>
     /// for an example (in C++).
     #[doc = man_links!(recvmsg(2))]
-    #[cfg(all(unix, not(target_os = "redox")))]
+    #[cfg(all(unix, not(any(target_os = "redox", target_os = "horizon"))))]
     pub fn recvmsg(&self, msg: &mut MsgHdrMut<'_, '_, '_>, flags: sys::c_int) -> io::Result<usize> {
         sys::recvmsg(self.as_raw(), msg, flags)
     }
@@ -657,7 +657,7 @@ impl Socket {
     }
 
     /// Send data to the connected peer. Returns the amount of bytes written.
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     pub fn send_vectored(&self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
         self.send_vectored_with_flags(bufs, 0)
     }
@@ -667,7 +667,7 @@ impl Socket {
     #[doc = man_links!(sendmsg(2))]
     ///
     /// [`send_vectored`]: Socket::send_vectored
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     pub fn send_vectored_with_flags(
         &self,
         bufs: &[IoSlice<'_>],
@@ -714,7 +714,7 @@ impl Socket {
     /// Send data to a peer listening on `addr`. Returns the amount of bytes
     /// written.
     #[doc = man_links!(sendmsg(2))]
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     pub fn send_to_vectored(&self, bufs: &[IoSlice<'_>], addr: &SockAddr) -> io::Result<usize> {
         self.send_to_vectored_with_flags(bufs, addr, 0)
     }
@@ -723,7 +723,7 @@ impl Socket {
     /// arbitrary flags to the underlying `sendmsg`/`WSASendTo` call.
     ///
     /// [`send_to_vectored`]: Socket::send_to_vectored
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     pub fn send_to_vectored_with_flags(
         &self,
         bufs: &[IoSlice<'_>],
@@ -735,7 +735,7 @@ impl Socket {
 
     /// Send a message on a socket using a message structure.
     #[doc = man_links!(sendmsg(2))]
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     pub fn sendmsg(&self, msg: &MsgHdr<'_, '_, '_>, flags: sys::c_int) -> io::Result<usize> {
         sys::sendmsg(self.as_raw(), msg, flags)
     }
@@ -918,7 +918,7 @@ impl Socket {
     pub fn keepalive(&self) -> io::Result<bool> {
         unsafe {
             getsockopt::<Bool>(self.as_raw(), sys::SOL_SOCKET, sys::SO_KEEPALIVE)
-                .map(|keepalive| keepalive != false as Bool)
+                .map(|keepalive| keepalive != 0)
         }
     }
 
@@ -1211,7 +1211,13 @@ impl Socket {
     /// [`set_header_included_v4`]: Socket::set_header_included_v4
     #[cfg(all(
         feature = "all",
-        not(any(target_os = "redox", target_os = "espidf", target_os = "wasi"))
+        not(any(
+            target_os = "redox",
+            target_os = "espidf",
+            target_os = "nuttx",
+            target_os = "wasi",
+            target_os = "horizon"
+        ))
     ))]
     pub fn header_included_v4(&self) -> io::Result<bool> {
         unsafe {
@@ -1237,7 +1243,13 @@ impl Socket {
     )]
     #[cfg(all(
         feature = "all",
-        not(any(target_os = "redox", target_os = "espidf", target_os = "wasi"))
+        not(any(
+            target_os = "redox",
+            target_os = "espidf",
+            target_os = "nuttx",
+            target_os = "wasi",
+            target_os = "horizon"
+        ))
     ))]
     pub fn set_header_included_v4(&self, included: bool) -> io::Result<()> {
         unsafe {
@@ -1344,6 +1356,7 @@ impl Socket {
         target_os = "vita",
         target_os = "cygwin",
         target_os = "wasi",
+        target_os = "horizon"
     )))]
     pub fn join_multicast_v4_n(
         &self,
@@ -1379,6 +1392,7 @@ impl Socket {
         target_os = "vita",
         target_os = "cygwin",
         target_os = "wasi",
+        target_os = "horizon"
     )))]
     pub fn leave_multicast_v4_n(
         &self,
@@ -1415,6 +1429,7 @@ impl Socket {
         target_os = "espidf",
         target_os = "vita",
         target_os = "wasi",
+        target_os = "horizon"
     )))]
     pub fn join_ssm_v4(
         &self,
@@ -1454,6 +1469,7 @@ impl Socket {
         target_os = "espidf",
         target_os = "vita",
         target_os = "wasi",
+        target_os = "horizon"
     )))]
     pub fn leave_ssm_v4(
         &self,
@@ -1626,7 +1642,6 @@ impl Socket {
         target_os = "fuchsia",
         target_os = "redox",
         target_os = "solaris",
-        target_os = "illumos",
         target_os = "haiku",
         target_os = "wasi",
     )))]
@@ -1646,7 +1661,6 @@ impl Socket {
         target_os = "fuchsia",
         target_os = "redox",
         target_os = "solaris",
-        target_os = "illumos",
         target_os = "haiku",
         target_os = "wasi",
     )))]
@@ -1674,9 +1688,11 @@ impl Socket {
         target_os = "haiku",
         target_os = "nto",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "vita",
         target_os = "cygwin",
         target_os = "wasi",
+        target_os = "horizon"
     )))]
     pub fn set_recv_tos_v4(&self, recv_tos: bool) -> io::Result<()> {
         unsafe {
@@ -1707,9 +1723,11 @@ impl Socket {
         target_os = "haiku",
         target_os = "nto",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "vita",
         target_os = "cygwin",
         target_os = "wasi",
+        target_os = "horizon"
     )))]
     pub fn recv_tos_v4(&self) -> io::Result<bool> {
         unsafe {
@@ -1749,11 +1767,13 @@ impl Socket {
         not(any(
             target_os = "redox",
             target_os = "espidf",
+            target_os = "nuttx",
             target_os = "openbsd",
             target_os = "freebsd",
             target_os = "dragonfly",
             target_os = "netbsd",
             target_os = "wasi",
+            target_os = "horizon"
         ))
     ))]
     pub fn header_included_v6(&self) -> io::Result<bool> {
@@ -1780,11 +1800,13 @@ impl Socket {
         not(any(
             target_os = "redox",
             target_os = "espidf",
+            target_os = "nuttx",
             target_os = "openbsd",
             target_os = "freebsd",
             target_os = "dragonfly",
             target_os = "netbsd",
             target_os = "wasi",
+            target_os = "horizon"
         ))
     ))]
     pub fn set_header_included_v6(&self, included: bool) -> io::Result<()> {
@@ -1848,7 +1870,7 @@ impl Socket {
     /// This function specifies a new multicast group for this socket to join.
     /// The address must be a valid multicast address, and `interface` is the
     /// index of the interface to join/leave (or 0 to indicate any interface).
-    #[cfg(not(target_os = "nto"))]
+    #[cfg(not(any(target_os = "nto", target_os = "nuttx")))]
     pub fn join_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
         let mreq = sys::Ipv6Mreq {
             ipv6mr_multiaddr: sys::to_in6_addr(multiaddr),
@@ -1872,7 +1894,7 @@ impl Socket {
     /// For more information about this option, see [`join_multicast_v6`].
     ///
     /// [`join_multicast_v6`]: Socket::join_multicast_v6
-    #[cfg(not(target_os = "nto"))]
+    #[cfg(not(any(target_os = "nto", target_os = "nuttx")))]
     pub fn leave_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
         let mreq = sys::Ipv6Mreq {
             ipv6mr_multiaddr: sys::to_in6_addr(multiaddr),
@@ -2042,7 +2064,7 @@ impl Socket {
     /// [`set_only_v6`]: Socket::set_only_v6
     pub fn only_v6(&self) -> io::Result<bool> {
         unsafe {
-            getsockopt::<c_int>(self.as_raw(), sys::IPPROTO_IPV6, sys::IPV6_V6ONLY)
+            getsockopt::<Bool>(self.as_raw(), sys::IPPROTO_IPV6, sys::IPV6_V6ONLY)
                 .map(|only_v6| only_v6 != 0)
         }
     }
@@ -2082,8 +2104,10 @@ impl Socket {
         target_os = "haiku",
         target_os = "hurd",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "vita",
         target_os = "wasi",
+        target_os = "horizon"
     )))]
     pub fn recv_tclass_v6(&self) -> io::Result<bool> {
         unsafe {
@@ -2108,8 +2132,10 @@ impl Socket {
         target_os = "haiku",
         target_os = "hurd",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "vita",
         target_os = "wasi",
+        target_os = "horizon"
     )))]
     pub fn set_recv_tclass_v6(&self, recv_tclass: bool) -> io::Result<()> {
         unsafe {
@@ -2144,6 +2170,7 @@ impl Socket {
             target_os = "vita",
             target_os = "cygwin",
             target_os = "wasi",
+            target_os = "horizon"
         ))
     ))]
     pub fn recv_hoplimit_v6(&self) -> io::Result<bool> {
@@ -2174,6 +2201,7 @@ impl Socket {
             target_os = "vita",
             target_os = "cygwin",
             target_os = "wasi",
+            target_os = "horizon"
         ))
     ))]
     pub fn set_recv_hoplimit_v6(&self, recv_hoplimit: bool) -> io::Result<()> {
@@ -2230,6 +2258,7 @@ impl Socket {
         any(
             target_os = "android",
             target_os = "dragonfly",
+            target_os = "emscripten",
             target_os = "freebsd",
             target_os = "fuchsia",
             target_os = "illumos",
@@ -2241,6 +2270,7 @@ impl Socket {
             target_os = "tvos",
             target_os = "watchos",
             target_os = "cygwin",
+            target_os = "nuttx",
             all(target_os = "wasi", not(target_env = "p1")),
         )
     ))]
@@ -2261,6 +2291,7 @@ impl Socket {
         any(
             target_os = "android",
             target_os = "dragonfly",
+            target_os = "emscripten",
             target_os = "freebsd",
             target_os = "fuchsia",
             target_os = "illumos",
@@ -2273,6 +2304,7 @@ impl Socket {
             target_os = "watchos",
             target_os = "cygwin",
             target_os = "windows",
+            target_os = "nuttx",
             all(target_os = "wasi", not(target_env = "p1")),
         )
     ))]
@@ -2334,7 +2366,7 @@ impl Socket {
     pub fn tcp_nodelay(&self) -> io::Result<bool> {
         unsafe {
             getsockopt::<Bool>(self.as_raw(), sys::IPPROTO_TCP, sys::TCP_NODELAY)
-                .map(|nodelay| nodelay != false as Bool)
+                .map(|nodelay| nodelay != 0)
         }
     }
 
@@ -2373,7 +2405,7 @@ impl Read for Socket {
         self.recv(buf)
     }
 
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
         // Safety: both `IoSliceMut` and `MaybeUninitSlice` promise to have the
         // same layout, that of `iovec`/`WSABUF`. Furthermore, `recv_vectored`
@@ -2391,7 +2423,7 @@ impl<'a> Read for &'a Socket {
         self.recv(buf)
     }
 
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     fn read_vectored(&mut self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
         // Safety: see other `Read::read` impl.
         let bufs = unsafe { &mut *(bufs as *mut [IoSliceMut<'_>] as *mut [MaybeUninitSlice<'_>]) };
@@ -2404,7 +2436,7 @@ impl Write for Socket {
         self.send(buf)
     }
 
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
         self.send_vectored(bufs)
     }
@@ -2419,7 +2451,7 @@ impl<'a> Write for &'a Socket {
         self.send(buf)
     }
 
-    #[cfg(not(any(target_os = "redox", target_os = "wasi")))]
+    #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
         self.send_vectored(bufs)
     }

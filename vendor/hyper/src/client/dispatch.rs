@@ -66,7 +66,7 @@ pub(crate) struct Sender<T, U> {
 /// has been dropped. However, this version can be cloned.
 #[cfg(feature = "http2")]
 pub(crate) struct UnboundedSender<T, U> {
-    /// Only used for `is_closed`, since mpsc::UnboundedSender cannot be checked.
+    /// Only used for `is_closed`, since `mpsc::UnboundedSender` cannot be checked.
     giver: want::SharedGiver,
     inner: mpsc::UnboundedSender<Envelope<T, U>>,
 }
@@ -284,10 +284,16 @@ impl<T, U> Callback<T, U> {
     pub(crate) fn send(mut self, val: Result<U, TrySendError<T>>) {
         match self {
             Callback::Retry(ref mut tx) => {
-                let _ = tx.take().unwrap().send(val);
+                let _ = tx
+                    .take()
+                    .expect("callback sender not dropped before send")
+                    .send(val);
             }
             Callback::NoRetry(ref mut tx) => {
-                let _ = tx.take().unwrap().send(val.map_err(|e| e.error));
+                let _ = tx
+                    .take()
+                    .expect("callback sender not dropped before send")
+                    .send(val.map_err(|e| e.error));
             }
         }
     }
@@ -325,22 +331,23 @@ impl<T> TrySendError<T> {
 
 #[cfg(feature = "http2")]
 pin_project! {
-    pub struct SendWhen<B>
+    pub struct SendWhen<B, E>
     where
         B: Body,
         B: 'static,
     {
         #[pin]
-        pub(crate) when: ResponseFutMap<B>,
+        pub(crate) when: ResponseFutMap<B, E>,
         #[pin]
         pub(crate) call_back: Option<Callback<Request<B>, Response<Incoming>>>,
     }
 }
 
 #[cfg(feature = "http2")]
-impl<B> Future for SendWhen<B>
+impl<B, E> Future for SendWhen<B, E>
 where
     B: Body + 'static,
+    E: crate::rt::bounds::Http2UpgradedExec<B::Data>,
 {
     type Output = ();
 
@@ -363,8 +370,11 @@ where
                         this.call_back.set(Some(call_back));
                         return Poll::Pending;
                     }
-                };
+                }
                 trace!("send_when canceled");
+                // Tell pipe_task to reset the h2 stream so that
+                // RST_STREAM is sent and flow-control capacity freed.
+                this.when.as_mut().cancel();
                 Poll::Ready(())
             }
             Poll::Ready(Err((error, message))) => {
@@ -443,7 +453,7 @@ mod tests {
         let (mut tx, mut rx) = channel::<Custom, ()>();
 
         // one is allowed to buffer, second is rejected
-        let _ = tx.try_send(Custom(1)).expect("1 buffered");
+        tx.try_send(Custom(1)).expect("1 buffered");
         tx.try_send(Custom(2)).expect_err("2 not ready");
 
         assert!(PollOnce(&mut rx).await.is_some(), "rx once");
@@ -454,7 +464,7 @@ mod tests {
 
         assert!(PollOnce(&mut rx).await.is_none(), "rx empty");
 
-        let _ = tx.try_send(Custom(2)).expect("2 ready");
+        tx.try_send(Custom(2)).expect("2 ready");
     }
 
     #[cfg(feature = "http2")]
@@ -463,13 +473,13 @@ mod tests {
         let (tx, rx) = channel::<Custom, ()>();
         let mut tx = tx.unbound();
 
-        let _ = tx.try_send(Custom(1)).unwrap();
-        let _ = tx.try_send(Custom(2)).unwrap();
-        let _ = tx.try_send(Custom(3)).unwrap();
+        tx.try_send(Custom(1)).unwrap();
+        tx.try_send(Custom(2)).unwrap();
+        tx.try_send(Custom(3)).unwrap();
 
         drop(rx);
 
-        let _ = tx.try_send(Custom(4)).unwrap_err();
+        tx.try_send(Custom(4)).unwrap_err();
     }
 
     #[cfg(feature = "nightly")]
@@ -483,7 +493,7 @@ mod tests {
         let (mut tx, mut rx) = channel::<Request<Incoming>, Response<Incoming>>();
 
         b.iter(move || {
-            let _ = tx.send(Request::new(Incoming::empty())).unwrap();
+            tx.send(Request::new(Incoming::empty())).unwrap();
             rt.block_on(async {
                 loop {
                     let poll_once = PollOnce(&mut rx);

@@ -14,9 +14,9 @@ mod tcp;
 mod unix;
 mod vsock;
 
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 use async_io::Async;
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 use std::sync::Arc;
 use std::{io, mem};
 use tracing::trace;
@@ -411,7 +411,7 @@ impl WriteHalf for Box<dyn WriteHalf> {
     }
 }
 
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 impl<T> Socket for Async<T>
 where
     T: std::fmt::Debug + Send + Sync,

@@ -676,6 +676,40 @@ where
     }
 }
 
+macro_rules! none_as_zero_serialize {
+    ($($nonzero:ident => $primitive:ident),* $(,)?) => {
+        $(
+            impl SerializeAs<Option<core::num::$nonzero>> for NoneAsZero {
+                fn serialize_as<S>(
+                    source: &Option<core::num::$nonzero>,
+                    serializer: S,
+                ) -> Result<S::Ok, S::Error>
+                where
+                    S: Serializer,
+                {
+                    let value: $primitive = source.map_or(0, core::num::$nonzero::get);
+                    value.serialize(serializer)
+                }
+            }
+        )*
+    };
+}
+
+none_as_zero_serialize! {
+    NonZeroU8    => u8,
+    NonZeroU16   => u16,
+    NonZeroU32   => u32,
+    NonZeroU64   => u64,
+    NonZeroU128  => u128,
+    NonZeroUsize => usize,
+    NonZeroI8    => i8,
+    NonZeroI16   => i16,
+    NonZeroI32   => i32,
+    NonZeroI64   => i64,
+    NonZeroI128  => i128,
+    NonZeroIsize => isize,
+}
+
 #[cfg(feature = "alloc")]
 impl<T, TAs> SerializeAs<T> for DefaultOnError<TAs>
 where
@@ -981,12 +1015,12 @@ macro_rules! one_or_many_impl {
 foreach_seq!(one_or_many_impl);
 
 #[cfg(all(feature = "alloc", feature = "smallvec_1"))]
-impl<T, TAs, A> SerializeAs<smallvec_1::SmallVec<A>> for OneOrMany<TAs, formats::PreferOne>
+impl<T, TAs, A> SerializeAs<SmallVec<A>> for OneOrMany<TAs, formats::PreferOne>
 where
     A: smallvec_1::Array<Item = T>,
     TAs: SerializeAs<T>,
 {
-    fn serialize_as<S>(source: &smallvec_1::SmallVec<A>, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize_as<S>(source: &SmallVec<A>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -999,12 +1033,12 @@ where
 }
 
 #[cfg(all(feature = "alloc", feature = "smallvec_1"))]
-impl<T, TAs, A> SerializeAs<smallvec_1::SmallVec<A>> for OneOrMany<TAs, formats::PreferMany>
+impl<T, TAs, A> SerializeAs<SmallVec<A>> for OneOrMany<TAs, formats::PreferMany>
 where
     A: smallvec_1::Array<Item = T>,
     TAs: SerializeAs<T>,
 {
-    fn serialize_as<S>(source: &smallvec_1::SmallVec<A>, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize_as<S>(source: &SmallVec<A>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {

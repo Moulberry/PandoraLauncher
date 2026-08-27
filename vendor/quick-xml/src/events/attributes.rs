@@ -4,22 +4,25 @@
 
 use crate::encoding::Decoder;
 use crate::errors::Result as XmlResult;
-use crate::escape::{escape, resolve_predefined_entity, unescape_with};
+use crate::escape::{escape, resolve_predefined_entity};
 use crate::name::{LocalName, Namespace, NamespaceResolver, QName};
 use crate::utils::{is_whitespace, Bytes};
+use crate::XmlVersion;
 
+use std::collections::HashSet;
 use std::fmt::{self, Debug, Display, Formatter};
+use std::hash::{BuildHasherDefault, DefaultHasher, Hasher};
 use std::iter::FusedIterator;
 use std::{borrow::Cow, ops::Range};
 
 /// A struct representing a key/value XML attribute.
 ///
 /// Field `value` stores raw bytes, possibly containing escape-sequences. Most users will likely
-/// want to access the value using one of the [`unescape_value`] and [`decode_and_unescape_value`]
+/// want to access the value using one of the [`normalized_value`] and [`decoded_and_normalized_value`]
 /// functions.
 ///
-/// [`unescape_value`]: Self::unescape_value
-/// [`decode_and_unescape_value`]: Self::decode_and_unescape_value
+/// [`normalized_value`]: Self::normalized_value
+/// [`decoded_and_normalized_value`]: Self::decoded_and_normalized_value
 #[derive(Clone, Eq, PartialEq)]
 pub struct Attribute<'a> {
     /// The key to uniquely define the attribute.
@@ -31,7 +34,246 @@ pub struct Attribute<'a> {
 }
 
 impl<'a> Attribute<'a> {
-    /// Decodes using UTF-8 then unescapes the value.
+    /// Returns the attribute value normalized as per [the XML specification] (or [for 1.0]).
+    ///
+    /// The document **must** be UTF-8 encoded, or pre-processed using [`DecodingReader`].
+    ///
+    /// The characters `\t`, `\r`, `\n` are replaced with whitespace characters (`0x20`).
+    ///
+    /// The following escape sequences are replaced with their unescaped equivalents:
+    ///
+    /// | Escape Sequence | Replacement
+    /// |-----------------|------------
+    /// | `&lt;`          | `<`
+    /// | `&gt;`          | `>`
+    /// | `&amp;`         | `&`
+    /// | `&apos;`        | `'`
+    /// | `&quot;`        | `"`
+    ///
+    /// This will allocate unless the raw attribute value does not require normalization.
+    ///
+    /// Note, although you may use this library to parse HTML, you cannot use this
+    /// method to get HTML content, because its returns normalized value: the following
+    /// sequences are translated into a single space (U+0020) character:
+    ///
+    /// - `\r\n`
+    /// - `\r\x85` (only XML 1.1)
+    /// - `\r`
+    /// - `\n`
+    /// - `\t`
+    /// - `\x85` (only XML 1.1)
+    /// - `\x2028` (only XML 1.1)
+    ///
+    /// The text in HTML normally is not normalized in any way; normalization is
+    /// performed only in limited contexts and [only for] `\r\n` and `\r`.
+    ///
+    /// See also [`normalized_value_with()`](Self::normalized_value_with).
+    ///
+    /// <div style="background:rgba(120,145,255,0.45);padding:0.75em;">
+    ///
+    /// NOTE: If you are using this in a context where the input is not controlled,
+    /// it is preferred to wrap the input stream in [`DecodingReader`] or to use
+    /// [`decoded_and_normalized_value()`](Self::decoded_and_normalized_value) instead.
+    ///
+    /// </div>
+    ///
+    /// [the XML specification]: https://www.w3.org/TR/xml11/#AVNormalize
+    /// [`DecodingReader`]: ../../encoding/struct.DecodingReader.html
+    /// [for 1.0]: https://www.w3.org/TR/xml/#AVNormalize
+    /// [only for]: https://html.spec.whatwg.org/#normalize-newlines
+    pub fn normalized_value(&self, version: XmlVersion) -> XmlResult<Cow<'a, str>> {
+        // resolve_predefined_entity returns only non-recursive replacements, so depth=1 is enough
+        self.normalized_value_with(version, 1, resolve_predefined_entity)
+    }
+
+    /// Returns the attribute value normalized as per [the XML specification] (or [for 1.0]),
+    /// using a custom entity resolver.
+    ///
+    /// The document **must** be UTF-8 encoded, or pre-processed using [`DecodingReader`].
+    ///
+    /// Do not use this method with HTML attributes.
+    ///
+    /// The characters `\t`, `\r`, `\n` are replaced with whitespace characters (`0x20`).
+    ///
+    /// A function for resolving entities can be provided as `resolve_entity`.
+    /// This method does not resolve any predefined entities, but you can use
+    /// [`resolve_predefined_entity`] in your function.
+    ///
+    /// This will allocate unless the raw attribute value does not require normalization.
+    ///
+    /// Note, although you may use this library to parse HTML, you cannot use this
+    /// method to get HTML content, because its returns normalized value: the following
+    /// sequences are translated into a single space (U+0020) character:
+    ///
+    /// - `\r\n`
+    /// - `\r\x85` (only XML 1.1)
+    /// - `\r`
+    /// - `\n`
+    /// - `\t`
+    /// - `\x85` (only XML 1.1)
+    /// - `\x2028` (only XML 1.1)
+    ///
+    /// The text in HTML normally is not normalized in any way; normalization is
+    /// performed only in limited contexts and [only for] `\r\n` and `\r`.
+    ///
+    /// See also [`normalized_value()`](Self::normalized_value).
+    ///
+    /// <div style="background:rgba(120,145,255,0.45);padding:0.75em;">
+    ///
+    /// NOTE: If you are using this in a context where the input is not controlled,
+    /// it is preferred to wrap the input stream in [`DecodingReader`] or to use
+    /// [`decoded_and_normalized_value_with()`](Self::decoded_and_normalized_value_with) instead.
+    ///
+    /// </div>
+    ///
+    /// # Parameters
+    ///
+    /// - `depth`: maximum number of nested entities that can be expanded. If expansion
+    ///   chain will be more that this value, the function will return [`EscapeError::TooManyNestedEntities`]
+    /// - `resolve_entity`: a function to resolve entity. This function could be called
+    ///   multiple times on the same input and can return different values in each case
+    ///   for the same input, although it is not recommended
+    ///
+    /// [the XML specification]: https://www.w3.org/TR/xml11/#AVNormalize
+    /// [`DecodingReader`]: ../../encoding/struct.DecodingReader.html
+    /// [for 1.0]: https://www.w3.org/TR/xml/#AVNormalize
+    /// [only for]: https://html.spec.whatwg.org/#normalize-newlines
+    /// [`EscapeError::TooManyNestedEntities`]: crate::escape::EscapeError::TooManyNestedEntities
+    pub fn normalized_value_with<'entity>(
+        &self,
+        version: XmlVersion,
+        depth: usize,
+        resolve_entity: impl FnMut(&str) -> Option<&'entity str>,
+    ) -> XmlResult<Cow<'a, str>> {
+        use crate::encoding::EncodingError;
+        use std::str::from_utf8;
+
+        let decoded = match &self.value {
+            Cow::Borrowed(bytes) => Cow::Borrowed(from_utf8(bytes).map_err(EncodingError::Utf8)?),
+            // Convert to owned, because otherwise Cow will be bound with wrong lifetime
+            Cow::Owned(bytes) => {
+                Cow::Owned(from_utf8(bytes).map_err(EncodingError::Utf8)?.to_owned())
+            }
+        };
+
+        match version.normalize_attribute_value(&decoded, depth, resolve_entity)? {
+            // Because result is borrowed, no replacements was done and we can use original string
+            Cow::Borrowed(_) => Ok(decoded),
+            Cow::Owned(s) => Ok(s.into()),
+        }
+    }
+
+    /// Decodes using a provided reader and returns the attribute value normalized
+    /// as per [the XML specification] (or [for 1.0]).
+    ///
+    /// Do not use this method with HTML attributes.
+    ///
+    /// The characters `\t`, `\r`, `\n` are replaced with whitespace characters (`0x20`).
+    ///
+    /// The following escape sequences are replaced with their unescaped equivalents:
+    ///
+    /// | Escape Sequence | Replacement
+    /// |-----------------|------------
+    /// | `&lt;`          | `<`
+    /// | `&gt;`          | `>`
+    /// | `&amp;`         | `&`
+    /// | `&apos;`        | `'`
+    /// | `&quot;`        | `"`
+    ///
+    /// This will allocate unless the raw attribute value does not require normalization.
+    ///
+    /// Note, although you may use this library to parse HTML, you cannot use this
+    /// method to get HTML content, because its returns normalized value: the following
+    /// sequences are translated into a single space (U+0020) character:
+    ///
+    /// - `\r\n`
+    /// - `\r\x85` (only XML 1.1)
+    /// - `\r`
+    /// - `\n`
+    /// - `\t`
+    /// - `\x85` (only XML 1.1)
+    /// - `\x2028` (only XML 1.1)
+    ///
+    /// The text in HTML normally is not normalized in any way; normalization is
+    /// performed only in limited contexts and [only for] `\r\n` and `\r`.
+    ///
+    /// See also [`decoded_and_normalized_value_with()`](#method.decoded_and_normalized_value_with)
+    ///
+    /// [the XML specification]: https://www.w3.org/TR/xml11/#AVNormalize
+    /// [for 1.0]: https://www.w3.org/TR/xml/#AVNormalize
+    /// [only for]: https://html.spec.whatwg.org/#normalize-newlines
+    pub fn decoded_and_normalized_value(
+        &self,
+        version: XmlVersion,
+        decoder: Decoder,
+    ) -> XmlResult<Cow<'a, str>> {
+        // resolve_predefined_entity returns only non-recursive replacements, so depth=1 is enough
+        self.decoded_and_normalized_value_with(version, decoder, 1, resolve_predefined_entity)
+    }
+
+    /// Decodes using a provided reader and returns the attribute value normalized
+    /// as per [the XML specification] (or [for 1.0]), using a custom entity resolver.
+    ///
+    /// Do not use this method with HTML attributes.
+    ///
+    /// The characters `\t`, `\r`, `\n` are replaced with whitespace characters (`0x20`).
+    ///
+    /// A function for resolving entities can be provided as `resolve_entity`.
+    /// This method does not resolve any predefined entities, but you can use
+    /// [`resolve_predefined_entity`] in your function.
+    ///
+    /// This will allocate unless the raw attribute value does not require normalization.
+    ///
+    /// Note, although you may use this library to parse HTML, you cannot use this
+    /// method to get HTML content, because its returns normalized value: the following
+    /// sequences are translated into a single space (U+0020) character:
+    ///
+    /// - `\r\n`
+    /// - `\r\x85` (only XML 1.1)
+    /// - `\r`
+    /// - `\n`
+    /// - `\t`
+    /// - `\x85` (only XML 1.1)
+    /// - `\x2028` (only XML 1.1)
+    ///
+    /// The text in HTML normally is not normalized in any way; normalization is
+    /// performed only in limited contexts and [only for] `\r\n` and `\r`.
+    ///
+    /// See also [`decoded_and_normalized_value()`](#method.decoded_and_normalized_value)
+    ///
+    /// # Parameters
+    ///
+    /// - `depth`: maximum number of nested entities that can be expanded. If expansion
+    ///   chain will be more that this value, the function will return [`EscapeError::TooManyNestedEntities`]
+    /// - `resolve_entity`: a function to resolve entity. This function could be called
+    ///   multiple times on the same input and can return different values in each case
+    ///   for the same input, although it is not recommended
+    ///
+    /// [the XML specification]: https://www.w3.org/TR/xml11/#AVNormalize
+    /// [for 1.0]: https://www.w3.org/TR/xml/#AVNormalize
+    /// [only for]: https://html.spec.whatwg.org/#normalize-newlines
+    /// [`EscapeError::TooManyNestedEntities`]: crate::escape::EscapeError::TooManyNestedEntities
+    pub fn decoded_and_normalized_value_with<'entity>(
+        &self,
+        version: XmlVersion,
+        decoder: Decoder,
+        depth: usize,
+        resolve_entity: impl FnMut(&str) -> Option<&'entity str>,
+    ) -> XmlResult<Cow<'a, str>> {
+        let decoded = match &self.value {
+            Cow::Borrowed(bytes) => decoder.decode(bytes)?,
+            // Convert to owned, because otherwise Cow will be bound with wrong lifetime
+            Cow::Owned(bytes) => decoder.decode(bytes)?.into_owned().into(),
+        };
+
+        match version.normalize_attribute_value(&decoded, depth, resolve_entity)? {
+            // Because result is borrowed, no replacements was done and we can use original string
+            Cow::Borrowed(_) => Ok(decoded),
+            Cow::Owned(s) => Ok(s.into()),
+        }
+    }
+
+    /// Returns the unescaped value.
     ///
     /// This is normally the value you are interested in. Escape sequences such as `&gt;` are
     /// replaced with their unescaped equivalents such as `>`.
@@ -44,7 +286,7 @@ impl<'a> Attribute<'a> {
     ///
     /// NOTE: Because this method is available only if [`encoding`] feature is **not** enabled,
     /// should only be used by applications.
-    /// Libs should use [`decode_and_unescape_value()`](Self::decode_and_unescape_value)
+    /// Libs should use [`decoded_and_normalized_value()`](Self::decoded_and_normalized_value)
     /// instead, because if lib will be used in a project which depends on quick_xml with
     /// [`encoding`] feature enabled, the lib will fail to compile due to [feature unification].
     ///
@@ -53,8 +295,10 @@ impl<'a> Attribute<'a> {
     /// [`encoding`]: ../../index.html#encoding
     /// [feature unification]: https://doc.rust-lang.org/cargo/reference/features.html#feature-unification
     #[cfg(any(doc, not(feature = "encoding")))]
+    #[deprecated = "use `Self::normalized_value()`"]
     pub fn unescape_value(&self) -> XmlResult<Cow<'a, str>> {
-        self.unescape_value_with(resolve_predefined_entity)
+        // resolve_predefined_entity returns only non-recursive replacements, so depth=1 is enough
+        self.normalized_value_with(XmlVersion::Implicit1_0, 1, resolve_predefined_entity)
     }
 
     /// Decodes using UTF-8 then unescapes the value, using custom entities.
@@ -72,7 +316,7 @@ impl<'a> Attribute<'a> {
     ///
     /// NOTE: Because this method is available only if [`encoding`] feature is **not** enabled,
     /// should only be used by applications.
-    /// Libs should use [`decode_and_unescape_value_with()`](Self::decode_and_unescape_value_with)
+    /// Libs should use [`decoded_and_normalized_value_with()`](Self::decoded_and_normalized_value_with)
     /// instead, because if lib will be used in a project which depends on quick_xml with
     /// [`encoding`] feature enabled, the lib will fail to compile due to [feature unification].
     ///
@@ -81,38 +325,46 @@ impl<'a> Attribute<'a> {
     /// [`encoding`]: ../../index.html#encoding
     /// [feature unification]: https://doc.rust-lang.org/cargo/reference/features.html#feature-unification
     #[cfg(any(doc, not(feature = "encoding")))]
+    #[deprecated = "use `Self::normalized_value_with()`"]
     #[inline]
     pub fn unescape_value_with<'entity>(
         &self,
         resolve_entity: impl FnMut(&str) -> Option<&'entity str>,
     ) -> XmlResult<Cow<'a, str>> {
-        self.decode_and_unescape_value_with(Decoder::utf8(), resolve_entity)
+        self.normalized_value_with(XmlVersion::Implicit1_0, 128, resolve_entity)
     }
 
     /// Decodes then unescapes the value.
     ///
     /// This will allocate if the value contains any escape sequences or in
     /// non-UTF-8 encoding.
+    #[deprecated = "use `Self::decoded_and_normalized_value()`"]
     pub fn decode_and_unescape_value(&self, decoder: Decoder) -> XmlResult<Cow<'a, str>> {
-        self.decode_and_unescape_value_with(decoder, resolve_predefined_entity)
+        // resolve_predefined_entity returns only non-recursive replacements, so depth=1 is enough
+        self.decoded_and_normalized_value_with(
+            XmlVersion::Implicit1_0,
+            decoder,
+            1,
+            resolve_predefined_entity,
+        )
     }
 
     /// Decodes then unescapes the value with custom entities.
     ///
     /// This will allocate if the value contains any escape sequences or in
     /// non-UTF-8 encoding.
+    #[deprecated = "use `Self::decoded_and_normalized_value_with()`"]
     pub fn decode_and_unescape_value_with<'entity>(
         &self,
         decoder: Decoder,
         resolve_entity: impl FnMut(&str) -> Option<&'entity str>,
     ) -> XmlResult<Cow<'a, str>> {
-        let decoded = decoder.decode_cow(&self.value)?;
-
-        match unescape_with(&decoded, resolve_entity)? {
-            // Because result is borrowed, no replacements was done and we can use original string
-            Cow::Borrowed(_) => Ok(decoded),
-            Cow::Owned(s) => Ok(s.into()),
-        }
+        self.decoded_and_normalized_value_with(
+            XmlVersion::Implicit1_0,
+            decoder,
+            128,
+            resolve_entity,
+        )
     }
 
     /// If attribute value [represents] valid boolean values, returns `Some`, otherwise returns `None`.
@@ -137,7 +389,7 @@ impl<'a> Attribute<'a> {
     /// let attr = Attribute::from(("attr", "1"));
     /// assert_eq!(attr.as_bool(), Some(true));
     ///
-    /// let attr = Attribute::from(("attr", "bot bool"));
+    /// let attr = Attribute::from(("attr", "not bool"));
     /// assert_eq!(attr.as_bool(), None);
     /// ```
     ///
@@ -714,6 +966,53 @@ enum State {
     SkipEqValue(usize),
 }
 
+/// Number of attributes a start tag may have before the duplicate-name check
+/// switches from a direct linear scan of the previously seen names to a hash
+/// pre-filter (see [`IterState::check_for_duplicates`]).
+///
+/// Real-world start tags carry only a handful of attributes -- the busiest
+/// element in our benchmark corpus (`tests/documents/players.xml`) has 22 --
+/// where the scan is faster than hashing and needs no allocation. Larger tags
+/// are where the scan became the O(N²) CPU-DoS of [#969], so above this count we
+/// pay for a hash set to keep the whole tag O(N). The value sits just above the
+/// measured linear-vs-hash crossover.
+///
+/// [#969]: https://github.com/tafia/quick-xml/issues/969
+const SMALL_ATTRIBUTE_COUNT: usize = 32;
+
+/// A no-op [`Hasher`] for the `key_hashes` set, whose values are already 64-bit
+/// hashes of attribute names; re-hashing them with the default SipHash would be
+/// wasted work. Only `write_u64` is ever exercised (via `u64`'s `Hash` impl).
+#[derive(Default)]
+struct IdentityHasher(u64);
+
+impl Hasher for IdentityHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    #[inline]
+    fn write(&mut self, _: &[u8]) {
+        // The set only ever stores `u64` keys, which route through `write_u64`.
+        unreachable!("IdentityHasher only supports u64 keys")
+    }
+
+    #[inline]
+    fn write_u64(&mut self, n: u64) {
+        self.0 = n;
+    }
+}
+
+/// Hashes a single attribute name. A fresh [`DefaultHasher`] per name keeps each
+/// hash independent (so it is also DoS-resistant on untrusted input).
+#[inline]
+fn hash_name(name: &[u8]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    hasher.write(name);
+    hasher.finish()
+}
+
 /// External iterator over spans of attribute key and value
 #[derive(Clone, Debug)]
 pub(crate) struct IterState {
@@ -729,6 +1028,13 @@ pub(crate) struct IterState {
     /// names. We store a ranges instead of slices to able to report a previous
     /// attribute position
     keys: Vec<Range<usize>>,
+    /// 64-bit hashes of the byte content of `keys`, used as an O(1) pre-filter
+    /// once a start tag declares more than `SMALL_ATTRIBUTE_COUNT` attributes, so
+    /// the duplicate check stays O(N) over the whole tag instead of O(N²). The
+    /// values are already hashes, so the set stores them with `IdentityHasher`
+    /// instead of re-hashing. Allocated only when the threshold is crossed, so
+    /// small tags (and [`IterState::new`]) stay allocation-free and `const`.
+    key_hashes: Option<HashSet<u64, BuildHasherDefault<IdentityHasher>>>,
 }
 
 impl IterState {
@@ -738,6 +1044,7 @@ impl IterState {
             html,
             check_duplicates: true,
             keys: Vec::new(),
+            key_hashes: None,
         }
     }
 
@@ -813,6 +1120,17 @@ impl IterState {
         }
     }
 
+    /// Checks that the attribute name `key` (a range into `slice`) was not seen
+    /// earlier in the same start tag, recording it for subsequent checks.
+    ///
+    /// Small tags use a direct linear scan of [`Self::keys`]: for a handful of
+    /// attributes that beats hashing and needs no allocation, which is the
+    /// overwhelmingly common case. Once a tag declares more than
+    /// `SMALL_ATTRIBUTE_COUNT` attributes -- where the scan would become the
+    /// O(N²) CPU-DoS of [#969] -- it switches to a hash pre-filter that keeps the
+    /// whole tag O(N).
+    ///
+    /// [#969]: https://github.com/tafia/quick-xml/issues/969
     #[inline]
     fn check_for_duplicates(
         &mut self,
@@ -820,6 +1138,9 @@ impl IterState {
         key: Range<usize>,
     ) -> Result<Range<usize>, AttrError> {
         if self.check_duplicates {
+            if self.keys.len() >= SMALL_ATTRIBUTE_COUNT {
+                return self.check_for_duplicates_hashed(slice, key);
+            }
             if let Some(prev) = self
                 .keys
                 .iter()
@@ -829,6 +1150,44 @@ impl IterState {
             }
             self.keys.push(key.clone());
         }
+        Ok(key)
+    }
+
+    /// Cold path of [`Self::check_for_duplicates`] for start tags with many
+    /// attributes: a [`HashSet`] of 64-bit name hashes acts as an O(1) pre-filter
+    /// so iterating N attributes is O(N) rather than O(N²).
+    #[cold]
+    fn check_for_duplicates_hashed(
+        &mut self,
+        slice: &[u8],
+        key: Range<usize>,
+    ) -> Result<Range<usize>, AttrError> {
+        let keys = &self.keys;
+        let key_hashes = self.key_hashes.get_or_insert_with(|| {
+            // First time over the threshold: seed the set with the names already
+            // collected during the linear phase so the pre-filter knows them.
+            let mut set = HashSet::with_capacity_and_hasher(
+                keys.len() * 2,
+                BuildHasherDefault::<IdentityHasher>::default(),
+            );
+            for r in keys {
+                set.insert(hash_name(&slice[r.clone()]));
+            }
+            set
+        });
+        // A fresh hash proves the name is new. On a hit (a real duplicate, or the
+        // astronomically rare 64-bit collision) fall back to the linear scan to
+        // recover the exact previous position for `AttrError::Duplicated`.
+        if !key_hashes.insert(hash_name(&slice[key.clone()])) {
+            if let Some(prev) = self
+                .keys
+                .iter()
+                .find(|r| slice[(*r).clone()] == slice[key.clone()])
+            {
+                return Err(AttrError::Duplicated(key.start, prev.start));
+            }
+        }
+        self.keys.push(key.clone());
         Ok(key)
     }
 
@@ -1009,6 +1368,217 @@ impl IterState {
 mod xml {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    mod attribute_value_normalization {
+        use super::*;
+        use crate::errors::Error;
+        use crate::escape::EscapeError::*;
+        use crate::XmlVersion::*;
+        use pretty_assertions::assert_eq;
+
+        /// Empty values returned are unchanged
+        #[test]
+        fn empty() {
+            let raw_value = "".as_bytes();
+            let attr = Attribute::from(("foo".as_bytes(), raw_value));
+
+            let value = attr
+                .decoded_and_normalized_value(Implicit1_0, Decoder::utf8())
+                .unwrap();
+            assert_eq!(value, "");
+            // assert_eq! does not check if value is borrowed, but this is important
+            assert!(matches!(value, Cow::Borrowed(_)));
+
+            let value = attr
+                .decoded_and_normalized_value(Explicit1_0, Decoder::utf8())
+                .unwrap();
+            assert_eq!(value, "");
+            // assert_eq! does not check if value is borrowed, but this is important
+            assert!(matches!(value, Cow::Borrowed(_)));
+
+            let value = attr
+                .decoded_and_normalized_value(Explicit1_1, Decoder::utf8())
+                .unwrap();
+            assert_eq!(value, "");
+            // assert_eq! does not check if value is borrowed, but this is important
+            assert!(matches!(value, Cow::Borrowed(_)));
+        }
+
+        /// Already normalized values are returned unchanged
+        #[test]
+        fn already_normalized() {
+            let raw_value = "foobar123".as_bytes();
+            let attr = Attribute::from(("foo".as_bytes(), raw_value));
+
+            let value = attr
+                .decoded_and_normalized_value(Implicit1_0, Decoder::utf8())
+                .unwrap();
+            assert_eq!(value, "foobar123");
+            // assert_eq! does not check if value is borrowed, but this is important
+            assert!(matches!(value, Cow::Borrowed(_)));
+
+            let value = attr
+                .decoded_and_normalized_value(Explicit1_0, Decoder::utf8())
+                .unwrap();
+            assert_eq!(value, "foobar123");
+            // assert_eq! does not check if value is borrowed, but this is important
+            assert!(matches!(value, Cow::Borrowed(_)));
+
+            let value = attr
+                .decoded_and_normalized_value(Explicit1_1, Decoder::utf8())
+                .unwrap();
+            assert_eq!(value, "foobar123");
+            // assert_eq! does not check if value is borrowed, but this is important
+            assert!(matches!(value, Cow::Borrowed(_)));
+        }
+
+        /// Return, tab, and newline characters (0xD, 0x9, 0xA) must be substituted with
+        /// a space character, \r\n and \r\u{85} should be replaced by one space in 1.1
+        #[test]
+        fn space_replacement() {
+            let raw_value = "\r\nfoo\u{85}\u{2028}\rbar\tbaz\n\ndelta\n\r\u{85}".as_bytes();
+            let attr = Attribute::from(("foo".as_bytes(), raw_value));
+
+            assert_eq!(
+                attr.decoded_and_normalized_value(Implicit1_0, Decoder::utf8())
+                    .unwrap(),
+                " foo\u{85}\u{2028} bar baz  delta  \u{85}"
+            );
+            assert_eq!(
+                attr.decoded_and_normalized_value(Explicit1_0, Decoder::utf8())
+                    .unwrap(),
+                " foo\u{85}\u{2028} bar baz  delta  \u{85}"
+            );
+            assert_eq!(
+                attr.decoded_and_normalized_value(Explicit1_1, Decoder::utf8())
+                    .unwrap(),
+                " foo   bar baz  delta  "
+            );
+        }
+
+        /// Entities must be terminated
+        #[test]
+        fn unterminated_entity() {
+            let raw_value = "abc&quotdef".as_bytes();
+            let attr = Attribute::from(("foo".as_bytes(), raw_value));
+
+            match attr.decoded_and_normalized_value(Implicit1_0, Decoder::utf8()) {
+                Err(Error::Escape(err)) => assert_eq!(err, UnterminatedEntity(3..11)),
+                x => panic!("Expected Err(Escape(_)), got {:?}", x),
+            }
+
+            match attr.decoded_and_normalized_value(Explicit1_0, Decoder::utf8()) {
+                Err(Error::Escape(err)) => assert_eq!(err, UnterminatedEntity(3..11)),
+                x => panic!("Expected Err(Escape(_)), got {:?}", x),
+            }
+
+            match attr.decoded_and_normalized_value(Explicit1_1, Decoder::utf8()) {
+                Err(Error::Escape(err)) => assert_eq!(err, UnterminatedEntity(3..11)),
+                x => panic!("Expected Err(Escape(_)), got {:?}", x),
+            }
+        }
+
+        /// Unknown entities raise error
+        #[test]
+        fn unrecognized_entity() {
+            let raw_value = "abc&unkn;def".as_bytes();
+            let attr = Attribute::from(("foo".as_bytes(), raw_value));
+
+            match attr.decoded_and_normalized_value(Implicit1_0, Decoder::utf8()) {
+                // TODO: is this divergence between range behavior of UnterminatedEntity
+                // and UnrecognizedEntity appropriate? existing unescape code behaves the same.  (see: start index)
+                Err(Error::Escape(err)) => {
+                    assert_eq!(err, UnrecognizedEntity(4..8, "unkn".to_owned()))
+                }
+                x => panic!("Expected Err(Escape(err)), got {:?}", x),
+            }
+            match attr.decoded_and_normalized_value(Explicit1_0, Decoder::utf8()) {
+                // TODO: is this divergence between range behavior of UnterminatedEntity
+                // and UnrecognizedEntity appropriate? existing unescape code behaves the same.  (see: start index)
+                Err(Error::Escape(err)) => {
+                    assert_eq!(err, UnrecognizedEntity(4..8, "unkn".to_owned()))
+                }
+                x => panic!("Expected Err(Escape(err)), got {:?}", x),
+            }
+            match attr.decoded_and_normalized_value(Explicit1_1, Decoder::utf8()) {
+                // TODO: is this divergence between range behavior of UnterminatedEntity
+                // and UnrecognizedEntity appropriate? existing unescape code behaves the same.  (see: start index)
+                Err(Error::Escape(err)) => {
+                    assert_eq!(err, UnrecognizedEntity(4..8, "unkn".to_owned()))
+                }
+                x => panic!("Expected Err(Escape(err)), got {:?}", x),
+            }
+        }
+
+        /// custom entity replacement works, entity replacement text processed recursively
+        #[test]
+        fn entity_replacement() {
+            let raw_value = "&d;&d;A&a;&#x20;&a;B&da;".as_bytes();
+            let attr = Attribute::from(("foo".as_bytes(), raw_value));
+            fn custom_resolver(ent: &str) -> Option<&'static str> {
+                match ent {
+                    "d" => Some("&#xD;"),
+                    "a" => Some("&#xA;"),
+                    "da" => Some("&#xD;&#xA;"),
+                    _ => None,
+                }
+            }
+
+            assert_eq!(
+                attr.decoded_and_normalized_value_with(
+                    Implicit1_0,
+                    Decoder::utf8(),
+                    5,
+                    &custom_resolver
+                )
+                .unwrap(),
+                "\r\rA\n \nB\r\n"
+            );
+            assert_eq!(
+                attr.decoded_and_normalized_value_with(
+                    Explicit1_0,
+                    Decoder::utf8(),
+                    5,
+                    &custom_resolver
+                )
+                .unwrap(),
+                "\r\rA\n \nB\r\n"
+            );
+            assert_eq!(
+                attr.decoded_and_normalized_value_with(
+                    Explicit1_1,
+                    Decoder::utf8(),
+                    5,
+                    &custom_resolver
+                )
+                .unwrap(),
+                "\r\rA\n \nB\r\n"
+            );
+        }
+
+        #[test]
+        fn char_references() {
+            // character literal references are substituted without being replaced by spaces
+            let raw_value = "&#xd;&#xd;A&#xa;&#xa;B&#xd;&#xa;".as_bytes();
+            let attr = Attribute::from(("foo".as_bytes(), raw_value));
+
+            assert_eq!(
+                attr.decoded_and_normalized_value(Implicit1_0, Decoder::utf8())
+                    .unwrap(),
+                "\r\rA\n\nB\r\n"
+            );
+            assert_eq!(
+                attr.decoded_and_normalized_value(Explicit1_0, Decoder::utf8())
+                    .unwrap(),
+                "\r\rA\n\nB\r\n"
+            );
+            assert_eq!(
+                attr.decoded_and_normalized_value(Explicit1_1, Decoder::utf8())
+                    .unwrap(),
+                "\r\rA\n\nB\r\n"
+            );
+        }
+    }
 
     /// Checked attribute is the single attribute
     mod single {
@@ -1526,6 +2096,40 @@ mod xml {
                 );
                 assert_eq!(iter.next(), None);
                 assert_eq!(iter.next(), None);
+            }
+
+            /// Once a start tag declares more than `SMALL_ATTRIBUTE_COUNT`
+            /// attributes the duplicate check switches to its hash-based path. A
+            /// duplicate of a name first seen during the earlier linear phase must
+            /// still be detected, with the original position reported. Regression
+            /// cover for the cold path of [#969].
+            ///
+            /// [#969]: https://github.com/tafia/quick-xml/issues/969
+            #[test]
+            fn duplicate_past_hash_threshold() {
+                let dup = SMALL_ATTRIBUTE_COUNT / 2;
+                let n = SMALL_ATTRIBUTE_COUNT + 8;
+
+                let mut source = String::from("tag");
+                let mut positions = Vec::with_capacity(n);
+                for i in 0..n {
+                    source.push(' ');
+                    positions.push(source.len());
+                    source.push_str(&format!("k{:04}=''", i));
+                }
+                // Repeat the name first seen at `positions[dup]` (linear phase).
+                source.push(' ');
+                let dup_pos = source.len();
+                source.push_str(&format!("k{:04}=''", dup));
+
+                let mut iter = Attributes::new(&source, 3);
+                for _ in 0..n {
+                    assert!(matches!(iter.next(), Some(Ok(_))));
+                }
+                assert_eq!(
+                    iter.next(),
+                    Some(Err(AttrError::Duplicated(dup_pos, positions[dup])))
+                );
             }
         }
 

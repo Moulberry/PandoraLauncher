@@ -1,0 +1,76 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+"https://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node>
+ <interface name="org.freedesktop.DBus.Peer">
+  <method name="Ping"/>
+  <method name="GetMachineId">
+   <arg type="s" name="machine_uuid" direction="out"/>
+  </method>
+ </interface>
+ <interface name="org.freedesktop.DBus.Introspectable">
+  <method name="Introspect">
+   <arg name="xml_data" type="s" direction="out"/>
+  </method>
+ </interface>
+ <interface name="org.freedesktop.DBus.Properties">
+  <method name="Get">
+   <arg name="interface_name" direction="in" type="s"/>
+   <arg name="property_name" direction="in" type="s"/>
+   <arg name="value" direction="out" type="v"/>
+  </method>
+  <method name="GetAll">
+   <arg name="interface_name" direction="in" type="s"/>
+   <arg name="props" direction="out" type="a{sv}"/>
+  </method>
+  <method name="Set">
+   <arg name="interface_name" direction="in" type="s"/>
+   <arg name="property_name" direction="in" type="s"/>
+   <arg name="value" direction="in" type="v"/>
+  </method>
+  <signal name="PropertiesChanged">
+   <arg type="s" name="interface_name"/>
+   <arg type="a{sv}" name="changed_properties"/>
+   <arg type="as" name="invalidated_properties"/>
+  </signal>
+ </interface>
+ <node name="gpg_2dagent_2eservice"/>
+ <node name="opt_2denv_5cx2drunner_2emount"/>
+ <node name="keyboxd_2eservice"/>
+ <node name="gpg_2dagent_2dextra_2esocket"/>
+ <node name="blockdev_40dev_2dvde_2etarget"/>
+ <node name="pk_2ddebconf_2dhelper_2eservice"/>
+ <node name="launchpadlib_2dcache_2dclean_2eservice"/>
+ <node name="gpg_2dagent_2dbrowser_2esocket"/>
+ <node name="dbus_2esocket"/>
+ <node name="dev_2dvda_2edevice"/>
+ <node name="default_2etarget"/>
+ <node name="blockdev_40dev_2dvdd_2etarget"/>
+ <node name="shutdown_2etarget"/>
+ <node name="init_2escope"/>
+ <node name="launchpadlib_2dcache_2dclean_2etimer"/>
+ <node name="pk_2ddebconf_2dhelper_2esocket"/>
+ <node name="_2d_2emount"/>
+ <node name="dev_2dvdb_2edevice"/>
+ <node name="_2d_2eslice"/>
+ <node name="dev_2dvdc_2edevice"/>
+ <node name="paths_2etarget"/>
+ <node name="mnt_2dskills_2dexamples_2emount"/>
+ <node name="dev_2dvdd_2edevice"/>
+ <node name="timers_2etarget"/>
+ <node name="dbus_2eservice"/>
+ <node name="blockdev_40dev_2dvdc_2etarget"/>
+ <node name="basic_2etarget"/>
+ <node name="opt_2dclaude_5cx2dcode_2emount"/>
+ <node name="app_2eslice"/>
+ <node name="gpg_2dagent_2dssh_2esocket"/>
+ <node name="blockdev_40dev_2dvdb_2etarget"/>
+ <node name="dirmngr_2esocket"/>
+ <node name="dirmngr_2eservice"/>
+ <node name="session_2eslice"/>
+ <node name="mnt_2dskills_2dpublic_2emount"/>
+ <node name="sockets_2etarget"/>
+ <node name="keyboxd_2esocket"/>
+ <node name="gpg_2dagent_2esocket"/>
+ <node name="dev_2dvde_2edevice"/>
+</node>
+

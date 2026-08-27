@@ -6,8 +6,10 @@ mod outline;
 use super::{
     metrics::{scale_style_metrics, Scale, UnscaledStyleMetrics},
     outline::Outline,
+    recorder::HintsRecorder,
     style::{GlyphStyle, ScriptGroup},
-    topo::{self, Axis},
+    topo::{self, Axis, Dimension},
+    QuirksMode, ScaleFlags,
 };
 
 /// Captures adjusted horizontal scale and outer edge positions to be used
@@ -39,7 +41,37 @@ pub(crate) fn hint_outline(
     scale: &Scale,
     glyph_style: Option<GlyphStyle>,
 ) -> HintedMetrics {
-    let scaled_metrics = scale_style_metrics(metrics, *scale);
+    hint_outline_impl(outline, metrics, scale, glyph_style, None).hinted_metrics
+}
+
+pub(crate) struct HintedPlan {
+    pub hinted_metrics: HintedMetrics,
+    pub axes: [Option<Axis>; 2],
+}
+
+pub(crate) fn hint_outline_with_recorder(
+    outline: &mut Outline,
+    metrics: &UnscaledStyleMetrics,
+    scale: &Scale,
+    glyph_style: Option<GlyphStyle>,
+    recorder: &mut HintsRecorder,
+) -> HintedPlan {
+    hint_outline_impl(outline, metrics, scale, glyph_style, Some(recorder))
+}
+
+fn hint_outline_impl(
+    outline: &mut Outline,
+    metrics: &UnscaledStyleMetrics,
+    scale: &Scale,
+    glyph_style: Option<GlyphStyle>,
+    mut recorder: Option<&mut HintsRecorder>,
+) -> HintedPlan {
+    let quirks = if recorder.is_some() {
+        QuirksMode::Aot
+    } else {
+        QuirksMode::Jit
+    };
+    let scaled_metrics = scale_style_metrics(metrics, *scale, quirks);
     let scale = &scaled_metrics.scale;
     let mut axis = Axis::default();
     let hint_top_to_bottom = metrics.style_class().script.hint_top_to_bottom;
@@ -49,15 +81,19 @@ pub(crate) fn hint_outline(
         ..Default::default()
     };
     let group = metrics.style_class().script.group;
+    let mut axes = [const { None }; 2];
     // For default script group, we don't proceed with hinting if we're
     // missing alignment zones. FreeType swaps in a "dummy" hinter here
     // See <https://gitlab.freedesktop.org/freetype/freetype/-/blob/57617782464411201ce7bbc93b086c1b4d7d84a5/src/autofit/afglobal.c#L475>
     if group == ScriptGroup::Default && scaled_metrics.axes[1].blues.is_empty() {
-        return hinted_metrics;
+        return HintedPlan {
+            hinted_metrics,
+            axes,
+        };
     }
-    for dim in 0..2 {
-        if (dim == Axis::HORIZONTAL && scale.flags & Scale::NO_HORIZONTAL != 0)
-            || (dim == Axis::VERTICAL && scale.flags & Scale::NO_VERTICAL != 0)
+    for dim in [Dimension::Horizontal, Dimension::Vertical] {
+        if (dim == Dimension::Horizontal && scale.flags.contains(ScaleFlags::NO_HORIZONTAL))
+            || (dim == Dimension::Vertical && scale.flags.contains(ScaleFlags::NO_VERTICAL))
         {
             continue;
         }
@@ -77,7 +113,7 @@ pub(crate) fn hint_outline(
             scaled_metrics.scale.y_scale,
             group,
         );
-        if dim == Axis::VERTICAL {
+        if dim == Dimension::Vertical {
             if group != ScriptGroup::Default
                 || glyph_style
                     .map(|style| !style.is_non_base())
@@ -100,11 +136,12 @@ pub(crate) fn hint_outline(
             group,
             scale,
             hint_top_to_bottom,
+            recorder.as_deref_mut(),
         );
         outline::align_edge_points(outline, &axis, group, scale);
-        outline::align_strong_points(outline, &mut axis);
+        outline::align_strong_points(outline, &mut axis, recorder.as_deref_mut());
         outline::align_weak_points(outline, dim);
-        if dim == 0 && axis.edges.len() > 1 {
+        if dim == Dimension::Horizontal && axis.edges.len() > 1 {
             let left = axis.edges.first().unwrap();
             let right = axis.edges.last().unwrap();
             hinted_metrics.edge_metrics = Some(EdgeMetrics {
@@ -114,6 +151,12 @@ pub(crate) fn hint_outline(
                 right_opos: right.opos,
             });
         }
+        if recorder.is_some() {
+            axes[dim as usize] = Some(axis.clone());
+        }
     }
-    hinted_metrics
+    HintedPlan {
+        hinted_metrics,
+        axes,
+    }
 }

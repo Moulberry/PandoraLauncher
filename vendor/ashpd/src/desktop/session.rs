@@ -164,8 +164,8 @@ impl<'de> Deserialize<'de> for CreateSessionResponse {
 #[zvariant(signature = "dict")]
 /// Specified options for creating a session.
 pub struct CreateSessionOptions {
-    #[serde(with = "as_value")]
+    #[serde(default, with = "as_value", skip_deserializing)]
     pub(crate) handle_token: HandleToken,
-    #[serde(with = "as_value")]
+    #[serde(default, with = "as_value", skip_deserializing)]
     pub(crate) session_handle_token: HandleToken,
 }

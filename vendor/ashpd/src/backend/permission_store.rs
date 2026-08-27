@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 
 use crate::{
-    AppID, PortalError,
+    MaybeAppID, PortalError,
     documents::{DocumentID, Permission},
     zbus::object_server::SignalEmitter,
     zvariant::{OwnedValue, Value},
@@ -17,7 +17,7 @@ pub trait PermissionStoreSignalEmitter: Send + Sync {
         id: DocumentID,
         deleted: bool,
         data: Value<'_>,
-        permissions: HashMap<AppID, Vec<Permission>>,
+        permissions: HashMap<MaybeAppID, Vec<Permission>>,
     ) -> zbus::Result<()>;
 }
 
@@ -28,7 +28,7 @@ pub trait PermissionStoreImpl: Send + Sync {
         &self,
         table: &str,
         id: DocumentID,
-    ) -> Result<(HashMap<AppID, Vec<Permission>>, OwnedValue), PortalError>;
+    ) -> Result<(HashMap<MaybeAppID, Vec<Permission>>, OwnedValue), PortalError>;
 
     #[doc(alias = "Set")]
     async fn set(
@@ -36,7 +36,7 @@ pub trait PermissionStoreImpl: Send + Sync {
         table: &str,
         create: bool,
         id: DocumentID,
-        app_permissions: HashMap<AppID, Vec<Permission>>,
+        app_permissions: HashMap<MaybeAppID, Vec<Permission>>,
         data: Value<'_>,
     ) -> Result<(), PortalError>;
 
@@ -60,7 +60,7 @@ pub trait PermissionStoreImpl: Send + Sync {
         &self,
         table: &str,
         id: DocumentID,
-        app: AppID,
+        app: MaybeAppID,
     ) -> Result<Vec<Permission>, PortalError>;
 
     #[doc(alias = "SetPermission")]
@@ -69,7 +69,7 @@ pub trait PermissionStoreImpl: Send + Sync {
         table: &str,
         create: bool,
         id: DocumentID,
-        app: AppID,
+        app: MaybeAppID,
         permissions: Vec<Permission>,
     ) -> Result<(), PortalError>;
 
@@ -78,7 +78,7 @@ pub trait PermissionStoreImpl: Send + Sync {
         &self,
         table: &str,
         id: DocumentID,
-        app: AppID,
+        app: MaybeAppID,
     ) -> Result<(), PortalError>;
 
     // Set the signal emitter, allowing to notify of changes.
@@ -108,7 +108,7 @@ impl PermissionStoreInterface {
         id: DocumentID,
         deleted: bool,
         data: Value<'_>,
-        permissions: HashMap<AppID, Vec<Permission>>,
+        permissions: HashMap<MaybeAppID, Vec<Permission>>,
     ) -> zbus::Result<()> {
         let object_server = self.cnx.object_server();
         let iface_ref = object_server
@@ -135,7 +135,7 @@ impl PermissionStoreSignalEmitter for PermissionStoreInterface {
         id: DocumentID,
         deleted: bool,
         data: Value<'_>,
-        permissions: HashMap<AppID, Vec<Permission>>,
+        permissions: HashMap<MaybeAppID, Vec<Permission>>,
     ) -> zbus::Result<()> {
         self.document_changed(table, id, deleted, data, permissions)
             .await
@@ -154,7 +154,7 @@ impl PermissionStoreInterface {
         &self,
         table: &str,
         id: DocumentID,
-    ) -> Result<(HashMap<AppID, Vec<Permission>>, OwnedValue), PortalError> {
+    ) -> Result<(HashMap<MaybeAppID, Vec<Permission>>, OwnedValue), PortalError> {
         #[cfg(feature = "tracing")]
         tracing::debug!("PermissionStore::Lookup");
 
@@ -170,7 +170,7 @@ impl PermissionStoreInterface {
         table: &str,
         create: bool,
         id: DocumentID,
-        app_permissions: HashMap<AppID, Vec<Permission>>,
+        app_permissions: HashMap<MaybeAppID, Vec<Permission>>,
         data: Value<'_>,
     ) -> Result<(), PortalError> {
         #[cfg(feature = "tracing")]
@@ -217,7 +217,7 @@ impl PermissionStoreInterface {
         &self,
         table: &str,
         id: DocumentID,
-        app: AppID,
+        app: MaybeAppID,
     ) -> Result<Vec<Permission>, PortalError> {
         #[cfg(feature = "tracing")]
         tracing::debug!("PermissionStore::GetPermission");
@@ -234,7 +234,7 @@ impl PermissionStoreInterface {
         table: &str,
         create: bool,
         id: DocumentID,
-        app: AppID,
+        app: MaybeAppID,
         permissions: Vec<Permission>,
     ) -> Result<(), PortalError> {
         #[cfg(feature = "tracing")]
@@ -254,7 +254,7 @@ impl PermissionStoreInterface {
         &self,
         table: &str,
         id: DocumentID,
-        app: AppID,
+        app: MaybeAppID,
     ) -> Result<(), PortalError> {
         #[cfg(feature = "tracing")]
         tracing::debug!("PermissionStore::DeletePermission");
@@ -284,6 +284,6 @@ impl PermissionStoreInterface {
         id: DocumentID,
         deleted: bool,
         data: Value<'_>,
-        permissions: HashMap<AppID, Vec<Permission>>,
+        permissions: HashMap<MaybeAppID, Vec<Permission>>,
     ) -> zbus::Result<()>;
 }

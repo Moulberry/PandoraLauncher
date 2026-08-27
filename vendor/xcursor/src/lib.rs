@@ -7,6 +7,33 @@ use std::path::{Path, PathBuf};
 /// A module implementing XCursor file parsing.
 pub mod parser;
 
+/// The on-disk format of a cursor within a theme directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CursorFormat {
+    /// Legacy raster cursors, stored as a file in `cursors/<name>`.
+    XCursor,
+    /// Scalable SVG cursors, stored as a directory in `cursors_scalable/<name>`.
+    Scalable,
+}
+
+impl CursorFormat {
+    /// The theme sub-directory this format lives in.
+    fn subdir(self) -> &'static str {
+        match self {
+            CursorFormat::XCursor => "cursors",
+            CursorFormat::Scalable => "cursors_scalable",
+        }
+    }
+
+    /// Whether an entry of this format is a directory (scalable) or a file (xcursor).
+    fn matches(self, path: &Path) -> bool {
+        match self {
+            CursorFormat::XCursor => path.is_file(),
+            CursorFormat::Scalable => path.is_dir(),
+        }
+    }
+}
+
 /// A cursor theme.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CursorTheme {
@@ -38,7 +65,12 @@ impl CursorTheme {
         let mut walked_themes = HashSet::new();
 
         self.theme
-            .load_icon_with_depth(icon_name, &self.search_paths, &mut walked_themes)
+            .load_icon_with_depth(
+                icon_name,
+                CursorFormat::XCursor,
+                &self.search_paths,
+                &mut walked_themes,
+            )
             .map(|(pathbuf, _)| pathbuf)
     }
 
@@ -52,8 +84,45 @@ impl CursorTheme {
     pub fn load_icon_with_depth(&self, icon_name: &str) -> Option<(PathBuf, usize)> {
         let mut walked_themes = HashSet::new();
 
+        self.theme.load_icon_with_depth(
+            icon_name,
+            CursorFormat::XCursor,
+            &self.search_paths,
+            &mut walked_themes,
+        )
+    }
+
+    /// Try to load a scalable (SVG) cursor from the theme.
+    ///
+    /// Returns the path to the cursor's directory within `cursors_scalable`,
+    /// which contains a `metadata.json` and one or more SVG files. Theme
+    /// inheritance is followed exactly as in [`CursorTheme::load_icon`].
+    ///
+    /// Reading `metadata.json` and rendering the SVGs is left to the caller
+    pub fn load_scalable(&self, icon_name: &str) -> Option<PathBuf> {
+        let mut walked_themes = HashSet::new();
+
         self.theme
-            .load_icon_with_depth(icon_name, &self.search_paths, &mut walked_themes)
+            .load_icon_with_depth(
+                icon_name,
+                CursorFormat::Scalable,
+                &self.search_paths,
+                &mut walked_themes,
+            )
+            .map(|(pathbuf, _)| pathbuf)
+    }
+
+    /// Like [`CursorTheme::load_scalable`], but also returns the number of
+    /// inheritance levels traversed before the cursor was found.
+    pub fn load_scalable_with_depth(&self, icon_name: &str) -> Option<(PathBuf, usize)> {
+        let mut walked_themes = HashSet::new();
+
+        self.theme.load_icon_with_depth(
+            icon_name,
+            CursorFormat::Scalable,
+            &self.search_paths,
+            &mut walked_themes,
+        )
     }
 }
 
@@ -100,14 +169,15 @@ impl CursorThemeIml {
     fn load_icon_with_depth(
         &self,
         icon_name: &str,
+        format: CursorFormat,
         search_paths: &[PathBuf],
         walked_themes: &mut HashSet<String>,
     ) -> Option<(PathBuf, usize)> {
         for data in &self.data {
             let mut icon_path = data.0.clone();
-            icon_path.push("cursors");
+            icon_path.push(format.subdir());
             icon_path.push(icon_name);
-            if icon_path.is_file() {
+            if format.matches(&icon_path) {
                 return Some((icon_path, 0));
             }
         }
@@ -130,7 +200,12 @@ impl CursorThemeIml {
 
             let inherited_theme = CursorThemeIml::load(inherits, search_paths);
 
-            match inherited_theme.load_icon_with_depth(icon_name, search_paths, walked_themes) {
+            match inherited_theme.load_icon_with_depth(
+                icon_name,
+                format,
+                search_paths,
+                walked_themes,
+            ) {
                 Some((icon_path, depth)) => return Some((icon_path, depth + 1)),
                 None => continue,
             }

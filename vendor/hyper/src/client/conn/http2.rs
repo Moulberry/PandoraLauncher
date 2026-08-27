@@ -1,4 +1,4 @@
-//! HTTP/2 client connections
+//! HTTP/2 client connections.
 
 use std::error::Error;
 use std::fmt;
@@ -38,7 +38,14 @@ impl<B> Clone for SendRequest<B> {
 /// In most cases, this should just be spawned into an executor, so that it
 /// can process incoming and outgoing messages, notice hangups, and the like.
 ///
-/// Instances of this type are typically created via the [`handshake`] function
+/// Instances of this type are typically created via the [`handshake`] function.
+///
+/// # Drop behavior
+///
+/// Dropping the `Connection` will close the underlying IO resource.
+/// Any in-flight requests that have not received a response will be
+/// interrupted. If graceful shutdown is desired, poll the connection
+/// until it completes instead of dropping.
 #[must_use = "futures do nothing unless polled"]
 pub struct Connection<T, B, E>
 where
@@ -95,7 +102,7 @@ impl<B> SendRequest<B> {
         }
     }
 
-    /// Waits until the dispatcher is ready
+    /// Waits until the dispatcher is ready.
     ///
     /// If the associated connection is closed, this returns an Error.
     pub async fn ready(&mut self) -> crate::Result<()> {
@@ -131,6 +138,15 @@ where
     ///
     /// Absolute-form `Uri`s are not required. If received, they will be serialized
     /// as-is.
+    ///
+    /// # Cancel safety
+    ///
+    /// Dropping the returned future is the supported way to cancel an
+    /// in-flight HTTP/2 request. The stream is reset with `RST_STREAM`
+    /// (`CANCEL` error code); the shared connection remains usable for
+    /// other in-flight and future requests. The peer is notified
+    /// immediately rather than continuing to send a response body that
+    /// would be discarded.
     pub fn send_request(
         &mut self,
         req: Request<B>,
@@ -216,6 +232,26 @@ where
     pub fn is_extended_connect_protocol_enabled(&self) -> bool {
         self.inner.1.is_extended_connect_protocol_enabled()
     }
+
+    /// Returns the current maximum send stream count.
+    ///
+    /// This setting is configured in a [`SETTINGS_MAX_CONCURRENT_STREAMS` parameter][1] in a `SETTINGS` frame,
+    /// and may change throughout the connection lifetime.
+    ///
+    /// [1]: https://datatracker.ietf.org/doc/html/rfc7540#section-5.1.2
+    pub fn current_max_send_streams(&self) -> usize {
+        self.inner.1.current_max_send_streams()
+    }
+
+    /// Returns the current maximum receive stream count.
+    ///
+    /// This setting is configured in a [`SETTINGS_MAX_CONCURRENT_STREAMS` parameter][1] in a `SETTINGS` frame,
+    /// and may change throughout the connection lifetime.
+    ///
+    /// [1]: https://datatracker.ietf.org/doc/html/rfc7540#section-5.1.2
+    pub fn current_max_recv_streams(&self) -> usize {
+        self.inner.1.current_max_recv_streams()
+    }
 }
 
 impl<T, B, E> fmt::Debug for Connection<T, B, E>
@@ -262,7 +298,7 @@ where
         Builder {
             exec,
             timer: Time::Empty,
-            h2_builder: Default::default(),
+            h2_builder: proto::h2::client::Config::default(),
         }
     }
 
@@ -291,7 +327,7 @@ where
         self
     }
 
-    /// Sets the max connection-level flow control for HTTP2
+    /// Sets the max connection-level flow control for HTTP2.
     ///
     /// Passing `None` will do nothing.
     ///
@@ -387,7 +423,7 @@ where
     ///
     /// See [Section 5.1.2] in the HTTP/2 spec for more details.
     ///
-    /// [Section 5.1.2]: https://http2.github.io/http2-spec/#rfc.section.5.1.2
+    /// [Section 5.1.2]: https://httpwg.org/specs/rfc7540.html#rfc.section.5.1.2
     pub fn max_concurrent_streams(&mut self, max: impl Into<Option<u32>>) -> &mut Self {
         self.h2_builder.max_concurrent_streams = max.into();
         self
@@ -462,6 +498,47 @@ where
     /// See <https://github.com/hyperium/hyper/issues/2877> for more information.
     pub fn max_pending_accept_reset_streams(&mut self, max: impl Into<Option<usize>>) -> &mut Self {
         self.h2_builder.max_pending_accept_reset_streams = max.into();
+        self
+    }
+
+    /// Configures the maximum number of local resets due to protocol errors made by the remote end.
+    ///
+    /// See the documentation of [`h2::client::Builder::max_local_error_reset_streams`] for more
+    /// details.
+    ///
+    /// The default value is 1024.
+    pub fn max_local_error_reset_streams(&mut self, max: impl Into<Option<usize>>) -> &mut Self {
+        self.h2_builder.max_local_error_reset_streams = max.into();
+        self
+    }
+
+    /// Sets the duration to remember locally reset streams.
+    ///
+    /// When a stream is explicitly reset by either the client or the server,
+    /// the HTTP/2 specification requires that any further frames received for
+    /// that stream must be ignored for "some time".
+    ///
+    /// In order to satisfy the specification, internal state must be maintained
+    /// to implement the behavior. This state grows linearly with the number of
+    /// streams that are locally reset.
+    ///
+    /// The `reset_stream_duration` setting configures the max amount of time
+    /// this state will be maintained in memory. Once the duration elapses, the
+    /// stream state is purged from memory.
+    ///
+    /// Once the stream has been fully purged from memory, any additional frames
+    /// received for that stream will result in a connection level protocol
+    /// error, forcing the connection to terminate.
+    ///
+    /// The default value is determined by the `h2` crate, and is currently
+    /// 1 second.
+    ///
+    /// See the documentation of [`h2::client::Builder::reset_stream_duration`] for more
+    /// details.
+    ///
+    /// [`h2::client::Builder::reset_stream_duration`]: https://docs.rs/h2/client/struct.Builder.html#method.reset_stream_duration
+    pub fn reset_stream_duration(&mut self, dur: Duration) -> &mut Self {
+        self.h2_builder.reset_stream_duration = Some(dur);
         self
     }
 
@@ -635,44 +712,6 @@ mod tests {
             .unwrap();
 
             tokio::task::spawn(async move {
-                conn.await.unwrap();
-            });
-        }
-    }
-
-    #[tokio::test]
-    #[ignore] // only compilation is checked
-    async fn not_send_not_sync_executor_of_send_futures() {
-        #[derive(Clone)]
-        struct TokioExecutor {
-            // !Send, !Sync
-            _x: std::marker::PhantomData<std::rc::Rc<()>>,
-        }
-
-        impl<F> crate::rt::Executor<F> for TokioExecutor
-        where
-            F: std::future::Future + 'static + Send,
-            F::Output: Send + 'static,
-        {
-            fn execute(&self, fut: F) {
-                tokio::task::spawn(fut);
-            }
-        }
-
-        #[allow(unused)]
-        async fn run(io: impl crate::rt::Read + crate::rt::Write + Send + Unpin + 'static) {
-            let (_sender, conn) =
-                crate::client::conn::http2::handshake::<_, _, http_body_util::Empty<bytes::Bytes>>(
-                    TokioExecutor {
-                        _x: Default::default(),
-                    },
-                    io,
-                )
-                .await
-                .unwrap();
-
-            tokio::task::spawn_local(async move {
-                // can't use spawn here because when executor is !Send
                 conn.await.unwrap();
             });
         }

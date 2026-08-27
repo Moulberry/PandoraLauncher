@@ -34,7 +34,7 @@ path = "src/main.rs"
 
 [dependencies.collections]
 version = "0.1.0"
-path = "../../crates/collections"
+path = '..\..\crates\collections'
 
 [dependencies.serde]
 version = "1.0.221"

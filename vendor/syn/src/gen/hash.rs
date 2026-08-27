@@ -36,7 +36,6 @@ impl Hash for crate::Arm {
     {
         self.attrs.hash(state);
         self.pat.hash(state);
-        self.guard.hash(state);
         self.body.hash(state);
         self.comma.hash(state);
     }
@@ -91,30 +90,6 @@ impl Hash for crate::Attribute {
     {
         self.style.hash(state);
         self.meta.hash(state);
-    }
-}
-#[cfg(any(feature = "derive", feature = "full"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::BareFnArg {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        self.attrs.hash(state);
-        self.name.hash(state);
-        self.ty.hash(state);
-    }
-}
-#[cfg(any(feature = "derive", feature = "full"))]
-#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::BareVariadic {
-    fn hash<H>(&self, state: &mut H)
-    where
-        H: Hasher,
-    {
-        self.attrs.hash(state);
-        self.name.hash(state);
-        self.comma.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -222,6 +197,14 @@ impl Hash for crate::Block {
         self.stmts.hash(state);
     }
 }
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::BlockModifiers {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::BoundLifetimes {
@@ -251,6 +234,24 @@ impl Hash for crate::CapturedParam {
         }
     }
 }
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ClosureModifiers {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ConstModifiers {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.defaultness.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ConstParam {
@@ -261,7 +262,6 @@ impl Hash for crate::ConstParam {
         self.attrs.hash(state);
         self.ident.hash(state);
         self.ty.hash(state);
-        self.eq_token.hash(state);
         self.default.hash(state);
     }
 }
@@ -574,6 +574,7 @@ impl Hash for crate::ExprAsync {
     {
         self.attrs.hash(state);
         self.capture.hash(state);
+        self.modifiers.hash(state);
         self.block.hash(state);
     }
 }
@@ -658,8 +659,8 @@ impl Hash for crate::ExprClosure {
     {
         self.attrs.hash(state);
         self.lifetimes.hash(state);
+        self.modifiers.hash(state);
         self.constness.hash(state);
-        self.movability.hash(state);
         self.asyncness.hash(state);
         self.capture.hash(state);
         self.inputs.hash(state);
@@ -675,6 +676,7 @@ impl Hash for crate::ExprConst {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.modifiers.hash(state);
         self.block.hash(state);
     }
 }
@@ -950,6 +952,7 @@ impl Hash for crate::ExprTryBlock {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.modifiers.hash(state);
         self.block.hash(state);
     }
 }
@@ -1020,25 +1023,20 @@ impl Hash for crate::Field {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
-        self.mutability.hash(state);
+        self.modifiers.hash(state);
         self.ident.hash(state);
         self.colon_token.hash(state);
         self.ty.hash(state);
+        self.default.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::FieldMutability {
-    fn hash<H>(&self, state: &mut H)
+impl Hash for crate::FieldModifiers {
+    fn hash<H>(&self, _state: &mut H)
     where
         H: Hasher,
-    {
-        match self {
-            crate::FieldMutability::None => {
-                state.write_u8(0u8);
-            }
-        }
-    }
+    {}
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -1116,6 +1114,7 @@ impl Hash for crate::File {
         H: Hasher,
     {
         self.shebang.hash(state);
+        self.frontmatter.hash(state);
         self.attrs.hash(state);
         self.items.hash(state);
     }
@@ -1137,6 +1136,28 @@ impl Hash for crate::FnArg {
                 v0.hash(state);
             }
         }
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::FnModifiers {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.defaultness.hash(state);
+    }
+}
+#[cfg(any(feature = "derive", feature = "full"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::FnPtrVariadic {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.name.hash(state);
+        self.comma.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -1179,6 +1200,7 @@ impl Hash for crate::ForeignItemFn {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.modifiers.hash(state);
         self.sig.hash(state);
     }
 }
@@ -1203,6 +1225,7 @@ impl Hash for crate::ForeignItemStatic {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.safety.hash(state);
         self.mutability.hash(state);
         self.ident.hash(state);
         self.ty.hash(state);
@@ -1217,9 +1240,18 @@ impl Hash for crate::ForeignItemType {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.modifiers.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
     }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::Frontmatter {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -1332,7 +1364,7 @@ impl Hash for crate::ImplItemConst {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
-        self.defaultness.hash(state);
+        self.modifiers.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.ty.hash(state);
@@ -1348,7 +1380,7 @@ impl Hash for crate::ImplItemFn {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
-        self.defaultness.hash(state);
+        self.modifiers.hash(state);
         self.sig.hash(state);
         self.block.hash(state);
     }
@@ -1374,7 +1406,7 @@ impl Hash for crate::ImplItemType {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
-        self.defaultness.hash(state);
+        self.modifiers.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.ty.hash(state);
@@ -1382,12 +1414,13 @@ impl Hash for crate::ImplItemType {
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::ImplRestriction {
-    fn hash<H>(&self, _state: &mut H)
+impl Hash for crate::ImplModifiers {
+    fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
     {
-        match *self {}
+        self.defaultness.hash(state);
+        self.polarity.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -1474,6 +1507,7 @@ impl Hash for crate::ItemConst {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.modifiers.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.ty.hash(state);
@@ -1516,6 +1550,7 @@ impl Hash for crate::ItemFn {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.modifiers.hash(state);
         self.sig.hash(state);
         self.block.hash(state);
     }
@@ -1541,7 +1576,7 @@ impl Hash for crate::ItemImpl {
         H: Hasher,
     {
         self.attrs.hash(state);
-        self.defaultness.hash(state);
+        self.modifiers.hash(state);
         self.unsafety.hash(state);
         self.generics.hash(state);
         self.trait_.hash(state);
@@ -1616,9 +1651,8 @@ impl Hash for crate::ItemTrait {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.modifiers.hash(state);
         self.unsafety.hash(state);
-        self.auto_token.hash(state);
-        self.restriction.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.colon_token.hash(state);
@@ -1649,9 +1683,11 @@ impl Hash for crate::ItemType {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.modifiers.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.ty.hash(state);
+        self.where_clause_placement.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -1767,6 +1803,7 @@ impl Hash for crate::Local {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.modifiers.hash(state);
         self.pat.hash(state);
         self.init.hash(state);
     }
@@ -1781,6 +1818,14 @@ impl Hash for crate::LocalInit {
         self.expr.hash(state);
         self.diverge.hash(state);
     }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::LocalModifiers {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -1862,6 +1907,18 @@ impl Hash for crate::MetaNameValue {
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::NamedArg {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.name.hash(state);
+        self.ty.hash(state);
+    }
+}
+#[cfg(any(feature = "derive", feature = "full"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ParenthesizedGenericArguments {
     fn hash<H>(&self, state: &mut H)
     where
@@ -1883,71 +1940,87 @@ impl Hash for crate::Pat {
                 state.write_u8(0u8);
                 v0.hash(state);
             }
-            crate::Pat::Ident(v0) => {
+            crate::Pat::Guard(v0) => {
                 state.write_u8(1u8);
                 v0.hash(state);
             }
-            crate::Pat::Lit(v0) => {
+            crate::Pat::Ident(v0) => {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
-            crate::Pat::Macro(v0) => {
+            crate::Pat::Lit(v0) => {
                 state.write_u8(3u8);
                 v0.hash(state);
             }
-            crate::Pat::Or(v0) => {
+            crate::Pat::Macro(v0) => {
                 state.write_u8(4u8);
                 v0.hash(state);
             }
-            crate::Pat::Paren(v0) => {
+            crate::Pat::Or(v0) => {
                 state.write_u8(5u8);
                 v0.hash(state);
             }
-            crate::Pat::Path(v0) => {
+            crate::Pat::Paren(v0) => {
                 state.write_u8(6u8);
                 v0.hash(state);
             }
-            crate::Pat::Range(v0) => {
+            crate::Pat::Path(v0) => {
                 state.write_u8(7u8);
                 v0.hash(state);
             }
-            crate::Pat::Reference(v0) => {
+            crate::Pat::Range(v0) => {
                 state.write_u8(8u8);
                 v0.hash(state);
             }
-            crate::Pat::Rest(v0) => {
+            crate::Pat::Reference(v0) => {
                 state.write_u8(9u8);
                 v0.hash(state);
             }
-            crate::Pat::Slice(v0) => {
+            crate::Pat::Rest(v0) => {
                 state.write_u8(10u8);
                 v0.hash(state);
             }
-            crate::Pat::Struct(v0) => {
+            crate::Pat::Slice(v0) => {
                 state.write_u8(11u8);
                 v0.hash(state);
             }
-            crate::Pat::Tuple(v0) => {
+            crate::Pat::Struct(v0) => {
                 state.write_u8(12u8);
                 v0.hash(state);
             }
-            crate::Pat::TupleStruct(v0) => {
+            crate::Pat::Tuple(v0) => {
                 state.write_u8(13u8);
                 v0.hash(state);
             }
-            crate::Pat::Type(v0) => {
+            crate::Pat::TupleStruct(v0) => {
                 state.write_u8(14u8);
                 v0.hash(state);
             }
-            crate::Pat::Verbatim(v0) => {
+            crate::Pat::Type(v0) => {
                 state.write_u8(15u8);
+                v0.hash(state);
+            }
+            crate::Pat::Verbatim(v0) => {
+                state.write_u8(16u8);
                 TokenStreamHelper(v0).hash(state);
             }
             crate::Pat::Wild(v0) => {
-                state.write_u8(16u8);
+                state.write_u8(17u8);
                 v0.hash(state);
             }
         }
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::PatGuard {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.pat.hash(state);
+        self.guard.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -2124,7 +2197,7 @@ impl Hash for crate::PathSegment {
         self.arguments.hash(state);
     }
 }
-#[cfg(feature = "full")]
+#[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::PointerMutability {
     fn hash<H>(&self, state: &mut H)
@@ -2158,6 +2231,7 @@ impl Hash for crate::PredicateLifetime {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.lifetime.hash(state);
         self.bounds.hash(state);
     }
@@ -2169,6 +2243,7 @@ impl Hash for crate::PredicateType {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.lifetimes.hash(state);
         self.bounded_ty.hash(state);
         self.bounds.hash(state);
@@ -2211,10 +2286,31 @@ impl Hash for crate::Receiver {
         H: Hasher,
     {
         self.attrs.hash(state);
-        self.reference.hash(state);
         self.mutability.hash(state);
-        self.colon_token.hash(state);
-        self.ty.hash(state);
+        self.kind.hash(state);
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ReceiverKind {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            crate::ReceiverKind::Value => {
+                state.write_u8(0u8);
+            }
+            crate::ReceiverKind::Reference(_, v1, v2) => {
+                state.write_u8(1u8);
+                v1.hash(state);
+                v2.hash(state);
+            }
+            crate::ReceiverKind::Typed(_, v1) => {
+                state.write_u8(2u8);
+                v1.hash(state);
+            }
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2237,6 +2333,26 @@ impl Hash for crate::ReturnType {
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::Safety {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            crate::Safety::Safe(_) => {
+                state.write_u8(0u8);
+            }
+            crate::Safety::Unsafe(_) => {
+                state.write_u8(1u8);
+            }
+            crate::Safety::Default => {
+                state.write_u8(2u8);
+            }
+        }
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::Signature {
     fn hash<H>(&self, state: &mut H)
     where
@@ -2244,7 +2360,7 @@ impl Hash for crate::Signature {
     {
         self.constness.hash(state);
         self.asyncness.hash(state);
-        self.unsafety.hash(state);
+        self.safety.hash(state);
         self.abi.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
@@ -2318,27 +2434,19 @@ impl Hash for crate::TraitBound {
         H: Hasher,
     {
         self.paren_token.hash(state);
-        self.modifier.hash(state);
         self.lifetimes.hash(state);
+        self.modifiers.hash(state);
+        self.maybe.hash(state);
         self.path.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::TraitBoundModifier {
-    fn hash<H>(&self, state: &mut H)
+impl Hash for crate::TraitBoundModifiers {
+    fn hash<H>(&self, _state: &mut H)
     where
         H: Hasher,
-    {
-        match self {
-            crate::TraitBoundModifier::None => {
-                state.write_u8(0u8);
-            }
-            crate::TraitBoundModifier::Maybe(_) => {
-                state.write_u8(1u8);
-            }
-        }
-    }
+    {}
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -2379,6 +2487,7 @@ impl Hash for crate::TraitItemConst {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.modifiers.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.ty.hash(state);
@@ -2393,6 +2502,7 @@ impl Hash for crate::TraitItemFn {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.modifiers.hash(state);
         self.sig.hash(state);
         self.default.hash(state);
         self.semi_token.hash(state);
@@ -2418,11 +2528,22 @@ impl Hash for crate::TraitItemType {
         H: Hasher,
     {
         self.attrs.hash(state);
+        self.modifiers.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.colon_token.hash(state);
         self.bounds.hash(state);
         self.default.hash(state);
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::TraitModifiers {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.auto_token.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2437,7 +2558,7 @@ impl Hash for crate::Type {
                 state.write_u8(0u8);
                 v0.hash(state);
             }
-            crate::Type::BareFn(v0) => {
+            crate::Type::FnPtr(v0) => {
                 state.write_u8(1u8);
                 v0.hash(state);
             }
@@ -2503,17 +2624,19 @@ impl Hash for crate::TypeArray {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.elem.hash(state);
         self.len.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::TypeBareFn {
+impl Hash for crate::TypeFnPtr {
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.lifetimes.hash(state);
         self.unsafety.hash(state);
         self.abi.hash(state);
@@ -2529,6 +2652,7 @@ impl Hash for crate::TypeGroup {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.elem.hash(state);
     }
 }
@@ -2539,16 +2663,19 @@ impl Hash for crate::TypeImplTrait {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.bounds.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::TypeInfer {
-    fn hash<H>(&self, _state: &mut H)
+    fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
-    {}
+    {
+        self.attrs.hash(state);
+    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -2557,16 +2684,29 @@ impl Hash for crate::TypeMacro {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.mac.hash(state);
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::TypeModifiers {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.defaultness.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::TypeNever {
-    fn hash<H>(&self, _state: &mut H)
+    fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
-    {}
+    {
+        self.attrs.hash(state);
+    }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -2579,7 +2719,6 @@ impl Hash for crate::TypeParam {
         self.ident.hash(state);
         self.colon_token.hash(state);
         self.bounds.hash(state);
-        self.eq_token.hash(state);
         self.default.hash(state);
     }
 }
@@ -2620,6 +2759,7 @@ impl Hash for crate::TypeParen {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.elem.hash(state);
     }
 }
@@ -2630,6 +2770,7 @@ impl Hash for crate::TypePath {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.qself.hash(state);
         self.path.hash(state);
     }
@@ -2641,7 +2782,7 @@ impl Hash for crate::TypePtr {
     where
         H: Hasher,
     {
-        self.const_token.hash(state);
+        self.attrs.hash(state);
         self.mutability.hash(state);
         self.elem.hash(state);
     }
@@ -2653,6 +2794,7 @@ impl Hash for crate::TypeReference {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.lifetime.hash(state);
         self.mutability.hash(state);
         self.elem.hash(state);
@@ -2665,6 +2807,7 @@ impl Hash for crate::TypeSlice {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.elem.hash(state);
     }
 }
@@ -2675,6 +2818,7 @@ impl Hash for crate::TypeTraitObject {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.dyn_token.hash(state);
         self.bounds.hash(state);
     }
@@ -2686,6 +2830,7 @@ impl Hash for crate::TypeTuple {
     where
         H: Hasher,
     {
+        self.attrs.hash(state);
         self.elems.hash(state);
     }
 }
@@ -2855,6 +3000,23 @@ impl Hash for crate::WhereClause {
         H: Hasher,
     {
         self.predicates.hash(state);
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::WhereClausePlacement {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            crate::WhereClausePlacement::Early => {
+                state.write_u8(0u8);
+            }
+            crate::WhereClausePlacement::Late => {
+                state.write_u8(1u8);
+            }
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

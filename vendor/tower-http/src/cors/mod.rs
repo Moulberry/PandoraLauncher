@@ -57,7 +57,6 @@ use http::{
 };
 use pin_project_lite::pin_project;
 use std::{
-    array,
     future::Future,
     mem,
     pin::Pin,
@@ -436,7 +435,7 @@ impl CorsLayer {
     /// In contrast to the other headers, this one has a non-empty default of
     /// [`preflight_request_headers()`].
     ///
-    /// You only need to set this is you want to remove some of these defaults,
+    /// You only need to set this if you want to remove some of these defaults,
     /// or if you use a closure for one of the other headers and want to add a
     /// vary header accordingly.
     ///
@@ -813,8 +812,7 @@ fn ensure_usable_cors_rules(layer: &CorsLayer) {
 ///
 /// This is the default set of header names returned in the `vary` header
 pub fn preflight_request_headers() -> impl Iterator<Item = HeaderName> {
-    #[allow(deprecated)] // Can be changed when MSRV >= 1.53
-    array::IntoIter::new([
+    IntoIterator::into_iter([
         header::ORIGIN,
         header::ACCESS_CONTROL_REQUEST_METHOD,
         header::ACCESS_CONTROL_REQUEST_HEADERS,

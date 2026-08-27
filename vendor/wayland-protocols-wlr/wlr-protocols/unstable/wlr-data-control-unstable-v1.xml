@@ -39,6 +39,9 @@
     Once the protocol is to be declared stable, the 'z' prefix and the
     version number in the protocol and interface names are removed and the
     interface version number is reset.
+
+    Note! This protocol is deprecated and not intended for production use.
+    For clipboard management, use the ext-data-control-v1 protocol.
   </description>
 
   <interface name="zwlr_data_control_manager_v1" version="2">

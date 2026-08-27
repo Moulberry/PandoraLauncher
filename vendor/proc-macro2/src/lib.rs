@@ -53,7 +53,7 @@
 //! If parsing with [Syn], you'll use [`parse_macro_input!`] instead to
 //! propagate parse errors correctly back to the compiler when parsing fails.
 //!
-//! [`parse_macro_input!`]: https://docs.rs/syn/2.0/syn/macro.parse_macro_input.html
+//! [`parse_macro_input!`]: https://docs.rs/syn/3/syn/macro.parse_macro_input.html
 //!
 //! # Unstable features
 //!
@@ -63,7 +63,7 @@
 //!
 //! To opt into the additional APIs available in the most recent nightly
 //! compiler, the `procmacro2_semver_exempt` config flag must be passed to
-//! rustc. We will polyfill those nightly-only APIs back to Rust 1.56.0. As
+//! rustc. We will polyfill those nightly-only APIs back to Rust 1.71.0. As
 //! these are unstable APIs that track the nightly compiler, minor versions of
 //! proc-macro2 may make breaking changes to them at any time.
 //!
@@ -83,8 +83,8 @@
 //! types make use of thread-local memory, meaning they cannot be accessed from
 //! a different thread.
 
-// Proc-macro2 types in rustdoc of other crates get linked to here.
-#![doc(html_root_url = "https://docs.rs/proc-macro2/1.0.101")]
+#![no_std]
+#![doc(html_root_url = "https://docs.rs/proc-macro2/1.0.107")]
 #![cfg_attr(any(proc_macro_span, super_unstable), feature(proc_macro_span))]
 #![cfg_attr(super_unstable, feature(proc_macro_def_site))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -110,6 +110,7 @@
     clippy::return_self_not_must_use,
     clippy::shadow_unrelated,
     clippy::trivially_copy_pass_by_ref,
+    clippy::uninlined_format_args,
     clippy::unnecessary_wraps,
     clippy::unused_self,
     clippy::used_underscore_binding,
@@ -135,6 +136,7 @@ compile_error! {"\
 "}
 
 extern crate alloc;
+extern crate std;
 
 #[cfg(feature = "proc-macro")]
 extern crate proc_macro;
@@ -163,9 +165,23 @@ mod imp;
 #[cfg(span_locations)]
 mod location;
 
+#[cfg(procmacro2_semver_exempt)]
+mod num;
+#[cfg(procmacro2_semver_exempt)]
+#[allow(dead_code)]
+mod rustc_literal_escaper;
+
 use crate::extra::DelimSpan;
 use crate::marker::{ProcMacroAutoTraits, MARKER};
+#[cfg(procmacro2_semver_exempt)]
+use crate::rustc_literal_escaper::MixedUnit;
+#[cfg(procmacro2_semver_exempt)]
+use alloc::borrow::ToOwned as _;
+use alloc::string::{String, ToString as _};
+#[cfg(procmacro2_semver_exempt)]
+use alloc::vec::Vec;
 use core::cmp::Ordering;
+use core::ffi::CStr;
 use core::fmt::{self, Debug, Display};
 use core::hash::{Hash, Hasher};
 #[cfg(span_locations)]
@@ -173,13 +189,16 @@ use core::ops::Range;
 use core::ops::RangeBounds;
 use core::str::FromStr;
 use std::error::Error;
-use std::ffi::CStr;
 #[cfg(span_locations)]
 use std::path::PathBuf;
 
 #[cfg(span_locations)]
 #[cfg_attr(docsrs, doc(cfg(feature = "span-locations")))]
 pub use crate::location::LineColumn;
+
+#[cfg(procmacro2_semver_exempt)]
+#[cfg_attr(docsrs, doc(cfg(procmacro2_semver_exempt)))]
+pub use crate::rustc_literal_escaper::EscapeError;
 
 /// An abstract stream of tokens, or more concretely a sequence of token trees.
 ///
@@ -279,8 +298,8 @@ impl From<TokenTree> for TokenStream {
 }
 
 impl Extend<TokenTree> for TokenStream {
-    fn extend<I: IntoIterator<Item = TokenTree>>(&mut self, streams: I) {
-        self.inner.extend(streams);
+    fn extend<I: IntoIterator<Item = TokenTree>>(&mut self, tokens: I) {
+        self.inner.extend(tokens);
     }
 }
 
@@ -291,12 +310,38 @@ impl Extend<TokenStream> for TokenStream {
     }
 }
 
-/// Collects a number of token trees into a single stream.
-impl FromIterator<TokenTree> for TokenStream {
-    fn from_iter<I: IntoIterator<Item = TokenTree>>(streams: I) -> Self {
-        TokenStream::_new(streams.into_iter().collect())
+impl Extend<Group> for TokenStream {
+    fn extend<I: IntoIterator<Item = Group>>(&mut self, tokens: I) {
+        self.inner.extend(tokens.into_iter().map(TokenTree::Group));
     }
 }
+
+impl Extend<Ident> for TokenStream {
+    fn extend<I: IntoIterator<Item = Ident>>(&mut self, tokens: I) {
+        self.inner.extend(tokens.into_iter().map(TokenTree::Ident));
+    }
+}
+
+impl Extend<Punct> for TokenStream {
+    fn extend<I: IntoIterator<Item = Punct>>(&mut self, tokens: I) {
+        self.inner.extend(tokens.into_iter().map(TokenTree::Punct));
+    }
+}
+
+impl Extend<Literal> for TokenStream {
+    fn extend<I: IntoIterator<Item = Literal>>(&mut self, tokens: I) {
+        self.inner
+            .extend(tokens.into_iter().map(TokenTree::Literal));
+    }
+}
+
+/// Collects a number of token trees into a single stream.
+impl FromIterator<TokenTree> for TokenStream {
+    fn from_iter<I: IntoIterator<Item = TokenTree>>(tokens: I) -> Self {
+        TokenStream::_new(tokens.into_iter().collect())
+    }
+}
+
 impl FromIterator<TokenStream> for TokenStream {
     fn from_iter<I: IntoIterator<Item = TokenStream>>(streams: I) -> Self {
         TokenStream::_new(streams.into_iter().map(|i| i.inner).collect())
@@ -869,7 +914,7 @@ impl Debug for Punct {
 /// Rust keywords. Use `input.call(Ident::parse_any)` when parsing to match the
 /// behaviour of `Ident::new`.
 ///
-/// [`Parse`]: https://docs.rs/syn/2.0/syn/parse/trait.Parse.html
+/// [`Parse`]: https://docs.rs/syn/3/syn/parse/trait.Parse.html
 ///
 /// # Examples
 ///
@@ -967,7 +1012,7 @@ impl Ident {
     /// Panics if the input string is neither a keyword nor a legal variable
     /// name. If you are not sure whether the string contains an identifier and
     /// need to handle an error case, use
-    /// <a href="https://docs.rs/syn/2.0/syn/fn.parse_str.html"><code
+    /// <a href="https://docs.rs/syn/3/syn/fn.parse_str.html"><code
     ///   style="padding-right:0;">syn::parse_str</code></a><code
     ///   style="padding-left:0;">::&lt;Ident&gt;</code>
     /// rather than `Ident::new`.
@@ -1262,6 +1307,112 @@ impl Literal {
         self.inner.subspan(range).map(Span::_new)
     }
 
+    /// Returns the unescaped string value if this is a string literal.
+    #[cfg(procmacro2_semver_exempt)]
+    pub fn str_value(&self) -> Result<String, ConversionErrorKind> {
+        let repr = self.to_string();
+
+        if repr.starts_with('"') && repr[1..].ends_with('"') {
+            let quoted = &repr[1..repr.len() - 1];
+            let mut value = String::with_capacity(quoted.len());
+            let mut error = None;
+            rustc_literal_escaper::unescape_str(quoted, |_range, res| match res {
+                Ok(ch) => value.push(ch),
+                Err(err) => {
+                    if err.is_fatal() {
+                        error = Some(ConversionErrorKind::FailedToUnescape(err));
+                    }
+                }
+            });
+            return match error {
+                Some(error) => Err(error),
+                None => Ok(value),
+            };
+        }
+
+        if repr.starts_with('r') {
+            if let Some(raw) = get_raw(&repr[1..]) {
+                return Ok(raw.to_owned());
+            }
+        }
+
+        Err(ConversionErrorKind::InvalidLiteralKind)
+    }
+
+    /// Returns the unescaped string value (including nul terminator) if this is
+    /// a c-string literal.
+    #[cfg(procmacro2_semver_exempt)]
+    pub fn cstr_value(&self) -> Result<Vec<u8>, ConversionErrorKind> {
+        let repr = self.to_string();
+
+        if repr.starts_with("c\"") && repr[2..].ends_with('"') {
+            let quoted = &repr[2..repr.len() - 1];
+            let mut value = Vec::with_capacity(quoted.len());
+            let mut error = None;
+            rustc_literal_escaper::unescape_c_str(quoted, |_range, res| match res {
+                Ok(MixedUnit::Char(ch)) => {
+                    value.extend_from_slice(ch.get().encode_utf8(&mut [0; 4]).as_bytes());
+                }
+                Ok(MixedUnit::HighByte(byte)) => value.push(byte.get()),
+                Err(err) => {
+                    if err.is_fatal() {
+                        error = Some(ConversionErrorKind::FailedToUnescape(err));
+                    }
+                }
+            });
+            return match error {
+                Some(error) => Err(error),
+                None => {
+                    value.push(b'\0');
+                    Ok(value)
+                }
+            };
+        }
+
+        if repr.starts_with("cr") {
+            if let Some(raw) = get_raw(&repr[2..]) {
+                let mut value = Vec::with_capacity(raw.len() + 1);
+                value.extend_from_slice(raw.as_bytes());
+                value.push(b'\0');
+                return Ok(value);
+            }
+        }
+
+        Err(ConversionErrorKind::InvalidLiteralKind)
+    }
+
+    /// Returns the unescaped string value if this is a byte string literal.
+    #[cfg(procmacro2_semver_exempt)]
+    pub fn byte_str_value(&self) -> Result<Vec<u8>, ConversionErrorKind> {
+        let repr = self.to_string();
+
+        if repr.starts_with("b\"") && repr[2..].ends_with('"') {
+            let quoted = &repr[2..repr.len() - 1];
+            let mut value = Vec::with_capacity(quoted.len());
+            let mut error = None;
+            rustc_literal_escaper::unescape_byte_str(quoted, |_range, res| match res {
+                Ok(byte) => value.push(byte),
+                Err(err) => {
+                    if err.is_fatal() {
+                        error = Some(ConversionErrorKind::FailedToUnescape(err));
+                    }
+                }
+            });
+            return match error {
+                Some(error) => Err(error),
+                None => Ok(value),
+            };
+        }
+
+        if repr.starts_with("br") {
+            if let Some(raw) = get_raw(&repr[2..]) {
+                return Ok(raw.as_bytes().to_owned());
+            }
+        }
+
+        Err(ConversionErrorKind::InvalidLiteralKind)
+    }
+
     // Intended for the `quote!` macro to use when constructing a proc-macro2
     // token out of a macro_rules $:literal token, which is already known to be
     // a valid literal. This avoids reparsing/validating the literal's string
@@ -1295,6 +1446,33 @@ impl Debug for Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         Display::fmt(&self.inner, f)
+    }
+}
+
+/// Error when retrieving a string literal's unescaped value.
+#[cfg(procmacro2_semver_exempt)]
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConversionErrorKind {
+    /// The literal is of the right string kind, but its contents are malformed
+    /// in a way that cannot be unescaped to a value.
+    FailedToUnescape(EscapeError),
+    /// The literal is not of the string kind whose value was requested, for
+    /// example byte string vs UTF-8 string.
+    InvalidLiteralKind,
+}
+
+// ###"..."### -> ...
+#[cfg(procmacro2_semver_exempt)]
+fn get_raw(repr: &str) -> Option<&str> {
+    let pounds = repr.len() - repr.trim_start_matches('#').len();
+    if repr.len() >= pounds + 1 + 1 + pounds
+        && repr[pounds..].starts_with('"')
+        && repr.trim_end_matches('#').len() + pounds == repr.len()
+        && repr[..repr.len() - pounds].ends_with('"')
+    {
+        Some(&repr[pounds + 1..repr.len() - pounds - 1])
+    } else {
+        None
     }
 }
 

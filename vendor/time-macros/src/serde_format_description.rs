@@ -1,9 +1,12 @@
-use proc_macro::{Ident, TokenStream, TokenTree};
+use proc_macro::{Ident, TokenStream};
+
+use crate::FormatDescriptionVersion;
 
 pub(crate) fn build(
+    version: FormatDescriptionVersion,
     visibility: TokenStream,
     mod_name: Ident,
-    ty: TokenTree,
+    ty: TokenStream,
     format: TokenStream,
     format_description_display: String,
 ) -> TokenStream {
@@ -150,14 +153,28 @@ pub(crate) fn build(
         (true, true) => quote_! { ::time::formatting::Formattable + ::time::parsing::Parsable },
     };
 
+    let hygiene_imports = match (cfg!(feature = "formatting"), cfg!(feature = "parsing")) {
+        (false, false) => bug!(
+            "`serde_format_description` cannot be enabled without either the `formatting` or \
+             `parsing` features"
+        ),
+        (false, true) => quote_! { pub use self::__hygiene::deserialize; },
+        (true, false) => quote_! { pub use self::__hygiene::serialize; },
+        (true, true) => quote_! { pub use self::__hygiene::{serialize, deserialize}; },
+    };
+
+    let main_type_import = if version.is_at_most_v2() {
+        quote_! { use ::time::#S(ty) as __TimeSerdeType; }
+    } else {
+        quote_! { use #S(ty) as __TimeSerdeType; }
+    };
+
     quote_! {
         #S(visibility) mod #(mod_name) {
             use super::*;
-            // TODO Remove the prefix, forcing the user to import the type themself. This must be
-            // done in a breaking change.
-            use ::time::#(ty) as __TimeSerdeType;
+            #S(main_type_import)
             #[expect(clippy::pub_use)]
-            pub use self::__hygiene::*;
+            #S(hygiene_imports)
 
             const fn description() -> impl #S(fd_traits) {
                 #S(format)

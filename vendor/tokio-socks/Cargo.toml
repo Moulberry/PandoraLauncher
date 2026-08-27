@@ -12,9 +12,10 @@
 [package]
 edition = "2018"
 name = "tokio-socks"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["Yilin Chen <sticnarf@gmail.com>"]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -36,6 +37,10 @@ categories = [
 ]
 license = "MIT"
 repository = "https://github.com/sticnarf/tokio-socks"
+
+[features]
+default = ["tokio"]
+tor = []
 
 [lib]
 name = "tokio_socks"
@@ -125,7 +130,3 @@ features = [
     "rt-multi-thread",
     "net",
 ]
-
-[features]
-default = ["tokio"]
-tor = []

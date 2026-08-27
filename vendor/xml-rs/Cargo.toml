@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.70"
 name = "xml-rs"
-version = "0.8.28"
+version = "0.8.29"
 authors = ["Vladimir Matveev <vmatveev@citrine.cc>"]
 build = false
 include = [
@@ -50,7 +50,7 @@ tag-name = "{{version}}"
 tag-message = ""
 
 [badges.maintenance]
-status = "actively-developed"
+status = "deprecated"
 
 [lib]
 name = "xml"

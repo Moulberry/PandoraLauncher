@@ -9,5 +9,5 @@
 //! The APIs under this module are not stable and may change in the future.
 //! They are not covered by semver guarantees.
 //!
-#[cfg(not(feature = "fips"))]
+#[deprecated(note = "use `aws_lc_rs::signature` instead")]
 pub mod signature;

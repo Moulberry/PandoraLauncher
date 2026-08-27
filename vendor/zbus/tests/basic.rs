@@ -363,3 +363,73 @@ async fn test_freedesktop_credentials() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(unix)]
+#[tokio::test]
+#[timeout(15000)]
+async fn ibus_connection() {
+    use std::env;
+    use tokio::fs;
+
+    // First try with real IBus if available.
+    let result = test_ibus_connection().await;
+
+    match result {
+        Ok(_) => return,
+        Err(zbus::Error::Address(msg)) if msg.contains("Failed to execute ibus") => {
+            // IBus not available, use mock.
+        }
+        Err(e) => panic!("Unexpected error: {}", e),
+    }
+
+    // If real IBus is not available, set up a mock and try again.
+    let temp_dir = std::env::temp_dir().join(format!("zbus-test-{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).await.unwrap();
+
+    // Mock ibus script that outputs a valid D-Bus address.
+    let mock_ibus = temp_dir.join("ibus");
+    let session_address = env::var("DBUS_SESSION_BUS_ADDRESS")
+        .unwrap_or_else(|_| "unix:path=/tmp/dbus-test".to_string());
+
+    fs::write(
+        &mock_ibus,
+        format!(
+            "#!/bin/sh\nif [ \"$1\" = \"address\" ]; then\n  echo \"{}\"\nfi\n",
+            session_address
+        ),
+    )
+    .await
+    .unwrap();
+
+    // Make the script executable.
+    use std::os::unix::fs::PermissionsExt as _;
+    let perms = std::fs::Permissions::from_mode(0o755);
+    fs::set_permissions(&mock_ibus, perms).await.unwrap();
+
+    // Prepend temp directory to PATH so our mock ibus is found first.
+    let original_path = env::var("PATH").unwrap_or_default();
+    let new_path = format!("{}:{}", temp_dir.display(), original_path);
+    unsafe {
+        env::set_var("PATH", &new_path);
+    }
+
+    let result = test_ibus_connection().await;
+
+    // Restore PATH and remove temp directory.
+    unsafe {
+        env::set_var("PATH", &original_path);
+    }
+    fs::remove_dir_all(&temp_dir).await.ok();
+
+    result.unwrap();
+}
+
+#[cfg(unix)]
+async fn test_ibus_connection() -> Result<()> {
+    let connection = zbus::connection::Builder::ibus()?.build().await?;
+
+    // Just verify we can get a unique name.
+    assert!(connection.unique_name().is_some());
+
+    Ok(())
+}

@@ -51,10 +51,7 @@ pub(crate) unsafe fn register(
 ) -> Result<SigId> {
     // If this signal isn't SIGINT, then we can't register it.
     if signal != SIGINT {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "unsupported signal",
-        ));
+        return Err(std::io::Error::other("unsupported signal"));
     }
 
     // Register the handler into the global registry.

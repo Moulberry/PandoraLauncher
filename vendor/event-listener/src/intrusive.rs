@@ -19,12 +19,15 @@ use core::pin::Pin;
 use core::ptr::NonNull;
 
 pub(super) struct List<T>(
-    /// libstd-based implementation uses a normal Muetx to secure the data.
+    /// libstd-based implementation uses a normal Mutex to secure the data.
     #[cfg(all(feature = "std", not(feature = "critical-section")))]
     crate::sync::Mutex<Inner<T>>,
     /// Critical-section-based implementation uses a CS cell that wraps a RefCell.
     #[cfg(feature = "critical-section")]
     critical_section::Mutex<RefCell<Inner<T>>>,
+    /// Spinlock implementation uses a spinlock.
+    #[cfg(not(any(feature = "std", feature = "critical-section")))]
+    spinlock::Spinlock<Inner<T>>,
 );
 
 struct Inner<T> {
@@ -60,8 +63,15 @@ impl<T> List<T> {
             Self(critical_section::Mutex::new(RefCell::new(inner)))
         }
 
-        #[cfg(not(feature = "critical-section"))]
-        Self(crate::sync::Mutex::new(inner))
+        #[cfg(all(not(feature = "critical-section"), feature = "std"))]
+        {
+            Self(crate::sync::Mutex::new(inner))
+        }
+
+        #[cfg(not(any(feature = "std", feature = "critical-section")))]
+        {
+            Self(spinlock::Spinlock::new(inner))
+        }
     }
 
     /// Get the total number of listeners without blocking.
@@ -74,6 +84,12 @@ impl<T> List<T> {
     #[cfg(feature = "critical-section")]
     pub(crate) fn try_total_listeners(&self) -> Option<usize> {
         Some(self.total_listeners())
+    }
+
+    /// Get the total number of listeners without blocking.
+    #[cfg(not(any(feature = "std", feature = "critical-section")))]
+    pub(crate) fn try_total_listeners(&self) -> Option<usize> {
+        self.0.try_with(|list| list.len)
     }
 
     /// Get the total number of listeners with blocking.
@@ -125,7 +141,7 @@ impl<T> crate::Inner<T> {
         f(&mut list)
     }
 
-    #[cfg(feature = "critical-section")]
+    #[cfg(any(not(feature = "std"), feature = "critical-section"))]
     fn with_inner<R>(&self, f: impl FnOnce(&mut Inner<T>) -> R) -> R {
         struct ListWrapper<'a, T> {
             inner: &'a crate::Inner<T>,
@@ -138,8 +154,19 @@ impl<T> crate::Inner<T> {
             }
         }
 
-        critical_section::with(move |cs| {
+        #[cfg(feature = "critical-section")]
+        return critical_section::with(move |cs| {
             let mut list = self.list.0.borrow_ref_mut(cs);
+            let wrapper = ListWrapper {
+                inner: self,
+                list: &mut *list,
+            };
+
+            f(wrapper.list)
+        });
+
+        #[cfg(not(feature = "critical-section"))]
+        self.list.0.with(move |list| {
             let wrapper = ListWrapper {
                 inner: self,
                 list: &mut *list,
@@ -392,6 +419,77 @@ struct Link<T> {
 
     /// The next link in the linked list.
     next: Cell<Option<NonNull<Link<T>>>>,
+}
+
+/// Dangerous spinlock for when neither std nor critical-section are enabled.
+#[cfg(not(any(feature = "std", feature = "critical-section")))]
+mod spinlock {
+    use crate::sync::atomic::{AtomicBool, Ordering};
+    use crate::sync::cell::UnsafeCell;
+
+    /// A spinlock.
+    pub(super) struct Spinlock<T> {
+        /// Is this spinlock locked?
+        locked: AtomicBool,
+
+        /// The data contained within the lock.
+        data: UnsafeCell<T>,
+    }
+
+    impl<T> Spinlock<T> {
+        /// Create a new [`Spinlock`].
+        #[inline]
+        pub(super) fn new(data: T) -> Self {
+            Self {
+                locked: AtomicBool::new(false),
+                data: UnsafeCell::new(data),
+            }
+        }
+
+        /// Try to acquire a spinlock, run a closure, then release.
+        #[inline]
+        pub(super) fn try_with<R>(&self, f: impl FnOnce(&mut T) -> R) -> Option<R> {
+            if self
+                .locked
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                let _guard = CallOnDrop(|| self.locked.store(false, Ordering::Release));
+                // SAFETY: We have the lock held.
+                Some(f(unsafe { self.data.get().deref_mut() }))
+            } else {
+                None
+            }
+        }
+
+        /// Run an operation with the spinlock held.
+        #[inline]
+        pub(super) fn with<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+            loop {
+                if self
+                    .locked
+                    .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
+                    .is_ok()
+                {
+                    let _guard = CallOnDrop(|| self.locked.store(false, Ordering::Release));
+                    // SAFETY: We have the lock held.
+                    return f(unsafe { self.data.get().deref_mut() });
+                }
+
+                while self.locked.load(Ordering::Relaxed) {
+                    core::hint::spin_loop();
+                }
+            }
+        }
+    }
+
+    struct CallOnDrop<F: FnMut()>(F);
+    impl<F: FnMut()> Drop for CallOnDrop<F> {
+        #[inline]
+        fn drop(&mut self) {
+            (self.0)();
+        }
+    }
 }
 
 #[cfg(test)]

@@ -143,6 +143,10 @@ if(PERL_EXECUTABLE)
       set(PERLASM_FLAGS "${PERLASM_FLAGS} -DMY_ASSEMBLER_IS_TOO_OLD_FOR_AVX")
     endif()
 
+    if(MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2)
+      set(PERLASM_FLAGS "${PERLASM_FLAGS} -DMY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2")
+    endif()
+
     if(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
       set(PERLASM_FLAGS "${PERLASM_FLAGS} -DMY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX")
     endif()
@@ -374,6 +378,7 @@ add_library(
   bytestring/unicode.c
   chacha/chacha.c
   cipher_extra/cipher_extra.c
+  cipher_extra/cts.c
   cipher_extra/derive_key.c
   cipher_extra/e_aesctrhmac.c
   cipher_extra/e_aesgcmsiv.c
@@ -632,6 +637,17 @@ function(build_libcrypto)
       VERSION "${SOFTWARE_VERSION}"
       SOVERSION "${ABI_VERSION}")
   endif()
+
+  # Apply symbol versioning for shared libraries. The version script is a
+  # checked-in source file, so if versioning is enabled it must be present;
+  # apply_version_script() fatal-errors if it is missing rather than silently
+  # producing an unversioned library.
+  if(ENABLE_SYMBOL_VERSIONING)
+    apply_version_script(
+      TARGET ${arg_NAME}
+      VERSION_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/libcrypto.map"
+    )
+  endif()
 endfunction()
 
 if(FIPS_SHARED)
@@ -762,6 +778,7 @@ if(BUILD_TESTING)
     chacha/chacha_test.cc
     cipher_extra/aead_test.cc
     cipher_extra/cipher_test.cc
+    cipher_extra/cts_test.cc
     compiler_test.cc
     conf/conf_test.cc
     console/console_test.cc

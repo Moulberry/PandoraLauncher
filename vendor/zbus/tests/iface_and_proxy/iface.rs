@@ -181,6 +181,29 @@ impl MyIface {
             .unwrap();
     }
 
+    // Same as `create_obj_inside`, but from a `&mut self` method. Dispatch holds a *write* lock on
+    // the calling interface for the whole duration of this method, so registering a secondary
+    // interface here exercises a different locking path than the `&self` variant above. Regression
+    // test for https://github.com/z-galaxy/zbus/issues/1845.
+    #[instrument]
+    async fn create_obj_inside_mut(
+        &mut self,
+        #[zbus(object_server)] object_server: &ObjectServer,
+        key: String,
+    ) {
+        debug!("`CreateObjInsideMut` called.");
+        // Mutate `self` so the write lock on this interface is genuinely held (and used) across the
+        // registration of the secondary interface below.
+        self.count += 1;
+        object_server
+            .at(
+                format!("/zbus/test/{key}"),
+                MyIface::new(self.next_tx.clone()),
+            )
+            .await
+            .unwrap();
+    }
+
     #[instrument]
     async fn destroy_obj(&self, key: &str) {
         debug!("`DestroyObj` called.");
@@ -482,6 +505,47 @@ impl MyIface {
     fn set_let(&mut self, val: u32) -> zbus::fdo::Result<()> {
         debug!("`Let` setter called.");
         self.r#let = val;
+        Ok(())
+    }
+
+    /// A property with a fallible setter that preserves the D-Bus error name on failure.
+    #[instrument]
+    #[zbus(property)]
+    fn fallible_prop(&self) -> u32 {
+        debug!("`FallibleProp` getter called.");
+        0
+    }
+
+    #[instrument]
+    #[zbus(property)]
+    async fn set_fallible_prop(&self, val: u32) -> zbus::fdo::Result<()> {
+        debug!("`FallibleProp` setter called.");
+        if val > 60 {
+            return Err(zbus::fdo::Error::InvalidArgs(format!(
+                "Provided value is {val}; values above 60 not accepted"
+            )));
+        }
+        Ok(())
+    }
+
+    /// A property whose setter returns `zbus::Result<()>`, to keep the broader return-type
+    /// variant covered.
+    #[instrument]
+    #[zbus(property)]
+    fn fallible_zbus_prop(&self) -> u32 {
+        debug!("`FallibleZbusProp` getter called.");
+        0
+    }
+
+    #[instrument]
+    #[zbus(property)]
+    async fn set_fallible_zbus_prop(&self, val: u32) -> zbus::Result<()> {
+        debug!("`FallibleZbusProp` setter called.");
+        if val > 60 {
+            return Err(zbus::Error::Failure(format!(
+                "Provided value is {val}; values above 60 not accepted"
+            )));
+        }
         Ok(())
     }
 

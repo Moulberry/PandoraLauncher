@@ -141,8 +141,13 @@ sub SHIFT256 {
 ___
 }
 
-$code.=<<___  if($avx);
+# Emit .text when AVX is disabled; NASM rejects objects with no sections
+# (nasm.us 3392738).
+$code.=<<___;
 .text
+___
+
+$code.=<<___  if($avx);
 
 .type beeu_mod_inverse_vartime,\@function
 .hidden beeu_mod_inverse_vartime

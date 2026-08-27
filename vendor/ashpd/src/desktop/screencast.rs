@@ -206,14 +206,12 @@ pub struct StartCastOptions {
 pub struct Streams {
     #[serde(default, with = "as_value", skip_serializing_if = "Vec::is_empty")]
     streams: Vec<Stream>,
-    #[serde(
-        default,
-        with = "optional",
-        skip_serializing_if = "Option::is_none",
-        skip_deserializing
-    )]
+    #[serde(default, with = "optional", skip_serializing_if = "Option::is_none")]
     restore_token: Option<String>,
-    #[serde(default, with = "optional", skip_serializing)]
+    #[serde(default, with = "optional", skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(not(feature = "backend"), allow(dead_code))]
+    persist_mode: Option<PersistMode>,
+    #[serde(default, with = "optional", skip_serializing_if = "Option::is_none")]
     #[cfg_attr(not(feature = "backend"), allow(dead_code))]
     restore_data: Option<(String, u32, OwnedValue)>,
 }
@@ -227,6 +225,12 @@ impl Streams {
     /// The list of streams.
     pub fn streams(&self) -> &[Stream] {
         &self.streams
+    }
+
+    /// The session's persist mode.
+    #[cfg(feature = "backend")]
+    pub fn persist_mode(&self) -> Option<PersistMode> {
+        self.persist_mode
     }
 
     /// The session restore data.
@@ -264,9 +268,16 @@ impl StreamsBuilder {
             streams: Streams {
                 streams,
                 restore_token: None,
+                persist_mode: None,
                 restore_data: None,
             },
         }
+    }
+
+    /// Set the streams' persist mode.
+    pub fn persist_mode(mut self, data: Option<impl Into<PersistMode>>) -> Self {
+        self.streams.persist_mode = data.map(|m| m.into());
+        self
     }
 
     /// Set the streams' optional restore data.
@@ -320,7 +331,6 @@ impl Stream {
         self.1.id.as_deref()
     }
 
-    // TODO Added in version 5 of the interface.
     /// The stream mapping id.
     pub fn mapping_id(&self) -> Option<&str> {
         self.1.mapping_id.as_deref()
@@ -488,7 +498,7 @@ impl Screencast {
     #[doc(alias = "OpenPipeWireRemote")]
     pub async fn open_pipe_wire_remote(
         &self,
-        session: &Session<impl HasScreencastSession>,
+        session: &Session<impl IsScreencastSession>,
         options: OpenPipeWireRemoteOptions,
     ) -> Result<OwnedFd, Error> {
         let fd = self
@@ -520,7 +530,7 @@ impl Screencast {
     #[doc(alias = "SelectSources")]
     pub async fn select_sources(
         &self,
-        session: &Session<impl HasScreencastSession>,
+        session: &Session<impl IsScreencastSession>,
         options: SelectSourcesOptions,
     ) -> Result<Request<()>, Error> {
         self.0
@@ -551,7 +561,7 @@ impl Screencast {
     #[doc(alias = "Start")]
     pub async fn start(
         &self,
-        session: &Session<impl HasScreencastSession>,
+        session: &Session<impl IsScreencastSession>,
         identifier: Option<&WindowIdentifier>,
         options: StartCastOptions,
     ) -> Result<Request<Streams>, Error> {
@@ -598,7 +608,5 @@ impl crate::Sealed for Screencast {}
 impl SessionPortal for Screencast {}
 
 /// Defines which portals session can be used in a screen-cast.
-pub trait HasScreencastSession: SessionPortal {}
-impl HasScreencastSession for Screencast {}
-#[cfg(feature = "remote_desktop")]
-impl HasScreencastSession for super::remote_desktop::RemoteDesktop {}
+pub trait IsScreencastSession: SessionPortal {}
+impl IsScreencastSession for Screencast {}

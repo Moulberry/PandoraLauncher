@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.64"
 name = "tower-http"
-version = "0.6.6"
+version = "0.6.11"
 authors = ["Tower Maintainers <team@tower-rs.com>"]
 build = false
 autolib = false
@@ -40,21 +40,6 @@ license = "MIT"
 repository = "https://github.com/tower-rs/tower-http"
 resolver = "2"
 
-[package.metadata.cargo-public-api-crates]
-allowed = [
-    "bytes",
-    "http",
-    "http_body",
-    "mime",
-    "pin-project-lite",
-    "tokio",
-    "tower",
-    "tower_layer",
-    "tower_service",
-    "tracing",
-    "tracing_core",
-]
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = [
@@ -65,8 +50,23 @@ rustdoc-args = [
 [package.metadata.playground]
 features = ["full"]
 
+[package.metadata.cargo_check_external_types]
+allowed_external_types = [
+    "bytes::*",
+    "http::*",
+    "http_body::*",
+    "mime::*",
+    "tokio::*",
+    "tower::*",
+    "tower_layer::*",
+    "tower_service::*",
+    "tracing::*",
+    "tracing_core::*",
+]
+
 [features]
 add-extension = []
+async-compression = []
 auth = [
     "base64",
     "validate-request",
@@ -78,18 +78,20 @@ catch-panic = [
     "dep:http-body-util",
 ]
 compression-br = [
-    "async-compression/brotli",
+    "dep:async-compression",
+    "async-compression?/brotli",
     "futures-core",
     "dep:http-body",
     "tokio-util",
-    "tokio",
+    "dep:tokio",
 ]
 compression-deflate = [
-    "async-compression/zlib",
+    "dep:async-compression",
+    "async-compression?/zlib",
     "futures-core",
     "dep:http-body",
     "tokio-util",
-    "tokio",
+    "dep:tokio",
 ]
 compression-full = [
     "compression-br",
@@ -98,35 +100,39 @@ compression-full = [
     "compression-zstd",
 ]
 compression-gzip = [
-    "async-compression/gzip",
+    "dep:async-compression",
+    "async-compression?/gzip",
     "futures-core",
     "dep:http-body",
     "tokio-util",
-    "tokio",
+    "dep:tokio",
 ]
 compression-zstd = [
-    "async-compression/zstd",
+    "dep:async-compression",
+    "async-compression?/zstd",
     "futures-core",
     "dep:http-body",
     "tokio-util",
-    "tokio",
+    "dep:tokio",
 ]
 cors = []
 decompression-br = [
-    "async-compression/brotli",
+    "dep:async-compression",
+    "async-compression?/brotli",
     "futures-core",
     "dep:http-body",
     "dep:http-body-util",
     "tokio-util",
-    "tokio",
+    "dep:tokio",
 ]
 decompression-deflate = [
-    "async-compression/zlib",
+    "dep:async-compression",
+    "async-compression?/zlib",
     "futures-core",
     "dep:http-body",
     "dep:http-body-util",
     "tokio-util",
-    "tokio",
+    "dep:tokio",
 ]
 decompression-full = [
     "decompression-br",
@@ -135,36 +141,39 @@ decompression-full = [
     "decompression-zstd",
 ]
 decompression-gzip = [
-    "async-compression/gzip",
+    "dep:async-compression",
+    "async-compression?/gzip",
     "futures-core",
     "dep:http-body",
     "dep:http-body-util",
     "tokio-util",
-    "tokio",
+    "dep:tokio",
 ]
 decompression-zstd = [
-    "async-compression/zstd",
+    "dep:async-compression",
+    "async-compression?/zstd",
     "futures-core",
     "dep:http-body",
     "dep:http-body-util",
     "tokio-util",
-    "tokio",
+    "dep:tokio",
 ]
 default = []
 follow-redirect = [
     "futures-util",
     "dep:http-body",
-    "iri-string",
+    "dep:url",
     "tower/util",
 ]
 fs = [
+    "dep:tokio",
+    "tokio?/fs",
+    "tokio?/io-util",
     "futures-core",
     "futures-util",
     "dep:http-body",
     "dep:http-body-util",
-    "tokio/fs",
     "tokio-util/io",
-    "tokio/io-util",
     "dep:http-range-header",
     "mime_guess",
     "mime",
@@ -172,7 +181,6 @@ fs = [
     "httpdate",
     "set-status",
     "futures-util/alloc",
-    "tracing",
 ]
 full = [
     "add-extension",
@@ -188,6 +196,7 @@ full = [
     "map-response-body",
     "metrics",
     "normalize-path",
+    "on-early-drop",
     "propagate-header",
     "redirect",
     "request-id",
@@ -207,9 +216,11 @@ map-request-body = []
 map-response-body = []
 metrics = [
     "dep:http-body",
-    "tokio/time",
+    "dep:tokio",
+    "tokio?/time",
 ]
 normalize-path = []
+on-early-drop = ["dep:http-body"]
 propagate-header = []
 redirect = []
 request-id = ["uuid"]
@@ -218,8 +229,10 @@ set-header = []
 set-status = []
 timeout = [
     "dep:http-body",
-    "tokio/time",
+    "dep:tokio",
+    "tokio?/time",
 ]
+tokio = []
 trace = [
     "dep:http-body",
     "tracing",
@@ -275,10 +288,6 @@ optional = true
 version = "1.0"
 optional = true
 
-[dependencies.iri-string]
-version = "0.7.0"
-optional = true
-
 [dependencies.mime]
 version = "0.3.17"
 optional = true
@@ -322,16 +331,17 @@ version = "0.1"
 optional = true
 default-features = false
 
+[dependencies.url]
+version = "2.5"
+optional = true
+
 [dependencies.uuid]
 version = "1.0"
 features = ["v4"]
 optional = true
 
-[dev-dependencies.async-trait]
-version = "0.1"
-
 [dev-dependencies.brotli]
-version = "7"
+version = "8"
 
 [dev-dependencies.bytes]
 version = "1"
@@ -348,11 +358,16 @@ version = "1.0.0"
 [dev-dependencies.http-body-util]
 version = "0.1.0"
 
+[dev-dependencies.hyper]
+version = "1"
+
 [dev-dependencies.hyper-util]
 version = "0.1"
 features = [
     "client-legacy",
     "http1",
+    "server",
+    "service",
     "tokio",
 ]
 
@@ -381,10 +396,6 @@ features = [
 
 [dev-dependencies.tracing-subscriber]
 version = "0.3"
-
-[dev-dependencies.uuid]
-version = "1.0"
-features = ["v4"]
 
 [dev-dependencies.zstd]
 version = "0.13"

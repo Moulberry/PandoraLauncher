@@ -6,6 +6,7 @@ that formats it using the same output that you'd get if you
 derived [`core::fmt::Debug`].
 */
 
+#![doc(html_logo_url = "https://raw.githubusercontent.com/sval-rs/sval/main/asset/logo.svg")]
 #![no_std]
 #![deny(missing_docs)]
 

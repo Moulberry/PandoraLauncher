@@ -10,9 +10,9 @@ use alloc::collections::TryReserveError;
 #[cfg(feature = "serde")]
 use core::marker::PhantomData;
 #[cfg(feature = "serde")]
-use serde::de::{Deserialize, Deserializer, SeqAccess, Visitor};
+use serde_core::de::{Deserialize, Deserializer, SeqAccess, Visitor};
 #[cfg(feature = "serde")]
-use serde::ser::{Serialize, SerializeSeq, Serializer};
+use serde_core::ser::{Serialize, SerializeSeq, Serializer};
 
 /// Helper to make a `TinyVec`.
 ///
@@ -234,6 +234,25 @@ where
   }
 }
 
+/// Caps an untrusted, deserialized element count before it is handed to
+/// `with_capacity`, so a hostile length prefix cannot force a huge eager
+/// allocation (and its allocation-abort DoS) before a single element has been
+/// read. The reservation is limited to `MAX_PREALLOC_BYTES` worth of items; the
+/// container still grows to the real length via `push` as elements actually
+/// arrive, so well-formed input is unaffected.
+#[cfg(any(feature = "borsh", feature = "bin-proto", feature = "serde"))]
+fn cautious_capacity<T>(len: usize) -> usize {
+  // Mirrors serde's `size_hint::cautious`: never trust a wire-provided length
+  // as an allocation size.
+  const MAX_PREALLOC_BYTES: usize = 4096;
+  let item_size = core::mem::size_of::<T>();
+  if item_size == 0 {
+    len
+  } else {
+    core::cmp::min(len, MAX_PREALLOC_BYTES / item_size)
+  }
+}
+
 #[cfg(feature = "borsh")]
 #[cfg_attr(docs_rs, doc(cfg(feature = "borsh")))]
 impl<A: Array> borsh::BorshDeserialize for TinyVec<A>
@@ -244,7 +263,8 @@ where
     reader: &mut R,
   ) -> borsh::io::Result<Self> {
     let len = <usize as borsh::BorshDeserialize>::deserialize_reader(reader)?;
-    let mut new_tinyvec = Self::with_capacity(len);
+    let mut new_tinyvec =
+      Self::with_capacity(cautious_capacity::<A::Item>(len));
 
     for _ in 0..len {
       new_tinyvec.push(
@@ -270,6 +290,100 @@ where
     let mut tv = TinyVec::Heap(v);
     tv.shrink_to_fit();
     Ok(tv)
+  }
+}
+
+#[cfg(feature = "bin-proto")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "bin-proto")))]
+impl<Ctx, A> bin_proto::BitEncode<Ctx, bin_proto::Untagged> for TinyVec<A>
+where
+  A: Array,
+  <A as Array>::Item: bin_proto::BitEncode<Ctx>,
+{
+  fn encode<W, E>(
+    &self, write: &mut W, ctx: &mut Ctx, tag: bin_proto::Untagged,
+  ) -> bin_proto::Result<()>
+  where
+    W: bin_proto::BitWrite,
+    E: bin_proto::Endianness,
+  {
+    <[<A as Array>::Item] as bin_proto::BitEncode<_, _>>::encode::<_, E>(
+      self.as_slice(),
+      write,
+      ctx,
+      tag,
+    )
+  }
+}
+
+#[cfg(feature = "bin-proto")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "bin-proto")))]
+impl<Tag, Ctx, A> bin_proto::BitDecode<Ctx, bin_proto::Tag<Tag>> for TinyVec<A>
+where
+  A: Array,
+  <A as Array>::Item: bin_proto::BitDecode<Ctx>,
+  Tag: ::core::convert::TryInto<usize>,
+{
+  fn decode<R, E>(
+    read: &mut R, ctx: &mut Ctx, tag: bin_proto::Tag<Tag>,
+  ) -> bin_proto::Result<Self>
+  where
+    R: bin_proto::BitRead,
+    E: bin_proto::Endianness,
+  {
+    let item_count =
+      tag.0.try_into().map_err(|_| bin_proto::Error::TagConvert)?;
+    let mut values =
+      Self::with_capacity(cautious_capacity::<A::Item>(item_count));
+    for _ in 0..item_count {
+      values.push(bin_proto::BitDecode::<_, _>::decode::<_, E>(read, ctx, ())?);
+    }
+    Ok(values)
+  }
+}
+
+#[cfg(feature = "bin-proto")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "bin-proto")))]
+impl<Ctx, A> bin_proto::BitDecode<Ctx, bin_proto::Untagged> for TinyVec<A>
+where
+  A: Array,
+  <A as Array>::Item: bin_proto::BitDecode<Ctx>,
+{
+  fn decode<R, E>(
+    read: &mut R, ctx: &mut Ctx, _tag: bin_proto::Untagged,
+  ) -> bin_proto::Result<Self>
+  where
+    R: bin_proto::BitRead,
+    E: bin_proto::Endianness,
+  {
+    bin_proto::util::decode_items_to_eof::<_, E, _, _>(read, ctx).collect()
+  }
+}
+
+#[cfg(feature = "schemars")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "schemars")))]
+impl<A> schemars::JsonSchema for TinyVec<A>
+where
+  A: Array,
+  <A as Array>::Item: schemars::JsonSchema,
+{
+  fn schema_name() -> alloc::borrow::Cow<'static, str> {
+    alloc::format!(
+      "Array_up_to_size_{}_of_{}",
+      A::CAPACITY,
+      <A as Array>::Item::schema_name()
+    )
+    .into()
+  }
+
+  fn json_schema(
+    generator: &mut schemars::SchemaGenerator,
+  ) -> schemars::Schema {
+    schemars::json_schema!({
+        "type": "array",
+        "items": generator.subschema_for::<<A as Array>::Item>(),
+        "maxItems": A::CAPACITY
+    })
   }
 }
 
@@ -846,7 +960,7 @@ impl<A: Array> TinyVec<A> {
   /// assert_eq!(tv2.as_slice(), &[2, 3][..]);
   ///
   /// tv.drain(..);
-  /// assert_eq!(tv.as_slice(), &[]);
+  /// assert_eq!(tv.as_slice(), &[] as &[i32]);
   /// ```
   #[inline]
   pub fn drain<R: RangeBounds<usize>>(
@@ -1101,7 +1215,7 @@ impl<A: Array> TinyVec<A> {
   /// assert_eq!(tv2.as_slice(), &[2, 3][..]);
   ///
   /// tv.splice(.., None);
-  /// assert_eq!(tv.as_slice(), &[]);
+  /// assert_eq!(tv.as_slice(), &[] as &[i32]);
   /// ```
   #[inline]
   pub fn splice<R, I>(
@@ -1553,6 +1667,17 @@ where
   }
 }
 
+#[cfg(feature = "defmt")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "defmt")))]
+impl<A: Array> defmt::Format for TinyVecIterator<A>
+where
+  A::Item: defmt::Format,
+{
+  fn format(&self, fmt: defmt::Formatter<'_>) {
+    defmt::write!(fmt, "TinyVecIterator({:?})", self.as_slice())
+  }
+}
+
 impl<A: Array> IntoIterator for TinyVec<A> {
   type Item = A::Item;
   type IntoIter = TinyVecIterator<A>;
@@ -1676,20 +1801,18 @@ where
 {
   #[allow(clippy::missing_inline_in_public_items)]
   fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-    write!(f, "[")?;
-    if f.alternate() && !self.is_empty() {
-      write!(f, "\n    ")?;
-    }
-    for (i, elem) in self.iter().enumerate() {
-      if i > 0 {
-        write!(f, ",{}", if f.alternate() { "\n    " } else { " " })?;
-      }
-      Debug::fmt(elem, f)?;
-    }
-    if f.alternate() && !self.is_empty() {
-      write!(f, ",\n")?;
-    }
-    write!(f, "]")
+    <[A::Item] as Debug>::fmt(self.as_slice(), f)
+  }
+}
+
+#[cfg(feature = "defmt")]
+#[cfg_attr(docs_rs, doc(cfg(feature = "defmt")))]
+impl<A: Array> defmt::Format for TinyVec<A>
+where
+  A::Item: defmt::Format,
+{
+  fn format(&self, fmt: defmt::Formatter<'_>) {
+    defmt::Format::format(self.as_slice(), fmt)
   }
 }
 
@@ -1876,7 +1999,9 @@ where
     S: SeqAccess<'de>,
   {
     let mut new_tinyvec = match seq.size_hint() {
-      Some(expected_size) => TinyVec::with_capacity(expected_size),
+      Some(expected_size) => {
+        TinyVec::with_capacity(cautious_capacity::<A::Item>(expected_size))
+      }
       None => Default::default(),
     };
 

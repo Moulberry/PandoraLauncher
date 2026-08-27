@@ -6,28 +6,27 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
-
+#![deprecated = "use the objc2-foundation crate instead"]
 #![allow(non_upper_case_globals)]
 
 use crate::base::{id, nil, BOOL, NO, SEL};
 use bitflags::bitflags;
 use block::Block;
-use libc;
+use core::ffi::{c_char, c_double, c_ulong, c_ulonglong, c_void};
 use objc::{class, msg_send, sel, sel_impl};
-use std::os::raw::c_void;
 use std::ptr;
 
 #[cfg(target_pointer_width = "32")]
-pub type NSInteger = libc::c_int;
+pub type NSInteger = core::ffi::c_int;
 #[cfg(target_pointer_width = "32")]
-pub type NSUInteger = libc::c_uint;
+pub type NSUInteger = core::ffi::c_uint;
 
 #[cfg(target_pointer_width = "64")]
-pub type NSInteger = libc::c_long;
+pub type NSInteger = core::ffi::c_long;
 #[cfg(target_pointer_width = "64")]
-pub type NSUInteger = libc::c_ulong;
+pub type NSUInteger = core::ffi::c_ulong;
 
-pub const NSIntegerMax: NSInteger = NSInteger::max_value();
+pub const NSIntegerMax: NSInteger = NSInteger::MAX;
 pub const NSNotFound: NSInteger = NSIntegerMax;
 
 const UTF8_ENCODING: usize = 4;
@@ -241,11 +240,12 @@ impl NSProcessInfo for id {
     }
 
     unsafe fn isOperatingSystemAtLeastVersion(self, version: NSOperatingSystemVersion) -> bool {
-        msg_send![self, isOperatingSystemAtLeastVersion: version]
+        let res: BOOL = msg_send![self, isOperatingSystemAtLeastVersion: version];
+        res != NO
     }
 }
 
-pub type NSTimeInterval = libc::c_double;
+pub type NSTimeInterval = c_double;
 
 pub trait NSArray: Sized {
     unsafe fn array(_: Self) -> id {
@@ -401,7 +401,7 @@ pub trait NSDictionary: Sized {
     unsafe fn fileOwnerAccountID(self) -> id;
     unsafe fn fileOwnerAccountName(self) -> id;
     unsafe fn filePosixPermissions(self) -> NSUInteger;
-    unsafe fn fileSize(self) -> libc::c_ulonglong;
+    unsafe fn fileSize(self) -> c_ulonglong;
     unsafe fn fileSystemFileNumber(self) -> NSUInteger;
     unsafe fn fileSystemNumber(self) -> NSInteger;
     unsafe fn fileType(self) -> id;
@@ -581,7 +581,7 @@ impl NSDictionary for id {
         msg_send![self, filePosixPermissions]
     }
 
-    unsafe fn fileSize(self) -> libc::c_ulonglong {
+    unsafe fn fileSize(self) -> c_ulonglong {
         msg_send![self, fileSize]
     }
 
@@ -616,7 +616,7 @@ impl NSDictionary for id {
 
 bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct NSEnumerationOptions: libc::c_ulonglong {
+    pub struct NSEnumerationOptions: c_ulonglong {
         const NSEnumerationConcurrent = 1 << 0;
         const NSEnumerationReverse = 1 << 1;
     }
@@ -639,7 +639,7 @@ pub trait NSString: Sized {
 
     unsafe fn stringByAppendingString_(self, other: id) -> id;
     unsafe fn init_str(self, string: &str) -> Self;
-    unsafe fn UTF8String(self) -> *const libc::c_char;
+    unsafe fn UTF8String(self) -> *const c_char;
     unsafe fn len(self) -> usize;
     unsafe fn isEqualToString(self, string: &str) -> bool;
     unsafe fn substringWithRange(self, range: NSRange) -> id;
@@ -649,6 +649,7 @@ impl NSString for id {
     unsafe fn isEqualToString(self, other: &str) -> bool {
         let other = NSString::alloc(nil).init_str(other);
         let rv: BOOL = msg_send![self, isEqualToString: other];
+        let _: () = msg_send![other, release];
         rv != NO
     }
 
@@ -658,16 +659,16 @@ impl NSString for id {
 
     unsafe fn init_str(self, string: &str) -> id {
         msg_send![self,
-                  initWithBytes:string.as_ptr()
+                  initWithBytes:string.as_ptr() as *const c_void
                       length:string.len()
-                      encoding:UTF8_ENCODING as id]
+                      encoding:UTF8_ENCODING]
     }
 
     unsafe fn len(self) -> usize {
         msg_send![self, lengthOfBytesUsingEncoding: UTF8_ENCODING]
     }
 
-    unsafe fn UTF8String(self) -> *const libc::c_char {
+    unsafe fn UTF8String(self) -> *const c_char {
         msg_send![self, UTF8String]
     }
 
@@ -690,10 +691,10 @@ impl NSDate for id {}
 
 #[repr(C)]
 struct NSFastEnumerationState {
-    pub state: libc::c_ulong,
+    pub state: c_ulong,
     pub items_ptr: *mut id,
-    pub mutations_ptr: *mut libc::c_ulong,
-    pub extra: [libc::c_ulong; 5],
+    pub mutations_ptr: *mut c_ulong,
+    pub extra: [c_ulong; 5],
 }
 
 const NS_FAST_ENUM_BUF_SIZE: usize = 16;
@@ -701,7 +702,7 @@ const NS_FAST_ENUM_BUF_SIZE: usize = 16;
 pub struct NSFastIterator {
     state: NSFastEnumerationState,
     buffer: [id; NS_FAST_ENUM_BUF_SIZE],
-    mut_val: Option<libc::c_ulong>,
+    mut_val: Option<c_ulong>,
     len: usize,
     idx: usize,
     object: id,
@@ -1596,7 +1597,7 @@ impl NSData for id {
 
 bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct NSDataReadingOptions: libc::c_ulonglong {
+    pub struct NSDataReadingOptions: c_ulonglong {
        const NSDataReadingMappedIfSafe = 1 << 0;
        const NSDataReadingUncached = 1 << 1;
        const NSDataReadingMappedAlways = 1 << 3;
@@ -1605,7 +1606,7 @@ bitflags! {
 
 bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct NSDataBase64EncodingOptions: libc::c_ulonglong {
+    pub struct NSDataBase64EncodingOptions: c_ulonglong {
         const NSDataBase64Encoding64CharacterLineLength = 1 << 0;
         const NSDataBase64Encoding76CharacterLineLength = 1 << 1;
         const NSDataBase64EncodingEndLineWithCarriageReturn = 1 << 4;
@@ -1615,14 +1616,14 @@ bitflags! {
 
 bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct NSDataBase64DecodingOptions: libc::c_ulonglong {
+    pub struct NSDataBase64DecodingOptions: c_ulonglong {
        const NSDataBase64DecodingIgnoreUnknownCharacters = 1 << 0;
     }
 }
 
 bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct NSDataWritingOptions: libc::c_ulonglong {
+    pub struct NSDataWritingOptions: c_ulonglong {
         const NSDataWritingAtomic = 1 << 0;
         const NSDataWritingWithoutOverwriting = 1 << 1;
     }
@@ -1630,7 +1631,7 @@ bitflags! {
 
 bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    pub struct NSDataSearchOptions: libc::c_ulonglong {
+    pub struct NSDataSearchOptions: c_ulonglong {
         const NSDataSearchBackwards = 1 << 0;
         const NSDataSearchAnchored = 1 << 1;
     }

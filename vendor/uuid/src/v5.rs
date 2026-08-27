@@ -47,7 +47,7 @@ mod tests {
 
     use crate::{std::string::ToString, Variant, Version};
 
-    static FIXTURE: &'static [(&'static Uuid, &'static str, &'static str)] = &[
+    static FIXTURE: &[(&Uuid, &str, &str)] = &[
         (
             &Uuid::NAMESPACE_DNS,
             "example.org",
@@ -148,10 +148,10 @@ mod tests {
         wasm_bindgen_test
     )]
     fn test_hyphenated() {
-        for &(ref ns, ref name, ref expected) in FIXTURE {
-            let uuid = Uuid::new_v5(*ns, name.as_bytes());
+        for &(ns, name, expected) in FIXTURE {
+            let uuid = Uuid::new_v5(ns, name.as_bytes());
 
-            assert_eq!(uuid.hyphenated().to_string(), *expected)
+            assert_eq!(uuid.hyphenated().to_string(), expected)
         }
     }
 
@@ -161,8 +161,8 @@ mod tests {
         wasm_bindgen_test
     )]
     fn test_new() {
-        for &(ref ns, ref name, ref u) in FIXTURE {
-            let uuid = Uuid::new_v5(*ns, name.as_bytes());
+        for &(ns, name, u) in FIXTURE {
+            let uuid = Uuid::new_v5(ns, name.as_bytes());
 
             assert_eq!(uuid.get_version(), Some(Version::Sha1));
             assert_eq!(uuid.get_variant(), Variant::RFC4122);

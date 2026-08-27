@@ -33,37 +33,37 @@ pub(crate) mod macros {
             #[cfg(feature = "std")]
             $m!(
                 HashMap<K: Eq + Hash, V, S: BuildHasher + Default>,
-                (|size| HashMap::with_capacity_and_hasher(size, Default::default()))
+                (|size| HashMap::with_capacity_and_hasher(crate::utils::size_hint_cautious::<(K,V)>(Some(size)), Default::default()))
             );
             #[cfg(feature = "hashbrown_0_14")]
             $m!(
                 HashbrownMap014<K: Eq + Hash, V, S: BuildHasher + Default>,
-                (|size| HashbrownMap014::with_capacity_and_hasher(size, Default::default()))
+                (|size| HashbrownMap014::with_capacity_and_hasher(crate::utils::size_hint_cautious::<(K,V)>(Some(size)), Default::default()))
             );
             #[cfg(feature = "hashbrown_0_15")]
             $m!(
                 HashbrownMap015<K: Eq + Hash, V, S: BuildHasher + Default>,
-                (|size| HashbrownMap015::with_capacity_and_hasher(size, Default::default()))
+                (|size| HashbrownMap015::with_capacity_and_hasher(crate::utils::size_hint_cautious::<(K,V)>(Some(size)), Default::default()))
             );
             #[cfg(feature = "hashbrown_0_16")]
             $m!(
                 HashbrownMap016<K: Eq + Hash, V, S: BuildHasher + Default>,
-                (|size| HashbrownMap016::with_capacity_and_hasher(size, Default::default()))
+                (|size| HashbrownMap016::with_capacity_and_hasher(crate::utils::size_hint_cautious::<(K,V)>(Some(size)), Default::default()))
             );
             #[cfg(feature = "hashbrown_0_17")]
             $m!(
                 HashbrownMap017<K: Eq + Hash, V, S: BuildHasher + Default>,
-                (|size| HashbrownMap017::with_capacity_and_hasher(size, Default::default()))
+                (|size| HashbrownMap017::with_capacity_and_hasher(crate::utils::size_hint_cautious::<(K,V)>(Some(size)), Default::default()))
             );
             #[cfg(feature = "indexmap_1")]
             $m!(
                 IndexMap<K: Eq + Hash, V, S: BuildHasher + Default>,
-                (|size| IndexMap::with_capacity_and_hasher(size, Default::default()))
+                (|size| IndexMap::with_capacity_and_hasher(crate::utils::size_hint_cautious::<(K,V)>(Some(size)), Default::default()))
             );
             #[cfg(feature = "indexmap_2")]
             $m!(
                 IndexMap2<K: Eq + Hash, V, S: BuildHasher + Default>,
-                (|size| IndexMap2::with_capacity_and_hasher(size, Default::default()))
+                (|size| IndexMap2::with_capacity_and_hasher(crate::utils::size_hint_cautious::<(K,V)>(Some(size)), Default::default()))
             );
         };
     }
@@ -75,43 +75,43 @@ pub(crate) mod macros {
             #[cfg(feature = "std")]
             $m!(
                 HashSet<T: Eq + Hash, S: BuildHasher + Default>,
-                (|size| HashSet::with_capacity_and_hasher(size, S::default())),
+                (|size| HashSet::with_capacity_and_hasher(crate::utils::size_hint_cautious::<T>(Some(size)), S::default())),
                 insert
             );
             #[cfg(feature = "hashbrown_0_14")]
             $m!(
                 HashbrownSet014<T: Eq + Hash, S: BuildHasher + Default>,
-                (|size| HashbrownSet014::with_capacity_and_hasher(size, S::default())),
+                (|size| HashbrownSet014::with_capacity_and_hasher(crate::utils::size_hint_cautious::<T>(Some(size)), S::default())),
                 insert
             );
             #[cfg(feature = "hashbrown_0_15")]
             $m!(
                 HashbrownSet015<T: Eq + Hash, S: BuildHasher + Default>,
-                (|size| HashbrownSet015::with_capacity_and_hasher(size, S::default())),
+                (|size| HashbrownSet015::with_capacity_and_hasher(crate::utils::size_hint_cautious::<T>(Some(size)), S::default())),
                 insert
             );
             #[cfg(feature = "hashbrown_0_16")]
             $m!(
                 HashbrownSet016<T: Eq + Hash, S: BuildHasher + Default>,
-                (|size| HashbrownSet016::with_capacity_and_hasher(size, S::default())),
+                (|size| HashbrownSet016::with_capacity_and_hasher(crate::utils::size_hint_cautious::<T>(Some(size)), S::default())),
                 insert
             );
             #[cfg(feature = "hashbrown_0_17")]
             $m!(
                 HashbrownSet017<T: Eq + Hash, S: BuildHasher + Default>,
-                (|size| HashbrownSet017::with_capacity_and_hasher(size, S::default())),
+                (|size| HashbrownSet017::with_capacity_and_hasher(crate::utils::size_hint_cautious::<T>(Some(size)), S::default())),
                 insert
             );
             #[cfg(feature = "indexmap_1")]
             $m!(
                 IndexSet<T: Eq + Hash, S: BuildHasher + Default>,
-                (|size| IndexSet::with_capacity_and_hasher(size, S::default())),
+                (|size| IndexSet::with_capacity_and_hasher(crate::utils::size_hint_cautious::<T>(Some(size)), S::default())),
                 insert
             );
             #[cfg(feature = "indexmap_2")]
             $m!(
                 IndexSet2<T: Eq + Hash, S: BuildHasher + Default>,
-                (|size| IndexSet2::with_capacity_and_hasher(size, S::default())),
+                (|size| IndexSet2::with_capacity_and_hasher(crate::utils::size_hint_cautious::<T>(Some(size)), S::default())),
                 insert
             );
         };
@@ -124,19 +124,19 @@ pub(crate) mod macros {
             #[cfg(feature = "alloc")]
             $m!(
                 BinaryHeap<T: Ord>,
-                (|size| BinaryHeap::with_capacity(size)),
+                (|size| BinaryHeap::with_capacity(crate::utils::size_hint_cautious::<T>(Some(size)))),
                 push
             );
             #[cfg(feature = "alloc")]
-            $m!(BoxedSlice<T>, (|size| Vec::with_capacity(size)), push);
+            $m!(BoxedSlice<T>, (|size| crate::utils::vec_with_capacity_cautious(Some(size))), push);
             #[cfg(feature = "alloc")]
             $m!(LinkedList<T>, (|_| LinkedList::new()), push_back);
             #[cfg(feature = "alloc")]
-            $m!(Vec<T>, (|size| Vec::with_capacity(size)), push);
+            $m!(Vec<T>, (|size| crate::utils::vec_with_capacity_cautious(Some(size))), push);
             #[cfg(feature = "alloc")]
             $m!(
                 VecDeque<T>,
-                (|size| VecDeque::with_capacity(size)),
+                (|size| VecDeque::with_capacity(crate::utils::size_hint_cautious::<T>(Some(size)))),
                 push_back
             );
         };
@@ -1117,6 +1117,39 @@ where
     }
 }
 
+macro_rules! none_as_zero_deserialize {
+    ($($nonzero:ident => $primitive:ident),* $(,)?) => {
+        $(
+            impl<'de> DeserializeAs<'de, Option<core::num::$nonzero>> for NoneAsZero {
+                fn deserialize_as<D>(
+                    deserializer: D,
+                ) -> Result<Option<core::num::$nonzero>, D::Error>
+                where
+                    D: Deserializer<'de>,
+                {
+                    let value = <$primitive>::deserialize(deserializer)?;
+                    Ok(core::num::$nonzero::new(value))
+                }
+            }
+        )*
+    };
+}
+
+none_as_zero_deserialize! {
+    NonZeroU8    => u8,
+    NonZeroU16   => u16,
+    NonZeroU32   => u32,
+    NonZeroU64   => u64,
+    NonZeroU128  => u128,
+    NonZeroUsize => usize,
+    NonZeroI8    => i8,
+    NonZeroI16   => i16,
+    NonZeroI32   => i32,
+    NonZeroI64   => i64,
+    NonZeroI128  => i128,
+    NonZeroIsize => isize,
+}
+
 #[cfg(feature = "alloc")]
 impl<'de, T, TAs> DeserializeAs<'de, T> for DefaultOnError<TAs>
 where
@@ -1766,13 +1799,13 @@ macro_rules! one_or_many_impl {
 foreach_seq!(one_or_many_impl);
 
 #[cfg(all(feature = "alloc", feature = "smallvec_1"))]
-impl<'de, T, TAs, FORMAT, A> DeserializeAs<'de, smallvec_1::SmallVec<A>> for OneOrMany<TAs, FORMAT>
+impl<'de, T, TAs, FORMAT, A> DeserializeAs<'de, SmallVec<A>> for OneOrMany<TAs, FORMAT>
 where
     A: smallvec_1::Array<Item = T>,
     TAs: DeserializeAs<'de, T>,
     FORMAT: Format,
 {
-    fn deserialize_as<D>(deserializer: D) -> Result<smallvec_1::SmallVec<A>, D::Error>
+    fn deserialize_as<D>(deserializer: D) -> Result<SmallVec<A>, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -1783,7 +1816,7 @@ where
             content::de::ContentRefDeserializer::new(&content, is_hr),
         ) {
             Ok(one) => {
-                let mut res = smallvec_1::SmallVec::<A>::new();
+                let mut res = SmallVec::<A>::new();
                 res.push(one.into_inner());
                 return Ok(res);
             }
@@ -1792,7 +1825,7 @@ where
         let many_err: D::Error = match <DeserializeAsWrap<Vec<T>, Vec<TAs>>>::deserialize(
             content::de::ContentDeserializer::new(content, is_hr),
         ) {
-            Ok(many) => return Ok(smallvec_1::SmallVec::from_vec(many.into_inner())),
+            Ok(many) => return Ok(SmallVec::from_vec(many.into_inner())),
             Err(err) => err,
         };
         Err(DeError::custom(format_args!(
@@ -2123,7 +2156,7 @@ impl<'de> DeserializeAs<'de, bool> for BoolFromInt<Strict> {
                     unexp => {
                         let mut buf: [u8; 58] = [0u8; 58];
                         Err(DeError::invalid_value(
-                            crate::utils::get_unexpected_u128(unexp, &mut buf),
+                            utils::get_unexpected_u128(unexp, &mut buf),
                             &self,
                         ))
                     }
@@ -2140,7 +2173,7 @@ impl<'de> DeserializeAs<'de, bool> for BoolFromInt<Strict> {
                     unexp => {
                         let mut buf: [u8; 58] = [0u8; 58];
                         Err(DeError::invalid_value(
-                            crate::utils::get_unexpected_i128(unexp, &mut buf),
+                            utils::get_unexpected_i128(unexp, &mut buf),
                             &"0 or 1",
                         ))
                     }

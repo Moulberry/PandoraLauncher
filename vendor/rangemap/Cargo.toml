@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.81.0"
 name = "rangemap"
-version = "1.7.1"
+version = "1.8.0"
 authors = ["Jeff Parsons <jeff@parsons.io>"]
 build = false
 exclude = [
@@ -38,12 +38,17 @@ readme = "README.md"
 categories = ["data-structures"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/jeffparsons/rangemap"
+resolver = "2"
 
 [features]
 const_fn = []
 nightly = []
+ordered-float5 = ["dep:ordered-float"]
 quickcheck = ["dep:quickcheck"]
-serde1 = ["serde"]
+serde1 = [
+    "serde",
+    "ordered-float?/serde",
+]
 
 [lib]
 name = "rangemap"
@@ -58,6 +63,11 @@ name = "benches"
 path = "benches/benches.rs"
 harness = false
 
+[dependencies.ordered-float]
+version = "5.3.0"
+optional = true
+default-features = false
+
 [dependencies.quickcheck]
 version = "1.0.3"
 optional = true
@@ -65,12 +75,17 @@ optional = true
 [dependencies.serde]
 version = "1"
 optional = true
+default-features = false
 
 [dev-dependencies.chrono]
 version = "0.4"
 
 [dev-dependencies.criterion]
 version = "0.7"
+
+[dev-dependencies.ordered-float]
+version = "5.3.0"
+features = ["proptest"]
 
 [dev-dependencies.permutator]
 version = "0.4"

@@ -5,98 +5,108 @@
 #[allow(unused_imports)]
 use crate::codegen_prelude::*;
 
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct BasicTableMarker {
-    simple_records_byte_len: usize,
-    array_records_byte_len: usize,
-}
-
-impl BasicTableMarker {
-    pub fn simple_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn simple_records_byte_range(&self) -> Range<usize> {
-        let start = self.simple_count_byte_range().end;
-        start..start + self.simple_records_byte_len
-    }
-
-    pub fn arrays_inner_count_byte_range(&self) -> Range<usize> {
-        let start = self.simple_records_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn array_records_count_byte_range(&self) -> Range<usize> {
-        let start = self.arrays_inner_count_byte_range().end;
-        start..start + u32::RAW_BYTE_LEN
-    }
-
-    pub fn array_records_byte_range(&self) -> Range<usize> {
-        let start = self.array_records_count_byte_range().end;
-        start..start + self.array_records_byte_len
-    }
-}
-
-impl MinByteRange for BasicTableMarker {
+impl<'a> MinByteRange<'a> for BasicTable<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.array_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for BasicTable<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let simple_count: u16 = cursor.read()?;
-        let simple_records_byte_len = (simple_count as usize)
-            .checked_mul(SimpleRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(simple_records_byte_len);
-        let arrays_inner_count: u16 = cursor.read()?;
-        let array_records_count: u32 = cursor.read()?;
-        let array_records_byte_len = (array_records_count as usize)
-            .checked_mul(<ContainsArrays as ComputeSize>::compute_size(
-                &arrays_inner_count,
-            )?)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(array_records_byte_len);
-        cursor.finish(BasicTableMarker {
-            simple_records_byte_len,
-            array_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
-pub type BasicTable<'a> = TableRef<'a, BasicTableMarker>;
+#[derive(Clone)]
+pub struct BasicTable<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> BasicTable<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u32::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     pub fn simple_count(&self) -> u16 {
-        let range = self.shape.simple_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.simple_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     pub fn simple_records(&self) -> &'a [SimpleRecord] {
-        let range = self.shape.simple_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.simple_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     pub fn arrays_inner_count(&self) -> u16 {
-        let range = self.shape.arrays_inner_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.arrays_inner_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     pub fn array_records_count(&self) -> u32 {
-        let range = self.shape.array_records_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.array_records_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     pub fn array_records(&self) -> ComputedArray<'a, ContainsArrays<'a>> {
-        let range = self.shape.array_records_byte_range();
+        let range = self.array_records_byte_range();
         self.data
             .read_with_args(range, &self.arrays_inner_count())
-            .unwrap()
+            .unwrap_or_default()
+    }
+
+    pub fn simple_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn simple_records_byte_range(&self) -> Range<usize> {
+        let simple_count = self.simple_count();
+        let start = self.simple_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(simple_count)).saturating_mul(SimpleRecord::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn arrays_inner_count_byte_range(&self) -> Range<usize> {
+        let start = self.simple_records_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn array_records_count_byte_range(&self) -> Range<usize> {
+        let start = self.arrays_inner_count_byte_range().end;
+        let end = start + u32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn array_records_byte_range(&self) -> Range<usize> {
+        let array_records_count = self.array_records_count();
+        let start = self.array_records_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(array_records_count)).saturating_mul(
+                <ContainsArrays as ComputeSize>::compute_size(&self.arrays_inner_count())
+                    .unwrap_or(0),
+            );
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(BasicTable::MIN_SIZE));
+
+impl Default for BasicTable<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -205,17 +215,11 @@ impl ComputeSize for ContainsArrays<'_> {
         let array_len = *args;
         let mut result = 0usize;
         result = result
-            .checked_add(
-                (array_len as usize)
-                    .checked_mul(u16::RAW_BYTE_LEN)
-                    .ok_or(ReadError::OutOfBounds)?,
-            )
+            .checked_add((transforms::to_usize(array_len)).saturating_mul(u16::RAW_BYTE_LEN))
             .ok_or(ReadError::OutOfBounds)?;
         result = result
             .checked_add(
-                (array_len as usize)
-                    .checked_mul(SimpleRecord::RAW_BYTE_LEN)
-                    .ok_or(ReadError::OutOfBounds)?,
+                (transforms::to_usize(array_len)).saturating_mul(SimpleRecord::RAW_BYTE_LEN),
             )
             .ok_or(ReadError::OutOfBounds)?;
         Ok(result)
@@ -227,8 +231,8 @@ impl<'a> FontReadWithArgs<'a> for ContainsArrays<'a> {
         let mut cursor = data.cursor();
         let array_len = *args;
         Ok(Self {
-            scalars: cursor.read_array(array_len as usize)?,
-            records: cursor.read_array(array_len as usize)?,
+            scalars: cursor.read_array(transforms::to_usize(array_len))?,
+            records: cursor.read_array(transforms::to_usize(array_len))?,
         })
     }
 }
@@ -336,52 +340,67 @@ impl<'a> SomeRecord<'a> for ContainsOffsets {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct VarLenItemMarker {
-    data_byte_len: usize,
-}
-
-impl VarLenItemMarker {
-    pub fn length_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u32::RAW_BYTE_LEN
-    }
-
-    pub fn data_byte_range(&self) -> Range<usize> {
-        let start = self.length_byte_range().end;
-        start..start + self.data_byte_len
-    }
-}
-
-impl MinByteRange for VarLenItemMarker {
+impl<'a> MinByteRange<'a> for VarLenItem<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.data_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for VarLenItem<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u32>();
-        let data_byte_len = cursor.remaining_bytes() / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
-        cursor.advance_by(data_byte_len);
-        cursor.finish(VarLenItemMarker { data_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
-pub type VarLenItem<'a> = TableRef<'a, VarLenItemMarker>;
+#[derive(Clone)]
+pub struct VarLenItem<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> VarLenItem<'a> {
+    pub const MIN_SIZE: usize = u32::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     pub fn length(&self) -> u32 {
-        let range = self.shape.length_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.length_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     pub fn data(&self) -> &'a [u8] {
-        let range = self.shape.data_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.data_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn length_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn data_byte_range(&self) -> Range<usize> {
+        let start = self.length_byte_range().end;
+        let end =
+            start + self.data.len().saturating_sub(start) / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(VarLenItem::MIN_SIZE));
+
+impl Default for VarLenItem<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 

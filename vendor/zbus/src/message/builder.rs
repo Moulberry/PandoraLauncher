@@ -310,7 +310,7 @@ impl<'m> From<Header<'m>> for Builder<'m> {
 
 #[cfg(test)]
 mod tests {
-    use super::Message;
+    use super::{Endian, Message};
     use crate::Error;
     use test_log::test;
 
@@ -318,6 +318,7 @@ mod tests {
     fn test_raw() -> Result<(), Error> {
         let raw_body: &[u8] = &[16, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0];
         let message_builder = Message::signal("/", "test.test", "test")?;
+        let message_builder = message_builder.endian(Endian::Little);
         let message = unsafe {
             message_builder.build_raw_body(
                 raw_body,

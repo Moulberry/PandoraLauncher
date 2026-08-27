@@ -22,7 +22,8 @@ fn main() {
 
     let store = SCDynamicStoreBuilder::new("my-watch-dns-store")
         .callback_context(callback_context)
-        .build();
+        .build()
+        .expect("Unable to create DynamicStore");
 
     let watch_keys: CFArray<CFString> = CFArray::from_CFTypes(&[]);
     let watch_patterns =
@@ -34,7 +35,9 @@ fn main() {
         panic!("Unable to register notifications");
     }
 
-    let run_loop_source = store.create_run_loop_source();
+    let run_loop_source = store
+        .create_run_loop_source()
+        .expect("Unable to create run loop source");
     let run_loop = CFRunLoop::get_current();
     run_loop.add_source(&run_loop_source, unsafe { kCFRunLoopCommonModes });
 

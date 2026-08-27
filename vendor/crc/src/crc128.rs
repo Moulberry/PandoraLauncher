@@ -24,7 +24,7 @@ where
         update_table(crc, self.algorithm, &self.data, bytes)
     }
 
-    pub const fn digest(&self) -> Digest<u128, Table<L>> {
+    pub const fn digest(&self) -> Digest<'_, u128, Table<L>> {
         self.digest_with_initial(self.algorithm.init)
     }
 
@@ -33,7 +33,7 @@ where
     /// This overrides the initial value specified by the algorithm.
     /// The effects of the algorithm's properties `refin` and `width`
     /// are applied to the custom initial value.
-    pub const fn digest_with_initial(&self, initial: u128) -> Digest<u128, Table<L>> {
+    pub const fn digest_with_initial(&self, initial: u128) -> Digest<'_, u128, Table<L>> {
         let value = init(self.algorithm, initial);
         Digest::new(self, value)
     }
@@ -51,7 +51,7 @@ where
         Digest { crc, value }
     }
 
-    pub fn update(&mut self, bytes: &[u8]) {
+    pub const fn update(&mut self, bytes: &[u8]) {
         self.value = self.crc.update(self.value, bytes);
     }
 

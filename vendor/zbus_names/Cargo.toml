@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.87"
 name = "zbus_names"
-version = "4.3.2"
+version = "4.3.4"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
 build = false
 autolib = false
@@ -61,11 +61,11 @@ features = ["derive"]
 version = "1.0"
 
 [dependencies.zvariant]
-version = "5.10.1"
+version = "5.13.1"
 features = ["enumflags2"]
 
 [dev-dependencies.criterion]
-version = "4.0.4"
+version = "5.0.0"
 package = "codspeed-criterion-compat"
 
 [lints.rust.unexpected_cfgs]

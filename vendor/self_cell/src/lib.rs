@@ -187,7 +187,7 @@ pub mod unsafe_self_cell;
 /// );
 /// ```
 ///
-/// See the crate overview to get a get an overview and a motivating example.
+/// See the crate overview to get an overview and a motivating example.
 ///
 /// ### Generated API:
 ///
@@ -308,7 +308,7 @@ pub mod unsafe_self_cell;
 ///     `Dependent<'a>::From<&'a Owner>` is deterministic, so that only hashing
 ///     owner is enough.
 ///
-///   All `AutomaticDerive` are optional and you can implement you own version
+///   All `AutomaticDerive` are optional and you can implement your own version
 ///   of these traits. The declared struct is part of your module and you are
 ///   free to implement any trait in any way you want. Access to the unsafe
 ///   internals is only possible via unsafe functions, so you can't accidentally
@@ -386,7 +386,7 @@ macro_rules! self_cell {
 
         $crate::_covariant_access!($Covariance, $Vis, $Dependent);
 
-        /// Consumes `self` and returns the the owner.
+        /// Consumes `self` and returns the owner.
         $Vis fn into_owner(self) -> $Owner {
             // This is only safe to do with repr(transparent).
             let unsafe_self_cell = unsafe { ::core::mem::transmute::<
@@ -541,9 +541,16 @@ macro_rules! _self_cell_new_body {
 
         let joined_void_ptr = ::core::ptr::NonNull::new($crate::alloc::alloc::alloc(layout)).unwrap();
 
-        let mut joined_ptr = joined_void_ptr.cast::<$JoinedCell>();
+        let joined_ptr = joined_void_ptr.cast::<$JoinedCell>();
 
         let (owner_ptr, dependent_ptr) = <$JoinedCell>::_field_pointers(joined_ptr.as_ptr());
+
+        // SAFETY: We are the only ones controlling the write timing of `dependent_ptr_send`
+        // and it is sequential.
+        let dependent_ptr_send =
+            $crate::unsafe_self_cell::SendMutPtr::new(dependent_ptr);
+        let joined_void_ptr_send =
+            $crate::unsafe_self_cell::SendMutPtr::new(joined_void_ptr.as_ptr());
 
         // Move owner into newly allocated space.
         owner_ptr.write($owner);
@@ -553,12 +560,16 @@ macro_rules! _self_cell_new_body {
             $crate::unsafe_self_cell::OwnerAndCellDropGuard::new(joined_ptr);
 
         // Initialize dependent with owner reference in final place.
-        dependent_ptr.write($crate::_await_opt!($dependent_builder(&*owner_ptr) $(, $AsyncBuilder)?));
+        dependent_ptr_send.write($crate::_await_opt!($dependent_builder(&*owner_ptr) $(, $AsyncBuilder)?));
+
         ::core::mem::forget(drop_guard);
 
         Self {
             unsafe_self_cell: $crate::unsafe_self_cell::UnsafeSelfCell::new(
-                joined_void_ptr,
+                // SAFETY: `joined_void_ptr_send` becomes part of `UnsafeSelfCell`, which doesn't do
+                // any direct writes to the pointer, so it can't race them, even though the user
+                // get's control over the value.
+                joined_void_ptr_send.into_non_null().unwrap(),
             ),
             $(owner_marker: $crate::_covariant_owner_marker_ctor!($OwnerLifetime) ,)?
         }
@@ -620,9 +631,16 @@ macro_rules! _self_cell_try_new_body {
 
         let joined_void_ptr = ::core::ptr::NonNull::new($crate::alloc::alloc::alloc(layout)).unwrap();
 
-        let mut joined_ptr = joined_void_ptr.cast::<$JoinedCell>();
+        let joined_ptr = joined_void_ptr.cast::<$JoinedCell>();
 
         let (owner_ptr, dependent_ptr) = <$JoinedCell>::_field_pointers(joined_ptr.as_ptr());
+
+        // SAFETY: We are the only ones controlling the write timing of `dependent_ptr_send`
+        // and it is sequential.
+        let dependent_ptr_send =
+            $crate::unsafe_self_cell::SendMutPtr::new(dependent_ptr);
+        let joined_void_ptr_send =
+            $crate::unsafe_self_cell::SendMutPtr::new(joined_void_ptr.as_ptr());
 
         // Move owner into newly allocated space.
         owner_ptr.write($owner);
@@ -633,12 +651,13 @@ macro_rules! _self_cell_try_new_body {
 
         match $crate::_await_opt!($dependent_builder(&*owner_ptr) $(, $AsyncBuilder)?) {
             ::core::result::Result::Ok(dependent) => {
-                dependent_ptr.write(dependent);
+                dependent_ptr_send.write(dependent);
+
                 ::core::mem::forget(drop_guard);
 
                 ::core::result::Result::Ok(Self {
                     unsafe_self_cell: $crate::unsafe_self_cell::UnsafeSelfCell::new(
-                        joined_void_ptr,
+                        joined_void_ptr_send.into_non_null().unwrap(),
                     ),
                     $(owner_marker: $crate::_covariant_owner_marker_ctor!($OwnerLifetime) ,)?
                 })
@@ -701,9 +720,18 @@ macro_rules! _self_cell_try_new_or_recover_body {
 
         let joined_void_ptr = ::core::ptr::NonNull::new($crate::alloc::alloc::alloc(layout)).unwrap();
 
-        let mut joined_ptr = joined_void_ptr.cast::<$JoinedCell>();
+        let joined_ptr = joined_void_ptr.cast::<$JoinedCell>();
 
         let (owner_ptr, dependent_ptr) = <$JoinedCell>::_field_pointers(joined_ptr.as_ptr());
+
+        // SAFETY: We are the only ones controlling the write timing of `dependent_ptr_send`
+        // and it is sequential.
+        let owner_ptr_send =
+            $crate::unsafe_self_cell::SendMutPtr::new(owner_ptr);
+        let dependent_ptr_send =
+            $crate::unsafe_self_cell::SendMutPtr::new(dependent_ptr);
+        let joined_void_ptr_send =
+            $crate::unsafe_self_cell::SendMutPtr::new(joined_void_ptr.as_ptr());
 
         // Move owner into newly allocated space.
         owner_ptr.write($owner);
@@ -714,12 +742,13 @@ macro_rules! _self_cell_try_new_or_recover_body {
 
         match $crate::_await_opt!($dependent_builder(&*owner_ptr) $(, $AsyncBuilder)?) {
             ::core::result::Result::Ok(dependent) => {
-                dependent_ptr.write(dependent);
+                dependent_ptr_send.write(dependent);
+
                 ::core::mem::forget(drop_guard);
 
                 ::core::result::Result::Ok(Self {
                     unsafe_self_cell: $crate::unsafe_self_cell::UnsafeSelfCell::new(
-                        joined_void_ptr,
+                        joined_void_ptr_send.into_non_null().unwrap(),
                     ),
                     $(owner_marker: $crate::_covariant_owner_marker_ctor!($OwnerLifetime) ,)?
                 })
@@ -729,12 +758,15 @@ macro_rules! _self_cell_try_new_or_recover_body {
                 // ever existed in this function and so we are sure its
                 // drop impl can't access owner after the read.
                 // And err can't return a reference to owner.
-                let owner_on_err = ::core::ptr::read(owner_ptr);
+                let owner_on_err = owner_ptr_send.read();
 
                 // Allowing drop_guard to finish would let it double free owner.
                 // So we dealloc the JoinedCell here manually.
                 ::core::mem::forget(drop_guard);
-                $crate::alloc::alloc::dealloc(joined_void_ptr.as_ptr(), layout);
+
+                // SAFETY: This is a kind of write to the pointer, which is Send because we are the
+                // only ones with access to it.
+                joined_void_ptr_send.dealloc(layout);
 
                 ::core::result::Result::Err((owner_on_err, err))
             }

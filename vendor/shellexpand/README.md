@@ -60,12 +60,12 @@ Functional features:
 Metafeatures:
 
  * `full`: all reasonable (non-experimental, non-hazardous) functionality.
-   (Currently equivalent to `full-msrv-1.51`.)
+   (Currently equivalent to `full-msrv-1-51`.)
  * `base-0` (on by default): basic functionality.
    You must enable this feature.
- * `full-msrv-1.51`: all reasonable functionality compatible with Rust 1.51.
+ * `full-msrv-1-51`: all reasonable functionality compatible with Rust 1.51.
    (currently: `base-0`, `tilde`, `paths`).
- * `full-msrv-1.31`: all reasonable functionality compatible with Rust 1.31.
+ * `full-msrv-1-31`: all reasonable functionality compatible with Rust 1.31.
    (currently: `base-0`, `tilde`).
 
 At the time of writing there is no experimental or hazardous functionality;
@@ -76,6 +76,16 @@ We will try to avoid MSRV increases for existing functionality;
 increasing the MSRV for `full` will be minor version bump.
 
 ## Changelog
+
+### Version 3.1.2 - 2026-02-23
+
+Fixed:
+
+ * Fixed build with recent Rust nightlies.  Fixes ``expected `str`, found `Option<_>` ``
+   in a match expression involving `var_name.as_str()`.
+ * Fixed various compiler warnings.
+ * Fixed inappropriate use of `RawOsStr::raw_len()`.
+ * README.md: fixed a few misspelled cargo feature references.
 
 ### Version 3.1.1 - 2025-04-14
 
@@ -91,7 +101,7 @@ Added:
 
 Added:
 
-* cargo features `full-msrv-1.31` and `full-msrv-1.51`
+* cargo features `full-msrv-1-31` and `full-msrv-1-51`
 
 Fixed:
 

@@ -36,7 +36,7 @@ macro_rules! link {
     (
         $(
             $(#[doc=$doc:expr] #[cfg($cfg:meta)])*
-            pub fn $name:ident($($pname:ident: $pty:ty), *) $(-> $ret:ty)*;
+            pub fn $name:ident($($pname:ident: $pty:ty),* $(,)?) $(-> $ret:ty)*;
         )+
     ) => (
         use std::cell::{RefCell};
@@ -190,7 +190,7 @@ https://docs.rs/clang-sys/latest/clang_sys/{0}/index.html
 
 Instructions for installing `libclang` can be found here:
 https://rust-lang.github.io/rust-bindgen/requirements.html
-"#, 
+"#,
                             stringify!($name),
                             library
                                 .version()
@@ -226,9 +226,9 @@ https://rust-lang.github.io/rust-bindgen/requirements.html
         pub fn load_manually() -> Result<SharedLibrary, String> {
             #[allow(dead_code)]
             mod build {
-                include!(concat!(env!("OUT_DIR"), "/macros.rs"));
-                pub mod common { include!(concat!(env!("OUT_DIR"), "/common.rs")); }
-                pub mod dynamic { include!(concat!(env!("OUT_DIR"), "/dynamic.rs")); }
+                include!("../build/macros.rs");
+                pub mod common { include!("../build/common.rs"); }
+                pub mod dynamic { include!("../build/dynamic.rs"); }
             }
 
             let (directory, filename) = build::dynamic::find(true)?;
@@ -302,7 +302,7 @@ macro_rules! link {
     (
         $(
             $(#[doc=$doc:expr] #[cfg($cfg:meta)])*
-            pub fn $name:ident($($pname:ident: $pty:ty), *) $(-> $ret:ty)*;
+            pub fn $name:ident($($pname:ident: $pty:ty),* $(,)?) $(-> $ret:ty)*;
         )+
     ) => (
         extern {

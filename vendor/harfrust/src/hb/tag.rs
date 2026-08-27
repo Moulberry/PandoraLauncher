@@ -139,6 +139,34 @@ fn lang_cmp(s1: &str, s2: &str) -> core::cmp::Ordering {
     s1[..ea].cmp(&s2[..eb])
 }
 
+pub(super) fn subtag_matches(language: &str, subtag: &str) -> bool {
+    for (i, _) in language.match_indices(subtag) {
+        if let Some(c) = language.as_bytes().get(i + subtag.len()) {
+            if !c.is_ascii_alphanumeric() {
+                return true;
+            }
+        } else {
+            return true;
+        }
+    }
+
+    false
+}
+
+pub(super) fn lang_matches(language: &str, spec: &str) -> bool {
+    if language.starts_with(spec) {
+        return language.len() == spec.len() || language.as_bytes().get(spec.len()) == Some(&b'-');
+    }
+
+    false
+}
+
+pub(super) fn strncmp(s1: &str, s2: &str, n: usize) -> bool {
+    let n1 = core::cmp::min(n, s1.len());
+    let n2 = core::cmp::min(n, s2.len());
+    s1[..n1] == s2[..n2]
+}
+
 fn tags_from_language(language: &Language, tags: &mut ThreeTags) {
     let language = language.as_str();
 

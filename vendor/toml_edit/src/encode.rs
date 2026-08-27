@@ -5,16 +5,16 @@ use toml_datetime::Datetime;
 use toml_writer::ToTomlValue as _;
 use toml_writer::TomlWrite as _;
 
+use crate::DocumentMut;
 use crate::inline_table::DEFAULT_INLINE_KEY_DECOR;
 use crate::key::Key;
-use crate::repr::{Formatted, Repr, ValueRepr};
+use crate::repr::{Decor, Formatted, Repr, ValueRepr};
 use crate::table::{
     DEFAULT_KEY_DECOR, DEFAULT_KEY_PATH_DECOR, DEFAULT_ROOT_DECOR, DEFAULT_TABLE_DECOR,
 };
 use crate::value::{
     DEFAULT_LEADING_VALUE_DECOR, DEFAULT_TRAILING_VALUE_DECOR, DEFAULT_VALUE_DECOR,
 };
-use crate::DocumentMut;
 use crate::{Array, InlineTable, Item, Table, Value};
 
 pub(crate) fn encode_key(this: &Key, buf: &mut dyn Write, input: Option<&str>) -> Result {
@@ -37,8 +37,8 @@ fn encode_key_path(
     mut buf: &mut dyn Write,
     input: Option<&str>,
     default_decor: (&str, &str),
+    leaf_decor: &Decor,
 ) -> Result {
-    let leaf_decor = this.last().expect("always at least one key").leaf_decor();
     for (i, key) in this.iter().enumerate() {
         let dotted_decor = key.dotted_decor();
 
@@ -158,7 +158,6 @@ pub(crate) fn encode_table(
     let decor = this.decor();
     decor.prefix_encode(buf, input, default_decor.0)?;
     buf.open_inline_table()?;
-    this.preamble().encode_with_default(buf, input, "")?;
 
     let children = this.get_values();
     let len = children.len();
@@ -175,7 +174,11 @@ pub(crate) fn encode_table(
         buf.keyval_sep()?;
         encode_value(value, buf, input, inner_decor)?;
     }
+    if this.trailing_comma() && !this.is_empty() {
+        buf.val_sep()?;
+    }
 
+    this.trailing().encode_with_default(buf, input, "")?;
     buf.close_inline_table()?;
     decor.suffix_encode(buf, input, default_decor.1)?;
 
@@ -216,7 +219,7 @@ impl Display for DocumentMut {
         })
         .unwrap();
 
-        tables.sort_by_key(|&(id, _, _, _)| id);
+        tables.sort_by_key(|(id, _, path, _)| (!path.is_empty(), *id));
         let mut first_table = true;
         for (_, table, path, is_array) in tables {
             visit_table(f, None, table, &path, is_array, &mut first_table)?;
@@ -241,13 +244,13 @@ where
 
     for (key, value) in table.items.iter() {
         match value {
-            Item::Table(ref t) => {
+            Item::Table(t) => {
                 let key = key.clone();
                 path.push(key);
                 visit_nested_tables(t, path, false, callback)?;
                 path.pop();
             }
-            Item::ArrayOfTables(ref a) => {
+            Item::ArrayOfTables(a) => {
                 for t in a.iter() {
                     let key = key.clone();
                     path.push(key);
@@ -259,6 +262,35 @@ where
         }
     }
     Ok(())
+}
+
+/// Split the leaf decor for a table header into the part before `[` and the part inside it.
+///
+/// The TOML spec only allows spaces and tabs (ws) between brackets and keys, so any prefix
+/// containing newlines must be placed before `[`.
+///
+/// Returns `(before_bracket, inside_header)`:
+/// - `before_bracket`: `Some(&Decor)` whose prefix should be written before the opening bracket,
+///   when the leaf decor prefix contains newlines.
+/// - `inside_header`: `&Decor` to use around the key path inside the brackets.
+fn leaf_decor_before_bracket<'a>(
+    path: &'a [Key],
+    input: Option<&str>,
+) -> (Option<&'a Decor>, &'a Decor) {
+    let Some(last_key) = path.last() else {
+        return (None, &Decor::EMPTY);
+    };
+    let leaf_decor = last_key.leaf_decor();
+    let needs_extraction = leaf_decor.prefix().is_some_and(|prefix| {
+        prefix
+            .to_str_with_default(input, DEFAULT_KEY_PATH_DECOR.0)
+            .contains('\n')
+    });
+    if needs_extraction {
+        (Some(leaf_decor), &Decor::EMPTY)
+    } else {
+        (None, leaf_decor)
+    }
 }
 
 fn visit_table(
@@ -293,9 +325,13 @@ fn visit_table(
         } else {
             DEFAULT_TABLE_DECOR
         };
+        let (before_bracket, key_decor) = leaf_decor_before_bracket(path, input);
+        if let Some(decor) = before_bracket {
+            decor.prefix_encode(buf, input, DEFAULT_KEY_PATH_DECOR.0)?;
+        }
         table.decor.prefix_encode(buf, input, default_decor.0)?;
         buf.open_array_of_tables_header()?;
-        encode_key_path(path, buf, input, DEFAULT_KEY_PATH_DECOR)?;
+        encode_key_path(path, buf, input, DEFAULT_KEY_PATH_DECOR, key_decor)?;
         buf.close_array_of_tables_header()?;
         table.decor.suffix_encode(buf, input, default_decor.1)?;
         writeln!(buf)?;
@@ -306,9 +342,13 @@ fn visit_table(
         } else {
             DEFAULT_TABLE_DECOR
         };
+        let (before_bracket, key_decor) = leaf_decor_before_bracket(path, input);
+        if let Some(decor) = before_bracket {
+            decor.prefix_encode(buf, input, DEFAULT_KEY_PATH_DECOR.0)?;
+        }
         table.decor.prefix_encode(buf, input, default_decor.0)?;
         buf.open_table_header()?;
-        encode_key_path(path, buf, input, DEFAULT_KEY_PATH_DECOR)?;
+        encode_key_path(path, buf, input, DEFAULT_KEY_PATH_DECOR, key_decor)?;
         buf.close_table_header()?;
         table.decor.suffix_encode(buf, input, default_decor.1)?;
         writeln!(buf)?;

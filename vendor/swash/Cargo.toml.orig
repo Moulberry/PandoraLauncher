@@ -1,6 +1,6 @@
 [package]
 name = "swash"
-version = "0.2.6"
+version = "0.2.10"
 authors = ["Chad Brokaw <cbrokaw@gmail.com>"]
 edition = "2021"
 description = "Font introspection, complex text shaping and glyph rendering."
@@ -34,4 +34,4 @@ clippy.semicolon_if_nothing_returned = "warn"
 core_maths = { version = "0.1.1", optional = true }
 yazi = { version = "0.2.1", optional = true, default-features = false }
 zeno = { version = "0.3.3", optional = true, default-features = false }
-skrifa = { version = ">= 0.31.1, <= 0.37", default-features = false }
+skrifa = { version = ">= 0.31.1, <= 0.44", default-features = false }

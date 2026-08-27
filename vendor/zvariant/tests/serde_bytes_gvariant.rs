@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "gvariant", allow(deprecated))]
+
 #[test]
 #[cfg(all(feature = "serde_bytes", feature = "gvariant"))]
 fn serde_bytes_gvariant() {

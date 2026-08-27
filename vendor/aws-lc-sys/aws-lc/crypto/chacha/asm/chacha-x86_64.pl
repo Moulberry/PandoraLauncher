@@ -65,6 +65,7 @@ die "can't locate x86_64-xlate.pl";
 open OUT,"| \"$^X\" \"$xlate\" $flavour \"$output\"";
 *STDOUT=*OUT;
 
+# AWS-LC limits the ChaCha20 assembly generated here to AVX2.
 $avx = 2;
 for (@ARGV) { $avx = 0 if (/-DMY_ASSEMBLER_IS_TOO_OLD_FOR_AVX/); }
 

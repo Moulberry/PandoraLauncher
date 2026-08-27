@@ -60,9 +60,6 @@ where
     if iup_buffer.len() < glyph.points.len() || glyph.points.len() < PHANTOM_POINT_COUNT {
         return Err(ReadError::InvalidArrayLen);
     }
-    for delta in deltas.iter_mut() {
-        *delta = Default::default();
-    }
     if gvar.glyph_variation_data(glyph_id).is_err() {
         // Empty variation data for a glyph is not an error.
         return Ok(());

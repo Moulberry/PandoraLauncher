@@ -230,10 +230,6 @@ where
     type SerializeStruct = Impossible<S::Ok, S::Error>;
     type SerializeStructVariant = Impossible<S::Ok, S::Error>;
 
-    fn is_human_readable(&self) -> bool {
-        self.0.is_human_readable()
-    }
-
     fn serialize_bool(self, _v: bool) -> Result<Self::Ok, Self::Error> {
         Err(SerError::custom("wrong type for EnumMap"))
     }
@@ -403,6 +399,10 @@ where
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
         Err(SerError::custom("wrong type for EnumMap"))
     }
+
+    fn is_human_readable(&self) -> bool {
+        self.0.is_human_readable()
+    }
 }
 
 /// Serialize a single element but turn the sequence into a map logic.
@@ -457,10 +457,6 @@ where
     type SerializeMap = Impossible<Self::Ok, Self::Error>;
     type SerializeStruct = Impossible<Self::Ok, Self::Error>;
     type SerializeStructVariant = SerializeVariant<'a, M>;
-
-    fn is_human_readable(&self) -> bool {
-        self.is_human_readable
-    }
 
     fn serialize_bool(self, _v: bool) -> Result<Self::Ok, Self::Error> {
         Err(SerError::custom("wrong type for EnumMap"))
@@ -607,7 +603,7 @@ where
             delegate: self.delegate,
             is_human_readable: self.is_human_readable,
             variant,
-            content: Content::TupleStruct(name, Vec::with_capacity(len)),
+            content: Content::TupleStruct(name, utils::vec_with_capacity_cautious(Some(len))),
         })
     }
 
@@ -634,8 +630,12 @@ where
             delegate: self.delegate,
             is_human_readable: self.is_human_readable,
             variant,
-            content: Content::Struct(name, Vec::with_capacity(len)),
+            content: Content::Struct(name, utils::vec_with_capacity_cautious(Some(len))),
         })
+    }
+
+    fn is_human_readable(&self) -> bool {
+        self.is_human_readable
     }
 }
 
@@ -715,8 +715,11 @@ where
 {
     type Error = M::Error;
 
-    fn is_human_readable(&self) -> bool {
-        self.is_human_readable
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_seq(visitor)
     }
 
     fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
@@ -726,11 +729,8 @@ where
         visitor.visit_seq(self)
     }
 
-    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        self.deserialize_seq(visitor)
+    fn is_human_readable(&self) -> bool {
+        self.is_human_readable
     }
 
     forward_to_deserialize_any! {
@@ -792,10 +792,6 @@ where
 {
     type Error = M::Error;
 
-    fn is_human_readable(&self) -> bool {
-        self.is_human_readable
-    }
-
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
     where
         V: Visitor<'de>,
@@ -813,6 +809,10 @@ where
         V: Visitor<'de>,
     {
         visitor.visit_enum(self)
+    }
+
+    fn is_human_readable(&self) -> bool {
+        self.is_human_readable
     }
 
     forward_to_deserialize_any! {

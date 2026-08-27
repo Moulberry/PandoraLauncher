@@ -186,6 +186,33 @@ pub const TLS_SERVER_ROOTS: &[TrustAnchor<'static>] = &[
   },
 
   /*
+   * Issuer: CN=Telia EC TLS Root CA v3 O=Telia Company AB
+   * Subject: CN=Telia EC TLS Root CA v3 O=Telia Company AB
+   * Label: "Telia EC TLS Root CA v3"
+   * Serial: 8028200332079443110287896228123317
+   * SHA256 Fingerprint: 09:8e:08:a9:1d:bb:f7:74:78:b9:6c:ce:b8:9b:14:13:a5:da:37:b7:c8:62:60:6a:95:5d:eb:07:17:9f:43:26
+   * -----BEGIN CERTIFICATE-----
+   * MIICMjCCAbegAwIBAgIPAYvSIlRjTQSLbOVHH9K1MAoGCCqGSM49BAMDMEoxCzAJ
+   * BgNVBAYTAlNFMRkwFwYDVQQKDBBUZWxpYSBDb21wYW55IEFCMSAwHgYDVQQDDBdU
+   * ZWxpYSBFQyBUTFMgUm9vdCBDQSB2MzAeFw0yMzExMTUwODU1MjZaFw00ODA1MjMx
+   * MTAwMDBaMEoxCzAJBgNVBAYTAlNFMRkwFwYDVQQKDBBUZWxpYSBDb21wYW55IEFC
+   * MSAwHgYDVQQDDBdUZWxpYSBFQyBUTFMgUm9vdCBDQSB2MzB2MBAGByqGSM49AgEG
+   * BSuBBAAiA2IABMHIlhVDLbmFKUpW0iK4dpryT6emYOeS31JPwWnWPmkWRrAkTbPX
+   * 40sQfHI9mpR7Rbktu3ngg6W+BBSXSechtMCnBmWXj/EaVlmV5cY1jD2HoTfhBQ3A
+   * acpCNMLJK4NpZaNjMGEwHwYDVR0jBBgwFoAU1GToQ4g6cy/QGnGCNgtehd7H3kMw
+   * HQYDVR0OBBYEFNRk6EOIOnMv0BpxgjYLXoXex95DMA4GA1UdDwEB/wQEAwIBBjAP
+   * BgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMDA2kAMGYCMQCXAUdS/9bbJ8A1JYaG
+   * f/bWt/s7Ta0ot5Ulno8OjSNYRWQIlS4tVWldvTAVA7heOFgCMQCvKr8+Z2Rn+OBr
+   * 5UHzlgBObpad1LuwNTRcdNgUJxIWadcki+UBLEi1/AURKV5md2M=
+   * -----END CERTIFICATE-----
+   */
+  TrustAnchor {
+    subject: Der::from_slice(b"1\x0b0\t\x06\x03U\x04\x06\x13\x02SE1\x190\x17\x06\x03U\x04\n\x0c\x10Telia Company AB1 0\x1e\x06\x03U\x04\x03\x0c\x17Telia EC TLS Root CA v3"),
+    subject_public_key_info: Der::from_slice(b"0\x10\x06\x07*\x86H\xce=\x02\x01\x06\x05+\x81\x04\x00\"\x03b\x00\x04\xc1\xc8\x96\x15C-\xb9\x85)JV\xd2\"\xb8v\x9a\xf2O\xa7\xa6`\xe7\x92\xdfRO\xc1i\xd6>i\x16F\xb0$M\xb3\xd7\xe3K\x10|r=\x9a\x94{E\xb9-\xbby\xe0\x83\xa5\xbe\x04\x14\x97I\xe7!\xb4\xc0\xa7\x06e\x97\x8f\xf1\x1aVY\x95\xe5\xc65\x8c=\x87\xa17\xe1\x05\r\xc0i\xcaB4\xc2\xc9+\x83ie"),
+    name_constraints: None
+  },
+
+  /*
    * Issuer: CN=emSign Root CA - C1 O=eMudhra Inc OU=emSign PKI
    * Subject: CN=emSign Root CA - C1 O=eMudhra Inc OU=emSign PKI
    * Label: "emSign Root CA - C1"
@@ -216,6 +243,51 @@ pub const TLS_SERVER_ROOTS: &[TrustAnchor<'static>] = &[
   TrustAnchor {
     subject: Der::from_slice(b"1\x0b0\t\x06\x03U\x04\x06\x13\x02US1\x130\x11\x06\x03U\x04\x0b\x13\nemSign PKI1\x140\x12\x06\x03U\x04\n\x13\x0beMudhra Inc1\x1c0\x1a\x06\x03U\x04\x03\x13\x13emSign Root CA - C1"),
     subject_public_key_info: Der::from_slice(b"0\r\x06\t*\x86H\x86\xf7\r\x01\x01\x01\x05\x00\x03\x82\x01\x0f\x000\x82\x01\n\x02\x82\x01\x01\x00\xcf\xeb\xa9\xb9\xf1\x99\x05\xcc\xd8(!J\xf3s4Q\x84V\x10\xf5\xa0O,\x12\xe3\xfa\x13\x9a\'\xd0\xcf\xf9y\x1at_\x1dy9\xfc[\xf8p\x8e\xe0\x92R\xf7\xe4%\xf9T\x83\xd9\x1d\xd3\xc8Z\x85?^\xc7\xb6\x07\xee>\xc0\xce\x9a\xaf\xacVB*9%p\xd6\xbf\xb5{6\xad\xac\xf6s\xdc\xcd\xd7\x1d\x8a\x83\xa5\xfb+\x90\x157k\x1c&G\xdc;)V\x93j\xb3\xc1j:\x9d=\xf5\xc1\x978X\x05\x8b\x1c\x11\xe3\xe4\xb4\xb8]\x85\x1d\x83\xfex_\x0bEh\x18H\xa5Fs4;\xfe\x0f\xc8v\xbb\xc7\x18\xf3\x05\xd1\x86\xf3\x85\xed\xe7\xb9\xd92\xadU\x88\xce\xa6\xb6\x91\xb0O\xac~\x15#\x96\xf6?\xf0 4\x16\xde\n\xc6\xc4\x04Ey\x7f\xa7\xfd\xbe\xd2\xa9\xa5\xaf\x9c\xc5#*\xf7<!l\xbd\xaf\x8fN\xc5:\xb2\xf34\x12\xfc\xdf\x80\x1aI\xa4\xd4\xa9\x95\xf7\x9e\x89^\xa2\x89\xac\x94\xcb\xa8h\x9b\xaf\x8ae\'\xcd\x89\xee\xdd\x8c\xb5k)pC\xa0i\x0b\xe4\xb9\x0f\x02\x03\x01\x00\x01"),
+    name_constraints: None
+  },
+
+  /*
+   * Issuer: CN=SECOM TLS RSA Root CA 2024 O=SECOM Trust Systems Co., Ltd.
+   * Subject: CN=SECOM TLS RSA Root CA 2024 O=SECOM Trust Systems Co., Ltd.
+   * Label: "SECOM TLS RSA Root CA 2024"
+   * Serial: 17188327524208271538
+   * SHA256 Fingerprint: 14:35:f2:25:c5:d2:52:d7:a2:19:48:cc:3c:e6:2a:ec:fa:88:00:1e:3d:d7:2d:1c:c3:55:51:00:eb:37:2f:93
+   * -----BEGIN CERTIFICATE-----
+   * MIIFmjCCA4KgAwIBAgIJAO6JNNDLgOCyMA0GCSqGSIb3DQEBDAUAMFoxCzAJBgNV
+   * BAYTAkpQMSYwJAYDVQQKEx1TRUNPTSBUcnVzdCBTeXN0ZW1zIENvLiwgTHRkLjEj
+   * MCEGA1UEAxMaU0VDT00gVExTIFJTQSBSb290IENBIDIwMjQwHhcNMjQwMTMxMDUx
+   * MTU1WhcNNDkwMTE0MDUxMTU1WjBaMQswCQYDVQQGEwJKUDEmMCQGA1UEChMdU0VD
+   * T00gVHJ1c3QgU3lzdGVtcyBDby4sIEx0ZC4xIzAhBgNVBAMTGlNFQ09NIFRMUyBS
+   * U0EgUm9vdCBDQSAyMDI0MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA
+   * 4TjizUwzxbInq8Tx11gaFYNk5fO+34y7TyM4neh0UgL5JIZbJNLTz2x//L/B71+5
+   * m6X6nGIr7d4lFJBGtjO677hXOz93zkcWaUTm3VbOAjBlt4YWxlcccBHXuZ7o3Q+4
+   * R+ormrBdHeJ1CTUEG8ttQbKIl3G7OZYbnH8/pP8cjPub/0kDVNuMzp7xsVRROOis
+   * Qt53fMoJLlYgoebbuMphOqMCtjkJ7R6efEMfLp8UAVi9ZaLRn76ET/CJkk925ndu
+   * uufC4BatS4mnXFmxN0vUXb0ij9B8O/D8gixQEsVSD4GK8FWRPh3bVd/6bzdkHGJj
+   * y21XI0yejVomZUbRrOfNuz0boPGV1pt18fFC39IHQEth3OFqb5NDO3L+A9bNqTgA
+   * yUgRmIn4ucgDc/Ri/Km3V51ueZjy1/yk0qwJVadAVVrCt56iNeXOyEvzJADGgDQ8
+   * E1Pdaqct8Cynz/47ReQM62vFYO08wcQkrjmX/tesiko1V1yyaf6EfPzUFzmaGy9x
+   * vkCwdbm15EdTolOjE0H2Vb5/APDOyCFEokiYGmXTLdAUl0wKZ4IyjkHGzy0jhpaX
+   * EXE/GJcEvI6VzEchjaBL03EJ0h9pG4OqeIOycKvAo3A+TbetyfsrgYyHzU0a7/qU
+   * jGat1AAq1nVljMpKqpinPTsf/d9H39FTUeJL7TpzzjUCAwEAAaNjMGEwHQYDVR0O
+   * BBYEFCzrchKOWHdkNRVWNQFXB6l9DTbmMB8GA1UdIwQYMBaAFCzrchKOWHdkNRVW
+   * NQFXB6l9DTbmMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MA0GCSqG
+   * SIb3DQEBDAUAA4ICAQAVwsvluSafaez5tFPR/hRTBzRxEyMMQF3XJXCVi3yegZyK
+   * oec7hmE6jx2ZM8KgM1kn2yJRwFXHX8zUW9nBLEDWc4wuE8LrlZqhGZM9pJQXGmGz
+   * ResDJV6JgRBna+j4sA1M7yIdlvL0sAfFXFCTRaWTD4E1V99RLrFzWfTcC+e180hD
+   * uNMpqOEo46+lMeW/Wvh7ifOQs+kiK0O2gHxQDNxslSavnCs4V7l8HRDJ2La10o70
+   * Bo7VLzf1W8MBvv0VTnxB+NjT5qTAbhGFh9Gvp4BaJpmdUf0C5CEP6dbQlfgxWfzY
+   * r69yVT6dPQB+GFEaY03IMY+AcBCs+om1fNxrQXt9zoofMBNFbLhvpNH/JsXWdGUz
+   * fNbO12uswTa5wah8LB18FTQN2/zPHYmvBEoLuyUgZ09VNLJo5YA0kXItVYkLjMe2
+   * SixzK4scUHv81IK99I91DWx7FwMVKw2xgFp+ZLYB2dnpQQrqwlW64glHUcK2N9BD
+   * snjLSxeZ+UPECh9RxH4WAcKiZW+cqaKMmhP2WBfR4IcR7NOL32ml11ds87hhV1CZ
+   * WWFCJAcCidYZz6CZa8exzHojP9SB5RH0/v1KdHAisqhSjtJl/UIAHIQ48elOn8wr
+   * TdFap4Yb5aHglmMeNx+fAIhDluWVfxTO7H4dTPU+SFVRMLAh+wwKZfqb94nMeQ==
+   * -----END CERTIFICATE-----
+   */
+  TrustAnchor {
+    subject: Der::from_slice(b"1\x0b0\t\x06\x03U\x04\x06\x13\x02JP1&0$\x06\x03U\x04\n\x13\x1dSECOM Trust Systems Co., Ltd.1#0!\x06\x03U\x04\x03\x13\x1aSECOM TLS RSA Root CA 2024"),
+    subject_public_key_info: Der::from_slice(b"0\r\x06\t*\x86H\x86\xf7\r\x01\x01\x01\x05\x00\x03\x82\x02\x0f\x000\x82\x02\n\x02\x82\x02\x01\x00\xe18\xe2\xcdL3\xc5\xb2\'\xab\xc4\xf1\xd7X\x1a\x15\x83d\xe5\xf3\xbe\xdf\x8c\xbbO#8\x9d\xe8tR\x02\xf9$\x86[$\xd2\xd3\xcfl\x7f\xfc\xbf\xc1\xef_\xb9\x9b\xa5\xfa\x9cb+\xed\xde%\x14\x90F\xb63\xba\xef\xb8W;?w\xceG\x16iD\xe6\xddV\xce\x020e\xb7\x86\x16\xc6W\x1cp\x11\xd7\xb9\x9e\xe8\xdd\x0f\xb8G\xea+\x9a\xb0]\x1d\xe2u\t5\x04\x1b\xcbmA\xb2\x88\x97q\xbb9\x96\x1b\x9c\x7f?\xa4\xff\x1c\x8c\xfb\x9b\xffI\x03T\xdb\x8c\xce\x9e\xf1\xb1TQ8\xe8\xacB\xdew|\xca\t.V \xa1\xe6\xdb\xb8\xcaa:\xa3\x02\xb69\t\xed\x1e\x9e|C\x1f.\x9f\x14\x01X\xbde\xa2\xd1\x9f\xbe\x84O\xf0\x89\x92Ov\xe6wn\xba\xe7\xc2\xe0\x16\xadK\x89\xa7\\Y\xb17K\xd4]\xbd\"\x8f\xd0|;\xf0\xfc\x82,P\x12\xc5R\x0f\x81\x8a\xf0U\x91>\x1d\xdbU\xdf\xfao7d\x1cbc\xcbmW#L\x9e\x8dZ&eF\xd1\xac\xe7\xcd\xbb=\x1b\xa0\xf1\x95\xd6\x9bu\xf1\xf1B\xdf\xd2\x07@Ka\xdc\xe1jo\x93C;r\xfe\x03\xd6\xcd\xa98\x00\xc9H\x11\x98\x89\xf8\xb9\xc8\x03s\xf4b\xfc\xa9\xb7W\x9dny\x98\xf2\xd7\xfc\xa4\xd2\xac\tU\xa7@UZ\xc2\xb7\x9e\xa25\xe5\xce\xc8K\xf3$\x00\xc6\x804<\x13S\xddj\xa7-\xf0,\xa7\xcf\xfe;E\xe4\x0c\xebk\xc5`\xed<\xc1\xc4$\xae9\x97\xfe\xd7\xac\x8aJ5W\\\xb2i\xfe\x84|\xfc\xd4\x179\x9a\x1b/q\xbe@\xb0u\xb9\xb5\xe4GS\xa2S\xa3\x13A\xf6U\xbe\x7f\x00\xf0\xce\xc8!D\xa2H\x98\x1ae\xd3-\xd0\x14\x97L\ng\x822\x8eA\xc6\xcf-#\x86\x96\x97\x11q?\x18\x97\x04\xbc\x8e\x95\xccG!\x8d\xa0K\xd3q\t\xd2\x1fi\x1b\x83\xaax\x83\xb2p\xab\xc0\xa3p>M\xb7\xad\xc9\xfb+\x81\x8c\x87\xcdM\x1a\xef\xfa\x94\x8cf\xad\xd4\x00*\xd6ue\x8c\xcaJ\xaa\x98\xa7=;\x1f\xfd\xdfG\xdf\xd1SQ\xe2K\xed:s\xce5\x02\x03\x01\x00\x01"),
     name_constraints: None
   },
 
@@ -1970,6 +2042,34 @@ pub const TLS_SERVER_ROOTS: &[TrustAnchor<'static>] = &[
   },
 
   /*
+   * Issuer: CN=SECOM TLS ECC Root CA 2024 O=SECOM Trust Systems Co., Ltd.
+   * Subject: CN=SECOM TLS ECC Root CA 2024 O=SECOM Trust Systems Co., Ltd.
+   * Label: "SECOM TLS ECC Root CA 2024"
+   * Serial: 9329818985461676612
+   * SHA256 Fingerprint: 6a:b2:ab:75:f5:1c:b4:f4:f0:15:62:03:fb:f6:f6:46:23:2f:51:4b:e0:59:f6:28:33:30:8b:82:b4:d7:2d:b1
+   * -----BEGIN CERTIFICATE-----
+   * MIICTDCCAdGgAwIBAgIJAIF6LO+PI3pEMAoGCCqGSM49BAMDMFoxCzAJBgNVBAYT
+   * AkpQMSYwJAYDVQQKEx1TRUNPTSBUcnVzdCBTeXN0ZW1zIENvLiwgTHRkLjEjMCEG
+   * A1UEAxMaU0VDT00gVExTIEVDQyBSb290IENBIDIwMjQwHhcNMjQwMTMxMDU1MjM0
+   * WhcNNDkwMTE0MDU1MjM0WjBaMQswCQYDVQQGEwJKUDEmMCQGA1UEChMdU0VDT00g
+   * VHJ1c3QgU3lzdGVtcyBDby4sIEx0ZC4xIzAhBgNVBAMTGlNFQ09NIFRMUyBFQ0Mg
+   * Um9vdCBDQSAyMDI0MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE7NzFMtu9dzQXSNC1
+   * 2fabk0+GlC5finB3R7XaZonRUd20aFiWObtuNBCLUZSfk6QXAE55BjEXsXQ/NG8y
+   * UqicXjsu9ksDK3JZBgCwLOVh6+nwJXTvso/dEj/GUYH5mBdoo2MwYTAdBgNVHQ4E
+   * FgQUO3YReyl04k4GTFaCQNAhL3qzydUwHwYDVR0jBBgwFoAUO3YReyl04k4GTFaC
+   * QNAhL3qzydUwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZI
+   * zj0EAwMDaQAwZgIxAN3ib8fi1pMYtAPjMilB5e5/H+t5CL0xPL+cZ5oTTZuSCjpA
+   * n1v7F/VAr8bFxQXAowIxAKsBVO1ACFp7skwzPvdv1EUY5a897WGLT4lb+bjxFAWy
+   * l8wDcZJdwGZ/pAHxt1AJ1g==
+   * -----END CERTIFICATE-----
+   */
+  TrustAnchor {
+    subject: Der::from_slice(b"1\x0b0\t\x06\x03U\x04\x06\x13\x02JP1&0$\x06\x03U\x04\n\x13\x1dSECOM Trust Systems Co., Ltd.1#0!\x06\x03U\x04\x03\x13\x1aSECOM TLS ECC Root CA 2024"),
+    subject_public_key_info: Der::from_slice(b"0\x10\x06\x07*\x86H\xce=\x02\x01\x06\x05+\x81\x04\x00\"\x03b\x00\x04\xec\xdc\xc52\xdb\xbdw4\x17H\xd0\xb5\xd9\xf6\x9b\x93O\x86\x94._\x8apwG\xb5\xdaf\x89\xd1Q\xdd\xb4hX\x969\xbbn4\x10\x8bQ\x94\x9f\x93\xa4\x17\x00Ny\x061\x17\xb1t?4o2R\xa8\x9c^;.\xf6K\x03+rY\x06\x00\xb0,\xe5a\xeb\xe9\xf0%t\xef\xb2\x8f\xdd\x12?\xc6Q\x81\xf9\x98\x17h"),
+    name_constraints: None
+  },
+
+  /*
    * Issuer: CN=Certum EC-384 CA O=Asseco Data Systems S.A. OU=Certum Certification Authority
    * Subject: CN=Certum EC-384 CA O=Asseco Data Systems S.A. OU=Certum Certification Authority
    * Label: "Certum EC-384 CA"
@@ -3607,6 +3707,51 @@ pub const TLS_SERVER_ROOTS: &[TrustAnchor<'static>] = &[
   },
 
   /*
+   * Issuer: CN=Telia RSA TLS Root CA v3 O=Telia Company AB
+   * Subject: CN=Telia RSA TLS Root CA v3 O=Telia Company AB
+   * Label: "Telia RSA TLS Root CA v3"
+   * Serial: 8028214673410753541795188766939845
+   * SHA256 Fingerprint: d1:3d:b1:29:4c:45:eb:c6:fc:86:c6:bb:f6:9f:a2:9b:df:e6:92:df:f7:c7:13:c2:43:c7:a9:56:c6:a2:28:4c
+   * -----BEGIN CERTIFICATE-----
+   * MIIFgjCCA2qgAwIBAgIPAYvSUKtCVSxHWr2h3BrFMA0GCSqGSIb3DQEBDAUAMEsx
+   * CzAJBgNVBAYTAlNFMRkwFwYDVQQKDBBUZWxpYSBDb21wYW55IEFCMSEwHwYDVQQD
+   * DBhUZWxpYSBSU0EgVExTIFJvb3QgQ0EgdjMwHhcNMjMxMTE1MDk0NzQyWhcNNDgw
+   * NTIzMTEwMDAwWjBLMQswCQYDVQQGEwJTRTEZMBcGA1UECgwQVGVsaWEgQ29tcGFu
+   * eSBBQjEhMB8GA1UEAwwYVGVsaWEgUlNBIFRMUyBSb290IENBIHYzMIICIjANBgkq
+   * hkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAsV89KG19hCf4S1Fvk8D3TyDERhmcvx8F
+   * 7Kmb4WATx3ije1id3KHxRE0TKmcNCbAQ57bvHFEYa4hR2l20VjVadExqOW+2ld99
+   * MbEiO+jRVOz+BbxLxJnmGwCqI+BfuTjjVReDxsxjQvjgBsClaO/sm5i70nlZcWGR
+   * tIkvWDK3NNkT5RtwXc/O8NTFVpbUqT6cRjIj3olAblR+lRf4Ffy5o+Q9fabjYn9Z
+   * 9S4itruElcEFf9Ljk7fwdTycT/rvJW9w/B3G2a3r0f/zXNOVruIBcqE6pkSospAC
+   * U2bG42fYKrbM/GWnp7u+p9Frz4jaNwpb4YHuEeS8BratNcP8X62jXIvvKHxlsMDJ
+   * Cnb4U8JzFOLsU6mohVY58BdZrvi0Gk9UOuqmgoG6dskHoksjZTlK61D/InzmEoA1
+   * yAYJFDVysjRxDUOu9cAwANbqmq77WIFL6BpnZgVqPtMfG6wN8BrTKdapvilVsYR5
+   * 9BFgIsAVBMxrGh+W+QcvmJafUpASvlArKvVG2FI4i6PiLjSBT0+6F6EQLrYqefOQ
+   * F/fBNEXb+njUQ0SUVrAqtH4Y+OjCI/a4/JJQppxeemZcQ0SUShgiI5AM5xHO5iya
+   * UrTjYH4zxUz9j+1FEbDH/xpstr1gXBykspup+hRTaJcbA+UbpJqtWZndAPddJmt6
+   * YJQ+dU3pDu8CAwEAAaNjMGEwHwYDVR0jBBgwFoAUsMep0t2yKFZzBJSMFFxIbzdS
+   * kqgwHQYDVR0OBBYEFLDHqdLdsihWcwSUjBRcSG83UpKoMA4GA1UdDwEB/wQEAwIB
+   * BjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBDAUAA4ICAQBdYzFsNGDRk7bR
+   * /AgRKq+5637YuOW+w6uhpoS0VnKMUpyHCwku86hEvqivakPtfmlm4bFwt++sb/8O
+   * XsWBqtfbXMaBNDTZl8XRMJuLWOW2JrbKkRzgG0eBUcvsadG1rrhbmZqYvFXaAZO7
+   * o4TdOZzxhBB5GOAWWXB3IeraNP4J63zyo9n8Gqw3sJBG44em5hoYjBffP+npibys
+   * lnslRi4L6xHsCYj/Pab+OlqbMCB6v+sTCLeEIukRVzoR9aQ45pEK7Z1QBnSsbAKQ
+   * tss0JKD9d/mX143H1xePjPhTXlv5JCkhrcj+SShz0P9+EHoWe6m9lyUEOIVn0rp+
+   * yVJWNbmyDv3VkwFxHC1ApSQsgSimjGQ4wtr6cSmordYxkV+Ro8lOIIhRksXPyDk2
+   * 7gW6IjUXCkZKpxFjkL3jiBSc8SkxnwCWtXg8xwNwdFVNBGLCCuJnsneYXjJNqzRq
+   * UcoGwzsvF3Qi/ZnHUNvISdevlgIAXL4Wvrxaqvoa01wB+GCfs57RTGE4TvAGhKNK
+   * us8K3hRT1BSpigzMIRzSxtAOrqPN6j//QSmW9f8Jcncri4j2ihSpVrFU0NdNkMhZ
+   * eAKidTFPsxCVFuW4Aniz7jqiw5sWtjbQrlW035izIEU4sYwQoC1Nx0Svy+mMTRai
+   * 50LqFQ+A1/Hq6xHHDNx7CI83d23Erw==
+   * -----END CERTIFICATE-----
+   */
+  TrustAnchor {
+    subject: Der::from_slice(b"1\x0b0\t\x06\x03U\x04\x06\x13\x02SE1\x190\x17\x06\x03U\x04\n\x0c\x10Telia Company AB1!0\x1f\x06\x03U\x04\x03\x0c\x18Telia RSA TLS Root CA v3"),
+    subject_public_key_info: Der::from_slice(b"0\r\x06\t*\x86H\x86\xf7\r\x01\x01\x01\x05\x00\x03\x82\x02\x0f\x000\x82\x02\n\x02\x82\x02\x01\x00\xb1_=(m}\x84\'\xf8KQo\x93\xc0\xf7O \xc4F\x19\x9c\xbf\x1f\x05\xec\xa9\x9b\xe1`\x13\xc7x\xa3{X\x9d\xdc\xa1\xf1DM\x13*g\r\t\xb0\x10\xe7\xb6\xef\x1cQ\x18k\x88Q\xda]\xb4V5ZtLj9o\xb6\x95\xdf}1\xb1\";\xe8\xd1T\xec\xfe\x05\xbcK\xc4\x99\xe6\x1b\x00\xaa#\xe0_\xb98\xe3U\x17\x83\xc6\xcccB\xf8\xe0\x06\xc0\xa5h\xef\xec\x9b\x98\xbb\xd2yYqa\x91\xb4\x89/X2\xb74\xd9\x13\xe5\x1bp]\xcf\xce\xf0\xd4\xc5V\x96\xd4\xa9>\x9cF2#\xde\x89@nT~\x95\x17\xf8\x15\xfc\xb9\xa3\xe4=}\xa6\xe3b\x7fY\xf5.\"\xb6\xbb\x84\x95\xc1\x05\x7f\xd2\xe3\x93\xb7\xf0u<\x9cO\xfa\xef%op\xfc\x1d\xc6\xd9\xad\xeb\xd1\xff\xf3\\\xd3\x95\xae\xe2\x01r\xa1:\xa6D\xa8\xb2\x90\x02Sf\xc6\xe3g\xd8*\xb6\xcc\xfce\xa7\xa7\xbb\xbe\xa7\xd1k\xcf\x88\xda7\n[\xe1\x81\xee\x11\xe4\xbc\x06\xb6\xad5\xc3\xfc_\xad\xa3\\\x8b\xef(|e\xb0\xc0\xc9\nv\xf8S\xc2s\x14\xe2\xecS\xa9\xa8\x85V9\xf0\x17Y\xae\xf8\xb4\x1aOT:\xea\xa6\x82\x81\xbav\xc9\x07\xa2K#e9J\xebP\xff\"|\xe6\x12\x805\xc8\x06\t\x145r\xb24q\rC\xae\xf5\xc00\x00\xd6\xea\x9a\xae\xfbX\x81K\xe8\x1agf\x05j>\xd3\x1f\x1b\xac\r\xf0\x1a\xd3)\xd6\xa9\xbe)U\xb1\x84y\xf4\x11`\"\xc0\x15\x04\xcck\x1a\x1f\x96\xf9\x07/\x98\x96\x9fR\x90\x12\xbeP+*\xf5F\xd8R8\x8b\xa3\xe2.4\x81OO\xba\x17\xa1\x10.\xb6*y\xf3\x90\x17\xf7\xc14E\xdb\xfax\xd4CD\x94V\xb0*\xb4~\x18\xf8\xe8\xc2#\xf6\xb8\xfc\x92P\xa6\x9c^zf\\CD\x94J\x18\"#\x90\x0c\xe7\x11\xce\xe6,\x9aR\xb4\xe3`~3\xc5L\xfd\x8f\xedE\x11\xb0\xc7\xff\x1al\xb6\xbd`\\\x1c\xa4\xb2\x9b\xa9\xfa\x14Sh\x97\x1b\x03\xe5\x1b\xa4\x9a\xadY\x99\xdd\x00\xf7]&kz`\x94>uM\xe9\x0e\xef\x02\x03\x01\x00\x01"),
+    name_constraints: None
+  },
+
+  /*
    * Issuer: CN=UCA Extended Validation Root O=UniTrust
    * Subject: CN=UCA Extended Validation Root O=UniTrust
    * Label: "UCA Extended Validation Root"
@@ -4278,40 +4423,6 @@ pub const TLS_SERVER_ROOTS: &[TrustAnchor<'static>] = &[
   TrustAnchor {
     subject: Der::from_slice(b"1\x0b0\t\x06\x03U\x04\x06\x13\x02TW1#0!\x06\x03U\x04\n\x0c\x1aChunghwa Telecom Co., Ltd.1\x1b0\x19\x06\x03U\x04\x03\x0c\x12HiPKI Root CA - G1"),
     subject_public_key_info: Der::from_slice(b"0\r\x06\t*\x86H\x86\xf7\r\x01\x01\x01\x05\x00\x03\x82\x02\x0f\x000\x82\x02\n\x02\x82\x02\x01\x00\xf4\x1e\x7fRs2\x0cs\xe4\xbd\x13t\xa3\xd40\xa8\xd0\xaeK\xd8\xb6\xdfuGf\xf4|\xe79\x04\x1ejp \xd2ZGrgU\xf4\xa5\xe8\x9d\xd5\x1e!\xa1\xf0g\xba\xcc!h\xbeDS\xbf\x8d\xf9\xe2\xdc/U\xc87?\x1f\xa4\xc0\x9c\xb3\xe4w\\\xa0F\xfew\xfa\x1a\xa08\xea\xed\x9ar\xde+\xbd\x94W:\xba\xecy\xe7_}Bd9z&6\xf7$\xf0\xd5/\xba\x95\x98\x11f\xad\x975\xd6u\x01\x80\xe0\xaf\xf4\x84a\x8c\r\x1e_|\x87\x96^A\xaf\xeb\x87\xea\xf8]\xf1.\x88\x05>L\"\xbb\xda\x1f*\xddRFd9\xf3B\xce\xd9\x9e\x0c\xb3\xb0w\x97d\x9c\xc0\xf4\xa3.\x1f\x95\x07\xb0\x17\xdf0\xdb\x00\x18\x96L\xa1\x81K\xdd\x04mS\xa3=\xfc\x07\xac\xd4\xc57\x82\xeb\xe4\x95\x08\x19(\x82\xd2B:\xa3\xd8S\xecy\x89`H`\xc8r\x92P\xdc\x03\x8f\x83?\xb2BWZ\xdbj\xe9\x11\x97\xdd\x85(\xbc0L\xab\xe3\xc2\xb1EDG\x1f\xe0\x8a\x16\x07\x96\xd2!\x0fS\xc0\xed\xa9~\xd4N\xec\x9b\t\xec\xafB\xac0\xd6\xbf\xd1\x10E\xe0\xa6\x16\xb2\xa5\xc5\xd3Os\x943q\x02\xa1j\xa3\xd63\x97O!c\x1e[\x8f\xd9\xc1^Eqw\x0f\x81]_!\x9a\xad\x83\xcc\xfa^\xd6\x8d#_\x1b=A\xaf ufZJ\xf6\x9f\xfb\xab\x18\xf7q\xc0\xb6\x1d1\xec; \xeb\xcb\xe2\xb8\xf5\xae\x92\xb2\xf7\xe1\x84K\xf2\xa2\xf2\x93\x9a\"\x9e\xd3\x14o6T\xbd\x1f^Y\x15\xb9s\xa8\xc1|o{b\xe9\x16lGZe\xf3\x0e\x11\x9bF\xd9\xfdm\xdc\xd6\x9c\xc0\xb4}\xa5\xb0\xdd?Vo\xa1\xf9\xf6\xe4\x12H\xfd\x06\x7f\x12W\xb6\xa9#O[\x03\xc3\xe0q*#\xb7\xf7\xb0\xb1;\xbc\x98\xbd\xd6\x98\xa8\x0ck\xf6\x8e\x12g\xa6\xf2\xb2X\xe4\x02\t\x13<\xa9\xbb\x10\xb4\xd20E\xf1\xec\xf7\x00\x11\xdfe\xf8\xdc+CU\xbf\x16\x97\xc4\x0f\xd5,a\x84\xaar\x86\xfe\xe6:~\xc2?}\xee\xfc/\x14>\xe6\x85\xddPo\xb7I\xed\x02\x03\x01\x00\x01"),
-    name_constraints: None
-  },
-
-  /*
-   * Issuer: CN=Atos TrustedRoot 2011 O=Atos
-   * Subject: CN=Atos TrustedRoot 2011 O=Atos
-   * Label: "Atos TrustedRoot 2011"
-   * Serial: 6643877497813316402
-   * SHA256 Fingerprint: f3:56:be:a2:44:b7:a9:1e:b3:5d:53:ca:9a:d7:86:4a:ce:01:8e:2d:35:d5:f8:f9:6d:df:68:a6:f4:1a:a4:74
-   * -----BEGIN CERTIFICATE-----
-   * MIIDdzCCAl+gAwIBAgIIXDPLYixfszIwDQYJKoZIhvcNAQELBQAwPDEeMBwGA1UE
-   * AwwVQXRvcyBUcnVzdGVkUm9vdCAyMDExMQ0wCwYDVQQKDARBdG9zMQswCQYDVQQG
-   * EwJERTAeFw0xMTA3MDcxNDU4MzBaFw0zMDEyMzEyMzU5NTlaMDwxHjAcBgNVBAMM
-   * FUF0b3MgVHJ1c3RlZFJvb3QgMjAxMTENMAsGA1UECgwEQXRvczELMAkGA1UEBhMC
-   * REUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCVhTuXbyo7LjvPpvMp
-   * Nb7PGKw+qtn4TaA+Gke5vJrf8v7MPkfoepbCJI419KkM/IL9bcFyYie96mvr54rM
-   * VD6QUM+A1JX76LWC1BTFtqlVJVfbsVD2sGBkWXppzwO3bw2+yj5vdHLqqjAqc2K+
-   * SZFhyBH+DgMq92og3AIVDV4VavzjgsG1xZ1kCWyjWZgHJ8cblithdHFsQ/H3NYkQ
-   * 4J7sVaE3IqKHBAUsR320HLliKWYoyrfhk/WklAOZuXCFteZI6o1Q/NnezG8HDt0L
-   * cp2AMBYHlT8oDv3FdU9T1nSatCQujgKRz3bFmx5VdJx4IbHwLfELn8LVlhgf8FQi
-   * eowHAgMBAAGjfTB7MB0GA1UdDgQWBBSnpQaxLKYJYO7Rl+lwrrw7GWzbITAPBgNV
-   * HRMBAf8EBTADAQH/MB8GA1UdIwQYMBaAFKelBrEspglg7tGX6XCuvDsZbNshMBgG
-   * A1UdIAQRMA8wDQYLKwYBBAGwLQMEAQEwDgYDVR0PAQH/BAQDAgGGMA0GCSqGSIb3
-   * DQEBCwUAA4IBAQAmdzTblEiGKkGdLD4GkGDEjKwLVLgfuXvTBznk+j57sj1O7Z8j
-   * vZfza1zv7v1Apt+hk6EKhqzvINB5Ab149xnYJDE0BAGmuhWawyfc2E8PzBhj/5kP
-   * DpFrdRbhIfzYJsdHt6bPWHJxfrrhTZVHO8mvbaG0weyJ9rQPOLXiZNwlz6bb65pc
-   * maHFCN795trV1lpFDMS3wrUU77QR/w4VtfX128a961qn8FYiqTxlVMYVqL2Gns2D
-   * lmh6cYGJ4Qvh6hEbaAjMaZ7snkGeRDImeuKHCnE96+RapNLbxc3G3mB/ufNPRJLv
-   * KrcYPqcZ2Qt9sTdBQrC6YB3y/gkRsPCHe6ed
-   * -----END CERTIFICATE-----
-   */
-  TrustAnchor {
-    subject: Der::from_slice(b"1\x1e0\x1c\x06\x03U\x04\x03\x0c\x15Atos TrustedRoot 20111\r0\x0b\x06\x03U\x04\n\x0c\x04Atos1\x0b0\t\x06\x03U\x04\x06\x13\x02DE"),
-    subject_public_key_info: Der::from_slice(b"0\r\x06\t*\x86H\x86\xf7\r\x01\x01\x01\x05\x00\x03\x82\x01\x0f\x000\x82\x01\n\x02\x82\x01\x01\x00\x95\x85;\x97o*;.;\xcf\xa6\xf3)5\xbe\xcf\x18\xac>\xaa\xd9\xf8M\xa0>\x1aG\xb9\xbc\x9a\xdf\xf2\xfe\xcc>G\xe8z\x96\xc2$\x8e5\xf4\xa9\x0c\xfc\x82\xfdm\xc1rb\'\xbd\xeak\xeb\xe7\x8a\xccT>\x90P\xcf\x80\xd4\x95\xfb\xe8\xb5\x82\xd4\x14\xc5\xb6\xa9U%W\xdb\xb1P\xf6\xb0`dYzi\xcf\x03\xb7o\r\xbe\xca>otr\xea\xaa0*sb\xbeI\x91a\xc8\x11\xfe\x0e\x03*\xf7j \xdc\x02\x15\r^\x15j\xfc\xe3\x82\xc1\xb5\xc5\x9dd\tl\xa3Y\x98\x07\'\xc7\x1b\x96+atqlC\xf1\xf75\x89\x10\xe0\x9e\xecU\xa17\"\xa2\x87\x04\x05,G}\xb4\x1c\xb9b)f(\xca\xb7\xe1\x93\xf5\xa4\x94\x03\x99\xb9p\x85\xb5\xe6H\xea\x8dP\xfc\xd9\xde\xcco\x07\x0e\xdd\x0br\x9d\x800\x16\x07\x95?(\x0e\xfd\xc5uOS\xd6t\x9a\xb4$.\x8e\x02\x91\xcfv\xc5\x9b\x1eUt\x9cx!\xb1\xf0-\xf1\x0b\x9f\xc2\xd5\x96\x18\x1f\xf0T\"z\x8c\x07\x02\x03\x01\x00\x01"),
     name_constraints: None
   },
 

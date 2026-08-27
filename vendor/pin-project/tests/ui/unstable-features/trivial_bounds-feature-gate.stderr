@@ -6,10 +6,9 @@ error[E0277]: `PhantomPinned` cannot be unpinned
    |
    = note: consider using the `pin!` macro
            consider using `Box::pin` if you need to access the pinned value outside of the current scope
-   = help: see issue #48214
 help: add `#![feature(trivial_bounds)]` to the crate attributes to enable
    |
-5  + #![feature(trivial_bounds)]
+ 5 + #![feature(trivial_bounds)]
    |
 
 error[E0277]: `PhantomPinned` cannot be unpinned
@@ -25,10 +24,9 @@ note: required for `phantom_pinned::Wrapper<PhantomPinned>` to implement `Unpin`
    |
 14 |     impl<T> Unpin for Wrapper<T> where T: Unpin {}
    |             ^^^^^     ^^^^^^^^^^          ----- unsatisfied trait bound introduced here
-   = help: see issue #48214
 help: add `#![feature(trivial_bounds)]` to the crate attributes to enable
    |
-5  + #![feature(trivial_bounds)]
+ 5 + #![feature(trivial_bounds)]
    |
 
 error[E0277]: `PhantomPinned` cannot be unpinned
@@ -44,10 +42,9 @@ note: required because it appears within the type `Inner`
    |
 32 |     struct Inner(PhantomPinned);
    |            ^^^^^
-   = help: see issue #48214
 help: add `#![feature(trivial_bounds)]` to the crate attributes to enable
    |
-5  + #![feature(trivial_bounds)]
+ 5 + #![feature(trivial_bounds)]
    |
 
 error[E0277]: `PhantomPinned` cannot be unpinned
@@ -68,8 +65,7 @@ note: required for `inner::Wrapper<Inner>` to implement `Unpin`
    |
 40 |     impl<T> Unpin for Wrapper<T> where T: Unpin {}
    |             ^^^^^     ^^^^^^^^^^          ----- unsatisfied trait bound introduced here
-   = help: see issue #48214
 help: add `#![feature(trivial_bounds)]` to the crate attributes to enable
    |
-5  + #![feature(trivial_bounds)]
+ 5 + #![feature(trivial_bounds)]
    |

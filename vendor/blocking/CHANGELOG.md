@@ -1,3 +1,9 @@
+# Version 1.7.0
+
+- Bump MSRV to v1.68.
+- Avoid Option<> indirection via VecDeque. (#74)
+- Support setting the number of threads without an env var. (#75)
+
 # Version 1.6.2
 
 - Fix build failure with minimal-versions. (#71)

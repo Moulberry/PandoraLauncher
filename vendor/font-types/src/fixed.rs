@@ -6,7 +6,6 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 macro_rules! fixed_impl {
     ($name:ident, $bits:literal, $fract_bits:literal, $ty:ty) => {
         #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         #[cfg_attr(feature = "bytemuck", derive(bytemuck::AnyBitPattern, bytemuck::NoUninit))]
         #[repr(transparent)]
         #[doc = concat!(stringify!($bits), "-bit signed fixed point number with ", stringify!($fract_bits), " bits of fraction." )]
@@ -26,6 +25,9 @@ macro_rules! fixed_impl {
 
             /// Representation of 1.0.
             pub const ONE: Self = Self(1 << $fract_bits);
+
+            /// Representation of -1.0.
+            pub const NEG_ONE: Self = Self((!0 << $fract_bits) as $ty);
 
             const INT_MASK: $ty = !0 << $fract_bits;
             const ROUND: $ty = 1 << ($fract_bits - 1);
@@ -53,7 +55,7 @@ macro_rules! fixed_impl {
             /// Returns the absolute value of the number.
             #[inline(always)]
             pub const fn abs(self) -> Self {
-                Self(self.0.abs())
+                Self(self.0.wrapping_abs())
             }
 
             /// Returns the largest integer less than or equal to the number.
@@ -134,56 +136,116 @@ macro_rules! fixed_impl {
                 *self = *self - other;
             }
         }
+
+        impl Neg for $name {
+            type Output = Self;
+            #[inline(always)]
+            fn neg(self) -> Self {
+                Self(self.0.wrapping_neg())
+            }
+        }
     };
 }
 
-/// Implements multiplication and division operators for fixed types.
-macro_rules! fixed_mul_div {
+impl Fixed {
+    /// Multiplies `self` by `a` and divides the product by `b`.
+    // This one is specifically not always inlined due to size and
+    // frequency of use. We leave it to compiler discretion.
+    #[inline]
+    pub const fn mul_div(&self, a: Self, b: Self) -> Self {
+        let mut sign = 1;
+        let mut su = self.0 as u64;
+        let mut au = a.0 as u64;
+        let mut bu = b.0 as u64;
+        if self.0 < 0 {
+            su = 0u64.wrapping_sub(su);
+            sign = -1;
+        }
+        if a.0 < 0 {
+            au = 0u64.wrapping_sub(au);
+            sign = -sign;
+        }
+        if b.0 < 0 {
+            bu = 0u64.wrapping_sub(bu);
+            sign = -sign;
+        }
+        let result = if bu > 0 {
+            su.wrapping_mul(au).wrapping_add(bu >> 1) / bu
+        } else {
+            0x7FFFFFFF
+        };
+        Self(if sign < 0 {
+            (result as i32).wrapping_neg()
+        } else {
+            result as i32
+        })
+    }
+}
+
+impl Mul for Fixed {
+    type Output = Self;
+
+    #[inline(always)]
+    fn mul(self, other: Self) -> Self::Output {
+        let ab = self.0 as i64 * other.0 as i64;
+        Self(((ab + 0x8000 - i64::from(ab < 0)) >> 16) as i32)
+    }
+}
+
+impl Div for Fixed {
+    type Output = Self;
+
+    fn div(self, other: Self) -> Self {
+        let sign = (self.0 < 0) ^ (other.0 < 0);
+        let au = self.0.unsigned_abs() as u64;
+        let bu = other.0.unsigned_abs() as u64;
+        let q = if bu == 0 {
+            0x7FFFFFFF_u32
+        } else {
+            (((au << 16) + (bu >> 1)) / bu) as u32
+        };
+        Self(if sign {
+            (q as i32).wrapping_neg()
+        } else {
+            q as i32
+        })
+    }
+}
+
+impl Mul for F26Dot6 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn mul(self, other: Self) -> Self::Output {
+        let ab = self.0 as i64 * other.0 as i64;
+        Self(((ab + 32 - i64::from(ab < 0)) >> 6) as i32)
+    }
+}
+
+impl Div for F26Dot6 {
+    type Output = Self;
+
+    fn div(self, other: Self) -> Self {
+        let sign = (self.0 < 0) ^ (other.0 < 0);
+        let au = self.0.unsigned_abs() as u64;
+        let bu = other.0.unsigned_abs() as u64;
+        let q = if bu == 0 {
+            0x7FFFFFFF_u32
+        } else {
+            (((au << 6) + (bu >> 1)) / bu) as u32
+        };
+        Self(if sign {
+            (q as i32).wrapping_neg()
+        } else {
+            q as i32
+        })
+    }
+}
+
+/// Implements multiplication and division assignment operators for fixed
+/// types.
+macro_rules! fixed_mul_div_assign {
     ($ty:ty) => {
-        impl $ty {
-            /// Multiplies `self` by `a` and divides the product by `b`.
-            // This one is specifically not always inlined due to size and
-            // frequency of use. We leave it to compiler discretion.
-            #[inline]
-            pub const fn mul_div(&self, a: Self, b: Self) -> Self {
-                let mut sign = 1;
-                let mut su = self.0 as u64;
-                let mut au = a.0 as u64;
-                let mut bu = b.0 as u64;
-                if self.0 < 0 {
-                    su = 0u64.wrapping_sub(su);
-                    sign = -1;
-                }
-                if a.0 < 0 {
-                    au = 0u64.wrapping_sub(au);
-                    sign = -sign;
-                }
-                if b.0 < 0 {
-                    bu = 0u64.wrapping_sub(bu);
-                    sign = -sign;
-                }
-                let result = if bu > 0 {
-                    su.wrapping_mul(au).wrapping_add(bu >> 1) / bu
-                } else {
-                    0x7FFFFFFF
-                };
-                Self(if sign < 0 {
-                    (result as i32).wrapping_neg()
-                } else {
-                    result as i32
-                })
-            }
-        }
-
-        impl Mul for $ty {
-            type Output = Self;
-            #[inline(always)]
-            fn mul(self, other: Self) -> Self::Output {
-                let ab = self.0 as i64 * other.0 as i64;
-                Self(((ab + 0x8000 - i64::from(ab < 0)) >> 16) as i32)
-            }
-        }
-
         impl MulAssign for $ty {
             #[inline(always)]
             fn mul_assign(&mut self, rhs: Self) {
@@ -191,46 +253,10 @@ macro_rules! fixed_mul_div {
             }
         }
 
-        impl Div for $ty {
-            type Output = Self;
-            #[inline(always)]
-            fn div(self, other: Self) -> Self::Output {
-                let mut sign = 1;
-                let mut a = self.0;
-                let mut b = other.0;
-                if a < 0 {
-                    a = -a;
-                    sign = -1;
-                }
-                if b < 0 {
-                    b = -b;
-                    sign = -sign;
-                }
-                let q = if b == 0 {
-                    0x7FFFFFFF
-                } else {
-                    ((((a as u64) << 16) + ((b as u64) >> 1)) / (b as u64)) as u32
-                };
-                Self(if sign < 0 {
-                    (q as i32).wrapping_neg()
-                } else {
-                    q as i32
-                })
-            }
-        }
-
         impl DivAssign for $ty {
             #[inline(always)]
             fn div_assign(&mut self, rhs: Self) {
                 *self = *self / rhs;
-            }
-        }
-
-        impl Neg for $ty {
-            type Output = Self;
-            #[inline(always)]
-            fn neg(self) -> Self {
-                Self(-self.0)
             }
         }
     };
@@ -241,9 +267,48 @@ macro_rules! fixed_mul_div {
 /// We convert to different float types in order to ensure we can roundtrip
 /// without floating point error.
 macro_rules! float_conv {
+    // default invocation: we will impl Display/Default/Serialize/Deserialize
     ($name:ident, $to:ident, $from:ident, $ty:ty) => {
+        float_conv!($name, $to, $from, $ty, no_fmt);
+
+        //hack: we can losslessly go to float, so use those fmt impls
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                self.$to().fmt(f)
+            }
+        }
+
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                self.$to().fmt(f)
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl ::serde::Serialize for $name {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: ::serde::Serializer,
+            {
+                <$ty>::serialize(&$name::$to(*self), serializer)
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl<'de> ::serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: ::serde::Deserializer<'de>,
+            {
+                <$ty>::deserialize(deserializer).map($name::$from)
+            }
+        }
+    };
+    // explicitly opt out of Display/Default/Serialize/Deserialize
+    // (for types that get both f32 & f64)
+    ($name:ident, $to:ident, $from:ident, $ty:ty, no_fmt) => {
         impl $name {
-            #[doc = concat!("Creates a fixed point value from a", stringify!($ty), ".")]
+            #[doc = concat!("Creates a fixed point value from a ", stringify!($ty), ".")]
             ///
             /// This operation is lossy; the float will be rounded to the nearest
             /// representable value.
@@ -266,19 +331,6 @@ macro_rules! float_conv {
                 int + fract
             }
         }
-
-        //hack: we can losslessly go to float, so use those fmt impls
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                self.$to().fmt(f)
-            }
-        }
-
-        impl std::fmt::Debug for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                self.$to().fmt(f)
-            }
-        }
     };
 }
 
@@ -287,11 +339,17 @@ fixed_impl!(F4Dot12, 16, 12, i16);
 fixed_impl!(F6Dot10, 16, 10, i16);
 fixed_impl!(Fixed, 32, 16, i32);
 fixed_impl!(F26Dot6, 32, 6, i32);
-fixed_mul_div!(Fixed);
-fixed_mul_div!(F26Dot6);
+
+fixed_mul_div_assign!(Fixed);
+fixed_mul_div_assign!(F26Dot6);
+
 float_conv!(F2Dot14, to_f32, from_f32, f32);
 float_conv!(F4Dot12, to_f32, from_f32, f32);
 float_conv!(F6Dot10, to_f32, from_f32, f32);
+float_conv!(F2Dot14, to_f64, from_f64, f64, no_fmt);
+float_conv!(F4Dot12, to_f64, from_f64, f64, no_fmt);
+float_conv!(F6Dot10, to_f64, from_f64, f64, no_fmt);
+
 float_conv!(Fixed, to_f64, from_f64, f64);
 float_conv!(F26Dot6, to_f64, from_f64, f64);
 crate::newtype_scalar!(F2Dot14, [u8; 2]);
@@ -507,5 +565,150 @@ mod tests {
         let b = Fixed::from_f64(0.0028228759765625);
         // Just don't panic with overflow
         let _ = a.mul_div(Fixed::ONE, b);
+    }
+
+    #[test]
+    fn fixed_div_min_value() {
+        // i32::MIN.abs() overflows i32, unsigned_abs() handles this correctly
+        let min = Fixed(i32::MIN);
+        let one = Fixed::ONE;
+        // Just don't panic with overflow
+        let _ = min / one;
+        // Dividing by -1 is also an edge case
+        let neg_one = Fixed(-Fixed::ONE.0);
+        let _ = min / neg_one;
+    }
+
+    #[test]
+    fn fixed_abs_min_value() {
+        // Just don't panic with overflow; we use wrapping arithmetic to
+        // match FT.
+        assert_eq!(Fixed(i32::MIN).abs(), Fixed(i32::MIN));
+    }
+
+    #[test]
+    fn fixed_neg_min_value() {
+        // Just don't panic with overflow; we use wrapping arithmetic to
+        // match FT.
+        assert_eq!(-Fixed(i32::MIN), Fixed(i32::MIN));
+    }
+
+    #[test]
+    fn f26dot6_muldiv() {
+        assert_eq!(
+            F26Dot6::from_f64(0.5) * F26Dot6::from_f64(2.0),
+            F26Dot6::from_f64(1.0)
+        );
+        assert_eq!(
+            F26Dot6::from_f64(0.5) * F26Dot6::from_f64(-2.4),
+            F26Dot6::from_f64(-1.2)
+        );
+        assert_eq!(F26Dot6::ONE * F26Dot6::ONE, F26Dot6::ONE);
+        assert_eq!(
+            F26Dot6::from_f64(0.5) / F26Dot6::from_f64(2.0),
+            F26Dot6::from_f64(0.25)
+        );
+        assert_eq!(
+            F26Dot6::from_f64(0.5) / F26Dot6::from_f64(-2.4),
+            F26Dot6::from_f64(-0.20833333333333334)
+        );
+        assert_eq!(
+            F26Dot6::from_f64(2.0) / F26Dot6::from_f64(3.0),
+            F26Dot6::from_f64(0.6666666666666666)
+        );
+        assert_eq!(F26Dot6::ONE / F26Dot6::ONE, F26Dot6::ONE);
+        assert_eq!(F26Dot6::ONE / F26Dot6::ZERO, F26Dot6(0x7FFFFFFF));
+        assert_eq!(-F26Dot6::ONE / F26Dot6::ZERO, F26Dot6(-0x7FFFFFFF));
+    }
+
+    #[cfg(feature = "serde")]
+    mod serde {
+        use super::*;
+
+        macro_rules! roundtrip_one {
+            ($fixed:ident) => {{
+                let before = <$fixed>::ONE;
+                let serialized = ::serde_json::to_string(&before).expect("should serialize");
+                assert_eq!(&serialized, "1.0");
+                let after = ::serde_json::from_str(&serialized).expect("should deserialize");
+                assert_eq!(before, after);
+            }};
+        }
+
+        #[test]
+        fn one_is_one_f2dot14() {
+            roundtrip_one!(F2Dot14);
+        }
+
+        #[test]
+        fn one_is_one_f4dot12() {
+            roundtrip_one!(F4Dot12);
+        }
+
+        #[test]
+        fn one_is_one_f6dot10() {
+            roundtrip_one!(F6Dot10);
+        }
+
+        #[test]
+        fn one_is_one_fixed() {
+            roundtrip_one!(Fixed);
+        }
+
+        #[test]
+        fn one_is_one_f26dot6() {
+            roundtrip_one!(F26Dot6);
+        }
+
+        macro_rules! roundtrip_all {
+            ($fixed:ident, $ty:ty) => {
+                for raw in <$ty>::MIN..=<$ty>::MAX {
+                    let fixed = $fixed(raw);
+                    let fixed_float = fixed.to_f64();
+
+                    let json_value = ::serde_json::to_value(&fixed).expect("should serialize");
+                    let json_float = json_value
+                        .as_f64()
+                        .expect("serde didn't serialize the value to a float");
+
+                    // Normally directly comparing floats is flawed, but these
+                    // should have been converted to float using the exact same
+                    // method each, so I wouldn't expect them to be different
+                    assert_eq!(
+                        fixed_float,
+                        json_float,
+                        "failed on {raw} ({fixed_type}({raw:#X})): {json_float} != {fixed_float}",
+                        fixed_type = ::std::stringify!($fixed),
+                    );
+                }
+            };
+        }
+
+        #[test]
+        fn roundtrip_all_f2dot14() {
+            roundtrip_all!(F2Dot14, i16);
+        }
+
+        #[test]
+        fn roundtrip_all_f4dot12() {
+            roundtrip_all!(F4Dot12, i16);
+        }
+
+        #[test]
+        fn roundtrip_all_f6dot10() {
+            roundtrip_all!(F6Dot10, i16);
+        }
+
+        #[test]
+        #[ignore = "enumerating all i32 values takes a while"]
+        fn roundtrip_all_fixed() {
+            roundtrip_all!(Fixed, i32);
+        }
+
+        #[test]
+        #[ignore = "enumerating all i32 values takes a while"]
+        fn roundtrip_all_f26dot6() {
+            roundtrip_all!(F26Dot6, i32);
+        }
     }
 }

@@ -498,7 +498,7 @@ mod tests {
         let mut engine = mock.engine();
         let mut font_code = vec![];
         font_code.extend_from_slice(&[op(PUSHB000), 0, op(FDEF)]);
-        font_code.extend(core::iter::repeat(op(NEG)).take(MAX_DEFINITION_SIZE + 1));
+        font_code.extend(std::iter::repeat_n(op(NEG), MAX_DEFINITION_SIZE + 1));
         font_code.push(op(ENDF));
         engine.set_font_code(&font_code);
         engine.graphics.is_pedantic = true;

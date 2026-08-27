@@ -128,6 +128,16 @@ zbus = { version = "5", default-features = false, features = ["tokio"] }
 That's it! No threads launched behind your back by zbus (directly or indirectly) now and no need to
 tick any executors etc. 😼
 
+The `tokio` and `async-io` features are additive: when both are enabled (for example, because
+another crate in your dependency tree enables `tokio`), zbus selects the runtime at run time — using
+tokio when a tokio runtime is driving the current thread, and `async-io` otherwise. With only the
+`tokio` feature enabled (i.e. `async-io` disabled), zbus must be used from a thread running a tokio
+runtime, as there is no `async-io` fallback to drive its I/O.
+
+This run-time selection applies to the async API. The blocking API (`zbus::blocking`) drives its
+connections through its own `block_on`, which uses tokio whenever the `tokio` feature is enabled, so
+those connections always run on tokio when that feature is on.
+
 **Note**: On Windows, the `async-io` feature is currently required for UNIX domain socket support,
 see [the corresponding tokio issue on GitHub][tctiog].
 

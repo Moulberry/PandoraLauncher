@@ -276,6 +276,8 @@ value: Duration,
 
 The same conversions are also implemented for [`chrono::Duration`] with the `chrono` feature.
 
+The same conversions are also implemented for [`jiff::SignedDuration`] with the `jiff_0_2` feature.
+
 The same conversions are also implemented for [`time::Duration`] with the `time_0_3` feature.
 
 ## Hex encode bytes
@@ -400,6 +402,21 @@ value: Option<String>,
 "value": "", // converts to None
 
 "value": "Hello World!", // converts to Some
+```
+
+## `None` as zero for `Option<NonZero*>`
+
+[`NoneAsZero`]
+
+```ignore
+// Rust
+#[serde_as(as = "serde_with::NoneAsZero")]
+value: Option<core::num::NonZeroU32>,
+
+// JSON
+"value": 0, // converts to None
+
+"value": 42, // converts to Some(NonZeroU32::new(42).unwrap())
 ```
 
 ## One or many elements into `Vec`
@@ -530,6 +547,8 @@ value: SystemTime,
 
 The same conversions are also implemented for [`chrono::DateTime<Utc>`], [`chrono::DateTime<Local>`], and [`chrono::NaiveDateTime`] with the `chrono` feature.
 
+The conversions are available for [`jiff::Timestamp`], [`jiff::Zoned`], and [`jiff::civil::DateTime`] with the `jiff_0_2` feature enabled.
+
 The conversions are available for [`time::OffsetDateTime`] and [`time::PrimitiveDateTime`] with the `time_0_3` feature enabled.
 
 ## Value into JSON String
@@ -636,11 +655,16 @@ value: u128,
 [`FromInto`]: crate::FromInto
 [`Hex`]: crate::hex::Hex
 [`IfIsHumanReadable`]: crate::IfIsHumanReadable
+[`jiff::civil::DateTime`]: jiff_0_2::civil::DateTime
+[`jiff::SignedDuration`]: jiff_0_2::SignedDuration
+[`jiff::Timestamp`]: jiff_0_2::Timestamp
+[`jiff::Zoned`]: jiff_0_2::Zoned
 [`JsonString`]: crate::json::JsonString
 [`KeyValueMap`]: crate::KeyValueMap
 [`MapFirstKeyWins`]: crate::MapFirstKeyWins
 [`MapPreventDuplicates`]: crate::MapPreventDuplicates
 [`NoneAsEmptyString`]: crate::NoneAsEmptyString
+[`NoneAsZero`]: crate::NoneAsZero
 [`OneOrMany`]: crate::OneOrMany
 [`PickFirst`]: crate::PickFirst
 [`SetLastValueWins`]: crate::SetLastValueWins

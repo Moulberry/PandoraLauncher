@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use enumflags2::BitFlags;
 
 use crate::{
-    AppID, WindowIdentifierType,
+    MaybeAppID, WindowIdentifierType,
     backend::{
         Result,
         request::{Request, RequestImpl},
@@ -11,18 +12,23 @@ use crate::{
     desktop::{
         Color, HandleToken,
         request::Response,
-        screenshot::{ColorOptions, Screenshot as ScreenshotResponse, ScreenshotOptions},
+        screenshot::{
+            AvailableTargets, ColorOptions, Screenshot as ScreenshotResponse, ScreenshotOptions,
+        },
     },
     zvariant::{Optional, OwnedObjectPath},
 };
 
 #[async_trait]
 pub trait ScreenshotImpl: RequestImpl {
+    #[doc(alias = "AvailableTargets")]
+    fn available_targets(&self) -> BitFlags<AvailableTargets>;
+
     #[doc(alias = "Screenshot")]
     async fn screenshot(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         window_identifier: Option<WindowIdentifierType>,
         options: ScreenshotOptions,
     ) -> Result<ScreenshotResponse>;
@@ -31,7 +37,7 @@ pub trait ScreenshotImpl: RequestImpl {
     async fn pick_color(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         window_identifier: Option<WindowIdentifierType>,
         options: ColorOptions,
     ) -> Result<Color>;
@@ -55,9 +61,14 @@ impl ScreenshotInterface {
 
 #[zbus::interface(name = "org.freedesktop.impl.portal.Screenshot")]
 impl ScreenshotInterface {
+    #[zbus(property(emits_changed_signal = "const"), name = "AvailableTargets")]
+    fn available_targets(&self) -> u32 {
+        self.imp.available_targets().bits()
+    }
+
     #[zbus(property(emits_changed_signal = "const"), name = "version")]
     fn version(&self) -> u32 {
-        2
+        3
     }
 
     #[zbus(name = "Screenshot")]
@@ -65,7 +76,7 @@ impl ScreenshotInterface {
     async fn screenshot(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         options: ScreenshotOptions,
     ) -> Result<Response<ScreenshotResponse>> {
@@ -95,7 +106,7 @@ impl ScreenshotInterface {
     async fn pick_color(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         options: ColorOptions,
     ) -> Result<Response<Color>> {

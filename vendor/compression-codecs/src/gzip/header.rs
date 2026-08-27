@@ -1,4 +1,5 @@
 use compression_core::util::PartialBuffer;
+use flate2::Crc;
 use std::io;
 
 #[derive(Debug, Default)]
@@ -19,9 +20,9 @@ pub(super) struct Header {
 enum State {
     Fixed(PartialBuffer<[u8; 10]>),
     ExtraLen(PartialBuffer<[u8; 2]>),
-    Extra(PartialBuffer<Vec<u8>>),
-    Filename(Vec<u8>),
-    Comment(Vec<u8>),
+    Extra(usize),
+    Filename,
+    Comment,
     Crc(PartialBuffer<[u8; 2]>),
     Done,
 }
@@ -61,10 +62,26 @@ impl Header {
     }
 }
 
+fn consume_input(crc: &mut Crc, n: usize, input: &mut PartialBuffer<&[u8]>) {
+    crc.update(&input.unwritten()[..n]);
+    input.advance(n);
+}
+
+fn consume_cstr(crc: &mut Crc, input: &mut PartialBuffer<&[u8]>) -> Option<()> {
+    if let Some(len) = memchr::memchr(0, input.unwritten()) {
+        consume_input(crc, len + 1, input);
+        Some(())
+    } else {
+        consume_input(crc, input.unwritten().len(), input);
+        None
+    }
+}
+
 impl Parser {
     pub(super) fn input(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
+        crc: &mut Crc,
+        input: &mut PartialBuffer<&[u8]>,
     ) -> io::Result<Option<Header>> {
         loop {
             match &mut self.state {
@@ -72,93 +89,101 @@ impl Parser {
                     data.copy_unwritten_from(input);
 
                     if data.unwritten().is_empty() {
-                        self.header = Header::parse(&data.take().into_inner())?;
+                        let data = data.get_mut();
+                        crc.update(data);
+                        self.header = Header::parse(data)?;
                         self.state = State::ExtraLen(<_>::default());
                     } else {
-                        return Ok(None);
+                        break Ok(None);
                     }
                 }
 
                 State::ExtraLen(data) => {
                     if !self.header.flags.extra {
-                        self.state = State::Filename(<_>::default());
+                        self.state = State::Filename;
                         continue;
                     }
 
                     data.copy_unwritten_from(input);
 
                     if data.unwritten().is_empty() {
-                        let len = u16::from_le_bytes(data.take().into_inner());
-                        self.state = State::Extra(vec![0; usize::from(len)].into());
+                        let data = data.get_mut();
+                        crc.update(data);
+                        let len = u16::from_le_bytes(*data);
+                        self.state = State::Extra(len.into());
                     } else {
-                        return Ok(None);
+                        break Ok(None);
                     }
                 }
 
-                State::Extra(data) => {
-                    data.copy_unwritten_from(input);
+                State::Extra(bytes_to_consume) => {
+                    let n = input.unwritten().len().min(*bytes_to_consume);
+                    *bytes_to_consume -= n;
+                    consume_input(crc, n, input);
 
-                    if data.unwritten().is_empty() {
-                        self.state = State::Filename(<_>::default());
+                    if *bytes_to_consume == 0 {
+                        self.state = State::Filename;
                     } else {
-                        return Ok(None);
+                        break Ok(None);
                     }
                 }
 
-                State::Filename(data) => {
+                State::Filename => {
                     if !self.header.flags.filename {
-                        self.state = State::Comment(<_>::default());
+                        self.state = State::Comment;
                         continue;
                     }
 
-                    if let Some(len) = memchr::memchr(0, input.unwritten()) {
-                        data.extend_from_slice(&input.unwritten()[..len]);
-                        input.advance(len + 1);
-                        self.state = State::Comment(<_>::default());
-                    } else {
-                        data.extend_from_slice(input.unwritten());
-                        input.advance(input.unwritten().len());
-                        return Ok(None);
+                    if consume_cstr(crc, input).is_none() {
+                        break Ok(None);
                     }
+
+                    self.state = State::Comment;
                 }
 
-                State::Comment(data) => {
+                State::Comment => {
                     if !self.header.flags.comment {
                         self.state = State::Crc(<_>::default());
                         continue;
                     }
 
-                    if let Some(len) = memchr::memchr(0, input.unwritten()) {
-                        data.extend_from_slice(&input.unwritten()[..len]);
-                        input.advance(len + 1);
-                        self.state = State::Crc(<_>::default());
-                    } else {
-                        data.extend_from_slice(input.unwritten());
-                        input.advance(input.unwritten().len());
-                        return Ok(None);
+                    if consume_cstr(crc, input).is_none() {
+                        break Ok(None);
                     }
+
+                    self.state = State::Crc(<_>::default());
                 }
 
                 State::Crc(data) => {
+                    let header = std::mem::take(&mut self.header);
+
                     if !self.header.flags.crc {
                         self.state = State::Done;
-                        return Ok(Some(std::mem::take(&mut self.header)));
+                        break Ok(Some(header));
                     }
 
                     data.copy_unwritten_from(input);
 
-                    if data.unwritten().is_empty() {
+                    break if data.unwritten().is_empty() {
+                        let data = data.take().into_inner();
                         self.state = State::Done;
-                        return Ok(Some(std::mem::take(&mut self.header)));
+                        let checksum = crc.sum().to_le_bytes();
+
+                        if data == checksum[..2] {
+                            Ok(Some(header))
+                        } else {
+                            Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "CRC computed for header does not match",
+                            ))
+                        }
                     } else {
-                        return Ok(None);
-                    }
+                        Ok(None)
+                    };
                 }
 
-                State::Done => {
-                    return Err(io::Error::other("parser used after done"));
-                }
-            };
+                State::Done => break Err(io::Error::other("parser used after done")),
+            }
         }
     }
 }

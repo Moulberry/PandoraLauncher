@@ -22,7 +22,7 @@
     feature = "rand",
     feature = "serde",
 )))]
-#[test]
+#[rstest]
 fn run_with_all_features() -> Result<(), Box<dyn std::error::Error>> {
     #[derive(Debug)]
     struct Error(std::process::ExitStatus);
@@ -73,16 +73,6 @@ macro_rules! require_all_features {
 }
 
 require_all_features! {
-    /// Assert that the given expression panics.
-    macro_rules! assert_panic {
-        ($($x:tt)*) => {
-            assert!(std::panic::catch_unwind(|| {
-                $($x)*
-            })
-            .is_err())
-        }
-    }
-
     /// `assert_eq!` or `assert_ne!` depending on the value of `$is_eq`.
     ///
     /// This provides better diagnostics than `assert_eq!($left == $right, $is_eq)`.
@@ -96,8 +86,14 @@ require_all_features! {
         }}
     }
 
+    #[cfg(__ui_tests)]
+    use rstest::rstest;
+
     mod convert;
     mod date;
+    mod date_iter;
+    mod month_iter;
+    mod weekday_iter;
     mod derives;
     mod duration;
     mod error;
@@ -112,20 +108,21 @@ require_all_features! {
     mod parse_format_description;
     mod parsed;
     mod parsing;
-    mod primitive_date_time;
+    mod plain_date_time;
     #[path = "quickcheck.rs"]
     mod quickcheck_mod;
     mod rand;
     mod serde;
     mod serde_helpers;
     mod time;
+    mod timestamp;
     mod utc_date_time;
     mod utc_offset;
     mod util;
     mod weekday;
 
     #[cfg(__ui_tests)]
-    #[test]
+    #[rstest]
     fn compile_fail() {
         let tests = trybuild::TestCases::new();
         // Path is relative from `time/Cargo.toml`.

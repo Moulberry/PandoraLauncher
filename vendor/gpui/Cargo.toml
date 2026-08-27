@@ -33,11 +33,22 @@ categories = ["gui"]
 license = "Apache-2.0"
 repository = "https://github.com/zed-industries/zed"
 
+[package.metadata.cargo-shear]
+ignored = [
+    "bindgen",
+    "font-kit",
+    "getrandom",
+    "objc2",
+    "objc2-metal",
+    "tracing",
+]
+ignored-paths = ["src/_ownership_and_data_flow.rs"]
+
 [features]
-bench = [
-    "test-support",
+bench = ["bench-support"]
+bench-support = [
+    "profiler",
     "dep:criterion",
-    "dep:hdrhistogram",
 ]
 default = [
     "font-kit",
@@ -45,11 +56,11 @@ default = [
     "x11",
     "windows-manifest",
 ]
-input-latency-histogram = ["dep:hdrhistogram"]
 inspector = ["gpui_macros/inspector"]
 leak-detection = ["backtrace"]
-profiler = []
+profiler = ["dep:hdrhistogram"]
 screen-capture = ["scap"]
+stacker = ["dep:stacksafe"]
 test-support = [
     "leak-detection",
     "collections/test-support",
@@ -250,7 +261,7 @@ parking = "2.0.0"
 pin-project = "1.1.10"
 seahash = "4.1"
 spin = "0.10.0"
-taffy = "=0.12.2"
+taffy = "=0.13.0"
 ttf-parser = "0.25"
 waker-fn = "1.2.0"
 
@@ -280,7 +291,7 @@ features = ["serde"]
 
 [dependencies.collections]
 version = "0.1.0"
-path = "../collections"
+path = '..\collections'
 
 [dependencies.criterion]
 version = "0.5"
@@ -288,7 +299,7 @@ features = ["html_reports"]
 optional = true
 
 [dependencies.ctor]
-version = "1.0.6"
+version = "1.0.12"
 
 [dependencies.derive_more]
 version = "2.1.1"
@@ -298,6 +309,7 @@ features = [
     "deref",
     "deref_mut",
     "display",
+    "from",
     "from_str",
     "mul",
     "mul_assign",
@@ -314,23 +326,24 @@ version = "0.3.32"
 version = "7.7.1"
 
 [dependencies.gpui_macros]
-path = "../gpui_macros"
+path = '..\gpui_macros'
 
 [dependencies.gpui_shared_string]
-path = "../gpui_shared_string"
+path = '..\gpui_shared_string'
 
 [dependencies.gpui_util]
-path = "../gpui_util"
+path = '..\gpui_util'
 
 [dependencies.hdrhistogram]
 version = "7"
 optional = true
+default-features = false
 
 [dependencies.heapless]
 version = "0.9.2"
 
 [dependencies.http_client]
-path = "../http_client"
+path = '..\http_client'
 
 [dependencies.image]
 version = "0.25.1"
@@ -392,7 +405,7 @@ version = "0.9"
 version = "0.6"
 
 [dependencies.refineable]
-path = "../refineable"
+path = '..\refineable'
 
 [dependencies.regex]
 version = "1.5"
@@ -408,7 +421,7 @@ features = [
 default-features = false
 
 [dependencies.scheduler]
-path = "../scheduler"
+path = '..\scheduler'
 
 [dependencies.schemars]
 version = "1.0"
@@ -439,17 +452,21 @@ features = [
 ]
 
 [dependencies.stacksafe]
-version = "0.1"
+version = "1.0"
+optional = true
 
 [dependencies.strum]
-version = "0.27.2"
+version = "0.28"
 features = ["derive"]
 
 [dependencies.sum_tree]
-path = "../sum_tree"
+path = '..\sum_tree'
 
 [dependencies.thiserror]
 version = "2.0.12"
+
+[dependencies.tracing]
+version = "0.1.40"
 
 [dependencies.url]
 version = "2.2"
@@ -459,7 +476,7 @@ version = "0.46.0"
 default-features = false
 
 [dependencies.util_macros]
-path = "../util_macros"
+path = '..\util_macros'
 
 [dependencies.uuid]
 version = "1.1.2"
@@ -473,19 +490,22 @@ features = [
 [dependencies.web-time]
 version = "1.1.0"
 
+[dependencies.ztracing]
+path = '..\ztracing'
+
 [dev-dependencies.backtrace]
 version = "0.3"
 
 [dev-dependencies.collections]
 version = "0.1.0"
-path = "../collections"
+path = '..\collections'
 features = ["test-support"]
 
 [dev-dependencies.env_logger]
 version = "0.11"
 
 [dev-dependencies.gpui_platform]
-path = "../gpui_platform"
+path = '..\gpui_platform'
 features = [
     "font-kit",
     "wayland",
@@ -494,7 +514,7 @@ features = [
 default-features = false
 
 [dev-dependencies.gpui_util]
-path = "../gpui_util"
+path = '..\gpui_util'
 
 [dev-dependencies.lyon]
 version = "1.0"
@@ -504,7 +524,7 @@ features = ["extra"]
 version = "0.9"
 
 [dev-dependencies.scheduler]
-path = "../scheduler"
+path = '..\scheduler'
 features = ["test-support"]
 
 [dev-dependencies.unicode-segmentation]
@@ -513,9 +533,6 @@ version = "1.10"
 [build-dependencies.embed-resource]
 version = "3.0"
 optional = true
-
-[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))'.dependencies.pathfinder_geometry]
-version = "0.5"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))'.dependencies.scap]
 version = "0.0.8-zed"
@@ -526,7 +543,7 @@ default-features = false
 package = "zed-scap"
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies.http_client]
-path = "../http_client"
+path = '..\http_client'
 features = ["test-support"]
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies.proptest]
@@ -535,7 +552,7 @@ rev = "3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b"
 features = ["attr-macro"]
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies.reqwest_client]
-path = "../reqwest_client"
+path = '..\reqwest_client'
 features = ["test-support"]
 
 [target.'cfg(target_family = "wasm")'.dependencies.getrandom]
@@ -552,32 +569,8 @@ features = [
     "js",
 ]
 
-[target.'cfg(target_family = "wasm")'.dev-dependencies.gpui_web]
-path = "../gpui_web"
-
 [target.'cfg(target_family = "wasm")'.dev-dependencies.wasm-bindgen]
 version = "0.2.120"
-
-[target.'cfg(target_os = "macos")'.dependencies.block]
-version = "0.1"
-
-[target.'cfg(target_os = "macos")'.dependencies.cocoa]
-version = "=0.26.0"
-
-[target.'cfg(target_os = "macos")'.dependencies.cocoa-foundation]
-version = "=0.2.0"
-
-[target.'cfg(target_os = "macos")'.dependencies.core-foundation]
-version = "0.10"
-
-[target.'cfg(target_os = "macos")'.dependencies.core-foundation-sys]
-version = "0.8.6"
-
-[target.'cfg(target_os = "macos")'.dependencies.core-graphics]
-version = "0.24"
-
-[target.'cfg(target_os = "macos")'.dependencies.core-text]
-version = "21"
 
 [target.'cfg(target_os = "macos")'.dependencies.core-video]
 version = "0.5.2"
@@ -590,27 +583,12 @@ rev = "94b0f28166665e8fd2f53ff6d268a14955c82269"
 optional = true
 package = "zed-font-kit"
 
-[target.'cfg(target_os = "macos")'.dependencies.foreign-types]
-version = "0.5"
-
 [target.'cfg(target_os = "macos")'.dependencies.log]
 version = "0.4.16"
 features = [
     "kv_unstable_serde",
     "serde",
 ]
-
-[target.'cfg(target_os = "macos")'.dependencies.mach2]
-version = "0.5"
-
-[target.'cfg(target_os = "macos")'.dependencies.media]
-path = "../media"
-
-[target.'cfg(target_os = "macos")'.dependencies.metal]
-version = "0.33"
-
-[target.'cfg(target_os = "macos")'.dependencies.objc]
-version = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies.objc2]
 version = "0.6"
@@ -622,10 +600,6 @@ optional = true
 
 [target.'cfg(target_os = "macos")'.build-dependencies]
 bindgen = "0.71"
-
-[target.'cfg(target_os = "macos")'.build-dependencies.cbindgen]
-version = "0.28.0"
-default-features = false
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.61"

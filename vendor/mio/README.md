@@ -7,7 +7,6 @@ overhead as possible over the OS abstractions.
 [![Crates.io][crates-badge]][crates-url]
 [![MIT licensed][mit-badge]][mit-url]
 [![Build Status][actions-badge]][actions-url]
-[![Build Status][cirrus-badge]][cirrus-url]
 
 [crates-badge]: https://img.shields.io/crates/v/mio.svg
 [crates-url]: https://crates.io/crates/mio
@@ -15,8 +14,6 @@ overhead as possible over the OS abstractions.
 [mit-url]: LICENSE
 [actions-badge]: https://github.com/tokio-rs/mio/workflows/CI/badge.svg
 [actions-url]: https://github.com/tokio-rs/mio/actions?query=workflow%3ACI+branch%3Amaster
-[cirrus-badge]: https://api.cirrus-ci.com/github/tokio-rs/mio.svg
-[cirrus-url]: https://cirrus-ci.com/github/tokio-rs/mio
 
 **API documentation**
 
@@ -35,7 +32,7 @@ To use `mio`, first add this to your `Cargo.toml`:
 mio = "1"
 ```
 
-Next we can start using Mio. The following is quick introduction using
+Next we can start using Mio. The following is a quick introduction using
 `TcpListener` and `TcpStream`. Note that `features = ["os-poll", "net"]` must be
 specified for this example.
 
@@ -137,6 +134,7 @@ Currently supported platforms:
 * Windows
 * iOS
 * macOS
+* Solaris
 
 Mio can handle interfacing with each of the event systems of the aforementioned
 platforms. The details of their implementation are further discussed in the

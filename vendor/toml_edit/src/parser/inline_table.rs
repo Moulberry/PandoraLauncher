@@ -8,10 +8,10 @@ use crate::{InlineTable, Item, RawString, Value};
 
 use indexmap::map::Entry;
 
-/// ```bnf
+/// ```abnf
 /// ;; Inline Table
 ///
-/// inline-table = inline-table-open inline-table-keyvals inline-table-close
+/// inline-table = inline-table-open [ inline-table-keyvals ] ws-comment-newline inline-table-close
 /// ```
 pub(crate) fn on_inline_table(
     open_event: &toml_parser::parser::Event,
@@ -22,9 +22,12 @@ pub(crate) fn on_inline_table(
     #[cfg(feature = "debug")]
     let _scope = TraceScope::new("inline_table::on_inline_table");
     let mut result = InlineTable::new();
+    let mut close_span = open_event.span();
 
     let mut state = State::default();
+    state.open(open_event);
     while let Some(event) = input.next_token() {
+        close_span = event.span();
         match event.kind() {
             EventKind::StdTableOpen
             | EventKind::ArrayTableOpen
@@ -68,6 +71,7 @@ pub(crate) fn on_inline_table(
             }
             EventKind::ValueSep => {
                 state.finish_value(event, &mut result, errors);
+                state.sep_value(event);
             }
             EventKind::Whitespace | EventKind::Comment | EventKind::Newline => {
                 state.whitespace(event);
@@ -79,6 +83,9 @@ pub(crate) fn on_inline_table(
             }
         }
     }
+    if result.span.is_none() {
+        result.span = Some(open_event.span().start()..close_span.end());
+    }
 
     Value::InlineTable(result)
 }
@@ -89,11 +96,18 @@ struct State {
     current_key: Option<(Vec<Key>, Key)>,
     seen_keyval_sep: bool,
     current_value: Option<Value>,
+    trailing_start: Option<usize>,
     current_suffix: Option<toml_parser::Span>,
 }
 
 impl State {
+    fn open(&mut self, open_event: &toml_parser::parser::Event) {
+        self.trailing_start = Some(open_event.span().end());
+    }
+
     fn whitespace(&mut self, event: &toml_parser::parser::Event) {
+        #[cfg(feature = "debug")]
+        let _scope = TraceScope::new("inline_table::whitespace");
         let decor = if self.is_prefix() {
             self.current_prefix.get_or_insert(event.span())
         } else {
@@ -116,6 +130,9 @@ impl State {
         path: Vec<Key>,
         key: Option<Key>,
     ) {
+        #[cfg(feature = "debug")]
+        let _scope = TraceScope::new("inline_table::capture_key");
+        self.trailing_start = None;
         self.current_prefix
             .get_or_insert_with(|| event.span().before());
         if let Some(key) = key {
@@ -124,6 +141,8 @@ impl State {
     }
 
     fn finish_key(&mut self, event: &toml_parser::parser::Event) {
+        #[cfg(feature = "debug")]
+        let _scope = TraceScope::new("inline_table::finish_key");
         self.seen_keyval_sep = true;
         if let Some(last_key) = self.current_key.as_mut().map(|(_, k)| k) {
             let prefix = self
@@ -142,6 +161,8 @@ impl State {
     }
 
     fn capture_value(&mut self, event: &toml_parser::parser::Event, value: Value) {
+        #[cfg(feature = "debug")]
+        let _scope = TraceScope::new("inline_table::capture_value");
         self.current_prefix
             .get_or_insert_with(|| event.span().before());
         self.current_value = Some(value);
@@ -178,6 +199,16 @@ impl State {
             // "Likewise, using dotted keys to redefine tables already defined in [table] form is not allowed"
             let mixed_table_types = table.is_dotted() == path.is_empty();
             if mixed_table_types {
+                #[cfg(feature = "debug")]
+                trace(
+                    &format!("table.dotted={}", table.is_dotted()),
+                    anstyle::AnsiColor::Red.on_default(),
+                );
+                #[cfg(feature = "debug")]
+                trace(
+                    &format!("path.is_empty={}", path.is_empty()),
+                    anstyle::AnsiColor::Red.on_default(),
+                );
                 let key_span = get_key_span(&key).unwrap_or_else(|| event.span());
                 errors.report_error(ParseError::new("duplicate key").with_unexpected(key_span));
             } else {
@@ -199,6 +230,10 @@ impl State {
         }
     }
 
+    fn sep_value(&mut self, event: &toml_parser::parser::Event) {
+        self.trailing_start = Some(event.span().end());
+    }
+
     fn close(
         &mut self,
         open_event: &toml_parser::parser::Event,
@@ -207,16 +242,16 @@ impl State {
     ) {
         #[cfg(feature = "debug")]
         let _scope = TraceScope::new("inline_table::close");
+        let trailing_comma = self.trailing_start.is_some() && !result.is_empty();
         let span = open_event.span().append(close_event.span());
-        let preamble = self
-            .current_prefix
-            .take()
-            .map(|prefix| RawString::with_span(prefix.start()..prefix.end()));
+        let trailing_start = self
+            .trailing_start
+            .unwrap_or_else(|| close_event.span().start());
+        let trailing_end = close_event.span().start();
 
+        result.set_trailing_comma(trailing_comma);
+        result.set_trailing(RawString::with_span(trailing_start..trailing_end));
         result.span = Some(span.start()..span.end());
-        if let Some(preamble) = preamble {
-            result.set_preamble(preamble);
-        }
     }
 }
 
@@ -230,10 +265,18 @@ fn descend_path<'a>(
     let _scope = TraceScope::new("inline_table::descend_path");
     #[cfg(feature = "debug")]
     trace(
-        &format!("key={:?}", path.iter().map(|k| k.get()).collect::<Vec<_>>()),
+        &format!(
+            "path={:?}",
+            path.iter().map(|k| k.get()).collect::<Vec<_>>()
+        ),
         anstyle::AnsiColor::Blue.on_default(),
     );
     for key in path.iter() {
+        #[cfg(feature = "debug")]
+        trace(
+            &format!("path[_]={key:?}"),
+            anstyle::AnsiColor::Blue.on_default(),
+        );
         table = match table.entry_format(key) {
             crate::InlineEntry::Vacant(entry) => {
                 let mut new_table = InlineTable::new();
@@ -247,11 +290,25 @@ fn descend_path<'a>(
             }
             crate::InlineEntry::Occupied(entry) => {
                 match entry.into_mut() {
-                    Value::InlineTable(ref mut sweet_child_of_mine) => {
+                    Value::InlineTable(sweet_child_of_mine) => {
                         // Since tables cannot be defined more than once, redefining such tables using a
                         // [table] header is not allowed. Likewise, using dotted keys to redefine tables
                         // already defined in [table] form is not allowed.
-                        if dotted && !sweet_child_of_mine.is_implicit() {
+                        let mixed_table_types = dotted && !sweet_child_of_mine.is_implicit();
+                        if mixed_table_types {
+                            #[cfg(feature = "debug")]
+                            trace(
+                                &format!("dotted={dotted}"),
+                                anstyle::AnsiColor::Red.on_default(),
+                            );
+                            #[cfg(feature = "debug")]
+                            trace(
+                                &format!(
+                                    "sweet_child_of_mine.is_implicit={}",
+                                    sweet_child_of_mine.is_implicit()
+                                ),
+                                anstyle::AnsiColor::Red.on_default(),
+                            );
                             let key_span = get_key_span(key).expect("all keys have spans");
                             errors.report_error(
                                 ParseError::new("duplicate key").with_unexpected(key_span),
@@ -260,12 +317,12 @@ fn descend_path<'a>(
                         }
                         sweet_child_of_mine
                     }
-                    item => {
+                    existing => {
                         let key_span = get_key_span(key).expect("all keys have spans");
                         errors.report_error(
                             ParseError::new(format!(
                                 "cannot extend value of type {} with a dotted key",
-                                item.type_name()
+                                existing.type_name()
                             ))
                             .with_unexpected(key_span),
                         );

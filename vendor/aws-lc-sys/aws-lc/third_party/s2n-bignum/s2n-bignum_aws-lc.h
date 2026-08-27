@@ -30,8 +30,55 @@
 //
 //      - On ARM, the "_alt" forms target machines with higher multiplier
 //        throughput, generally offering higher performance there.
-// For each of those, we define a _selector function that selects, in runtime,
-// the _alt or non-_alt version to run.
+//
+// For each of those, we define a _selector function that picks the _alt or
+// non-_alt version to run. By default this selection happens at runtime via
+// use_s2n_bignum_alt().
+//
+// Under OPENSSL_SMALL on aarch64 we instead pin each operation to the
+// non-"_alt" variant at compile time (safe on every ARMv8 CPU) and drop the
+// other from the build (see crypto/fipsmodule/CMakeLists.txt), trading the
+// microarchitecture-specific fast path for a smaller binary. This pin is not
+// safe on x86_64, where the non-"_alt" variant requires BMI2/ADX (Haswell,
+// 2013+), so x86_64 keeps the runtime-dispatch selectors below even under
+// OPENSSL_SMALL (#3355).
+//
+// Under OPENSSL_SMALL on aarch64, only the curve25519 selectors are defined:
+// the P-256/P-384/P-521 selectors are unused there since p256-nistz.c/p384.c/
+// p521.c are compiled out entirely under OPENSSL_SMALL.
+
+#define S2NBIGNUM_KSQR_16_32_TEMP_NWORDS 24
+#define S2NBIGNUM_KMUL_16_32_TEMP_NWORDS 32
+#define S2NBIGNUM_KSQR_32_64_TEMP_NWORDS 72
+#define S2NBIGNUM_KMUL_32_64_TEMP_NWORDS 96
+
+#if defined(OPENSSL_SMALL) && !defined(OPENSSL_X86_64)
+
+static inline void curve25519_x25519_byte_selector(uint8_t res[S2N_BIGNUM_STATIC 32], const uint8_t scalar[S2N_BIGNUM_STATIC 32], const uint8_t point[S2N_BIGNUM_STATIC 32]) {
+  curve25519_x25519_byte(res, scalar, point);
+}
+
+static inline void curve25519_x25519base_byte_selector(uint8_t res[S2N_BIGNUM_STATIC 32], const uint8_t scalar[S2N_BIGNUM_STATIC 32]) {
+  curve25519_x25519base_byte(res, scalar);
+}
+
+static inline void bignum_madd_n25519_selector(uint64_t z[S2N_BIGNUM_STATIC 4], uint64_t x[S2N_BIGNUM_STATIC 4], uint64_t y[S2N_BIGNUM_STATIC 4], uint64_t c[S2N_BIGNUM_STATIC 4]) {
+  bignum_madd_n25519(z, x, y, c);
+}
+
+static inline uint64_t edwards25519_decode_selector(uint64_t z[S2N_BIGNUM_STATIC 8], const uint8_t c[S2N_BIGNUM_STATIC 32]) {
+  return edwards25519_decode(z, c);
+}
+
+static inline void edwards25519_scalarmulbase_selector(uint64_t res[S2N_BIGNUM_STATIC 8], uint64_t scalar[S2N_BIGNUM_STATIC 4]) {
+  edwards25519_scalarmulbase(res, scalar);
+}
+
+static inline void edwards25519_scalarmuldouble_selector(uint64_t res[S2N_BIGNUM_STATIC 8], uint64_t scalar[S2N_BIGNUM_STATIC 4], uint64_t point[S2N_BIGNUM_STATIC 8], uint64_t bscalar[S2N_BIGNUM_STATIC 4]) {
+  edwards25519_scalarmuldouble(res, scalar, point, bscalar);
+}
+
+#else  // !OPENSSL_SMALL
 
 #if defined(OPENSSL_X86_64)
 // On x86_64 platforms s2n-bignum uses bmi2 and adx instruction sets
@@ -51,11 +98,6 @@ static inline uint8_t use_s2n_bignum_alt(void) {
   return CRYPTO_is_ARMv8_wide_multiplier_capable();
 }
 #endif
-
-#define S2NBIGNUM_KSQR_16_32_TEMP_NWORDS 24
-#define S2NBIGNUM_KMUL_16_32_TEMP_NWORDS 32
-#define S2NBIGNUM_KSQR_32_64_TEMP_NWORDS 72
-#define S2NBIGNUM_KMUL_32_64_TEMP_NWORDS 96
 
 static inline void p256_montjscalarmul_selector(uint64_t res[S2N_BIGNUM_STATIC 12], const uint64_t scalar[S2N_BIGNUM_STATIC 4], uint64_t point[S2N_BIGNUM_STATIC 12]) {
   if (use_s2n_bignum_alt()) { p256_montjscalarmul_alt(res, scalar, point); }
@@ -141,5 +183,7 @@ static inline void edwards25519_scalarmuldouble_selector(uint64_t res[S2N_BIGNUM
   if (use_s2n_bignum_alt()) { edwards25519_scalarmuldouble_alt(res, scalar, point, bscalar); }
   else { edwards25519_scalarmuldouble(res, scalar, point, bscalar); }
 }
+
+#endif // OPENSSL_SMALL
 
 #endif // S2N_BIGNUM_AWS_LC_H

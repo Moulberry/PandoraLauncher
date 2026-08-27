@@ -70,7 +70,7 @@ impl Clang {
 
         let mut target = None;
         for i in 0..args.len() {
-            if (args[i] == "-target" || args[i] == "-target") && i + 1 < args.len() {
+            if (args[i] == "-target" || args[i] == "--target") && i + 1 < args.len() {
                 target = Some(&args[i + 1]);
             }
         }

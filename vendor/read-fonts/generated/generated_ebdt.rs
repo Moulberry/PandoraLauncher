@@ -5,26 +5,13 @@
 #[allow(unused_imports)]
 use crate::codegen_prelude::*;
 
-/// The [Embedded Bitmap Data](https://learn.microsoft.com/en-us/typography/opentype/spec/ebdt) table
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct EbdtMarker {}
-
-impl EbdtMarker {
-    pub fn major_version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn minor_version_byte_range(&self) -> Range<usize> {
-        let start = self.major_version_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for EbdtMarker {
+impl<'a> MinByteRange<'a> for Ebdt<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.minor_version_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
@@ -35,28 +22,57 @@ impl TopLevelTable for Ebdt<'_> {
 
 impl<'a> FontRead<'a> for Ebdt<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.finish(EbdtMarker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [Embedded Bitmap Data](https://learn.microsoft.com/en-us/typography/opentype/spec/ebdt) table
-pub type Ebdt<'a> = TableRef<'a, EbdtMarker>;
+#[derive(Clone)]
+pub struct Ebdt<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Ebdt<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Major version of the EBDT table, = 2.
     pub fn major_version(&self) -> u16 {
-        let range = self.shape.major_version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.major_version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Minor version of EBDT table, = 0.
     pub fn minor_version(&self) -> u16 {
-        let range = self.shape.minor_version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.minor_version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
+    }
+
+    pub fn major_version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn minor_version_byte_range(&self) -> Range<usize> {
+        let start = self.major_version_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Ebdt::MIN_SIZE));
+
+impl Default for Ebdt<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 

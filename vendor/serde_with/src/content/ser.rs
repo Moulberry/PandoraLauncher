@@ -62,7 +62,7 @@ impl Content {
     pub(crate) fn as_str(&self) -> Option<&str> {
         match self {
             Self::String(x) => Some(x),
-            Self::Bytes(x) => core::str::from_utf8(x).ok(),
+            Self::Bytes(x) => str::from_utf8(x).ok(),
             _ => None,
         }
     }
@@ -180,10 +180,6 @@ where
     type SerializeMap = MapSerialize<E>;
     type SerializeStruct = StructSerialize<E>;
     type SerializeStructVariant = StructVariantSerialize<E>;
-
-    fn is_human_readable(&self) -> bool {
-        self.is_human_readable
-    }
 
     fn serialize_bool(self, v: bool) -> Result<Content, E> {
         Ok(Content::Bool(v))
@@ -308,7 +304,7 @@ where
     fn serialize_seq(self, len: Option<usize>) -> Result<Self::SerializeSeq, E> {
         Ok(SeqSerialize {
             is_human_readable: self.is_human_readable,
-            elements: Vec::with_capacity(len.unwrap_or(0)),
+            elements: utils::vec_with_capacity_cautious(len),
             error: PhantomData,
         })
     }
@@ -316,7 +312,7 @@ where
     fn serialize_tuple(self, len: usize) -> Result<Self::SerializeTuple, E> {
         Ok(TupleSerialize {
             is_human_readable: self.is_human_readable,
-            elements: Vec::with_capacity(len),
+            elements: utils::vec_with_capacity_cautious(Some(len)),
             error: PhantomData,
         })
     }
@@ -329,7 +325,7 @@ where
         Ok(TupleStructSerialize {
             is_human_readable: self.is_human_readable,
             name,
-            fields: Vec::with_capacity(len),
+            fields: utils::vec_with_capacity_cautious(Some(len)),
             error: PhantomData,
         })
     }
@@ -346,7 +342,7 @@ where
             name,
             variant_index,
             variant,
-            fields: Vec::with_capacity(len),
+            fields: utils::vec_with_capacity_cautious(Some(len)),
             error: PhantomData,
         })
     }
@@ -354,7 +350,7 @@ where
     fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap, E> {
         Ok(MapSerialize {
             is_human_readable: self.is_human_readable,
-            entries: Vec::with_capacity(len.unwrap_or(0)),
+            entries: utils::vec_with_capacity_cautious(len),
             key: None,
             error: PhantomData,
         })
@@ -364,7 +360,7 @@ where
         Ok(StructSerialize {
             is_human_readable: self.is_human_readable,
             name,
-            fields: Vec::with_capacity(len),
+            fields: utils::vec_with_capacity_cautious(Some(len)),
             error: PhantomData,
         })
     }
@@ -381,9 +377,13 @@ where
             name,
             variant_index,
             variant,
-            fields: Vec::with_capacity(len),
+            fields: utils::vec_with_capacity_cautious(Some(len)),
             error: PhantomData,
         })
+    }
+
+    fn is_human_readable(&self) -> bool {
+        self.is_human_readable
     }
 }
 
@@ -540,10 +540,6 @@ where
         Ok(())
     }
 
-    fn end(self) -> Result<Content, E> {
-        Ok(Content::Map(self.entries))
-    }
-
     fn serialize_entry<K, V>(&mut self, key: &K, value: &V) -> Result<(), E>
     where
         K: Serialize + ?Sized,
@@ -553,6 +549,10 @@ where
         let value = value.serialize(ContentSerializer::<E>::new(self.is_human_readable))?;
         self.entries.push((key, value));
         Ok(())
+    }
+
+    fn end(self) -> Result<Content, E> {
+        Ok(Content::Map(self.entries))
     }
 }
 

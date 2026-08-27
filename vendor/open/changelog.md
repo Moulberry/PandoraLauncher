@@ -1,17 +1,20 @@
 # Changelog
 
-## 5.3.2 (2025-01-05)
+## 5.4.2 (2026-08-24)
 
 ### Bug Fixes
 
- - <csr-id-c452a8c4e56c3726431d8a4a77ad910bc8ae3ecb/> fix `that_detached` for UNC path of a directory
+ - <csr-id-c4369c5af39633a17a79c471605ef1a7f9143243/> wait in that_detached instead of double-fork
+   On macOS /usr/bin/open already detaches via LaunchServices. spawn_detached()
+   adds another fork and leaves zombie children. Align that_detached with
+   with_detached (PR #119).
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
- - 3 commits contributed to the release over the course of 1 calendar day.
- - 51 days passed between releases.
+ - 4 commits contributed to the release over the course of 18 calendar days.
+ - 19 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -22,6 +25,291 @@
 <details><summary>view details</summary>
 
  * **Uncategorized**
+    - Merge pull request #130 from s00d/fix/macos-that-detached-zombies ([`7468760`](https://github.com/Byron/open-rs/commit/7468760c0b149db984ca3ab35624ff028a9830dd))
+    - Review ([`351bb54`](https://github.com/Byron/open-rs/commit/351bb54bcdbdd61ff8509fcb3bdb6712ed69ad4e))
+    - Wait in that_detached instead of double-fork ([`c4369c5`](https://github.com/Byron/open-rs/commit/c4369c5af39633a17a79c471605ef1a7f9143243))
+    - Merge pull request #129 from Byron/fix-wsl ([`beb6a3f`](https://github.com/Byron/open-rs/commit/beb6a3f3fe16d0c9054230cb8b8b57031727fdfb))
+</details>
+
+## 5.4.1 (2026-08-05)
+
+### Bug Fixes
+
+ - <csr-id-96fa673a6a152d193c210ff77766270192b42d16/> Forward WSL targets to PowerShell to make `open` actually work there
+   <!-- agent -->
+   Opening a URL from WSL failed because the Windows process did not receive
+   OPEN_RS_TARGET, even though it was present in the Linux command environment.
+   The failure reproduces with cargo run -- https://google.com on Ubuntu under
+   WSL, where Start-Process receives a null FilePath and exits unsuccessfully.
+   
+   Add OPEN_RS_TARGET to WSLENV so WSL interop forwards the target into the
+   PowerShell environment. Preserve existing WSLENV entries and their flags,
+   while keeping the PowerShell command fixed so targets remain data rather than
+   shell code.
+   
+   Validated with focused WSL tests, the all-features test suite, rustfmt,
+   Clippy with warnings denied, and an end-to-end cargo run from WSL.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 2 commits contributed to the release.
+ - 24 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#128](https://github.com/Byron/open-rs/issues/128)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#128](https://github.com/Byron/open-rs/issues/128)**
+    - Forward WSL targets to PowerShell to make `open` actually work there ([`96fa673`](https://github.com/Byron/open-rs/commit/96fa673a6a152d193c210ff77766270192b42d16))
+ * **Uncategorized**
+    - Release open v5.4.1 ([`e548a4e`](https://github.com/Byron/open-rs/commit/e548a4e9180ef8ca7e6b605f3f248fee534a03d1))
+</details>
+
+## 5.4.0 (2026-07-12)
+
+### New Features
+
+ - <csr-id-7c19c0a1a810326b9a9e7542a0992d80adf0a365/> `cargo run` now shows the exact commands that were tried when opening.
+   This is useful for debugging, mainly.
+
+### Bug Fixes
+
+ - <csr-id-7265cae8c19180c1022d8b1a7fbec815d0264909/> Align WSL PowerShell invocation with Windows
+   Pass the WSL open target to PowerShell through the OPEN_RS_TARGET
+   environment variable instead of embedding it in the command string and
+   escaping it as a single-quoted PowerShell value.
+   
+   This matches the safer invocation already used by the native Windows
+   backend. Keeping the PowerShell program fixed ensures that paths and URLs
+   are treated purely as data, even when they contain quotes, semicolons, or
+   other PowerShell metacharacters. It also removes the need for custom
+   PowerShell quoting and avoids converting the target through
+   to_string_lossy() during command construction.
+   
+   Add -NonInteractive for consistency with the Windows launcher and update
+   the WSL tests to verify both the fixed command and the unchanged
+   environment-variable value.
+ - <csr-id-fd29861355bfb981aecdb94d0915f4e41c2686ee/> prevent launcher option and shell injection
+   Opening an attacker-controlled dash-leading path could be interpreted as
+   launcher options. On Windows, cmd /c start also parsed embedded quotes and
+   metacharacters as command language, while the legacy gnome-open fallback
+   could load a module even after a double-dash separator.
+   
+   Add command-construction regressions for malicious option-shaped paths and
+   Windows shell metacharacters. Use supported separators on macOS and KDE, and
+   rewrite dash-leading relative paths for launchers without separator support.
+   Keep Windows values out of shell syntax by passing the default target through
+   the environment and invoking custom applications directly, with explorer.exe
+   as a PowerShell-free fallback.
+   
+   Exclude cmd-based opening by default, while providing an
+   explicit insecure Cargo feature for users who need compatibility it
+   and accept their unsafe handling of untrusted input.
+   
+   Validated with default and all-feature cargo tests, clippy, and cross-target
+   cargo check --tests for aarch64 Linux and Windows.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 6 commits contributed to the release.
+ - 13 days passed between releases.
+ - 3 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#124](https://github.com/Byron/open-rs/issues/124)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#124](https://github.com/Byron/open-rs/issues/124)**
+    - Prevent launcher option and shell injection ([`fd29861`](https://github.com/Byron/open-rs/commit/fd29861355bfb981aecdb94d0915f4e41c2686ee))
+ * **Uncategorized**
+    - Release open v5.4.0 ([`b5c12bd`](https://github.com/Byron/open-rs/commit/b5c12bd9207a02272570252071d601a5dc44a3c6))
+    - Merge pull request #126 from Byron/fix-wsl ([`bdc3397`](https://github.com/Byron/open-rs/commit/bdc33978cdbfa1defef31e23659af4ba4a8913b0))
+    - Align WSL PowerShell invocation with Windows ([`7265cae`](https://github.com/Byron/open-rs/commit/7265cae8c19180c1022d8b1a7fbec815d0264909))
+    - Merge pull request #125 from Byron/open-with-dash-dash ([`407b058`](https://github.com/Byron/open-rs/commit/407b05879efb2b33c4e51fa15d77b49fa748a241))
+    - `cargo run` now shows the exact commands that were tried when opening. ([`7c19c0a`](https://github.com/Byron/open-rs/commit/7c19c0a1a810326b9a9e7542a0992d80adf0a365))
+</details>
+
+## 5.3.6 (2026-06-29)
+
+### Bug Fixes
+
+ - <csr-id-44d1d41349fdfd23e5e74e3c0ac4c9aca2ed7282/> use PowerShell instead of wslview on WSL
+   WSL users reported that wslu's wslview is discontinued and unavailable in
+   some package managers. The regression tests cover the WSL command builder and
+   initially failed because the first generated command was still `wslview`.
+   
+   Build the WSL opener as a PowerShell `Start-Process -FilePath` script argument
+   with the target quoted as data, then retain the xdg-open, gio, gnome-open, and
+   kde-open fallbacks. Update the user-facing docs and keep the WSL command builder
+   testable from host builds without adding dev-dependencies.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 3 commits contributed to the release.
+ - 48 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#122](https://github.com/Byron/open-rs/issues/122)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#122](https://github.com/Byron/open-rs/issues/122)**
+    - Use PowerShell instead of wslview on WSL ([`44d1d41`](https://github.com/Byron/open-rs/commit/44d1d41349fdfd23e5e74e3c0ac4c9aca2ed7282))
+ * **Uncategorized**
+    - Release open v5.3.6 ([`cfb39d8`](https://github.com/Byron/open-rs/commit/cfb39d8c323bc147096ae00b1360cb6633ce4c35))
+    - Merge pull request #123 from Byron/avoid-wslview ([`41c4cf0`](https://github.com/Byron/open-rs/commit/41c4cf09cab155460c29ac6a8b36ad6ec70b3d81))
+</details>
+
+## 5.3.5 (2026-05-12)
+
+### Bug Fixes
+
+ - <csr-id-db813693f3f186dac0bcf67fd939f93ca48a0300/> delegate to winebrowser under Wine
+   When running a Windows-targeted binary under Wine, open requests previously fell back to Wine's bundled `explorer.exe`, which lacks proper host desktop integration.
+   
+   This change detects the Wine environment at runtime (via `WINEPREFIX`, `WINELOADER`, or `WINEDEBUG`) and prepends a winebrowser command to the launcher list. `winebrowser` is Wine's official utility for forwarding file/URL requests to the host OS's default handler (e.g., `xdg-open` on Linux, `open` on macOS).
+   
+   If winebrowser is unavailable or fails, the existing `cmd /c start` fallback is used automatically, preserving backward compatibility. No public API changes or compile-time flags are introduced.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 4 commits contributed to the release.
+ - 23 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 0 issues like '(#ID)' were seen in commit messages
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **Uncategorized**
+    - Release open v5.3.5 ([`b98fc01`](https://github.com/Byron/open-rs/commit/b98fc01d0a9da985c892f8fdb14b618d036ab12d))
+    - Merge pull request #121 from gsurrel/wine-awareness ([`bb28d04`](https://github.com/Byron/open-rs/commit/bb28d04bef96a59ff60215c349d048c8c4dfab9f))
+    - Review ([`f72e644`](https://github.com/Byron/open-rs/commit/f72e64456bc3d46b0d3f910597ebc638b96ae75d))
+    - Delegate to winebrowser under Wine ([`db81369`](https://github.com/Byron/open-rs/commit/db813693f3f186dac0bcf67fd939f93ca48a0300))
+</details>
+
+## 5.3.4 (2026-04-19)
+
+### Bug Fixes
+
+ - <csr-id-8e122d41929be6d9780679d6a40971de36247af3/> align with_detached() implementation with with()
+   On macOS, /usr/bin/open is natively detached. This commit changes
+   with_detached to use the same logic as with() .avoid double detachment to prevent silent failure
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 7 commits contributed to the release.
+ - 153 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 0 issues like '(#ID)' were seen in commit messages
+
+### Thanks Clippy
+
+<csr-read-only-do-not-edit/>
+
+[Clippy](https://github.com/rust-lang/rust-clippy) helped 1 time to make code idiomatic. 
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **Uncategorized**
+    - Release open v5.3.4 ([`7bd519c`](https://github.com/Byron/open-rs/commit/7bd519c778eda8efe84137e61c35eaff95102d41))
+    - Merge pull request #119 from benzeneringlq/fix-macos-detach-silent-failure ([`7db5738`](https://github.com/Byron/open-rs/commit/7db5738d0d7a43da8b3f29ad5a5c26c73c687a26))
+    - Align with_detached() implementation with with() ([`8e122d4`](https://github.com/Byron/open-rs/commit/8e122d41929be6d9780679d6a40971de36247af3))
+    - Merge pull request #117 from ChrisDenton/absolute ([`20ea175`](https://github.com/Byron/open-rs/commit/20ea1758c597d50a58b67854f063a9a9cd99ecb8))
+    - Thanks clippy (on Windows) ([`7faae87`](https://github.com/Byron/open-rs/commit/7faae875e76ddc05feb24f2bc935532ebfe7fefc))
+    - Enable clippy deny on CI, with all features, but allow incompatible MRSV there ([`1ab9c47`](https://github.com/Byron/open-rs/commit/1ab9c4738eadacdb83e770ad4ca3133b3fac6c91))
+    - Use absolute instead of canonicalize ([`5604cee`](https://github.com/Byron/open-rs/commit/5604cee4aae32689e3e648a520f76797b49988e4))
+</details>
+
+## 5.3.3 (2025-11-17)
+
+<csr-id-314d80ac36650f3ff57d62596513e1dcda4870fb/>
+
+### Documentation
+
+ - <csr-id-07b246cf98d0486ba2ca570c803ded41283b90ed/> point to webbrowser crate for users that seek this specific functionality.
+
+### Bug Fixes
+
+ - <csr-id-abcd0f4810cbcdee4d80dba01a6474ad711efa61/> pass canonicalized path to `ILCreateFromPathW`
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 9 commits contributed to the release.
+ - 316 days passed between releases.
+ - 3 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 0 issues like '(#ID)' were seen in commit messages
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **Uncategorized**
+    - Release open v5.3.3 ([`ab1b306`](https://github.com/Byron/open-rs/commit/ab1b306e41e27ae302968c75bbe69dbc385027a9))
+    - Merge pull request #116 from Legend-Master/canonicalize-ILCreateFromPathW ([`a1ca334`](https://github.com/Byron/open-rs/commit/a1ca3346ee45cd8c6a651476919f8cd711bdc084))
+    - Fix CI by using a more recent Windows image ([`c84cade`](https://github.com/Byron/open-rs/commit/c84cadebb81e7d214845bb1030e3e44fbf49fd91))
+    - Pass canonicalized path to `ILCreateFromPathW` ([`abcd0f4`](https://github.com/Byron/open-rs/commit/abcd0f4810cbcdee4d80dba01a6474ad711efa61))
+    - Merge pull request #111 from bjones1/docs ([`335146b`](https://github.com/Byron/open-rs/commit/335146bb4a0724fd0a21efcfffbcc6d60707e038))
+    - Remove whitespace. ([`314d80a`](https://github.com/Byron/open-rs/commit/314d80ac36650f3ff57d62596513e1dcda4870fb))
+    - Point to webbrowser crate for users that seek this specific functionality. ([`07b246c`](https://github.com/Byron/open-rs/commit/07b246cf98d0486ba2ca570c803ded41283b90ed))
+    - Merge pull request #110 from bjones1/codespaces ([`1c4a952`](https://github.com/Byron/open-rs/commit/1c4a9523e104758175411cd3d3df5b7f7cf5a897))
+    - Add Codespaces setup. ([`43b6a2d`](https://github.com/Byron/open-rs/commit/43b6a2d254cd823bf02a12bb8086bece16ec965b))
+</details>
+
+## 5.3.2 (2025-01-05)
+
+### Bug Fixes
+
+ - <csr-id-c452a8c4e56c3726431d8a4a77ad910bc8ae3ecb/> fix `that_detached` for UNC path of a directory
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 4 commits contributed to the release over the course of 1 calendar day.
+ - 52 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 0 issues like '(#ID)' were seen in commit messages
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **Uncategorized**
+    - Release open v5.3.2 ([`f196640`](https://github.com/Byron/open-rs/commit/f196640a9c0def100401f6e97ebe5dd4b4f2bb0e))
     - Merge pull request #107 from amrbashir/fix/windows/remove-unc-and-fallback-on-error ([`472ce26`](https://github.com/Byron/open-rs/commit/472ce262c8f3c02f089f881387616df2303f48f8))
     - Fix `that_detached` for UNC path of a directory ([`c452a8c`](https://github.com/Byron/open-rs/commit/c452a8c4e56c3726431d8a4a77ad910bc8ae3ecb))
     - Merge pull request #79 from Byron/better-docs ([`2646ff8`](https://github.com/Byron/open-rs/commit/2646ff820c2ab965a636d57753a10c56501f4163))
@@ -36,6 +324,7 @@ On Windows, respect the `expand to open folder` setting.
 <csr-read-only-do-not-edit/>
 
  - 4 commits contributed to the release.
+ - 127 days passed between releases.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -64,7 +353,7 @@ On Windows, respect the `expand to open folder` setting.
 <csr-read-only-do-not-edit/>
 
  - 3 commits contributed to the release.
- - 7 days passed between releases.
+ - 8 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -91,7 +380,7 @@ On Windows, respect the `expand to open folder` setting.
 <csr-read-only-do-not-edit/>
 
  - 3 commits contributed to the release.
- - 27 days passed between releases.
+ - 28 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -145,6 +434,7 @@ See [the PR](https://github.com/Byron/open-rs/pull/99) for a little more context
 <csr-read-only-do-not-edit/>
 
  - 6 commits contributed to the release.
+ - 70 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 1 unique issue was worked on: [#94](https://github.com/Byron/open-rs/issues/94)
 
@@ -254,17 +544,12 @@ See [the PR](https://github.com/Byron/open-rs/pull/99) for a little more context
 
 <csr-id-a583658a2f2cfea64c3be6e12cef159f5cbc7fbf/>
 
-### Other
-
- - <csr-id-a583658a2f2cfea64c3be6e12cef159f5cbc7fbf/> use PATH to find launcher
-   Redox has moved the launcher from /ui/bin to /usr/bin. Just use the PATH to locate it, so any future changes in location don't break this crate.
-
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
  - 3 commits contributed to the release.
- - 97 days passed between releases.
+ - 98 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -293,6 +578,7 @@ See [the PR](https://github.com/Byron/open-rs/pull/99) for a little more context
 <csr-read-only-do-not-edit/>
 
  - 6 commits contributed to the release.
+ - 150 days passed between releases.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 1 unique issue was worked on: [#85](https://github.com/Byron/open-rs/issues/85)
 
@@ -331,7 +617,7 @@ See [the PR](https://github.com/Byron/open-rs/pull/99) for a little more context
 <csr-read-only-do-not-edit/>
 
  - 5 commits contributed to the release over the course of 3 calendar days.
- - 3 days passed between releases.
+ - 4 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 1 unique issue was worked on: [#80](https://github.com/Byron/open-rs/issues/80)
 
@@ -352,9 +638,7 @@ See [the PR](https://github.com/Byron/open-rs/pull/99) for a little more context
 
 ## 4.2.0 (2023-06-21)
 
-### Other
-
- - <csr-id-323b8ea2aba9b0661bf3af6bd48ccef53197b0bf/> Improve documentation about shortcomings particularly on console-only UNIX platforms.
+<csr-id-323b8ea2aba9b0661bf3af6bd48ccef53197b0bf/>
 
 ### New Features
 
@@ -367,7 +651,7 @@ See [the PR](https://github.com/Byron/open-rs/pull/99) for a little more context
 <csr-read-only-do-not-edit/>
 
  - 5 commits contributed to the release over the course of 28 calendar days.
- - 55 days passed between releases.
+ - 56 days passed between releases.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 1 unique issue was worked on: [#8](https://github.com/Byron/open-rs/issues/8)
 
@@ -432,6 +716,7 @@ See [the PR](https://github.com/Byron/open-rs/pull/99) for a little more context
 <csr-read-only-do-not-edit/>
 
  - 6 commits contributed to the release.
+ - 27 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 1 unique issue was worked on: [#71](https://github.com/Byron/open-rs/issues/71)
 
@@ -512,7 +797,7 @@ Thanks so much for [the contribution](https://github.com/Byron/open-rs/pull/69).
 <csr-read-only-do-not-edit/>
 
  - 5 commits contributed to the release.
- - 3 days passed between releases.
+ - 4 days passed between releases.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -545,10 +830,6 @@ Thanks so much for [the contribution](https://github.com/Byron/open-rs/pull/69).
  - <csr-id-245c95ede24adc6694d935993d6045d19a935035/> `commands()` function to obtain a list of launchers to open the given path.
    This allows async applications to control the application launch in an async way,
    for instance with `tokio`.
-
-### Other
-
- - <csr-id-7e2a9c645cd4ff5f86ece7cdc220e18c1b4ac1b5/> improve documentation around how to use the library.
 
 ### Commit Statistics
 
@@ -649,6 +930,7 @@ Thanks so much for [the contribution](https://github.com/Byron/open-rs/pull/69).
 <csr-read-only-do-not-edit/>
 
  - 5 commits contributed to the release.
+ - 1 day passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -682,6 +964,7 @@ Thanks so much for [the contribution](https://github.com/Byron/open-rs/pull/69).
 <csr-read-only-do-not-edit/>
 
  - 7 commits contributed to the release.
+ - 65 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -743,7 +1026,7 @@ Thanks so much for [the contribution](https://github.com/Byron/open-rs/pull/69).
 <csr-read-only-do-not-edit/>
 
  - 2 commits contributed to the release.
- - 35 days passed between releases.
+ - 36 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 1 unique issue was worked on: [#51](https://github.com/Byron/open-rs/issues/51)
 
@@ -853,16 +1136,12 @@ A maintenance release which reduces compile times on windows by switching from `
 
 <csr-id-85f4dfdafe6119af5b3a5d8f079279818d3d61ee/>
 
-### Other
-
- - <csr-id-85f4dfdafe6119af5b3a5d8f079279818d3d61ee/> add Heiku platform support
-
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
  - 3 commits contributed to the release.
- - 54 days passed between releases.
+ - 55 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -913,7 +1192,7 @@ A maintenance release which allows boxed values in parameter position.
 <csr-read-only-do-not-edit/>
 
  - 3 commits contributed to the release.
- - 8 days passed between releases.
+ - 9 days passed between releases.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -966,7 +1245,7 @@ in the `PATH`.
 <csr-read-only-do-not-edit/>
 
  - 7 commits contributed to the release.
- - 128 days passed between releases.
+ - 129 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 1 unique issue was worked on: [#85](https://github.com/Byron/open-rs/issues/85)
 
@@ -1037,7 +1316,7 @@ This releases alleviates most of the issues.
 <csr-read-only-do-not-edit/>
 
  - 9 commits contributed to the release.
- - 89 days passed between releases.
+ - 90 days passed between releases.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1068,7 +1347,7 @@ This releases alleviates most of the issues.
 <csr-read-only-do-not-edit/>
 
  - 7 commits contributed to the release over the course of 38 calendar days.
- - 38 days passed between releases.
+ - 39 days passed between releases.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1166,7 +1445,7 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 <csr-read-only-do-not-edit/>
 
  - 18 commits contributed to the release over the course of 321 calendar days.
- - 356 days passed between releases.
+ - 357 days passed between releases.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1206,7 +1485,7 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 <csr-read-only-do-not-edit/>
 
  - 6 commits contributed to the release over the course of 25 calendar days.
- - 25 days passed between releases.
+ - 26 days passed between releases.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1230,10 +1509,6 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 <csr-id-5c1497c6d09a829d4be19e9bd3eec5557efce370/>
 
 * Add LICENSE.md and README.md into the crates.io tarball.
-
-### Chore
-
- - <csr-id-5c1497c6d09a829d4be19e9bd3eec5557efce370/> Include README/LICENSE into a release tarball
 
 ### Commit Statistics
 
@@ -1291,7 +1566,7 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 <csr-read-only-do-not-edit/>
 
  - 3 commits contributed to the release.
- - 25 days passed between releases.
+ - 26 days passed between releases.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1311,15 +1586,12 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 
 <csr-id-c2908176e2bb982a679d7097584e584a53deaf15/>
 
-### Chore
-
- - <csr-id-c2908176e2bb982a679d7097584e584a53deaf15/> Exclude unneeded files from crates.io
-
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
  - 3 commits contributed to the release over the course of 16 calendar days.
+ - 332 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1342,7 +1614,7 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 <csr-read-only-do-not-edit/>
 
  - 6 commits contributed to the release.
- - 314 days passed between releases.
+ - 315 days passed between releases.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1365,15 +1637,12 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 
 <csr-id-79bc73b7ca0927f0594670bcc23de989693275c0/>
 
-### Other
-
- - <csr-id-79bc73b7ca0927f0594670bcc23de989693275c0/> improve example
-
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
  - 7 commits contributed to the release over the course of 178 calendar days.
+ - 236 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1400,15 +1669,12 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 * **windows**: escape '&' in URLs. On windows, a shell is used to execute the command, which
   requires certain precautions for the URL to open to get through the interpreter.
 
-### Chore
-
- - <csr-id-37a253c89b1241b6f6ca0d3cafc8baa936aa274f/> v1.2.0
-
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
  - 3 commits contributed to the release.
+ - 296 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1438,14 +1704,6 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 
 * **api:**  allow OSStrings instead of &str ([1d13a671](https://github.com/Byron/open-rs/commit/1d13a671f2c9bd9616bf185fac77b32da1dcf8ee))
 
-### Other
-
- - <csr-id-da45d9bad33fd9ed9659ec56ffe3b31d310253ca/> allow OSStrings instead of &str
-   Actually I can only hope that ordinary &str will still be fine.
-   Technically, I think they should ... but we shall see.
-
-## 25c0e398 (2015-07-08)
-
 ### Features
 
 * **open**  added 'open' program ([a4c3a352](https://github.com/Byron/open-rs/commit/a4c3a352c8f912211d5ab48daaf41cb847ebcc0c))
@@ -1467,7 +1725,7 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
 <csr-read-only-do-not-edit/>
 
  - 4 commits contributed to the release over the course of 276 calendar days.
- - 276 days passed between releases.
+ - 277 days passed between releases.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -1484,9 +1742,6 @@ YANKED to avoid potential for breakage by using 'explorer.exe' to open URLs.
     - No docs for open ([`31605e0`](https://github.com/Byron/open-rs/commit/31605e0eddfb0cf8db635dd4d86131bc46beae78))
 </details>
 
-<csr-unknown>
-don’t use ‘open’ on linux (https://github.com/Byron/open-rs/commit/30c96b1cb95c1e03bede218b8fb03bbd9ada931730c96b1c)linux uses open before anything else (https://github.com/Byron/open-rs/commit/4696d1a5ec80691e97bb1be4261d4f79ee0ade4d4696d1a5)<csr-unknown/>
-
 ## v1.1.0 (2015-07-08)
 
 <csr-id-a5557d5c096983cf70f59b1807cb6fbe2b6dab5e/>
@@ -1494,19 +1749,6 @@ don’t use ‘open’ on linux (https://github.com/Byron/open-rs/commit/30c96b1
 <csr-id-d816380f9680a9d56e22a79e025dc6c2073fb439/>
 <csr-id-bf8c9a11f4c1b1ac17d684a31c90d2a38255045e/>
 <csr-id-210ec6ef37ba7d230a0cc367e979173a555fa092/>
-
-### Chore
-
- - <csr-id-a5557d5c096983cf70f59b1807cb6fbe2b6dab5e/> v1.1.0
-   * added clog configuration and changelog
- - <csr-id-8db67f5874b007ea3710ed9670e88ad3f49b6d7d/> use stable instead of beta
- - <csr-id-d816380f9680a9d56e22a79e025dc6c2073fb439/> switch to travis-cargo
- - <csr-id-bf8c9a11f4c1b1ac17d684a31c90d2a38255045e/> added sublime-rustc-linter cfg
-   [skip ci]
-
-### Other
-
- - <csr-id-210ec6ef37ba7d230a0cc367e979173a555fa092/> start is a cmd command, not an executable
 
 ### Documentation
 
@@ -1535,6 +1777,7 @@ don’t use ‘open’ on linux (https://github.com/Byron/open-rs/commit/30c96b1
 <csr-read-only-do-not-edit/>
 
  - 13 commits contributed to the release.
+ - 131 days passed between releases.
  - 12 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 

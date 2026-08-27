@@ -1,6 +1,5 @@
 //! Parse parts of an ISO 8601-formatted value.
 
-use crate::convert::*;
 use crate::error;
 use crate::error::ParseFromDescription::{InvalidComponent, InvalidLiteral};
 use crate::format_description::well_known::Iso8601;
@@ -11,6 +10,7 @@ use crate::parsing::combinator::rfc::iso8601::{
 };
 use crate::parsing::combinator::{Sign, ascii_char, sign};
 use crate::parsing::{Parsed, ParsedItem};
+use crate::unit::*;
 
 impl<const CONFIG: EncodedConfig> Iso8601<CONFIG> {
     // Basic: [year][month][day]
@@ -122,9 +122,10 @@ impl<const CONFIG: EncodedConfig> Iso8601<CONFIG> {
         date_is_present: bool,
     ) -> impl FnMut(&[u8]) -> Result<&[u8], error::Parse> + use<'a, CONFIG> {
         move |mut input| {
-            if date_is_present {
-                input =
-                    try_likely_ok!(ascii_char::<b'T'>(input).ok_or(InvalidLiteral)).into_inner();
+            match ascii_char::<b'T'>(input) {
+                Some(parsed) => input = parsed.into_inner(),
+                None if date_is_present => return Err(InvalidLiteral.into()),
+                None => {}
             }
 
             let ParsedItem(mut input, hour) =

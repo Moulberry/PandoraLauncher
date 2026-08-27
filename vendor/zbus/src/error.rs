@@ -3,7 +3,7 @@ use zbus_names::{Error as NamesError, InterfaceName, OwnedErrorName};
 use zvariant::{Error as VariantError, ObjectPath};
 
 use crate::{
-    fdo,
+    Address, fdo,
     message::{Message, Type},
 };
 
@@ -60,6 +60,8 @@ pub enum Error {
     InvalidSerial,
     /// The given interface already exists at the given path.
     InterfaceExists(InterfaceName<'static>, ObjectPath<'static>),
+    /// Failed to connect to the D-Bus server at the given address.
+    Connection(Arc<io::Error>, Address),
 }
 
 impl PartialEq for Error {
@@ -85,6 +87,7 @@ impl PartialEq for Error {
             (Error::InputOutput(_), Self::InputOutput(_)) => false,
             (Self::Failure(s1), Self::Failure(s2)) => s1 == s2,
             (Self::InterfaceExists(s1, s2), Self::InterfaceExists(o1, o2)) => s1 == o1 && s2 == o2,
+            (Self::Connection(_, a1), Self::Connection(_, a2)) => a1 == a2,
             (_, _) => false,
         }
     }
@@ -114,6 +117,7 @@ impl error::Error for Error {
             Error::MissingParameter(_) => None,
             Error::InvalidSerial => None,
             Error::InterfaceExists(_, _) => None,
+            Error::Connection(e, _) => Some(e),
         }
     }
 }
@@ -149,6 +153,7 @@ impl fmt::Display for Error {
             }
             Error::InvalidSerial => write!(f, "Serial number in the message header is 0"),
             Error::InterfaceExists(i, p) => write!(f, "Interface `{i}` already exists at `{p}`"),
+            Error::Connection(e, addr) => write!(f, "Failed to connect to address `{addr}`: {e}"),
         }
     }
 }
@@ -182,6 +187,7 @@ impl Error {
             Error::MissingParameter(_) => Some("A required parameter is missing"),
             Error::InvalidSerial => Some("serial number in the message header is 0"),
             Error::InterfaceExists(_, _) => Some("interface already exists"),
+            Error::Connection(_, _) => Some("could not connect to specified address"),
         }
     }
 }
@@ -212,6 +218,7 @@ impl Clone for Error {
             Error::MissingParameter(p) => Error::MissingParameter(p),
             Error::InvalidSerial => Error::InvalidSerial,
             Error::InterfaceExists(i, p) => Error::InterfaceExists(i.clone(), p.clone()),
+            Error::Connection(e, addr) => Error::Connection(e.clone(), addr.clone()),
         }
     }
 }

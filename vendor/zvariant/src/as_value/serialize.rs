@@ -1,6 +1,6 @@
 use serde::ser::{SerializeStruct, Serializer};
 
-use crate::Type;
+use crate::{Signature, Type};
 
 /// A wrapper to serialize `T: Type + serde::Serialize` as a value.
 ///
@@ -20,6 +20,13 @@ impl<T: Type + serde::Serialize> serde::Serialize for Serialize<'_, T> {
     where
         S: Serializer,
     {
+        // `Value`/`OwnedValue` (and any other type whose signature is already `v`) serialize
+        // themselves as a variant, so wrapping them here would emit a variant-of-variant. Just
+        // delegate to their own `Serialize` impl in that case.
+        if T::SIGNATURE == &Signature::Variant {
+            return self.0.serialize(serializer);
+        }
+
         // Serializer implementation needs to ensure padding isn't added for Value.
         let mut structure = serializer.serialize_struct("Variant", 2)?;
 

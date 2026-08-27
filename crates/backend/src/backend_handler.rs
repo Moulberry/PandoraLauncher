@@ -1472,10 +1472,7 @@ impl BackendState {
                         return;
                     };
 
-                    #[cfg(unix)]
-                    let is_real_folder = !instance_root.is_symlink();
-                    #[cfg(windows)]
-                    let is_real_folder = !instance_root.is_symlink() && !junction::exists(&instance_root).unwrap_or(false);
+                    let is_real_folder = !instance_root.is_symlink(); // is_symlink also includes junction points
 
                     if is_real_folder && let Some(name) = path.to_str() {
                         self.rename_instance(id, name).await;

@@ -5,7 +5,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
+    ActiveTheme as _, Disableable, Icon, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent, Textarea, TextareaState}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
 };
 use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
@@ -45,9 +45,9 @@ pub struct InstanceSettingsSubpage {
     memory_min_input_state: Entity<InputState>,
     memory_max_input_state: Entity<InputState>,
     wrapper_command_enabled: bool,
-    wrapper_command_input_state: Entity<InputState>,
+    wrapper_command_input_state: Entity<TextareaState>,
     jvm_flags_enabled: bool,
-    jvm_flags_input_state: Entity<InputState>,
+    jvm_flags_input_state: Entity<TextareaState>,
     jvm_binary_enabled: bool,
     jvm_binary_path: Option<PathLabel>,
 
@@ -205,12 +205,12 @@ impl InstanceSettingsSubpage {
         cx.subscribe(&memory_max_input_state, Self::on_memory_changed).detach();
 
         let wrapper_command_input_state = cx.new(|cx| {
-            InputState::new(window, cx).auto_grow(1, 8).default_value(wrapper_command.flags)
+            TextareaState::new(window, cx).auto_grow(1, 8).default_value(wrapper_command.flags)
         });
         cx.subscribe(&wrapper_command_input_state, Self::on_wrapper_command_changed).detach();
 
         let jvm_flags_input_state = cx.new(|cx| {
-            InputState::new(window, cx).auto_grow(1, 8).default_value(jvm_flags.flags)
+            TextareaState::new(window, cx).auto_grow(1, 8).default_value(jvm_flags.flags)
         });
         cx.subscribe(&jvm_flags_input_state, Self::on_jvm_flags_changed).detach();
 
@@ -574,7 +574,7 @@ impl InstanceSettingsSubpage {
 
     pub fn on_wrapper_command_changed(
         &mut self,
-        _: Entity<InputState>,
+        _: Entity<TextareaState>,
         event: &InputEvent,
         cx: &mut Context<Self>,
     ) {
@@ -597,7 +597,7 @@ impl InstanceSettingsSubpage {
 
     pub fn on_jvm_flags_changed(
         &mut self,
-        _: Entity<InputState>,
+        _: Entity<TextareaState>,
         event: &InputEvent,
         cx: &mut Context<Self>,
     ) {
@@ -899,7 +899,7 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(Input::new(&self.jvm_flags_input_state).disabled(!jvm_flags_enabled))
+                .child(Textarea::new(&self.jvm_flags_input_state).disabled(!jvm_flags_enabled))
             )
             .child(v_flex()
                 .gap_1()
@@ -978,7 +978,7 @@ impl Render for InstanceSettingsSubpage {
                         cx.notify();
                     }
                 })))
-                .child(Input::new(&self.wrapper_command_input_state).disabled(!wrapper_command_enabled))
+                .child(Textarea::new(&self.wrapper_command_input_state).disabled(!wrapper_command_enabled))
             );
 
         #[cfg(target_os = "linux")]

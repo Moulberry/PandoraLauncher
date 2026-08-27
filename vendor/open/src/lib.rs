@@ -1,7 +1,9 @@
 //! Use this library to open a given path or URL in some application, obeying the current user's desktop configuration.
 //!
-//! It is expected that `http:` and `https:` URLs will open in a web browser, although desktop configuration may override this.
+//! It is expected that `http:` and `https:` URLs will open in a web browser, although the desktop configuration may override this.
 //! The choice of application for opening other path types is highly system-dependent.
+//!
+//! To always open a web browser, see the [webbrowser](https://docs.rs/webbrowser) crate, which offers functionality for that specific case.
 //!
 //! # Usage
 //!
@@ -77,12 +79,23 @@
 //!
 // On a console, without a window manager, results will likely be poor. The openers expect to be able to open in a new or existing window, something that consoles lack.
 //!
-//! On Windows WSL, `wslview` is tried first, then `xdg-open`. In other UNIX environments, `xdg-open` is tried first. If this fails, a sequence of other openers is tried.
+//! On Windows WSL, PowerShell is tried first to delegate to the Windows default handler, then `xdg-open`. In other UNIX environments, `xdg-open` is tried first. If this fails, a sequence of other openers is tried.
 //!
 //! Currently the `BROWSER` environment variable is ignored even for `http:` and `https:` URLs unless the opener being used happens to respect it.
 //!
 //! It cannot be overemphasized how fragile this all is in UNIX environments. It is common for the various MIME tables to incorrectly specify the application "owning" a given filetype.
 //! It is common for openers to behave strangely. Use with caution, as this crate merely inherits a particular platforms shortcomings.
+//!
+//! ## Security boundaries
+//!
+//! Paths passed to system launchers are separated from launcher options where the
+//! launcher supports it. Applications selected through [`with()`] have arbitrary
+//! command-line grammars, however, so the crate cannot guarantee that every custom
+//! application treats a dash-leading path as data. Launching a document or custom
+//! URL scheme also trusts the configured local handler and the launched content.
+//! The `insecure` Cargo feature restores the legacy `cmd /c start` launcher on
+//! Windows for compatibility, but must not be enabled when paths or URLs may be
+//! attacker-controlled.
 
 #[cfg(target_os = "windows")]
 use windows as os;
@@ -262,8 +275,23 @@ pub fn with_in_background<T: AsRef<OsStr>>(
 /// the program ends up to be blocking or want to out-live your app
 ///
 /// See documentation of [`that()`] for more details.
+///
+/// ## Platform-specific
+///
+/// - **macOS**: `/usr/bin/open` already hands the target off to LaunchServices and
+///   returns. Extra double-fork detachment (`spawn_detached`) is unnecessary and
+///   leaves unreaped zombie children. This function therefore waits for `open`
+///   itself, matching [`with_detached()`].
 pub fn that_detached(path: impl AsRef<OsStr>) -> io::Result<()> {
-    #[cfg(any(not(feature = "shellexecute-on-windows"), not(windows)))]
+    #[cfg(target_os = "macos")]
+    {
+        that(path)
+    }
+
+    #[cfg(all(
+        not(target_os = "macos"),
+        any(not(feature = "shellexecute-on-windows"), not(windows))
+    ))]
     {
         let mut last_err = None;
         for mut cmd in commands(path) {
@@ -289,7 +317,16 @@ pub fn that_detached(path: impl AsRef<OsStr>) -> io::Result<()> {
 ///
 /// See documentation of [`with()`] for more details.
 pub fn with_detached<T: AsRef<OsStr>>(path: T, app: impl Into<String>) -> io::Result<()> {
-    #[cfg(any(not(feature = "shellexecute-on-windows"), not(windows)))]
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = with_command(path, app);
+        cmd.status_without_output().into_result(&cmd)
+    }
+
+    #[cfg(all(
+        not(target_os = "macos"),
+        any(not(feature = "shellexecute-on-windows"), not(windows))
+    ))]
     {
         let mut cmd = with_command(path, app);
         cmd.spawn_detached()
@@ -320,6 +357,10 @@ impl IntoResult<io::Result<()>> for io::Result<std::process::ExitStatus> {
 
 trait CommandExt {
     fn status_without_output(&mut self) -> io::Result<std::process::ExitStatus>;
+    #[cfg_attr(
+        any(target_os = "macos", feature = "shellexecute-on-windows"),
+        allow(dead_code)
+    )]
     fn spawn_detached(&mut self) -> io::Result<()>;
 }
 
@@ -331,6 +372,10 @@ impl CommandExt for Command {
             .status()
     }
 
+    #[cfg_attr(
+        any(target_os = "macos", feature = "shellexecute-on-windows"),
+        allow(dead_code)
+    )]
     fn spawn_detached(&mut self) -> io::Result<()> {
         // This is pretty much lifted from the implementation in Alacritty:
         // https://github.com/alacritty/alacritty/blob/b9c886872d1202fc9302f68a0bedbb17daa35335/alacritty/src/daemon.rs
@@ -386,6 +431,21 @@ mod haiku;
 
 #[cfg(target_os = "redox")]
 mod redox;
+
+#[cfg(any(
+    test,
+    target_os = "linux",
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "netbsd",
+    target_os = "openbsd",
+    target_os = "illumos",
+    target_os = "solaris",
+    target_os = "aix",
+    target_os = "hurd"
+))]
+mod wsl;
 
 #[cfg(any(
     target_os = "linux",

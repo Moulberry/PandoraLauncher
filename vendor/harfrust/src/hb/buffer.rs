@@ -976,15 +976,15 @@ impl hb_buffer_t {
             return;
         }
 
-        self.merge_clusters_impl(start, end);
-    }
-
-    fn merge_clusters_impl(&mut self, mut start: usize, mut end: usize) {
         if !BufferClusterLevel::new(self.cluster_level).is_monotone() {
             self.unsafe_to_break(Some(start), Some(end));
             return;
         }
 
+        self.merge_clusters_impl(start, end);
+    }
+
+    fn merge_clusters_impl(&mut self, mut start: usize, mut end: usize) {
         self.max_ops -= (end - start) as i32;
         if self.max_ops < 0 {
             self.successful = false;
@@ -1005,7 +1005,7 @@ impl hb_buffer_t {
 
         // Extend start
         if cluster != self.info[start].cluster {
-            while end < start && self.info[start - 1].cluster == self.info[start].cluster {
+            while self.idx < start && self.info[start - 1].cluster == self.info[start].cluster {
                 start -= 1;
             }
         }
@@ -1024,15 +1024,44 @@ impl hb_buffer_t {
         }
     }
 
-    pub fn merge_out_clusters(&mut self, mut start: usize, mut end: usize) {
-        if !BufferClusterLevel::new(self.cluster_level).is_monotone() {
-            return;
-        }
-
+    pub fn merge_grapheme_clusters(&mut self, start: usize, end: usize) {
         if end - start < 2 {
             return;
         }
 
+        if !BufferClusterLevel::new(self.cluster_level).is_graphemes() {
+            self.unsafe_to_break(Some(start), Some(end));
+            return;
+        }
+
+        self.merge_clusters_impl(start, end);
+    }
+
+    pub fn merge_out_clusters(&mut self, start: usize, end: usize) {
+        if end - start < 2 {
+            return;
+        }
+
+        if !BufferClusterLevel::new(self.cluster_level).is_monotone() {
+            return;
+        }
+
+        self.merge_out_clusters_impl(start, end);
+    }
+
+    pub fn merge_out_grapheme_clusters(&mut self, start: usize, end: usize) {
+        if end - start < 2 {
+            return;
+        }
+
+        if !BufferClusterLevel::new(self.cluster_level).is_graphemes() {
+            return;
+        }
+
+        self.merge_out_clusters_impl(start, end);
+    }
+
+    fn merge_out_clusters_impl(&mut self, mut start: usize, mut end: usize) {
         self.max_ops -= (end - start) as i32;
         if self.max_ops < 0 {
             self.successful = false;

@@ -1,3 +1,7 @@
+# Version 0.2.14
+
+- Fix build error on haiku. (#59)
+
 # Version 0.2.13
 
 - Bump MSRV to 1.71. (#55)

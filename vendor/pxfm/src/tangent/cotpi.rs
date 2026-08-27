@@ -26,14 +26,13 @@
  * // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-use crate::common::f_fmla;
 use crate::double_double::DoubleDouble;
-use crate::sincospi::reduce_pi_64;
+use crate::sincospi::{GenSinCosPiBackend, SinCosPiBackend, reduce_pi_64};
 use crate::tangent::tanpi::tanpi_eval;
 use crate::tangent::tanpi_table::TANPI_K_PI_OVER_64;
 
 #[cold]
-fn cotpi_hard(x: f64, tan_k: DoubleDouble) -> DoubleDouble {
+fn cotpi_hard<B: SinCosPiBackend>(x: f64, tan_k: DoubleDouble, backend: &B) -> DoubleDouble {
     const C: [(u64, u64); 6] = [
         (0x3ca1a62632712fc8, 0x400921fb54442d18),
         (0xbcc052338fbb4528, 0x4024abbce625be53),
@@ -42,30 +41,28 @@ fn cotpi_hard(x: f64, tan_k: DoubleDouble) -> DoubleDouble {
         (0x3d205970eff53274, 0x40845f46e96c3a0b),
         (0xbd3589489ad24fc4, 0x40a4630551cd123d),
     ];
-    let x2 = DoubleDouble::from_exact_mult(x, x);
-    let mut tan_y = DoubleDouble::quick_mul_add(
+    let x2 = backend.exact_mult(x, x);
+    let mut tan_y = backend.quick_mul_add(
         x2,
         DoubleDouble::from_bit_pair(C[5]),
         DoubleDouble::from_bit_pair(C[4]),
     );
-    tan_y = DoubleDouble::quick_mul_add(x2, tan_y, DoubleDouble::from_bit_pair(C[3]));
-    tan_y = DoubleDouble::quick_mul_add(x2, tan_y, DoubleDouble::from_bit_pair(C[2]));
-    tan_y = DoubleDouble::quick_mul_add(x2, tan_y, DoubleDouble::from_bit_pair(C[1]));
-    tan_y = DoubleDouble::quick_mul_add(x2, tan_y, DoubleDouble::from_bit_pair(C[0]));
-    tan_y = DoubleDouble::quick_mult_f64(tan_y, x);
+    tan_y = backend.quick_mul_add(x2, tan_y, DoubleDouble::from_bit_pair(C[3]));
+    tan_y = backend.quick_mul_add(x2, tan_y, DoubleDouble::from_bit_pair(C[2]));
+    tan_y = backend.quick_mul_add(x2, tan_y, DoubleDouble::from_bit_pair(C[1]));
+    tan_y = backend.quick_mul_add(x2, tan_y, DoubleDouble::from_bit_pair(C[0]));
+    tan_y = backend.quick_mult_f64(tan_y, x);
 
     // num = tan(y*pi/64) + tan(k*pi/64)
     let num = DoubleDouble::full_dd_add(tan_y, tan_k);
     // den = 1 - tan(y*pi/64)*tan(k*pi/64)
-    let den = DoubleDouble::mul_add_f64(tan_y, -tan_k, 1.);
+    let den = backend.mul_add_f64(tan_y, -tan_k, 1.);
     // cot = den / num
-    DoubleDouble::div(den, num)
+    backend.div(den, num)
 }
 
-/// Computes cotangent 1/tan(PI*x)
-///
-/// ulp 0.5
-pub fn f_cotpi(x: f64) -> f64 {
+#[inline(always)]
+fn cotpi_gen_impl<B: SinCosPiBackend>(x: f64, backend: B) -> f64 {
     if x == 0. {
         return if x.is_sign_negative() {
             f64::NEG_INFINITY
@@ -108,17 +105,17 @@ pub fn f_cotpi(x: f64) -> f64 {
             let e: i32 = (ax >> 52) as i32;
             let sc = f64::from_bits((2045i64 - e as i64).wrapping_shl(52) as u64);
             let dx = x * sc;
-            let q0 = DoubleDouble::quick_mult(ONE_OVER_PI, DoubleDouble::from_quick_recip(dx));
+            let q0 = backend.quick_mult(ONE_OVER_PI, DoubleDouble::from_quick_recip(dx));
             let r = q0.to_f64() * sc;
             return r;
         }
-        let q0 = DoubleDouble::quick_mult(ONE_OVER_PI, DoubleDouble::from_quick_recip(x));
+        let q0 = backend.quick_mult(ONE_OVER_PI, DoubleDouble::from_quick_recip(x));
         let r = q0.to_f64();
         return r;
     }
 
     // argument reduction
-    let (y, k) = reduce_pi_64(x);
+    let (y, k) = backend.arg_reduce_pi_64(x);
 
     if y == 0.0 {
         let km = (k.abs() & 63) as i32; // k mod 64
@@ -136,15 +133,15 @@ pub fn f_cotpi(x: f64) -> f64 {
 
     // Computes tan(pi*x) through identities
     // tan(a+b) = (tan(a) + tan(b)) / (1 - tan(a)tan(b)) = (tan(y*pi/64) + tan(k*pi/64)) / (1 - tan(y*pi/64)*tan(k*pi/64))
-    let tan_y = tanpi_eval(y);
+    let tan_y = tanpi_eval(y, &backend);
     // num = tan(y*pi/64) + tan(k*pi/64)
     let num = DoubleDouble::add(tan_k, tan_y);
     // den = 1 - tan(y*pi/64)*tan(k*pi/64)
-    let den = DoubleDouble::mul_add_f64(tan_y, -tan_k, 1.);
+    let den = backend.mul_add_f64(tan_y, -tan_k, 1.);
     // cot = den / num
-    let tan_value = DoubleDouble::div(den, num);
+    let tan_value = backend.div(den, num);
 
-    let err = f_fmla(
+    let err = backend.fma(
         tan_value.hi,
         f64::from_bits(0x3bf0000000000000), // 2^-64
         f64::from_bits(0x3b60000000000000), // 2^-73
@@ -154,7 +151,42 @@ pub fn f_cotpi(x: f64) -> f64 {
     if ub == lb {
         return tan_value.to_f64();
     }
-    cotpi_hard(y, tan_k).to_f64()
+    cotpi_hard(y, tan_k, &backend).to_f64()
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx", enable = "fma")]
+unsafe fn cotpi_fma_impl(x: f64) -> f64 {
+    use crate::sincospi::FmaSinCosPiBackend;
+    cotpi_gen_impl(x, FmaSinCosPiBackend {})
+}
+
+/// Computes cotangent 1/tan(PI*x)
+///
+/// ulp 0.5
+pub fn f_cotpi(x: f64) -> f64 {
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        cotpi_gen_impl(x, GenSinCosPiBackend {})
+    }
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        use std::sync::OnceLock;
+        static EXECUTOR: OnceLock<unsafe fn(f64) -> f64> = OnceLock::new();
+        let q = EXECUTOR.get_or_init(|| {
+            if std::arch::is_x86_feature_detected!("avx")
+                && std::arch::is_x86_feature_detected!("fma")
+            {
+                cotpi_fma_impl
+            } else {
+                fn def_cotpi(x: f64) -> f64 {
+                    cotpi_gen_impl(x, GenSinCosPiBackend {})
+                }
+                def_cotpi
+            }
+        });
+        unsafe { q(x) }
+    }
 }
 
 #[inline]
@@ -166,7 +198,7 @@ pub(crate) fn cotpi_core(x: f64) -> DoubleDouble {
 
     // Computes tan(pi*x) through identities.
     // tan(a+b) = (tan(a) + tan(b)) / (1 - tan(a)tan(b)) = (tan(y*pi/64) + tan(k*pi/64)) / (1 - tan(y*pi/64)*tan(k*pi/64))
-    let tan_y = tanpi_eval(y);
+    let tan_y = tanpi_eval(y, &GenSinCosPiBackend {});
     // num = tan(y*pi/64) + tan(k*pi/64)
     let num = DoubleDouble::add(tan_k, tan_y);
     // den = 1 - tan(y*pi/64)*tan(k*pi/64)

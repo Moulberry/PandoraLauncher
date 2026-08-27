@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "tokio"
-version = "1.52.1"
+version = "1.53.1"
 authors = ["Tokio Contributors <team@tokio.rs>"]
 build = false
 autolib = false
@@ -118,6 +118,7 @@ process = [
 ]
 rt = []
 rt-multi-thread = ["rt"]
+schedule-latency = []
 signal = [
     "libc",
     "mio/os-poll",
@@ -241,8 +242,20 @@ name = "fs_uring_read"
 path = "tests/fs_uring_read.rs"
 
 [[test]]
+name = "fs_uring_rename"
+path = "tests/fs_uring_rename.rs"
+
+[[test]]
 name = "fs_uring_runtime_shutdown"
 path = "tests/fs_uring_runtime_shutdown.rs"
+
+[[test]]
+name = "fs_uring_statx"
+path = "tests/fs_uring_statx.rs"
+
+[[test]]
+name = "fs_uring_statx_fd_leak_test"
+path = "tests/fs_uring_statx_fd_leak_test.rs"
 
 [[test]]
 name = "fs_write"
@@ -511,6 +524,10 @@ path = "tests/rt_poll_callbacks.rs"
 [[test]]
 name = "rt_shutdown_err"
 path = "tests/rt_shutdown_err.rs"
+
+[[test]]
+name = "rt_spawn_blocking"
+path = "tests/rt_spawn_blocking.rs"
 
 [[test]]
 name = "rt_threaded"

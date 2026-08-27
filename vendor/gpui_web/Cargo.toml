@@ -23,9 +23,15 @@ autobenches = false
 readme = false
 license = "Apache-2.0"
 
+[package.metadata.cargo-shear]
+ignored = ["scheduler"]
+
 [features]
 default = ["multithreaded"]
-multithreaded = ["dep:wasm_thread"]
+multithreaded = [
+    "dep:wasm_thread",
+    "scheduler/wasm-threads",
+]
 
 [lib]
 name = "gpui_web"
@@ -41,14 +47,14 @@ version = "0.1.7"
 version = "0.3.32"
 
 [target.'cfg(target_family = "wasm")'.dependencies.gpui]
-path = "../gpui"
+path = '..\gpui'
 default-features = false
 
 [target.'cfg(target_family = "wasm")'.dependencies.gpui_wgpu]
-path = "../gpui_wgpu"
+path = '..\gpui_wgpu'
 
 [target.'cfg(target_family = "wasm")'.dependencies.http_client]
-path = "../http_client"
+path = '..\http_client'
 
 [target.'cfg(target_family = "wasm")'.dependencies.js-sys]
 version = "0.3"
@@ -66,6 +72,9 @@ features = ["nightly"]
 
 [target.'cfg(target_family = "wasm")'.dependencies.raw-window-handle]
 version = "0.6"
+
+[target.'cfg(target_family = "wasm")'.dependencies.scheduler]
+path = '..\scheduler'
 
 [target.'cfg(target_family = "wasm")'.dependencies.uuid]
 version = "1.1.2"
@@ -93,27 +102,37 @@ optional = true
 version = "0.3"
 features = [
     "console",
+    "Blob",
     "Clipboard",
     "ClipboardEvent",
+    "ClipboardItem",
     "CompositionEvent",
     "CssStyleDeclaration",
     "DataTransfer",
+    "DataTransferItem",
+    "DataTransferItemList",
     "Document",
     "DomRect",
     "DragEvent",
     "Element",
     "EventTarget",
+    "File",
     "HtmlCanvasElement",
     "HtmlElement",
-    "HtmlInputElement",
+    "HtmlTextAreaElement",
     "IdleDeadline",
     "IdleRequestOptions",
+    "InputEvent",
     "KeyboardEvent",
+    "Location",
     "MediaQueryList",
     "MediaQueryListEvent",
     "MouseEvent",
     "Navigator",
     "PointerEvent",
+    "ReadableStream",
+    "ReadableStreamDefaultReader",
+    "ReadableStreamReadResult",
     "ResizeObserver",
     "ResizeObserverBoxOptions",
     "ResizeObserverEntry",

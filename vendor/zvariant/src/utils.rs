@@ -38,10 +38,20 @@ pub(crate) const VARIANT_ALIGNMENT_GVARIANT: usize = 8;
 /// The prefix of MAYBE (GVariant-specific) type signature, as a character. Provided for manual
 /// signature creation.
 #[cfg(feature = "gvariant")]
+#[deprecated(
+    since = "5.15.0",
+    note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+            `zgvariant` crate instead."
+)]
 pub const MAYBE_SIGNATURE_CHAR: char = 'm';
 /// The prefix of MAYBE (GVariant-specific) type signature, as a string. Provided for manual
 /// signature creation.
 #[cfg(feature = "gvariant")]
+#[deprecated(
+    since = "5.15.0",
+    note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+            `zgvariant` crate instead."
+)]
 pub const MAYBE_SIGNATURE_STR: &str = "m";
 
 /// Calculates the padding needed to align `value` to the next multiple of `align`.

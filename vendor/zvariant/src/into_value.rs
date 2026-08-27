@@ -1,6 +1,7 @@
 use std::{borrow::Cow, collections::HashMap, hash::BuildHasher, sync::Arc};
 
 #[cfg(feature = "gvariant")]
+#[allow(deprecated)]
 use crate::Maybe;
 use crate::{Array, Dict, NoneValue, ObjectPath, Optional, Str, Structure, Type, Value};
 
@@ -73,10 +74,16 @@ into_value!(Array<'a>, Array);
 try_into_value_from_ref!(Array<'a>, Array);
 into_value!(Dict<'a, 'a>, Dict);
 try_into_value_from_ref!(Dict<'a, 'a>, Dict);
+// `#[allow(deprecated)]` can't attach to a macro invocation directly, hence the wrapping
+// module.
 #[cfg(feature = "gvariant")]
-into_value!(Maybe<'a>, Maybe);
-#[cfg(feature = "gvariant")]
-try_into_value_from_ref!(Maybe<'a>, Maybe);
+#[allow(deprecated)]
+mod maybe_value_impls {
+    use super::*;
+
+    into_value!(Maybe<'a>, Maybe);
+    try_into_value_from_ref!(Maybe<'a>, Maybe);
+}
 #[cfg(unix)]
 into_value!(Fd<'a>, Fd);
 #[cfg(unix)]
@@ -143,6 +150,7 @@ where
 }
 
 #[cfg(all(feature = "gvariant", not(feature = "option-as-array")))]
+#[allow(deprecated)]
 impl<'v, V> From<Option<V>> for Value<'v>
 where
     Option<V>: Into<Maybe<'v>>,

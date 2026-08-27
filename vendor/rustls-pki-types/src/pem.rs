@@ -1,4 +1,3 @@
-use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
@@ -28,10 +27,7 @@ pub trait PemObject: Sized {
     /// Iterate over all sections of this type from PEM contained in
     /// a byte slice.
     fn pem_slice_iter(pem: &[u8]) -> SliceIter<'_, Self> {
-        SliceIter {
-            current: pem,
-            _ty: PhantomData,
-        }
+        SliceIter::new(pem)
     }
 
     /// Decode the first section of this type from the PEM contents of the named file.
@@ -54,15 +50,14 @@ pub trait PemObject: Sized {
     fn pem_file_iter(
         file_name: impl AsRef<std::path::Path>,
     ) -> Result<ReadIter<io::BufReader<File>, Self>, Error> {
-        Ok(ReadIter::<_, Self> {
-            rd: io::BufReader::new(File::open(file_name).map_err(Error::Io)?),
-            _ty: PhantomData,
-        })
+        Ok(ReadIter::new(io::BufReader::new(
+            File::open(file_name).map_err(Error::Io)?,
+        )))
     }
 
     /// Decode the first section of this type from PEM read from an [`io::Read`].
     #[cfg(feature = "std")]
-    fn from_pem_reader(rd: impl std::io::Read) -> Result<Self, Error> {
+    fn from_pem_reader(rd: impl io::Read) -> Result<Self, Error> {
         Self::pem_reader_iter(rd)
             .next()
             .unwrap_or(Err(Error::NoItemsFound))
@@ -70,11 +65,8 @@ pub trait PemObject: Sized {
 
     /// Iterate over all sections of this type from PEM present in an [`io::Read`].
     #[cfg(feature = "std")]
-    fn pem_reader_iter<R: std::io::Read>(rd: R) -> ReadIter<io::BufReader<R>, Self> {
-        ReadIter::<_, Self> {
-            rd: io::BufReader::new(rd),
-            _ty: PhantomData,
-        }
+    fn pem_reader_iter<R: io::Read>(rd: R) -> ReadIter<io::BufReader<R>, Self> {
+        ReadIter::new(io::BufReader::new(rd))
     }
 
     /// Conversion from a PEM [`SectionKind`] and body data.
@@ -102,6 +94,10 @@ impl<T: PemObjectFilter + From<Vec<u8>>> PemObject for T {
 pub struct ReadIter<R, T> {
     rd: R,
     _ty: PhantomData<T>,
+    line: Vec<u8>,
+    b64_buf: Vec<u8>,
+    /// Used to fuse the iterator on I/O errors
+    done: bool,
 }
 
 #[cfg(feature = "std")]
@@ -111,6 +107,9 @@ impl<R: io::BufRead, T: PemObject> ReadIter<R, T> {
         Self {
             rd,
             _ty: PhantomData,
+            line: Vec::with_capacity(80),
+            b64_buf: Vec::with_capacity(1024),
+            done: false,
         }
     }
 }
@@ -120,13 +119,22 @@ impl<R: io::BufRead, T: PemObject> Iterator for ReadIter<R, T> {
     type Item = Result<T, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+
         loop {
-            return match from_buf(&mut self.rd) {
+            self.b64_buf.clear();
+            return match from_buf_inner(&mut self.rd, &mut self.line, &mut self.b64_buf) {
                 Ok(Some((sec, item))) => match T::from_pem(sec, item) {
                     Some(res) => Some(Ok(res)),
                     None => continue,
                 },
                 Ok(None) => return None,
+                Err(Error::Io(error)) => {
+                    self.done = true;
+                    Some(Err(Error::Io(error)))
+                }
                 Err(err) => Some(Err(err)),
             };
         }
@@ -137,6 +145,7 @@ impl<R: io::BufRead, T: PemObject> Iterator for ReadIter<R, T> {
 pub struct SliceIter<'a, T> {
     current: &'a [u8],
     _ty: PhantomData<T>,
+    b64_buf: Vec<u8>,
 }
 
 impl<'a, T: PemObject> SliceIter<'a, T> {
@@ -145,6 +154,40 @@ impl<'a, T: PemObject> SliceIter<'a, T> {
         Self {
             current,
             _ty: PhantomData,
+            b64_buf: Vec::with_capacity(1024),
+        }
+    }
+
+    /// Extract and decode the next supported PEM section from `input`
+    ///
+    /// - `Ok(None)` is returned if there is no PEM section to read from `input`
+    /// - Syntax errors and decoding errors produce a `Err(...)`
+    /// - Otherwise each decoded section is returned with a `Ok(Some((..., remainder)))` where
+    ///   `remainder` is the part of the `input` that follows the returned section
+    fn read_section(&mut self) -> Result<Option<(SectionKind, Vec<u8>)>, Error> {
+        self.b64_buf.clear();
+        let mut section = None;
+        loop {
+            let next_line = if let Some(index) = self
+                .current
+                .iter()
+                .position(|byte| *byte == b'\n' || *byte == b'\r')
+            {
+                let (line, newline_plus_remainder) = self.current.split_at(index);
+                self.current = &newline_plus_remainder[1..];
+                Some(line)
+            } else if !self.current.is_empty() {
+                let next_line = self.current;
+                self.current = &[];
+                Some(next_line)
+            } else {
+                None
+            };
+
+            match read(next_line, &mut section, &mut self.b64_buf)? {
+                ControlFlow::Continue(()) => continue,
+                ControlFlow::Break(item) => return Ok(item),
+            }
         }
     }
 
@@ -163,14 +206,11 @@ impl<T: PemObject> Iterator for SliceIter<'_, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            return match from_slice(self.current) {
-                Ok(Some(((sec, item), rest))) => {
-                    self.current = rest;
-                    match T::from_pem(sec, item) {
-                        Some(res) => Some(Ok(res)),
-                        None => continue,
-                    }
-                }
+            return match self.read_section() {
+                Ok(Some((sec, item))) => match T::from_pem(sec, item) {
+                    Some(res) => Some(Ok(res)),
+                    None => continue,
+                },
                 Ok(None) => return None,
                 Err(err) => Some(Err(err)),
             };
@@ -184,40 +224,6 @@ impl PemObject for (SectionKind, Vec<u8>) {
     }
 }
 
-/// Extract and decode the next supported PEM section from `input`
-///
-/// - `Ok(None)` is returned if there is no PEM section to read from `input`
-/// - Syntax errors and decoding errors produce a `Err(...)`
-/// - Otherwise each decoded section is returned with a `Ok(Some((..., remainder)))` where
-///   `remainder` is the part of the `input` that follows the returned section
-#[allow(clippy::type_complexity)]
-fn from_slice(mut input: &[u8]) -> Result<Option<((SectionKind, Vec<u8>), &[u8])>, Error> {
-    let mut b64buf = Vec::with_capacity(1024);
-    let mut section = None::<(Vec<_>, Vec<_>)>;
-
-    loop {
-        let next_line = if let Some(index) = input
-            .iter()
-            .position(|byte| *byte == b'\n' || *byte == b'\r')
-        {
-            let (line, newline_plus_remainder) = input.split_at(index);
-            input = &newline_plus_remainder[1..];
-            Some(line)
-        } else if !input.is_empty() {
-            let next_line = input;
-            input = &[];
-            Some(next_line)
-        } else {
-            None
-        };
-
-        match read(next_line, &mut section, &mut b64buf)? {
-            ControlFlow::Continue(()) => continue,
-            ControlFlow::Break(item) => return Ok(item.map(|item| (item, input))),
-        }
-    }
-}
-
 /// Extract and decode the next supported PEM section from `rd`.
 ///
 /// - Ok(None) is returned if there is no PEM section read from `rd`.
@@ -226,12 +232,20 @@ fn from_slice(mut input: &[u8]) -> Result<Option<((SectionKind, Vec<u8>), &[u8])
 #[cfg(feature = "std")]
 pub fn from_buf(rd: &mut dyn io::BufRead) -> Result<Option<(SectionKind, Vec<u8>)>, Error> {
     let mut b64buf = Vec::with_capacity(1024);
-    let mut section = None::<(Vec<_>, Vec<_>)>;
     let mut line = Vec::with_capacity(80);
+    from_buf_inner(rd, &mut line, &mut b64buf)
+}
 
+#[cfg(feature = "std")]
+fn from_buf_inner(
+    rd: &mut dyn io::BufRead,
+    line: &mut Vec<u8>,
+    b64buf: &mut Vec<u8>,
+) -> Result<Option<(SectionKind, Vec<u8>)>, Error> {
+    let mut section = None;
     loop {
         line.clear();
-        let len = read_until_newline(rd, &mut line).map_err(Error::Io)?;
+        let len = read_until_newline(rd, line).map_err(Error::Io)?;
 
         let next_line = if len == 0 {
             None
@@ -239,7 +253,7 @@ pub fn from_buf(rd: &mut dyn io::BufRead) -> Result<Option<(SectionKind, Vec<u8>
             Some(line.as_slice())
         };
 
-        match read(next_line, &mut section, &mut b64buf) {
+        match read(next_line, &mut section, b64buf) {
             Ok(ControlFlow::Break(opt)) => return Ok(opt),
             Ok(ControlFlow::Continue(())) => continue,
             Err(e) => return Err(e),
@@ -250,7 +264,7 @@ pub fn from_buf(rd: &mut dyn io::BufRead) -> Result<Option<(SectionKind, Vec<u8>
 #[allow(clippy::type_complexity)]
 fn read(
     next_line: Option<&[u8]>,
-    section: &mut Option<(Vec<u8>, Vec<u8>)>,
+    section: &mut Option<SectionLabel>,
     b64buf: &mut Vec<u8>,
 ) -> Result<ControlFlow<Option<(SectionKind, Vec<u8>)>, ()>, Error> {
     let line = if let Some(line) = next_line {
@@ -258,7 +272,9 @@ fn read(
     } else {
         // EOF
         return match section.take() {
-            Some((_, end_marker)) => Err(Error::MissingSectionEnd { end_marker }),
+            Some(label) => Err(Error::MissingSectionEnd {
+                end_marker: label.as_ref().to_vec(),
+            }),
             None => Ok(ControlFlow::Break(None)),
         };
     };
@@ -283,20 +299,16 @@ fn read(
         }
 
         let ty = &line[11..pos];
-        let mut end = Vec::with_capacity(10 + 4 + ty.len());
-        end.extend_from_slice(b"-----END ");
-        end.extend_from_slice(ty);
-        end.extend_from_slice(b"-----");
-        *section = Some((ty.to_owned(), end));
+        *section = Some(SectionLabel::from(ty));
         return Ok(ControlFlow::Continue(()));
     }
 
-    if let Some((section_label, end_marker)) = section.as_ref() {
-        if line.starts_with(end_marker) {
-            let kind = match SectionKind::try_from(&section_label[..]) {
-                Ok(kind) => kind,
+    if let Some(label) = section.as_ref() {
+        if label.is_end(line) {
+            let kind = match label {
+                SectionLabel::Known(kind) => *kind,
                 // unhandled section: have caller try again
-                Err(()) => {
+                SectionLabel::Unknown(_) => {
                     *section = None;
                     b64buf.clear();
                     return Ok(ControlFlow::Continue(()));
@@ -319,9 +331,60 @@ fn read(
 
     if section.is_some() {
         b64buf.extend(line);
+        if b64buf.len() > MAX_PEM_SECTION_SIZE {
+            return Err(Error::SectionTooLarge);
+        }
     }
 
     Ok(ControlFlow::Continue(()))
+}
+
+// We've seen CRLs of 100MB (DER) / ~135MB (PEM) in the wild.
+// 256MB seems like an OK upper bound.
+const MAX_PEM_SECTION_SIZE: usize = 256 * 1024 * 1024;
+
+enum SectionLabel {
+    Known(SectionKind),
+    Unknown(Vec<u8>),
+}
+
+impl SectionLabel {
+    fn is_end(&self, line: &[u8]) -> bool {
+        let rest = match line.strip_prefix(b"-----END ") {
+            Some(rest) => rest,
+            None => return false,
+        };
+
+        let ty = match self {
+            Self::Known(kind) => kind.as_slice(),
+            Self::Unknown(ty) => ty,
+        };
+
+        let rest = match rest.strip_prefix(ty) {
+            Some(rest) => rest,
+            None => return false,
+        };
+
+        rest.starts_with(b"-----")
+    }
+}
+
+impl From<&[u8]> for SectionLabel {
+    fn from(value: &[u8]) -> Self {
+        match SectionKind::try_from(value) {
+            Ok(kind) => Self::Known(kind),
+            Err(_) => Self::Unknown(value.to_vec()),
+        }
+    }
+}
+
+impl AsRef<[u8]> for SectionLabel {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Self::Known(kind) => kind.as_slice(),
+            Self::Unknown(ty) => ty,
+        }
+    }
 }
 
 /// A single recognised section in a PEM file.
@@ -371,12 +434,25 @@ pub enum SectionKind {
 }
 
 impl SectionKind {
-    fn secret(&self) -> bool {
+    const fn secret(&self) -> bool {
         match self {
             Self::RsaPrivateKey | Self::PrivateKey | Self::EcPrivateKey => true,
             Self::Certificate | Self::PublicKey | Self::Crl | Self::Csr | Self::EchConfigList => {
                 false
             }
+        }
+    }
+
+    fn as_slice(&self) -> &'static [u8] {
+        match self {
+            Self::Certificate => b"CERTIFICATE",
+            Self::PublicKey => b"PUBLIC KEY",
+            Self::RsaPrivateKey => b"RSA PRIVATE KEY",
+            Self::PrivateKey => b"PRIVATE KEY",
+            Self::EcPrivateKey => b"EC PRIVATE KEY",
+            Self::Crl => b"X509 CRL",
+            Self::Csr => b"CERTIFICATE REQUEST",
+            Self::EchConfigList => b"ECHCONFIG",
         }
     }
 }
@@ -424,6 +500,9 @@ pub enum Error {
 
     /// No items found of desired type
     NoItemsFound,
+
+    /// PEM section exceeds maximum allowed size of 256 MB
+    SectionTooLarge,
 }
 
 impl fmt::Display for Error {
@@ -439,6 +518,7 @@ impl fmt::Display for Error {
             #[cfg(feature = "std")]
             Self::Io(e) => write!(f, "I/O error: {e}"),
             Self::NoItemsFound => write!(f, "no items found"),
+            Self::SectionTooLarge => write!(f, "PEM section exceeds maximum allowed size of 10 MB"),
         }
     }
 }

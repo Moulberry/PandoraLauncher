@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "rust-embed-utils"
-version = "8.11.0"
+version = "8.12.0"
 authors = ["pyrossh"]
 build = false
 autolib = false
@@ -22,7 +22,7 @@ autotests = false
 autobenches = false
 description = "Utilities for rust-embed"
 documentation = "https://docs.rs/rust-embed"
-readme = "readme.md"
+readme = "README.md"
 keywords = [
     "http",
     "rocket",
@@ -35,6 +35,7 @@ license = "MIT"
 repository = "https://pyrossh.dev/repos/rust-embed"
 
 [features]
+compression = ["include-flate"]
 debug-embed = []
 include-exclude = ["globset"]
 mime-guess = ["mime_guess"]
@@ -47,12 +48,16 @@ path = "src/lib.rs"
 version = "0.4.8"
 optional = true
 
+[dependencies.include-flate]
+version = "0.3.3"
+optional = true
+
 [dependencies.mime_guess]
 version = "2.0.4"
 optional = true
 
 [dependencies.sha2]
-version = "0.10.5"
+version = "0.11"
 
 [dependencies.walkdir]
 version = "2.3.1"

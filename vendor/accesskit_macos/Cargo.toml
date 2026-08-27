@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
+edition = "2024"
 rust-version = "1.85"
 name = "accesskit_macos"
-version = "0.26.0"
+version = "0.26.3"
 authors = ["The AccessKit contributors"]
 build = false
 autolib = false
@@ -31,6 +31,7 @@ keywords = [
 categories = ["gui"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/AccessKit/accesskit"
+resolver = "2"
 
 [package.metadata.docs.rs]
 default-target = "x86_64-apple-darwin"
@@ -40,10 +41,10 @@ name = "accesskit_macos"
 path = "src/lib.rs"
 
 [dependencies.accesskit]
-version = "0.24.0"
+version = "0.24.1"
 
 [dependencies.accesskit_consumer]
-version = "0.35.0"
+version = "0.38.0"
 
 [dependencies.hashbrown]
 version = "0.16"

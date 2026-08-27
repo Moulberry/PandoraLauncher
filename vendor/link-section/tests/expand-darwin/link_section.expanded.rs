@@ -1,8 +1,14 @@
 use link_section::{section, in_section, TypedSection};
 #[allow(non_camel_case_types)]
 struct FOO;
+#[allow(non_snake_case)]
+mod __FOO__link_sectionrs_L4_C8_H970cb50608f99e49__private_macro {
+    #[doc(hidden)]
+    pub use __FOO__link_sectionrs_L4_C8_H970cb50608f99e49__private_macro as __MACRO;
+}
+#[allow(unused_imports)]
 #[doc(hidden)]
-use ::link_section::__in_section_helper_macro_generic as FOO;
+use __FOO__link_sectionrs_L4_C8_H970cb50608f99e49__private_macro::__MACRO as FOO;
 impl FOO {
     /// Get a `const` reference to the underlying section. In
     /// non-const contexts, `deref` is sufficient.
@@ -13,7 +19,7 @@ impl FOO {
                     {
                         #[allow(missing_unsafe_on_extern)]
                         extern "C" {
-                            #[link_name = "\u{1}section$start$__DATA$FOO"]
+                            #[link_name = "\u{1}section$start$__DATA$FOObh0r0BSfLQP"]
                             static __SYMBOL: u8;
                         }
                         unsafe { &raw const __SYMBOL as *const () }
@@ -21,14 +27,14 @@ impl FOO {
                     {
                         #[allow(missing_unsafe_on_extern)]
                         extern "C" {
-                            #[link_name = "\u{1}section$end$__DATA$FOO"]
+                            #[link_name = "\u{1}section$end$__DATA$FOObh0r0BSfLQP"]
                             static __SYMBOL: u8;
                         }
                         unsafe { &raw const __SYMBOL as *const () }
                     },
                 )
             };
-            let name = "__DATA,FOO";
+            let name = "__DATA,FOObh0r0BSfLQP";
             ::link_section::__support::validate_section_name(name);
             unsafe { <TypedSection<fn()>>::new(name, section) }
         };
@@ -70,7 +76,7 @@ fn foo() {
         type __InSecStoredTy = <FOO as ::link_section::__support::SectionItemType>::Item;
         const __LINK_SECTION_CONST_ITEM_VALUE: __InSecStoredTy = foo;
         #[used]
-        #[link_section = "__DATA,FOO,regular,no_dead_strip"]
+        #[link_section = "__DATA,FOObh0r0BSfLQP,regular,no_dead_strip"]
         static __LINK_SECTION_CONST_ITEM: __InSecStoredTy = __LINK_SECTION_CONST_ITEM_VALUE;
         __LINK_SECTION_CONST_ITEM_VALUE
     };

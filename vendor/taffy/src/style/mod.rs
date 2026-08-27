@@ -37,7 +37,7 @@ pub use self::grid::{
 #[cfg(feature = "grid")]
 pub(crate) use self::grid::{GridAreaAxis, GridAreaEnd};
 #[cfg(feature = "grid")]
-pub use self::grid::{GridTemplateArea, NamedGridLine, TemplateLineNames};
+pub use self::grid::{GridTemplateArea, GridTemplateAreas, NamedGridLine, TemplateLineNames};
 #[cfg(feature = "grid")]
 pub(crate) use self::grid::{NonNamedGridPlacement, OriginZeroGridPlacement};
 
@@ -89,6 +89,10 @@ pub trait CoreStyle {
         BoxGenerationMode::DEFAULT
     }
     /// Is block layout?
+    ///
+    /// This should only return `true` for `display: block`, and NOT for `display: flow-root`.
+    /// Flow-root boxes establish a new block formatting context and must not be treated as
+    /// being part of their parent's block formatting context (which is what this method controls).
     #[inline(always)]
     fn is_block(&self) -> bool {
         false
@@ -185,6 +189,9 @@ pub enum Display {
     /// The children will follow the block layout algorithm
     #[cfg(feature = "block_layout")]
     Block,
+    /// The children will follow the block layout algorithm and establish a new block formatting context
+    #[cfg(feature = "block_layout")]
+    FlowRoot,
     /// The children will follow the flexbox layout algorithm
     #[cfg(feature = "flexbox")]
     Flex,
@@ -228,6 +235,8 @@ crate::util::parse::impl_parse_for_keyword_enum!(Display,
     "grid" => Grid,
     #[cfg(feature = "block_layout")]
     "block" => Block,
+    #[cfg(feature = "block_layout")]
+    "flow-root" => FlowRoot,
 );
 
 impl core::fmt::Display for Display {
@@ -236,6 +245,8 @@ impl core::fmt::Display for Display {
             Display::None => write!(f, "NONE"),
             #[cfg(feature = "block_layout")]
             Display::Block => write!(f, "BLOCK"),
+            #[cfg(feature = "block_layout")]
+            Display::FlowRoot => write!(f, "FLOW-ROOT"),
             #[cfg(feature = "flexbox")]
             Display::Flex => write!(f, "FLEX"),
             #[cfg(feature = "grid")]
@@ -567,7 +578,7 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     // Grid container named properties
     /// Defines the rectangular grid areas
     #[cfg(feature = "grid")]
-    pub grid_template_areas: GridTrackVec<GridTemplateArea<S>>,
+    pub grid_template_areas: Option<GridTemplateAreas<S>>,
     /// The named lines between the columns
     #[cfg(feature = "grid")]
     pub grid_template_column_names: GridTrackVec<GridTrackVec<S>>,
@@ -643,7 +654,7 @@ impl<S: CheapCloneStr> Style<S> {
         #[cfg(feature = "grid")]
         grid_template_columns: GridTrackVec::new(),
         #[cfg(feature = "grid")]
-        grid_template_areas: GridTrackVec::new(),
+        grid_template_areas: None,
         #[cfg(feature = "grid")]
         grid_template_column_names: GridTrackVec::new(),
         #[cfg(feature = "grid")]
@@ -1046,7 +1057,17 @@ impl<S: CheapCloneStr> GridContainerStyle for Style<S> {
     #[inline(always)]
     #[cfg(feature = "grid")]
     fn grid_template_areas(&self) -> Option<Self::GridTemplateAreas<'_>> {
-        Some(self.grid_template_areas.iter().cloned())
+        self.grid_template_areas.as_ref().map(|template| template.areas.iter().cloned())
+    }
+    #[inline(always)]
+    #[cfg(feature = "grid")]
+    fn grid_template_area_row_count(&self) -> u16 {
+        self.grid_template_areas.as_ref().map(|template| template.row_count).unwrap_or(0)
+    }
+    #[inline(always)]
+    #[cfg(feature = "grid")]
+    fn grid_template_area_column_count(&self) -> u16 {
+        self.grid_template_areas.as_ref().map(|template| template.column_count).unwrap_or(0)
     }
 
     #[inline(always)]
@@ -1111,6 +1132,14 @@ impl<T: GridContainerStyle> GridContainerStyle for &'_ T {
     #[inline(always)]
     fn grid_template_areas(&self) -> Option<Self::GridTemplateAreas<'_>> {
         (*self).grid_template_areas()
+    }
+    #[inline(always)]
+    fn grid_template_area_row_count(&self) -> u16 {
+        (*self).grid_template_area_row_count()
+    }
+    #[inline(always)]
+    fn grid_template_area_column_count(&self) -> u16 {
+        (*self).grid_template_area_column_count()
     }
     #[cfg(feature = "grid")]
     #[inline(always)]
@@ -1346,12 +1375,12 @@ mod tests {
         assert_type_size::<GridTemplateComponent<String>>(56);
         assert_type_size::<GridPlacement<String>>(32);
         assert_type_size::<Line<GridPlacement<String>>>(64);
-        assert_type_size::<Style<String>>(544);
+        assert_type_size::<Style<String>>(552);
 
         // String-type dependent (Arc<str>)
         assert_type_size::<GridTemplateComponent<Arc<str>>>(56);
         assert_type_size::<GridPlacement<Arc<str>>>(24);
         assert_type_size::<Line<GridPlacement<Arc<str>>>>(48);
-        assert_type_size::<Style<Arc<str>>>(512);
+        assert_type_size::<Style<Arc<str>>>(520);
     }
 }

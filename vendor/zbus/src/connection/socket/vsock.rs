@@ -1,7 +1,7 @@
 #[cfg(feature = "tokio-vsock")]
 use super::{Socket, Split};
 
-#[cfg(all(feature = "vsock", not(feature = "tokio")))]
+#[cfg(feature = "vsock")]
 #[async_trait::async_trait]
 impl super::ReadHalf for std::sync::Arc<async_io::Async<vsock::VsockStream>> {
     async fn recvmsg(&mut self, buf: &mut [u8]) -> super::RecvmsgResult {
@@ -22,7 +22,7 @@ impl super::ReadHalf for std::sync::Arc<async_io::Async<vsock::VsockStream>> {
     }
 }
 
-#[cfg(all(feature = "vsock", not(feature = "tokio")))]
+#[cfg(feature = "vsock")]
 #[async_trait::async_trait]
 impl super::WriteHalf for std::sync::Arc<async_io::Async<vsock::VsockStream>> {
     async fn sendmsg(

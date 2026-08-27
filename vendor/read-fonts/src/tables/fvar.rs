@@ -5,11 +5,78 @@ include!("../../generated/generated_fvar.rs");
 #[path = "./instance_record.rs"]
 mod instance_record;
 
-use super::{
-    avar::Avar,
-    variations::{DeltaSetIndex, FloatItemDeltaTarget},
-};
+use super::{avar::Avar, variations::DeltaSetIndex};
+use alloc::vec::Vec;
+
 pub use instance_record::InstanceRecord;
+
+const MAX_INLINE_AVAR2_AXES: usize = 64;
+
+#[inline]
+fn round_f64_to_i32(value: f64) -> i32 {
+    if value >= 0.0 {
+        (value + 0.5) as i32
+    } else {
+        (value - 0.5) as i32
+    }
+}
+
+#[inline]
+fn apply_avar2_delta(coord: Fixed, delta_2dot14: f64) -> Fixed {
+    // HarfBuzz keeps the avar1 result in 16.16 through the avar2 add, and
+    // converts the avar2 delta from 2.14 units by multiplying by four.
+    Fixed::from_bits(
+        coord
+            .to_bits()
+            .wrapping_add(round_f64_to_i32(delta_2dot14 * 4.0)),
+    )
+}
+
+fn normalize_user_coords<T>(
+    axes: &[VariationAxisRecord],
+    user_coords: impl IntoIterator<Item = (Tag, Fixed)>,
+    coords: &mut [T],
+    convert: impl Fn(Fixed) -> T,
+) {
+    for user_coord in user_coords {
+        // To permit non-linear interpolation, iterate over all axes to ensure we match
+        // multiple axes with the same tag:
+        // https://github.com/PeterConstable/OT_Drafts/blob/master/NLI/UnderstandingNLI.md
+        // We accept quadratic behavior here to avoid dynamic allocation and with the assumption
+        // that fonts contain a relatively small number of axes.
+        for (axis, coord) in axes
+            .iter()
+            .zip(coords.iter_mut())
+            .filter(|(axis, _)| axis.axis_tag() == user_coord.0)
+        {
+            *coord = convert(axis.normalize(user_coord.1));
+        }
+    }
+}
+
+fn apply_avar_mappings<T>(
+    avar: Option<&Avar>,
+    coords: &mut [T],
+    to_fixed: impl Fn(&T) -> Fixed,
+    from_fixed: impl Fn(Fixed) -> T,
+) {
+    let avar_mappings = avar.map(|avar| avar.axis_segment_maps());
+    for (i, coord) in coords.iter_mut().enumerate() {
+        if let Some(mapping) = avar_mappings
+            .as_ref()
+            .and_then(|mappings| mappings.get(i).transpose().ok())
+            .flatten()
+        {
+            *coord = from_fixed(mapping.apply(to_fixed(coord)));
+        }
+    }
+}
+
+fn to_normalized_coords(fixed_coords: &[Fixed], normalized_coords: &mut [F2Dot14]) {
+    for (target_coord, coord) in normalized_coords.iter_mut().zip(fixed_coords.iter()) {
+        *target_coord = coord.to_f2dot14();
+    }
+}
 
 impl<'a> Fvar<'a> {
     /// Returns the array of variation axis records.
@@ -48,73 +115,67 @@ impl<'a> Fvar<'a> {
         user_coords: impl IntoIterator<Item = (Tag, Fixed)>,
         normalized_coords: &mut [F2Dot14],
     ) {
-        normalized_coords.fill(F2Dot14::default());
+        normalized_coords.fill(F2Dot14::ZERO);
         let axes = self.axes().unwrap_or_default();
-        let avar_mappings = avar.map(|avar| avar.axis_segment_maps());
-        for user_coord in user_coords {
-            // To permit non-linear interpolation, iterate over all axes to ensure we match
-            // multiple axes with the same tag:
-            // https://github.com/PeterConstable/OT_Drafts/blob/master/NLI/UnderstandingNLI.md
-            // We accept quadratic behavior here to avoid dynamic allocation and with the assumption
-            // that fonts contain a relatively small number of axes.
-            for (i, axis) in axes
-                .iter()
-                .enumerate()
-                .filter(|(_, axis)| axis.axis_tag() == user_coord.0)
-            {
-                if let Some(target_coord) = normalized_coords.get_mut(i) {
-                    let coord = axis.normalize(user_coord.1);
-                    *target_coord = avar_mappings
-                        .as_ref()
-                        .and_then(|mappings| mappings.get(i).transpose().ok())
-                        .flatten()
-                        .map(|mapping| mapping.apply(coord))
-                        .unwrap_or(coord)
-                        .to_f2dot14();
-                }
-            }
-        }
-        let Some(avar) = avar else { return };
+        let actual_len = axes.len().min(normalized_coords.len());
+        let normalized_coords = &mut normalized_coords[..actual_len];
+
+        let mut stack_fixed_coords = [Fixed::ZERO; MAX_INLINE_AVAR2_AXES];
+        let mut heap_fixed_coords = Vec::new();
+        let fixed_coords = if actual_len > MAX_INLINE_AVAR2_AXES {
+            heap_fixed_coords.resize(actual_len, Fixed::ZERO);
+            heap_fixed_coords.as_mut_slice()
+        } else {
+            &mut stack_fixed_coords[..actual_len]
+        };
+        normalize_user_coords(axes, user_coords, fixed_coords, core::convert::identity);
+        apply_avar_mappings(avar, fixed_coords, |coord| *coord, core::convert::identity);
+
+        let Some(avar) = avar else {
+            to_normalized_coords(fixed_coords, normalized_coords);
+            return;
+        };
         if avar.version() == MajorMinor::VERSION_1_0 {
+            to_normalized_coords(fixed_coords, normalized_coords);
             return;
         }
+
         let var_store = avar.var_store();
         let var_index_map = avar.axis_index_map();
 
-        let actual_len = axes.len().min(normalized_coords.len());
-        let mut new_coords = [F2Dot14::ZERO; 64];
-        if actual_len > 64 {
-            // No avar2 for monster fonts.
-            // <https://github.com/googlefonts/fontations/issues/1148>
-            return;
+        let mut stack_coords_2dot14 = [F2Dot14::ZERO; MAX_INLINE_AVAR2_AXES];
+        let mut heap_coords_2dot14 = Vec::new();
+        let coords_2dot14 = if actual_len > MAX_INLINE_AVAR2_AXES {
+            heap_coords_2dot14.resize(actual_len, F2Dot14::ZERO);
+            heap_coords_2dot14.as_mut_slice()
+        } else {
+            &mut stack_coords_2dot14[..actual_len]
+        };
+        for (coord_2dot14, coord) in coords_2dot14.iter_mut().zip(fixed_coords.iter()) {
+            *coord_2dot14 = coord.to_f2dot14();
         }
 
-        let new_coords = &mut new_coords[..actual_len];
-        let normalized_coords = &mut normalized_coords[..actual_len];
-        new_coords.copy_from_slice(normalized_coords);
-
-        for (i, v) in normalized_coords.iter().enumerate() {
-            let var_index = if let Some(Ok(ref map)) = var_index_map {
-                map.get(i as u32).ok()
-            } else {
-                Some(DeltaSetIndex {
-                    outer: 0,
-                    inner: i as u16,
-                })
-            };
-            if var_index.is_none() {
-                continue;
-            }
-            if let Some(Ok(varstore)) = var_store.as_ref() {
-                if let Ok(delta) =
-                    varstore.compute_float_delta(var_index.unwrap(), normalized_coords)
-                {
-                    new_coords[i] = F2Dot14::from_f32((*v).apply_float_delta(delta))
-                        .clamp(F2Dot14::MIN, F2Dot14::MAX);
+        if let Some(Ok(varstore)) = var_store.as_ref() {
+            for (i, coord) in fixed_coords.iter_mut().enumerate() {
+                let var_index = if let Some(Ok(ref map)) = var_index_map {
+                    match map.get(i as u32) {
+                        Ok(index) => index,
+                        Err(_) => continue,
+                    }
+                } else {
+                    DeltaSetIndex {
+                        outer: 0,
+                        inner: i as u16,
+                    }
+                };
+                if let Ok(delta) = varstore.compute_float_delta(var_index, coords_2dot14) {
+                    *coord =
+                        apply_avar2_delta(*coord, delta.to_f64()).clamp(Fixed::NEG_ONE, Fixed::ONE);
                 }
             }
         }
-        normalized_coords.copy_from_slice(new_coords);
+
+        to_normalized_coords(fixed_coords, normalized_coords);
     }
 }
 
@@ -136,7 +197,7 @@ impl VariationAxisRecord {
             }
             Equal => Fixed::ZERO,
         };
-        value.clamp(-Fixed::ONE, Fixed::ONE)
+        value.clamp(Fixed::NEG_ONE, Fixed::ONE)
     }
 }
 
@@ -289,5 +350,35 @@ mod tests {
         // output array too large
         let mut normalized_coords = [F2Dot14::default(); 4];
         fvar.user_to_normalized(avar.as_ref(), [], &mut normalized_coords);
+    }
+
+    #[test]
+    fn avar2_preserves_16_16_precision_until_final_rounding() {
+        // Quantizing to 2.14 before applying the avar2 delta would produce 0x0002
+        // here, but HarfBuzz's 16.16 path produces 0x0001.
+        let coord = Fixed::from_bits(3);
+        assert_eq!(
+            super::apply_avar2_delta(coord, 0.5).to_f2dot14(),
+            F2Dot14::from_bits(1)
+        );
+    }
+
+    #[test]
+    fn avar2_clamps_hidden_axis_for_amstelvar_repro() {
+        let font = FontRef::new(font_test_data::AMSTELVAR_AVAR2_A).unwrap();
+        let avar = font.avar().ok();
+        let fvar = font.fvar().unwrap();
+        let mut normalized_coords = [F2Dot14::ZERO; 12];
+
+        fvar.user_to_normalized(
+            avar.as_ref(),
+            [(Tag::new(b"wght"), Fixed::from_f64(1000.0))],
+            &mut normalized_coords,
+        );
+
+        assert_eq!(normalized_coords[1], F2Dot14::from_bits(-5370)); // XTRA
+        assert_eq!(normalized_coords[2], F2Dot14::ONE); // XOPQ clamped from > 1
+        assert_eq!(normalized_coords[3], F2Dot14::from_bits(2254)); // YOPQ
+        assert_eq!(normalized_coords[11], F2Dot14::ONE); // wght
     }
 }

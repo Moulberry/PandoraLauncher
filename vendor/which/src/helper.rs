@@ -6,7 +6,7 @@ pub fn has_executable_extension<T: AsRef<Path>, S: AsRef<str>>(path: T, pathext:
     match ext {
         Some(ext) => pathext
             .iter()
-            .any(|e| ext.eq_ignore_ascii_case(&e.as_ref()[1..])),
+            .any(|e| !e.as_ref().is_empty() && ext.eq_ignore_ascii_case(&e.as_ref()[1..])),
         _ => false,
     }
 }
@@ -35,6 +35,14 @@ mod test {
         assert!(!has_executable_extension(
             PathBuf::from("foo.bar"),
             &[".COM", ".EXE", ".CMD"]
+        ));
+    }
+
+    #[test]
+    fn test_invalid_exts() {
+        assert!(!has_executable_extension(
+            PathBuf::from("foo.bar"),
+            &["", "."]
         ));
     }
 }

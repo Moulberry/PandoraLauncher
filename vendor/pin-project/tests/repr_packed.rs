@@ -22,7 +22,7 @@ fn weird_repr_packed() {
     // drop using a thread local, to avoid changing
     // the layout of our #[repr(packed)] type.
     thread_local! {
-        static FIELD_ADDR: Cell<usize> = Cell::new(0);
+        static FIELD_ADDR: Cell<usize> = const { Cell::new(0) };
     }
 
     #[repr(packed)]

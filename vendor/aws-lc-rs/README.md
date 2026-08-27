@@ -54,7 +54,7 @@ latest version of the AWS-LC-FIPS module that has completed FIPS validation test
 accredited lab and has been submitted to NIST for certification. This will continue to be the
 case as we periodically submit new versions of the AWS-LC-FIPS module to NIST for certification.
 Currently, aws-lc-fips-sys binds to
-[AWS-LC-FIPS 3.0.x](https://github.com/aws/aws-lc/tree/fips-2024-09-27).
+[AWS-LC-FIPS 4.x](https://github.com/aws/aws-lc/tree/fips-2025-09-12-lts).
 
 Consult with your local FIPS compliance team to determine the version of AWS-LC-FIPS module that you require. Consumers
 needing to remain on a previous version of the AWS-LC-FIPS module should pin to specific versions of aws-lc-rs to avoid
@@ -65,7 +65,8 @@ on how to specify dependency versions.)
 | AWS-LC-FIPS module | aws-lc-rs |
 |--------------------|-----------|
 | 2.0.x              | \<1.12.0  |
-| 3.0.x              | *latest*  |
+| 3.0.x              | \<1.18.0  |
+| 4.x                | *latest*  |
 
 Refer to the
 [NIST Cryptographic Module Validation Program's Modules In Progress List](https://csrc.nist.gov/Projects/cryptographic-module-validation-program/modules-in-process/Modules-In-Process-List)

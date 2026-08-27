@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.73"
 name = "png"
-version = "0.18.0"
+version = "0.18.1"
 authors = ["The image-rs Developers"]
 build = false
 include = [

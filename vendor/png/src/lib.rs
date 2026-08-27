@@ -66,6 +66,7 @@
 #![allow(clippy::derivable_impls)]
 // IIUC format args capture was stabilized in Rust 1.58.1.
 #![allow(clippy::uninlined_format_args)]
+#![cfg_attr(feature = "unstable", feature(portable_simd))]
 
 mod adam7;
 pub mod chunk;

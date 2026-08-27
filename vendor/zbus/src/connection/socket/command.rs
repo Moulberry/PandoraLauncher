@@ -1,9 +1,9 @@
 use std::{io, os::fd::BorrowedFd};
 
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 use async_process::{Child, ChildStdin, ChildStdout};
 
-#[cfg(feature = "tokio")]
+#[cfg(all(feature = "tokio", not(feature = "async-io")))]
 use tokio::{
     io::{AsyncReadExt, ReadBuf},
     process::{Child, ChildStdin, ChildStdout},
@@ -56,7 +56,7 @@ impl TryFrom<&mut Child> for Command {
     }
 }
 
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 #[async_trait::async_trait]
 impl ReadHalf for ChildStdout {
     async fn recvmsg(&mut self, buf: &mut [u8]) -> RecvmsgResult {
@@ -73,7 +73,7 @@ impl ReadHalf for ChildStdout {
     }
 }
 
-#[cfg(feature = "tokio")]
+#[cfg(all(feature = "tokio", not(feature = "async-io")))]
 #[async_trait::async_trait]
 impl ReadHalf for ChildStdout {
     async fn recvmsg(&mut self, buf: &mut [u8]) -> RecvmsgResult {
@@ -88,7 +88,7 @@ impl ReadHalf for ChildStdout {
     }
 }
 
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 #[async_trait::async_trait]
 impl WriteHalf for ChildStdin {
     async fn sendmsg(
@@ -112,7 +112,7 @@ impl WriteHalf for ChildStdin {
     }
 }
 
-#[cfg(feature = "tokio")]
+#[cfg(all(feature = "tokio", not(feature = "async-io")))]
 #[async_trait::async_trait]
 impl WriteHalf for ChildStdin {
     async fn sendmsg(

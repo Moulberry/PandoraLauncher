@@ -1,6 +1,6 @@
 [package]
 name = "profiling"
-version = "1.0.17"
+version = "1.0.18"
 authors = ["Philip Degarmo <aclysma@gmail.com>"]
 edition = "2018"
 description = "This crate provides a very thin abstraction over other profiler crates."
@@ -14,19 +14,14 @@ exclude = ["/examples", "/screenshots"]
 rust-version = "1.60"
 
 [dependencies]
-puffin = { version = "0.19", optional = true }
+puffin = { version = "0.20", optional = true }
 optick = { version = "1.3", optional = true }
 tracing = { version = "0.1", optional = true }
 tracy-client = { version = "0.18", optional = true }
 superluminal-perf = { version = "0.4", optional = true }
-profiling-procmacros = { version = "1.0.17", path = "../profiling-procmacros", optional = true }
+profiling-procmacros = { version = "1.0.18", path = "../profiling-procmacros", optional = true }
 
 [dev-dependencies]
-bincode = "1.3.1"
-lazy_static = "1"
-log = "0.4"
-env_logger = "0.6"
-
 tracing-tracy = { version = "0.11.3" }
 tracing-subscriber = { version = "0.3" }
 

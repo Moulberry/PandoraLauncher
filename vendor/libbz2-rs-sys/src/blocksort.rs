@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 
 use core::cmp::Ordering;
-use core::ffi::{c_int, c_uint};
 
 use crate::{
     assert_h,
@@ -33,7 +32,7 @@ fn fallbackSimpleSort(fmap: &mut [u32], eclass: &[u32], lo: i32, hi: i32) {
         }
     }
 
-    for i in (lo..=hi - 1).rev() {
+    for i in (lo..hi).rev() {
         tmp = fmap[i as usize] as i32;
         ec_tmp = eclass[tmp as usize];
         j = i + 1;
@@ -191,7 +190,7 @@ fn fallbackSort(
     fmap: &mut [u32],
     arr2: &mut Arr2,
     bhtab: &mut [u32; FTAB_LEN],
-    nblock: i32,
+    nblock: usize,
     verb: i32,
 ) {
     macro_rules! SET_BH {
@@ -226,9 +225,6 @@ fn fallbackSort(
 
     let mut ftab: [i32; 257] = [0; 257];
     let mut ftabCopy: [i32; 256] = [0; 256];
-    let mut H: i32;
-    let mut k: i32;
-    let mut l: i32;
 
     /*--
        Initial 1-char radix sort to generate
@@ -239,7 +235,7 @@ fn fallbackSort(
     }
 
     {
-        let eclass8 = arr2.block(nblock as usize);
+        let eclass8 = arr2.block(nblock);
 
         for e in eclass8.iter() {
             ftab[usize::from(*e)] += 1;
@@ -253,13 +249,13 @@ fn fallbackSort(
 
         for (i, e) in eclass8.iter().enumerate() {
             let j = usize::from(*e);
-            k = ftab[j] - 1;
+            let k = ftab[j] - 1;
             ftab[j] = k;
             fmap[k as usize] = i as u32;
         }
     }
 
-    bhtab[0..2 + nblock as usize / 32].fill(0);
+    bhtab[0..2 + nblock / 32].fill(0);
 
     for i in 0..256 {
         SET_BH!(ftab[i]);
@@ -278,7 +274,10 @@ fn fallbackSort(
     }
 
     /*-- the log(N) loop --*/
-    H = 1;
+    let nblock = nblock as i32;
+    let mut H = 1;
+    let mut k: i32;
+    let mut l: i32;
     loop {
         if verb >= 4 {
             debug_log!("        depth {:>6} has ", H);
@@ -288,7 +287,7 @@ fn fallbackSort(
             if ISSET_BH!(i) {
                 j = i;
             }
-            k = x.wrapping_sub(H as c_uint) as i32;
+            k = x.wrapping_sub(H as u32) as i32;
             if k < 0 {
                 k += nblock;
             }
@@ -444,10 +443,10 @@ fn mainSimpleSort(
     ptr: &mut [u32],
     block: &[u8],
     quadrant: &[u16],
-    nblock: i32,
+    nblock: usize,
     lo: i32,
     hi: i32,
-    d: i32,
+    d: u32,
     budget: &mut i32,
 ) {
     let bigN = hi - lo + 1;
@@ -461,8 +460,8 @@ fn mainSimpleSort(
             let v = ptr[i as usize];
             let mut j = i;
             while mainGtU(
-                (ptr[(j - h) as usize]).wrapping_add(d as u32),
-                v.wrapping_add(d as u32),
+                (ptr[(j - h) as usize]).wrapping_add(d),
+                v.wrapping_add(d),
                 block,
                 quadrant,
                 nblock as u32,
@@ -500,28 +499,26 @@ fn median_of_3(mut a: u8, mut b: u8, mut c: u8) -> u8 {
 }
 
 const MAIN_QSORT_SMALL_THRESH: i32 = 20;
-const MAIN_QSORT_DEPTH_THRESH: i32 = BZ_N_RADIX + BZ_N_QSORT;
+const MAIN_QSORT_DEPTH_THRESH: u32 = BZ_N_RADIX + BZ_N_QSORT;
 const MAIN_QSORT_STACK_SIZE: i32 = 100;
 
 fn mainQSort3(
     ptr: &mut [u32],
     block: &[u8],
     quadrant: &[u16],
-    nblock: i32,
+    nblock: usize,
     loSt: i32,
     hiSt: i32,
-    dSt: i32,
+    dSt: u32,
     budget: &mut i32,
 ) {
     let mut unLo: i32;
     let mut unHi: i32;
     let mut ltLo: i32;
     let mut gtHi: i32;
-    let mut n: i32;
-    let mut m: i32;
-    let mut med: i32;
 
-    let mut stack = [(0i32, 0i32, 0i32); 100];
+    // We run into underflow issues below if lo and hi use u32.
+    let mut stack = [(0i32, 0i32, 0u32); 100];
 
     stack[0] = (loSt, hiSt, dSt);
 
@@ -539,20 +536,18 @@ fn mainQSort3(
                 return;
             }
         } else {
-            med = median_of_3(
-                block[(ptr[lo as usize]).wrapping_add(d as c_uint) as usize],
-                block[(ptr[hi as usize]).wrapping_add(d as c_uint) as usize],
-                block[((ptr[((lo + hi) >> 1) as usize]).wrapping_add(d as c_uint) as isize)
-                    as usize],
-            ) as i32;
+            let med = median_of_3(
+                block[(ptr[lo as usize]).wrapping_add(d) as usize],
+                block[(ptr[hi as usize]).wrapping_add(d) as usize],
+                block[((ptr[((lo + hi) >> 1) as usize]).wrapping_add(d) as isize) as usize],
+            );
             ltLo = lo;
             unLo = ltLo;
             gtHi = hi;
             unHi = gtHi;
             loop {
                 while unLo <= unHi {
-                    n = block[(ptr[unLo as usize]).wrapping_add(d as c_uint) as usize] as i32 - med;
-                    match n.cmp(&0) {
+                    match u8::cmp(&block[(ptr[unLo as usize]).wrapping_add(d) as usize], &med) {
                         Ordering::Greater => break,
                         Ordering::Equal => {
                             ptr.swap(unLo as usize, ltLo as usize);
@@ -563,8 +558,7 @@ fn mainQSort3(
                     }
                 }
                 while unLo <= unHi {
-                    n = block[(ptr[unHi as usize]).wrapping_add(d as c_uint) as usize] as i32 - med;
-                    match n.cmp(&0) {
+                    match u8::cmp(&block[(ptr[unHi as usize]).wrapping_add(d) as usize], &med) {
                         Ordering::Less => break,
                         Ordering::Equal => {
                             ptr.swap(unHi as usize, gtHi as usize);
@@ -585,26 +579,18 @@ fn mainQSort3(
                 stack[sp] = (lo, hi, d + 1);
                 sp += 1;
             } else {
-                n = Ord::min(ltLo - lo, unLo - ltLo);
-                let mut yyp1: i32 = lo;
-                let mut yyp2: i32 = unLo - n;
-                for _ in 0..n {
+                let n = Ord::min(ltLo - lo, unLo - ltLo);
+                for (yyp1, yyp2) in (lo..lo + n).zip(unLo - n..unLo) {
                     ptr.swap(yyp1 as usize, yyp2 as usize);
-                    yyp1 += 1;
-                    yyp2 += 1;
                 }
 
-                m = Ord::min(hi - gtHi, gtHi - unHi);
-                let mut yyp1_0: i32 = unLo;
-                let mut yyp2_0: i32 = hi - m + 1;
-                for _ in 0..m {
-                    ptr.swap(yyp1_0 as usize, yyp2_0 as usize);
-                    yyp1_0 += 1;
-                    yyp2_0 += 1;
+                let m = Ord::min(hi - gtHi, gtHi - unHi);
+                for (yyp1, yyp2) in (unLo..unLo + m).zip(hi - m + 1..hi + 1) {
+                    ptr.swap(yyp1 as usize, yyp2 as usize);
                 }
 
-                n = lo + unLo - ltLo - 1;
-                m = hi - (gtHi - unHi) + 1;
+                let n = lo + unLo - ltLo - 1;
+                let m = hi - (gtHi - unHi) + 1;
 
                 let mut next = [(lo, n, d), (m, hi, d), (n + 1, m - 1, d + 1)];
 
@@ -631,21 +617,20 @@ fn mainSort(
     block: &mut [u8],
     quadrant: &mut [u16],
     ftab: &mut [u32; FTAB_LEN],
-    nblock: i32,
+    nblock: usize,
     verb: i32,
     budget: &mut i32,
 ) {
     let mut j: i32;
-    let mut k: i32;
+    let mut k: usize;
     let mut ss: i32;
     let mut sb: i32;
     let mut bigDone: [bool; 256] = [false; 256];
     let mut copyStart: [i32; 256] = [0; 256];
     let mut copyEnd: [i32; 256] = [0; 256];
     let mut c1: u8;
-    let mut numQSorted: i32;
     let mut s: u16;
-    if verb >= 4 as c_int {
+    if verb >= 4 {
         debug_logln!("        main sort initialise ...");
     }
 
@@ -653,16 +638,16 @@ fn mainSort(
     ftab.fill(0);
 
     j = (block[0] as i32) << 8;
-    for &block in block[..nblock as usize].iter().rev() {
+    for &block in block[..nblock].iter().rev() {
         j = (j >> 8) | (i32::from(block) << 8);
         ftab[j as usize] += 1;
     }
 
     for i in 0..BZ_N_OVERSHOOT {
-        block[nblock as usize + i] = block[i];
+        block[nblock + i] = block[i];
     }
 
-    if verb >= 4 as c_int {
+    if verb >= 4 {
         debug_logln!("        bucket sorting ...");
     }
 
@@ -671,9 +656,9 @@ fn mainSort(
         ftab[i] += ftab[i - 1];
     }
 
-    s = ((block[0 as c_int as usize] as c_int) << 8 as c_int) as u16;
+    s = u16::from(block[0]) << 8;
 
-    for (i, &block) in block[..nblock as usize].iter().enumerate().rev() {
+    for (i, &block) in block[..nblock].iter().enumerate().rev() {
         s = (s >> 8) | (u16::from(block) << 8);
         j = ftab[usize::from(s)] as i32 - 1;
         ftab[usize::from(s)] = j as u32;
@@ -684,10 +669,10 @@ fn mainSort(
     let mut runningOrder: [i32; 256] = core::array::from_fn(|i| i as i32);
 
     let mut vv: i32;
-    let mut h: i32 = 1 as c_int;
+    let mut h: i32 = 1;
     loop {
-        h = 3 as c_int * h + 1 as c_int;
-        if h > 256 as c_int {
+        h = 3 * h + 1;
+        if h > 256 {
             break;
         }
     }
@@ -699,20 +684,20 @@ fn mainSort(
     }
 
     loop {
-        h /= 3 as c_int;
+        h /= 3;
         for i in h..256 {
             vv = runningOrder[i as usize];
             j = i;
             while BIGFREQ!(runningOrder[(j - h) as usize] as usize) > BIGFREQ!(vv as usize) {
                 runningOrder[j as usize] = runningOrder[(j - h) as usize];
                 j -= h;
-                if j <= h - 1 as c_int {
+                if j < h {
                     break;
                 }
             }
             runningOrder[j as usize] = vv;
         }
-        if h == 1 as c_int {
+        if h == 1 {
             break;
         }
     }
@@ -721,9 +706,9 @@ fn mainSort(
        The main sorting loop.
     --*/
 
-    numQSorted = 0 as c_int;
+    let mut numQSorted = 0;
 
-    for i in 0..=255 {
+    for i in 0..255 + 1 {
         /*--
            Process big buckets, starting with the least full.
            Basically this is a 3-step process in which we call
@@ -743,26 +728,27 @@ fn mainSort(
            completed many of the small buckets [ss, j], so
            we don't have to sort them at all.
         --*/
-        for j in 0..=255 {
+        for j in 0..255 + 1 {
             if j != ss {
-                sb = (ss << 8 as c_int) + j;
+                sb = (ss << 8) + j;
                 if ftab[sb as usize] & SETMASK == 0 {
-                    let lo: i32 = (ftab[sb as usize] & CLEARMASK) as i32;
-                    let hi: i32 = ((ftab[sb as usize + 1] & CLEARMASK).wrapping_sub(1)) as i32;
+                    // It is tempting to use u32 instead, but -1/u32::MAX is actually used.
+                    let lo = (ftab[sb as usize] & CLEARMASK) as i32;
+                    let hi = ((ftab[sb as usize + 1] & CLEARMASK).wrapping_sub(1)) as i32;
 
                     if hi > lo {
-                        if verb >= 4 as c_int {
+                        if verb >= 4 {
                             debug_logln!(
                                 "        qsort [{:#x}, {:#x}]   done {}   this {}",
                                 ss,
                                 j,
                                 numQSorted,
-                                hi - lo + 1 as c_int,
+                                hi - lo + 1,
                             );
                         }
-                        mainQSort3(ptr, block, quadrant, nblock, lo, hi, 2 as c_int, budget);
-                        numQSorted += hi - lo + 1 as c_int;
-                        if *budget < 0 as c_int {
+                        mainQSort3(ptr, block, quadrant, nblock, lo, hi, 2, budget);
+                        numQSorted += hi - lo + 1;
+                        if *budget < 0 {
                             return;
                         }
                     }
@@ -787,11 +773,12 @@ fn mainSort(
 
             j = (ftab[(ss as usize) << 8] & CLEARMASK) as i32;
             while j < copyStart[ss as usize] {
-                k = (ptr[j as usize]).wrapping_sub(1) as i32;
-                if k < 0 as c_int {
-                    k += nblock;
-                }
-                c1 = block[k as usize];
+                let v = match ptr[j as usize] {
+                    0 => nblock,
+                    n => n as usize,
+                };
+                k = v.wrapping_sub(1);
+                c1 = block[k];
                 if !bigDone[c1 as usize] {
                     let fresh11 = copyStart[c1 as usize];
                     copyStart[c1 as usize] += 1;
@@ -802,11 +789,12 @@ fn mainSort(
 
             j = (ftab[(ss as usize + 1) << 8] & CLEARMASK) as i32 - 1;
             while j > copyEnd[ss as usize] {
-                k = (ptr[j as usize]).wrapping_sub(1) as i32;
-                if k < 0 as c_int {
-                    k += nblock;
-                }
-                c1 = block[k as usize];
+                let v = match ptr[j as usize] {
+                    0 => nblock,
+                    n => n as usize,
+                };
+                k = v.wrapping_sub(1);
+                c1 = block[k];
                 if !bigDone[c1 as usize] {
                     let fresh12 = copyEnd[c1 as usize];
                     copyEnd[c1 as usize] -= 1;
@@ -823,7 +811,7 @@ fn mainSort(
                    Necessity for this case is demonstrated by compressing
                    a sequence of approximately 48.5 million of character
                    251; 1.0.0/1.0.1 will then die here. */
-                (copyStart[ss as usize] == 0 && copyEnd[ss as usize] == nblock-1),
+                (copyStart[ss as usize] == 0 && copyEnd[ss as usize] == nblock as i32 - 1),
             1007
         );
 
@@ -872,35 +860,43 @@ fn mainSort(
         --*/
         bigDone[ss as usize] = true;
 
-        if i < 255 as c_int {
-            let bbStart: i32 = (ftab[(ss as usize) << 8] & CLEARMASK) as i32;
-            let bbSize: i32 = (ftab[(ss as usize + 1) << 8] & CLEARMASK) as i32 - bbStart;
-            let mut shifts: i32 = 0 as c_int;
+        if i < 255 {
+            let bbStart = ftab[(ss as usize) << 8] & CLEARMASK;
+            let bbSize = (ftab[(ss as usize + 1) << 8] & CLEARMASK) as i32 - bbStart as i32;
 
-            while bbSize >> shifts > 65534 as c_int {
-                shifts += 1;
+            // FIXME: remove when our MSRV can use the stable method.
+            fn highest_one(x: i32) -> Option<u32> {
+                match x {
+                    0 => None,
+                    _ => Some(i32::BITS - 1 - x.leading_zeros()),
+                }
             }
 
-            j = bbSize - 1 as c_int;
-            while j >= 0 as c_int {
-                let a2update: i32 = ptr[(bbStart + j) as usize] as i32;
+            let shifts = if bbSize <= 65_534 {
+                0
+            } else {
+                highest_one(bbSize).unwrap() - 15
+            };
+
+            let ptr = &ptr[bbStart as usize..][..bbSize as usize];
+            for j in (0..bbSize).rev() {
+                let a2update = ptr[j as usize] as usize;
                 let qVal: u16 = (j >> shifts) as u16;
-                quadrant[a2update as usize] = qVal;
-                if (a2update as usize) < BZ_N_OVERSHOOT {
-                    quadrant[(a2update + nblock) as usize] = qVal;
+                quadrant[a2update] = qVal;
+                if a2update < BZ_N_OVERSHOOT {
+                    quadrant[a2update + nblock] = qVal;
                 }
-                j -= 1;
             }
 
             assert_h!(((bbSize - 1) >> shifts) <= 65535, 1002);
         }
     }
-    if verb >= 4 as c_int {
+    if verb >= 4 {
         debug_logln!(
             "        {} pointers, {} sorted, {} scanned",
             nblock,
             numQSorted,
-            nblock - numQSorted,
+            nblock - numQSorted as usize,
         );
     }
 }
@@ -924,7 +920,7 @@ pub(crate) fn block_sort(s: &mut EState) {
 
     BZ2_blockSortHelp(ptr, &mut s.arr2, ftab, nblock, s.workFactor, s.verbosity);
 
-    s.origPtr = -1 as c_int;
+    s.origPtr = -1;
     for i in 0..s.nblock {
         if ptr[i as usize] == 0 {
             s.origPtr = i;
@@ -944,7 +940,7 @@ fn BZ2_blockSortHelp(
     verbosity: i32,
 ) {
     if nblock < 10000 {
-        fallbackSort(ptr, arr2, ftab, nblock as i32, verbosity);
+        fallbackSort(ptr, arr2, ftab, nblock, verbosity);
     } else {
         let (block, quadrant) = arr2.block_and_quadrant(nblock);
 
@@ -959,15 +955,7 @@ fn BZ2_blockSortHelp(
         let budgetInit = nblock as i32 * ((wfact - 1) / 3);
         let mut budget = budgetInit;
 
-        mainSort(
-            ptr,
-            block,
-            quadrant,
-            ftab,
-            nblock as i32,
-            verbosity,
-            &mut budget,
-        );
+        mainSort(ptr, block, quadrant, ftab, nblock, verbosity, &mut budget);
 
         if verbosity >= 3 {
             debug_logln!(
@@ -979,11 +967,11 @@ fn BZ2_blockSortHelp(
         }
 
         if budget < 0 {
-            if verbosity >= 2 as c_int {
+            if verbosity >= 2 {
                 debug_logln!("    too repetitive; using fallback sorting algorithm");
             }
 
-            fallbackSort(ptr, arr2, ftab, nblock as i32, verbosity);
+            fallbackSort(ptr, arr2, ftab, nblock, verbosity);
         }
     }
 }

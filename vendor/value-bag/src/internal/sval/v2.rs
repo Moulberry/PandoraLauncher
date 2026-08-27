@@ -30,7 +30,7 @@ impl<'v> ValueBag<'v> {
         T: value_bag_sval2::lib::Value,
     {
         ValueBag {
-            inner: Internal::AnonSval2(value),
+            inner: Internal::SizedSval2(value),
         }
     }
 
@@ -43,9 +43,13 @@ impl<'v> ValueBag<'v> {
     }
 }
 
+/**
+A value that can be downcast and buffered.
+*/
 pub(crate) trait DowncastValue {
     fn as_any(&self) -> &dyn Any;
     fn as_super(&self) -> &dyn Value;
+    fn as_buffer(&self) -> &dyn BufferValue;
 }
 
 impl<T: value_bag_sval2::lib::Value + 'static> DowncastValue for T {
@@ -55,6 +59,45 @@ impl<T: value_bag_sval2::lib::Value + 'static> DowncastValue for T {
 
     fn as_super(&self) -> &dyn Value {
         self
+    }
+
+    fn as_buffer(&self) -> &dyn BufferValue {
+        self
+    }
+}
+
+/**
+A value that can be buffered.
+*/
+pub(crate) trait SizedValue {
+    fn as_super(&self) -> &dyn Value;
+    fn as_buffer(&self) -> &dyn BufferValue;
+}
+
+impl<T: value_bag_sval2::lib::Value> SizedValue for T {
+    fn as_super(&self) -> &dyn Value {
+        self
+    }
+
+    fn as_buffer(&self) -> &dyn BufferValue {
+        self
+    }
+}
+
+/**
+A specialization of `Value` that is object safe, but buffers generically to avoid more dynamic dispatch.
+*/
+pub(crate) trait BufferValue {
+    fn buffer(
+        &self,
+    ) -> Result<value_bag_sval2::buffer::Value<'static>, value_bag_sval2::buffer::Error>;
+}
+
+impl<V: value_bag_sval2::lib::Value + ?Sized> BufferValue for V {
+    fn buffer(
+        &self,
+    ) -> Result<value_bag_sval2::buffer::Value<'static>, value_bag_sval2::buffer::Error> {
+        value_bag_sval2::buffer::stream_to_value_owned(self).map(|buf| buf.into_value())
     }
 }
 

@@ -65,7 +65,7 @@ pub fn deflate_quick(stream: &mut DeflateStream, flush: DeflateFlush) -> BlockSt
             if stream.avail_out == 0 {
                 return if last
                     && stream.avail_in == 0
-                    && state.bit_writer.bits_used == 0
+                    && state.bit_writer.bits_valid == 0
                     && state.block_open == 0
                 {
                     BlockState::FinishStarted

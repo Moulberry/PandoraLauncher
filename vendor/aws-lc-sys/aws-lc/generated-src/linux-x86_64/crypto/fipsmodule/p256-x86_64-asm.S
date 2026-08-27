@@ -102,7 +102,7 @@ _CET_ENDBR
 ecp_nistz256_ord_mul_mont:
 .cfi_startproc	
 _CET_ENDBR
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%rcx
 	movq	8(%rcx),%rcx
 	andl	$0x80100,%ecx
@@ -439,7 +439,7 @@ _CET_ENDBR
 ecp_nistz256_ord_sqr_mont:
 .cfi_startproc	
 _CET_ENDBR
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%rcx
 	movq	8(%rcx),%rcx
 	andl	$0x80100,%ecx
@@ -732,7 +732,7 @@ _CET_ENDBR
 	.byte	0xf3,0xc3
 .cfi_endproc	
 .size	ecp_nistz256_ord_sqr_mont,.-ecp_nistz256_ord_sqr_mont
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 
 .type	ecp_nistz256_ord_mul_montx,@function
 .align	32
@@ -1203,7 +1203,7 @@ ecp_nistz256_ord_sqr_montx:
 ecp_nistz256_mul_mont:
 .cfi_startproc	
 _CET_ENDBR
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%rcx
 	movq	8(%rcx),%rcx
 	andl	$0x80100,%ecx
@@ -1228,7 +1228,7 @@ _CET_ENDBR
 .cfi_adjust_cfa_offset	8
 .cfi_offset	%r15,-56
 .Lmul_body:
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	cmpl	$0x80100,%ecx
 	je	.Lmul_montx
 #endif
@@ -1240,7 +1240,7 @@ _CET_ENDBR
 	movq	24(%rsi),%r12
 
 	call	__ecp_nistz256_mul_montq
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	jmp	.Lmul_mont_done
 
 .align	32
@@ -1507,7 +1507,7 @@ __ecp_nistz256_mul_montq:
 ecp_nistz256_sqr_mont:
 .cfi_startproc	
 _CET_ENDBR
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%rcx
 	movq	8(%rcx),%rcx
 	andl	$0x80100,%ecx
@@ -1531,7 +1531,7 @@ _CET_ENDBR
 .cfi_adjust_cfa_offset	8
 .cfi_offset	%r15,-56
 .Lsqr_body:
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	cmpl	$0x80100,%ecx
 	je	.Lsqr_montx
 #endif
@@ -1541,7 +1541,7 @@ _CET_ENDBR
 	movq	24(%rsi),%r8
 
 	call	__ecp_nistz256_sqr_montq
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	jmp	.Lsqr_mont_done
 
 .align	32
@@ -1737,7 +1737,7 @@ __ecp_nistz256_sqr_montq:
 	.byte	0xf3,0xc3
 .cfi_endproc	
 .size	__ecp_nistz256_sqr_montq,.-__ecp_nistz256_sqr_montq
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 .type	__ecp_nistz256_mul_montx,@function
 .align	32
 __ecp_nistz256_mul_montx:
@@ -2046,7 +2046,7 @@ __ecp_nistz256_sqr_montx:
 ecp_nistz256_select_w5:
 .cfi_startproc	
 _CET_ENDBR
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%rax
 	movq	8(%rax),%rax
 	testl	$32,%eax
@@ -2116,7 +2116,7 @@ _CET_ENDBR
 ecp_nistz256_select_w7:
 .cfi_startproc	
 _CET_ENDBR
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%rax
 	movq	8(%rax),%rax
 	testl	$32,%eax
@@ -2165,7 +2165,7 @@ _CET_ENDBR
 .cfi_endproc	
 .LSEH_end_ecp_nistz256_select_w7:
 .size	ecp_nistz256_select_w7,.-ecp_nistz256_select_w7
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 
 
 .type	ecp_nistz256_avx2_select_w5,@function
@@ -2230,7 +2230,7 @@ ecp_nistz256_avx2_select_w5:
 .LSEH_end_ecp_nistz256_avx2_select_w5:
 .size	ecp_nistz256_avx2_select_w5,.-ecp_nistz256_avx2_select_w5
 #endif
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 
 
 .globl	ecp_nistz256_avx2_select_w7
@@ -2449,7 +2449,7 @@ __ecp_nistz256_mul_by_2q:
 ecp_nistz256_point_double:
 .cfi_startproc	
 _CET_ENDBR
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%rcx
 	movq	8(%rcx),%rcx
 	andl	$0x80100,%ecx
@@ -2686,7 +2686,7 @@ _CET_ENDBR
 ecp_nistz256_point_add:
 .cfi_startproc	
 _CET_ENDBR
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%rcx
 	movq	8(%rcx),%rcx
 	andl	$0x80100,%ecx
@@ -3126,7 +3126,7 @@ _CET_ENDBR
 ecp_nistz256_point_add_affine:
 .cfi_startproc	
 _CET_ENDBR
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	leaq	OPENSSL_ia32cap_P(%rip),%rcx
 	movq	8(%rcx),%rcx
 	andl	$0x80100,%ecx
@@ -3456,7 +3456,7 @@ _CET_ENDBR
 	.byte	0xf3,0xc3
 .cfi_endproc	
 .size	ecp_nistz256_point_add_affine,.-ecp_nistz256_point_add_affine
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 .type	__ecp_nistz256_add_tox,@function
 .align	32
 __ecp_nistz256_add_tox:

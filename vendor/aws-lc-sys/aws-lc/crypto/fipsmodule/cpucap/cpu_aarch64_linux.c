@@ -86,6 +86,11 @@ void OPENSSL_cpuid_setup(void) {
       // CPU capabilities of N1 are a subset of CPU capabilities of V2
       OPENSSL_armcap_P |= ARMV8_NEOVERSE_N1;
     }
+    if (MIDR_IS_CPU_MODEL(OPENSSL_arm_midr, ARM_CPU_IMP_ARM, ARM_CPU_PART_V3)) {
+      OPENSSL_armcap_P |= ARMV8_NEOVERSE_V3;
+      // CPU capabilities of N1 are a subset of CPU capabilities of V3
+      OPENSSL_armcap_P |= ARMV8_NEOVERSE_N1;
+    }
   }
 
   static const unsigned long kDIT = 1 << 24;

@@ -44,6 +44,7 @@ doctest = false
 version = "1"
 
 [dependencies.gpui]
+version = "0.2.2"
 git = "https://github.com/zed-industries/zed"
 
 [dependencies.log]

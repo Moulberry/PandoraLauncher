@@ -5,60 +5,71 @@
 #[allow(unused_imports)]
 use crate::codegen_prelude::*;
 
-/// [Script List Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#script-list-table-and-script-record)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ScriptListMarker {
-    script_records_byte_len: usize,
-}
-
-impl ScriptListMarker {
-    pub fn script_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn script_records_byte_range(&self) -> Range<usize> {
-        let start = self.script_count_byte_range().end;
-        start..start + self.script_records_byte_len
-    }
-}
-
-impl MinByteRange for ScriptListMarker {
+impl<'a> MinByteRange<'a> for ScriptList<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.script_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ScriptList<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let script_count: u16 = cursor.read()?;
-        let script_records_byte_len = (script_count as usize)
-            .checked_mul(ScriptRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(script_records_byte_len);
-        cursor.finish(ScriptListMarker {
-            script_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Script List Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#script-list-table-and-script-record)
-pub type ScriptList<'a> = TableRef<'a, ScriptListMarker>;
+#[derive(Clone)]
+pub struct ScriptList<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ScriptList<'a> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     /// Number of ScriptRecords
     pub fn script_count(&self) -> u16 {
-        let range = self.shape.script_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.script_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of ScriptRecords, listed alphabetically by script tag
     pub fn script_records(&self) -> &'a [ScriptRecord] {
-        let range = self.shape.script_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.script_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn script_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn script_records_byte_range(&self) -> Range<usize> {
+        let script_count = self.script_count();
+        let start = self.script_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(script_count)).saturating_mul(ScriptRecord::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(ScriptList::MIN_SIZE));
+
+impl Default for ScriptList<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -144,61 +155,42 @@ impl<'a> SomeRecord<'a> for ScriptRecord {
     }
 }
 
-/// [Script Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#script-table-and-language-system-record)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ScriptMarker {
-    lang_sys_records_byte_len: usize,
-}
-
-impl ScriptMarker {
-    pub fn default_lang_sys_offset_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn lang_sys_count_byte_range(&self) -> Range<usize> {
-        let start = self.default_lang_sys_offset_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn lang_sys_records_byte_range(&self) -> Range<usize> {
-        let start = self.lang_sys_count_byte_range().end;
-        start..start + self.lang_sys_records_byte_len
-    }
-}
-
-impl MinByteRange for ScriptMarker {
+impl<'a> MinByteRange<'a> for Script<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.lang_sys_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for Script<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<Offset16>();
-        let lang_sys_count: u16 = cursor.read()?;
-        let lang_sys_records_byte_len = (lang_sys_count as usize)
-            .checked_mul(LangSysRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(lang_sys_records_byte_len);
-        cursor.finish(ScriptMarker {
-            lang_sys_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Script Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#script-table-and-language-system-record)
-pub type Script<'a> = TableRef<'a, ScriptMarker>;
+#[derive(Clone)]
+pub struct Script<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Script<'a> {
+    pub const MIN_SIZE: usize = (Offset16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Offset to default LangSys table, from beginning of Script table
     /// — may be NULL
     pub fn default_lang_sys_offset(&self) -> Nullable<Offset16> {
-        let range = self.shape.default_lang_sys_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.default_lang_sys_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`default_lang_sys_offset`][Self::default_lang_sys_offset].
@@ -210,14 +202,44 @@ impl<'a> Script<'a> {
     /// Number of LangSysRecords for this script — excluding the
     /// default LangSys
     pub fn lang_sys_count(&self) -> u16 {
-        let range = self.shape.lang_sys_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lang_sys_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of LangSysRecords, listed alphabetically by LangSys tag
     pub fn lang_sys_records(&self) -> &'a [LangSysRecord] {
-        let range = self.shape.lang_sys_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.lang_sys_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn default_lang_sys_offset_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lang_sys_count_byte_range(&self) -> Range<usize> {
+        let start = self.default_lang_sys_offset_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lang_sys_records_byte_range(&self) -> Range<usize> {
+        let lang_sys_count = self.lang_sys_count();
+        let start = self.lang_sys_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(lang_sys_count)).saturating_mul(LangSysRecord::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Script::MIN_SIZE));
+
+impl Default for Script<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -306,80 +328,91 @@ impl<'a> SomeRecord<'a> for LangSysRecord {
     }
 }
 
-/// [Language System Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#language-system-table)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct LangSysMarker {
-    feature_indices_byte_len: usize,
-}
-
-impl LangSysMarker {
-    pub fn lookup_order_offset_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn required_feature_index_byte_range(&self) -> Range<usize> {
-        let start = self.lookup_order_offset_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn feature_index_count_byte_range(&self) -> Range<usize> {
-        let start = self.required_feature_index_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn feature_indices_byte_range(&self) -> Range<usize> {
-        let start = self.feature_index_count_byte_range().end;
-        start..start + self.feature_indices_byte_len
-    }
-}
-
-impl MinByteRange for LangSysMarker {
+impl<'a> MinByteRange<'a> for LangSys<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.feature_indices_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for LangSys<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        let feature_index_count: u16 = cursor.read()?;
-        let feature_indices_byte_len = (feature_index_count as usize)
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(feature_indices_byte_len);
-        cursor.finish(LangSysMarker {
-            feature_indices_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Language System Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#language-system-table)
-pub type LangSys<'a> = TableRef<'a, LangSysMarker>;
+#[derive(Clone)]
+pub struct LangSys<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> LangSys<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Index of a feature required for this language system; if no
     /// required features = 0xFFFF
     pub fn required_feature_index(&self) -> u16 {
-        let range = self.shape.required_feature_index_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.required_feature_index_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of feature index values for this language system —
     /// excludes the required feature
     pub fn feature_index_count(&self) -> u16 {
-        let range = self.shape.feature_index_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.feature_index_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of indices into the FeatureList, in arbitrary order
     pub fn feature_indices(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.feature_indices_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.feature_indices_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn lookup_order_offset_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn required_feature_index_byte_range(&self) -> Range<usize> {
+        let start = self.lookup_order_offset_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn feature_index_count_byte_range(&self) -> Range<usize> {
+        let start = self.required_feature_index_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn feature_indices_byte_range(&self) -> Range<usize> {
+        let feature_index_count = self.feature_index_count();
+        let start = self.feature_index_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(feature_index_count)).saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(LangSys::MIN_SIZE));
+
+impl Default for LangSys<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -412,61 +445,72 @@ impl<'a> std::fmt::Debug for LangSys<'a> {
     }
 }
 
-/// [Feature List Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#feature-list-table)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct FeatureListMarker {
-    feature_records_byte_len: usize,
-}
-
-impl FeatureListMarker {
-    pub fn feature_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn feature_records_byte_range(&self) -> Range<usize> {
-        let start = self.feature_count_byte_range().end;
-        start..start + self.feature_records_byte_len
-    }
-}
-
-impl MinByteRange for FeatureListMarker {
+impl<'a> MinByteRange<'a> for FeatureList<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.feature_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for FeatureList<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let feature_count: u16 = cursor.read()?;
-        let feature_records_byte_len = (feature_count as usize)
-            .checked_mul(FeatureRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(feature_records_byte_len);
-        cursor.finish(FeatureListMarker {
-            feature_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Feature List Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#feature-list-table)
-pub type FeatureList<'a> = TableRef<'a, FeatureListMarker>;
+#[derive(Clone)]
+pub struct FeatureList<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> FeatureList<'a> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     /// Number of FeatureRecords in this table
     pub fn feature_count(&self) -> u16 {
-        let range = self.shape.feature_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.feature_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of FeatureRecords — zero-based (first feature has
     /// FeatureIndex = 0), listed alphabetically by feature tag
     pub fn feature_records(&self) -> &'a [FeatureRecord] {
-        let range = self.shape.feature_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.feature_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn feature_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn feature_records_byte_range(&self) -> Range<usize> {
+        let feature_count = self.feature_count();
+        let start = self.feature_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(feature_count)).saturating_mul(FeatureRecord::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(FeatureList::MIN_SIZE));
+
+impl Default for FeatureList<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -553,34 +597,13 @@ impl<'a> SomeRecord<'a> for FeatureRecord {
     }
 }
 
-/// [Feature Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#feature-table)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct FeatureMarker {
-    feature_tag: Tag,
-    lookup_list_indices_byte_len: usize,
-}
-
-impl FeatureMarker {
-    pub fn feature_params_offset_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn lookup_index_count_byte_range(&self) -> Range<usize> {
-        let start = self.feature_params_offset_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn lookup_list_indices_byte_range(&self) -> Range<usize> {
-        let start = self.lookup_index_count_byte_range().end;
-        start..start + self.lookup_list_indices_byte_len
-    }
-}
-
-impl MinByteRange for FeatureMarker {
+impl<'a> MinByteRange<'a> for Feature<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.lookup_list_indices_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
@@ -591,17 +614,12 @@ impl ReadArgs for Feature<'_> {
 impl<'a> FontReadWithArgs<'a> for Feature<'a> {
     fn read_with_args(data: FontData<'a>, args: &Tag) -> Result<Self, ReadError> {
         let feature_tag = *args;
-        let mut cursor = data.cursor();
-        cursor.advance::<Offset16>();
-        let lookup_index_count: u16 = cursor.read()?;
-        let lookup_list_indices_byte_len = (lookup_index_count as usize)
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(lookup_list_indices_byte_len);
-        cursor.finish(FeatureMarker {
-            feature_tag,
-            lookup_list_indices_byte_len,
-        })
+
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data, feature_tag })
     }
 }
 
@@ -617,14 +635,21 @@ impl<'a> Feature<'a> {
 }
 
 /// [Feature Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#feature-table)
-pub type Feature<'a> = TableRef<'a, FeatureMarker>;
+#[derive(Clone)]
+pub struct Feature<'a> {
+    data: FontData<'a>,
+    feature_tag: Tag,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Feature<'a> {
+    pub const MIN_SIZE: usize = (Offset16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Offset from start of Feature table to FeatureParams table, if defined for the feature and present, else NULL
     pub fn feature_params_offset(&self) -> Nullable<Offset16> {
-        let range = self.shape.feature_params_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.feature_params_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`feature_params_offset`][Self::feature_params_offset].
@@ -636,19 +661,50 @@ impl<'a> Feature<'a> {
 
     /// Number of LookupList indices for this feature
     pub fn lookup_index_count(&self) -> u16 {
-        let range = self.shape.lookup_index_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lookup_index_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of indices into the LookupList — zero-based (first
     /// lookup is LookupListIndex = 0)
     pub fn lookup_list_indices(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.lookup_list_indices_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.lookup_list_indices_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     pub(crate) fn feature_tag(&self) -> Tag {
-        self.shape.feature_tag
+        self.feature_tag
+    }
+
+    pub fn feature_params_offset_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lookup_index_count_byte_range(&self) -> Range<usize> {
+        let start = self.feature_params_offset_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lookup_list_indices_byte_range(&self) -> Range<usize> {
+        let lookup_index_count = self.lookup_index_count();
+        let start = self.lookup_index_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(lookup_index_count)).saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Feature::MIN_SIZE));
+
+impl Default for Feature<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+            feature_tag: Default::default(),
+        }
     }
 }
 
@@ -681,66 +737,26 @@ impl<'a> std::fmt::Debug for Feature<'a> {
     }
 }
 
-/// [Lookup List Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#lookup-list-table)
-#[derive(Debug)]
-#[doc(hidden)]
-pub struct LookupListMarker<T = ()> {
-    lookup_offsets_byte_len: usize,
-    offset_type: std::marker::PhantomData<*const T>,
-}
-
-impl<T> LookupListMarker<T> {
-    pub fn lookup_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn lookup_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.lookup_count_byte_range().end;
-        start..start + self.lookup_offsets_byte_len
-    }
-}
-
-impl MinByteRange for LookupListMarker {
+impl<'a, T> MinByteRange<'a> for LookupList<'a, T> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.lookup_offsets_byte_range().end
     }
-}
-
-impl<T> Clone for LookupListMarker<T> {
-    fn clone(&self) -> Self {
-        *self
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
-
-impl<T> Copy for LookupListMarker<T> {}
 
 impl<'a, T> FontRead<'a> for LookupList<'a, T> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let lookup_count: u16 = cursor.read()?;
-        let lookup_offsets_byte_len = (lookup_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(lookup_offsets_byte_len);
-        cursor.finish(LookupListMarker {
-            lookup_offsets_byte_len,
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self {
+            data,
             offset_type: std::marker::PhantomData,
         })
-    }
-}
-
-impl<'a> LookupList<'a, ()> {
-    #[allow(dead_code)]
-    pub(crate) fn into_concrete<T>(self) -> LookupList<'a, T> {
-        let TableRef { data, shape } = self;
-        TableRef {
-            shape: LookupListMarker {
-                lookup_offsets_byte_len: shape.lookup_offsets_byte_len,
-                offset_type: std::marker::PhantomData,
-            },
-            data,
-        }
     }
 }
 
@@ -748,33 +764,36 @@ impl<'a, T> LookupList<'a, T> {
     #[allow(dead_code)]
     /// Replace the specific generic type on this implementation with `()`
     pub(crate) fn of_unit_type(&self) -> LookupList<'a, ()> {
-        let TableRef { data, shape } = self;
-        TableRef {
-            shape: LookupListMarker {
-                lookup_offsets_byte_len: shape.lookup_offsets_byte_len,
-                offset_type: std::marker::PhantomData,
-            },
-            data: *data,
+        LookupList {
+            data: self.data,
+            offset_type: std::marker::PhantomData,
         }
     }
 }
 
 /// [Lookup List Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#lookup-list-table)
-pub type LookupList<'a, T> = TableRef<'a, LookupListMarker<T>>;
+#[derive(Clone)]
+pub struct LookupList<'a, T = ()> {
+    data: FontData<'a>,
+    offset_type: std::marker::PhantomData<*const T>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a, T> LookupList<'a, T> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     /// Number of lookups in this table
     pub fn lookup_count(&self) -> u16 {
-        let range = self.shape.lookup_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lookup_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to Lookup tables, from beginning of LookupList
     /// — zero based (first lookup is Lookup index = 0)
     pub fn lookup_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.lookup_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.lookup_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`lookup_offsets`][Self::lookup_offsets].
@@ -786,6 +805,33 @@ impl<'a, T> LookupList<'a, T> {
         let offsets = self.lookup_offsets();
         ArrayOfOffsets::new(offsets, data, ())
     }
+
+    pub fn lookup_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lookup_offsets_byte_range(&self) -> Range<usize> {
+        let lookup_count = self.lookup_count();
+        let start = self.lookup_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(lookup_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    LookupList::<()>::MIN_SIZE
+));
+
+impl<T> Default for LookupList<'_, T> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+            offset_type: std::marker::PhantomData,
+        }
+    }
 }
 
 #[cfg(feature = "experimental_traverse")]
@@ -796,20 +842,10 @@ impl<'a, T: FontRead<'a> + SomeTable<'a> + 'a> SomeTable<'a> for LookupList<'a, 
     fn get_field(&self, idx: usize) -> Option<Field<'a>> {
         match idx {
             0usize => Some(Field::new("lookup_count", self.lookup_count())),
-            1usize => Some({
-                let data = self.data;
-                Field::new(
-                    "lookup_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<T>(),
-                        self.lookup_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<T>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            1usize => Some(Field::new(
+                "lookup_offsets",
+                FieldType::from(self.lookups()),
+            )),
             _ => None,
         }
     }
@@ -823,93 +859,32 @@ impl<'a, T: FontRead<'a> + SomeTable<'a> + 'a> std::fmt::Debug for LookupList<'a
     }
 }
 
-/// [Lookup Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#lookup-table)
-#[derive(Debug)]
-#[doc(hidden)]
-pub struct LookupMarker<T = ()> {
-    subtable_offsets_byte_len: usize,
-    mark_filtering_set_byte_start: Option<usize>,
-    offset_type: std::marker::PhantomData<*const T>,
-}
-
-impl<T> LookupMarker<T> {
-    pub fn lookup_type_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn lookup_flag_byte_range(&self) -> Range<usize> {
-        let start = self.lookup_type_byte_range().end;
-        start..start + LookupFlag::RAW_BYTE_LEN
-    }
-
-    pub fn sub_table_count_byte_range(&self) -> Range<usize> {
-        let start = self.lookup_flag_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn subtable_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.sub_table_count_byte_range().end;
-        start..start + self.subtable_offsets_byte_len
-    }
-
-    pub fn mark_filtering_set_byte_range(&self) -> Option<Range<usize>> {
-        let start = self.mark_filtering_set_byte_start?;
-        Some(start..start + u16::RAW_BYTE_LEN)
+impl Discriminant for Lookup<'_, ()> {
+    fn read_discriminant(data: FontData<'_>) -> Result<u16, ReadError> {
+        data.read_at(0)
     }
 }
 
-impl MinByteRange for LookupMarker {
+impl<'a, T> MinByteRange<'a> for Lookup<'a, T> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.subtable_offsets_byte_range().end
     }
-}
-
-impl<T> Clone for LookupMarker<T> {
-    fn clone(&self) -> Self {
-        *self
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
-
-impl<T> Copy for LookupMarker<T> {}
 
 impl<'a, T> FontRead<'a> for Lookup<'a, T> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let lookup_flag: LookupFlag = cursor.read()?;
-        let sub_table_count: u16 = cursor.read()?;
-        let subtable_offsets_byte_len = (sub_table_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(subtable_offsets_byte_len);
-        let mark_filtering_set_byte_start = lookup_flag
-            .contains(LookupFlag::USE_MARK_FILTERING_SET)
-            .then(|| cursor.position())
-            .transpose()?;
-        lookup_flag
-            .contains(LookupFlag::USE_MARK_FILTERING_SET)
-            .then(|| cursor.advance::<u16>());
-        cursor.finish(LookupMarker {
-            subtable_offsets_byte_len,
-            mark_filtering_set_byte_start,
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self {
+            data,
             offset_type: std::marker::PhantomData,
         })
-    }
-}
-
-impl<'a> Lookup<'a, ()> {
-    #[allow(dead_code)]
-    pub(crate) fn into_concrete<T>(self) -> Lookup<'a, T> {
-        let TableRef { data, shape } = self;
-        TableRef {
-            shape: LookupMarker {
-                subtable_offsets_byte_len: shape.subtable_offsets_byte_len,
-                mark_filtering_set_byte_start: shape.mark_filtering_set_byte_start,
-                offset_type: std::marker::PhantomData,
-            },
-            data,
-        }
     }
 }
 
@@ -917,46 +892,48 @@ impl<'a, T> Lookup<'a, T> {
     #[allow(dead_code)]
     /// Replace the specific generic type on this implementation with `()`
     pub(crate) fn of_unit_type(&self) -> Lookup<'a, ()> {
-        let TableRef { data, shape } = self;
-        TableRef {
-            shape: LookupMarker {
-                subtable_offsets_byte_len: shape.subtable_offsets_byte_len,
-                mark_filtering_set_byte_start: shape.mark_filtering_set_byte_start,
-                offset_type: std::marker::PhantomData,
-            },
-            data: *data,
+        Lookup {
+            data: self.data,
+            offset_type: std::marker::PhantomData,
         }
     }
 }
 
 /// [Lookup Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#lookup-table)
-pub type Lookup<'a, T> = TableRef<'a, LookupMarker<T>>;
+#[derive(Clone)]
+pub struct Lookup<'a, T = ()> {
+    data: FontData<'a>,
+    offset_type: std::marker::PhantomData<*const T>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a, T> Lookup<'a, T> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + LookupFlag::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Different enumerations for GSUB and GPOS
     pub fn lookup_type(&self) -> u16 {
-        let range = self.shape.lookup_type_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lookup_type_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Lookup qualifiers
     pub fn lookup_flag(&self) -> LookupFlag {
-        let range = self.shape.lookup_flag_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lookup_flag_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of subtables for this lookup
     pub fn sub_table_count(&self) -> u16 {
-        let range = self.shape.sub_table_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.sub_table_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to lookup subtables, from beginning of Lookup
     /// table
     pub fn subtable_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.subtable_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.subtable_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`subtable_offsets`][Self::subtable_offsets].
@@ -973,8 +950,60 @@ impl<'a, T> Lookup<'a, T> {
     /// is only present if the USE_MARK_FILTERING_SET lookup flag is
     /// set.
     pub fn mark_filtering_set(&self) -> Option<u16> {
-        let range = self.shape.mark_filtering_set_byte_range()?;
-        Some(self.data.read_at(range.start).unwrap())
+        let range = self.mark_filtering_set_byte_range();
+        (!range.is_empty())
+            .then(|| self.data.read_at(range.start).ok())
+            .flatten()
+    }
+
+    pub fn lookup_type_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lookup_flag_byte_range(&self) -> Range<usize> {
+        let start = self.lookup_type_byte_range().end;
+        let end = start + LookupFlag::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn sub_table_count_byte_range(&self) -> Range<usize> {
+        let start = self.lookup_flag_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn subtable_offsets_byte_range(&self) -> Range<usize> {
+        let sub_table_count = self.sub_table_count();
+        let start = self.sub_table_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(sub_table_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn mark_filtering_set_byte_range(&self) -> Range<usize> {
+        let start = self.subtable_offsets_byte_range().end;
+        let end = if self
+            .lookup_flag()
+            .contains(LookupFlag::USE_MARK_FILTERING_SET)
+        {
+            start + u16::RAW_BYTE_LEN
+        } else {
+            start
+        };
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Lookup::<()>::MIN_SIZE));
+
+impl<T> Default for Lookup<'_, T> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+            offset_type: std::marker::PhantomData,
+        }
     }
 }
 
@@ -984,29 +1013,24 @@ impl<'a, T: FontRead<'a> + SomeTable<'a> + 'a> SomeTable<'a> for Lookup<'a, T> {
         "Lookup"
     }
     fn get_field(&self, idx: usize) -> Option<Field<'a>> {
-        let lookup_flag = self.lookup_flag();
         match idx {
             0usize => Some(Field::new("lookup_type", self.lookup_type())),
             1usize => Some(Field::new("lookup_flag", self.traverse_lookup_flag())),
             2usize => Some(Field::new("sub_table_count", self.sub_table_count())),
-            3usize => Some({
-                let data = self.data;
-                Field::new(
-                    "subtable_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<T>(),
-                        self.subtable_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<T>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
-            4usize if lookup_flag.contains(LookupFlag::USE_MARK_FILTERING_SET) => Some(Field::new(
-                "mark_filtering_set",
-                self.mark_filtering_set().unwrap(),
+            3usize => Some(Field::new(
+                "subtable_offsets",
+                FieldType::from(self.subtables()),
             )),
+            4usize
+                if self
+                    .lookup_flag()
+                    .contains(LookupFlag::USE_MARK_FILTERING_SET) =>
+            {
+                Some(Field::new(
+                    "mark_filtering_set",
+                    self.mark_filtering_set().unwrap(),
+                ))
+            }
             _ => None,
         }
     }
@@ -1020,76 +1044,89 @@ impl<'a, T: FontRead<'a> + SomeTable<'a> + 'a> std::fmt::Debug for Lookup<'a, T>
     }
 }
 
-impl Format<u16> for CoverageFormat1Marker {
+impl Format<u16> for CoverageFormat1<'_> {
     const FORMAT: u16 = 1;
 }
 
-/// [Coverage Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#coverage-format-1)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct CoverageFormat1Marker {
-    glyph_array_byte_len: usize,
-}
-
-impl CoverageFormat1Marker {
-    pub fn coverage_format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.coverage_format_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn glyph_array_byte_range(&self) -> Range<usize> {
-        let start = self.glyph_count_byte_range().end;
-        start..start + self.glyph_array_byte_len
-    }
-}
-
-impl MinByteRange for CoverageFormat1Marker {
+impl<'a> MinByteRange<'a> for CoverageFormat1<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.glyph_array_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for CoverageFormat1<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let glyph_count: u16 = cursor.read()?;
-        let glyph_array_byte_len = (glyph_count as usize)
-            .checked_mul(GlyphId16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(glyph_array_byte_len);
-        cursor.finish(CoverageFormat1Marker {
-            glyph_array_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Coverage Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#coverage-format-1)
-pub type CoverageFormat1<'a> = TableRef<'a, CoverageFormat1Marker>;
+#[derive(Clone)]
+pub struct CoverageFormat1<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> CoverageFormat1<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier — format = 1
     pub fn coverage_format(&self) -> u16 {
-        let range = self.shape.coverage_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.coverage_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of glyphs in the glyph array
     pub fn glyph_count(&self) -> u16 {
-        let range = self.shape.glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of glyph IDs — in numerical order
     pub fn glyph_array(&self) -> &'a [BigEndian<GlyphId16>] {
-        let range = self.shape.glyph_array_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.glyph_array_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn coverage_format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.coverage_format_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn glyph_array_byte_range(&self) -> Range<usize> {
+        let glyph_count = self.glyph_count();
+        let start = self.glyph_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(glyph_count)).saturating_mul(GlyphId16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    CoverageFormat1::MIN_SIZE
+));
+
+impl Default for CoverageFormat1<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_format_1_u16_table_data(),
+        }
     }
 }
 
@@ -1116,76 +1153,77 @@ impl<'a> std::fmt::Debug for CoverageFormat1<'a> {
     }
 }
 
-impl Format<u16> for CoverageFormat2Marker {
+impl Format<u16> for CoverageFormat2<'_> {
     const FORMAT: u16 = 2;
 }
 
-/// [Coverage Format 2](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#coverage-format-2)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct CoverageFormat2Marker {
-    range_records_byte_len: usize,
-}
-
-impl CoverageFormat2Marker {
-    pub fn coverage_format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn range_count_byte_range(&self) -> Range<usize> {
-        let start = self.coverage_format_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn range_records_byte_range(&self) -> Range<usize> {
-        let start = self.range_count_byte_range().end;
-        start..start + self.range_records_byte_len
-    }
-}
-
-impl MinByteRange for CoverageFormat2Marker {
+impl<'a> MinByteRange<'a> for CoverageFormat2<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.range_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for CoverageFormat2<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let range_count: u16 = cursor.read()?;
-        let range_records_byte_len = (range_count as usize)
-            .checked_mul(RangeRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(range_records_byte_len);
-        cursor.finish(CoverageFormat2Marker {
-            range_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Coverage Format 2](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#coverage-format-2)
-pub type CoverageFormat2<'a> = TableRef<'a, CoverageFormat2Marker>;
+#[derive(Clone)]
+pub struct CoverageFormat2<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> CoverageFormat2<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier — format = 2
     pub fn coverage_format(&self) -> u16 {
-        let range = self.shape.coverage_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.coverage_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of RangeRecords
     pub fn range_count(&self) -> u16 {
-        let range = self.shape.range_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.range_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of glyph ranges — ordered by startGlyphID.
     pub fn range_records(&self) -> &'a [RangeRecord] {
-        let range = self.shape.range_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.range_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn coverage_format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn range_count_byte_range(&self) -> Range<usize> {
+        let start = self.coverage_format_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn range_records_byte_range(&self) -> Range<usize> {
+        let range_count = self.range_count();
+        let start = self.range_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(range_count)).saturating_mul(RangeRecord::RAW_BYTE_LEN);
+        start..end
     }
 }
 
@@ -1280,6 +1318,12 @@ pub enum CoverageTable<'a> {
     Format2(CoverageFormat2<'a>),
 }
 
+impl Default for CoverageTable<'_> {
+    fn default() -> Self {
+        Self::Format1(Default::default())
+    }
+}
+
 impl<'a> CoverageTable<'a> {
     ///Return the `FontData` used to resolve offsets for this table.
     pub fn offset_data(&self) -> FontData<'a> {
@@ -1302,18 +1346,24 @@ impl<'a> FontRead<'a> for CoverageTable<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
         let format: u16 = data.read_at(0usize)?;
         match format {
-            CoverageFormat1Marker::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
-            CoverageFormat2Marker::FORMAT => Ok(Self::Format2(FontRead::read(data)?)),
+            CoverageFormat1::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
+            CoverageFormat2::FORMAT => Ok(Self::Format2(FontRead::read(data)?)),
             other => Err(ReadError::InvalidFormat(other.into())),
         }
     }
 }
 
-impl MinByteRange for CoverageTable<'_> {
+impl<'a> MinByteRange<'a> for CoverageTable<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         match self {
             Self::Format1(item) => item.min_byte_range(),
             Self::Format2(item) => item.min_byte_range(),
+        }
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        match self {
+            Self::Format1(item) => item.min_table_bytes(),
+            Self::Format2(item) => item.min_table_bytes(),
         }
     }
 }
@@ -1345,88 +1395,100 @@ impl<'a> SomeTable<'a> for CoverageTable<'a> {
     }
 }
 
-impl Format<u16> for ClassDefFormat1Marker {
+impl Format<u16> for ClassDefFormat1<'_> {
     const FORMAT: u16 = 1;
 }
 
-/// [Class Definition Table Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#class-definition-table-format-1)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ClassDefFormat1Marker {
-    class_value_array_byte_len: usize,
-}
-
-impl ClassDefFormat1Marker {
-    pub fn class_format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn start_glyph_id_byte_range(&self) -> Range<usize> {
-        let start = self.class_format_byte_range().end;
-        start..start + GlyphId16::RAW_BYTE_LEN
-    }
-
-    pub fn glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.start_glyph_id_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn class_value_array_byte_range(&self) -> Range<usize> {
-        let start = self.glyph_count_byte_range().end;
-        start..start + self.class_value_array_byte_len
-    }
-}
-
-impl MinByteRange for ClassDefFormat1Marker {
+impl<'a> MinByteRange<'a> for ClassDefFormat1<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.class_value_array_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ClassDefFormat1<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<GlyphId16>();
-        let glyph_count: u16 = cursor.read()?;
-        let class_value_array_byte_len = (glyph_count as usize)
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(class_value_array_byte_len);
-        cursor.finish(ClassDefFormat1Marker {
-            class_value_array_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Class Definition Table Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#class-definition-table-format-1)
-pub type ClassDefFormat1<'a> = TableRef<'a, ClassDefFormat1Marker>;
+#[derive(Clone)]
+pub struct ClassDefFormat1<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ClassDefFormat1<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + GlyphId16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier — format = 1
     pub fn class_format(&self) -> u16 {
-        let range = self.shape.class_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.class_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// First glyph ID of the classValueArray
     pub fn start_glyph_id(&self) -> GlyphId16 {
-        let range = self.shape.start_glyph_id_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.start_glyph_id_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Size of the classValueArray
     pub fn glyph_count(&self) -> u16 {
-        let range = self.shape.glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of Class Values — one per glyph ID
     pub fn class_value_array(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.class_value_array_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.class_value_array_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn class_format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn start_glyph_id_byte_range(&self) -> Range<usize> {
+        let start = self.class_format_byte_range().end;
+        let end = start + GlyphId16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.start_glyph_id_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn class_value_array_byte_range(&self) -> Range<usize> {
+        let glyph_count = self.glyph_count();
+        let start = self.glyph_count_byte_range().end;
+        let end = start + (transforms::to_usize(glyph_count)).saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ClassDefFormat1::MIN_SIZE
+));
+
+impl Default for ClassDefFormat1<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_format_1_u16_table_data(),
+        }
     }
 }
 
@@ -1454,76 +1516,78 @@ impl<'a> std::fmt::Debug for ClassDefFormat1<'a> {
     }
 }
 
-impl Format<u16> for ClassDefFormat2Marker {
+impl Format<u16> for ClassDefFormat2<'_> {
     const FORMAT: u16 = 2;
 }
 
-/// [Class Definition Table Format 2](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#class-definition-table-format-2)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ClassDefFormat2Marker {
-    class_range_records_byte_len: usize,
-}
-
-impl ClassDefFormat2Marker {
-    pub fn class_format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn class_range_count_byte_range(&self) -> Range<usize> {
-        let start = self.class_format_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn class_range_records_byte_range(&self) -> Range<usize> {
-        let start = self.class_range_count_byte_range().end;
-        start..start + self.class_range_records_byte_len
-    }
-}
-
-impl MinByteRange for ClassDefFormat2Marker {
+impl<'a> MinByteRange<'a> for ClassDefFormat2<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.class_range_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ClassDefFormat2<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let class_range_count: u16 = cursor.read()?;
-        let class_range_records_byte_len = (class_range_count as usize)
-            .checked_mul(ClassRangeRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(class_range_records_byte_len);
-        cursor.finish(ClassDefFormat2Marker {
-            class_range_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Class Definition Table Format 2](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#class-definition-table-format-2)
-pub type ClassDefFormat2<'a> = TableRef<'a, ClassDefFormat2Marker>;
+#[derive(Clone)]
+pub struct ClassDefFormat2<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ClassDefFormat2<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier — format = 2
     pub fn class_format(&self) -> u16 {
-        let range = self.shape.class_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.class_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of ClassRangeRecords
     pub fn class_range_count(&self) -> u16 {
-        let range = self.shape.class_range_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.class_range_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of ClassRangeRecords — ordered by startGlyphID
     pub fn class_range_records(&self) -> &'a [ClassRangeRecord] {
-        let range = self.shape.class_range_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.class_range_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn class_format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn class_range_count_byte_range(&self) -> Range<usize> {
+        let start = self.class_format_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn class_range_records_byte_range(&self) -> Range<usize> {
+        let class_range_count = self.class_range_count();
+        let start = self.class_range_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(class_range_count))
+                .saturating_mul(ClassRangeRecord::RAW_BYTE_LEN);
+        start..end
     }
 }
 
@@ -1615,6 +1679,12 @@ pub enum ClassDef<'a> {
     Format2(ClassDefFormat2<'a>),
 }
 
+impl Default for ClassDef<'_> {
+    fn default() -> Self {
+        Self::Format1(Default::default())
+    }
+}
+
 impl<'a> ClassDef<'a> {
     ///Return the `FontData` used to resolve offsets for this table.
     pub fn offset_data(&self) -> FontData<'a> {
@@ -1637,18 +1707,24 @@ impl<'a> FontRead<'a> for ClassDef<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
         let format: u16 = data.read_at(0usize)?;
         match format {
-            ClassDefFormat1Marker::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
-            ClassDefFormat2Marker::FORMAT => Ok(Self::Format2(FontRead::read(data)?)),
+            ClassDefFormat1::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
+            ClassDefFormat2::FORMAT => Ok(Self::Format2(FontRead::read(data)?)),
             other => Err(ReadError::InvalidFormat(other.into())),
         }
     }
 }
 
-impl MinByteRange for ClassDef<'_> {
+impl<'a> MinByteRange<'a> for ClassDef<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         match self {
             Self::Format1(item) => item.min_byte_range(),
             Self::Format2(item) => item.min_byte_range(),
+        }
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        match self {
+            Self::Format1(item) => item.min_table_bytes(),
+            Self::Format2(item) => item.min_table_bytes(),
         }
     }
 }
@@ -1722,77 +1798,52 @@ impl<'a> SomeRecord<'a> for SequenceLookupRecord {
     }
 }
 
-impl Format<u16> for SequenceContextFormat1Marker {
+impl Format<u16> for SequenceContextFormat1<'_> {
     const FORMAT: u16 = 1;
 }
 
-/// [Sequence Context Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#sequence-context-format-1-simple-glyph-contexts)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct SequenceContextFormat1Marker {
-    seq_rule_set_offsets_byte_len: usize,
-}
-
-impl SequenceContextFormat1Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn coverage_offset_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn seq_rule_set_count_byte_range(&self) -> Range<usize> {
-        let start = self.coverage_offset_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn seq_rule_set_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.seq_rule_set_count_byte_range().end;
-        start..start + self.seq_rule_set_offsets_byte_len
-    }
-}
-
-impl MinByteRange for SequenceContextFormat1Marker {
+impl<'a> MinByteRange<'a> for SequenceContextFormat1<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.seq_rule_set_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for SequenceContextFormat1<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<Offset16>();
-        let seq_rule_set_count: u16 = cursor.read()?;
-        let seq_rule_set_offsets_byte_len = (seq_rule_set_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(seq_rule_set_offsets_byte_len);
-        cursor.finish(SequenceContextFormat1Marker {
-            seq_rule_set_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Sequence Context Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#sequence-context-format-1-simple-glyph-contexts)
-pub type SequenceContextFormat1<'a> = TableRef<'a, SequenceContextFormat1Marker>;
+#[derive(Clone)]
+pub struct SequenceContextFormat1<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> SequenceContextFormat1<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + Offset16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier: format = 1
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Offset to Coverage table, from beginning of
     /// SequenceContextFormat1 table
     pub fn coverage_offset(&self) -> Offset16 {
-        let range = self.shape.coverage_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.coverage_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`coverage_offset`][Self::coverage_offset].
@@ -1803,15 +1854,15 @@ impl<'a> SequenceContextFormat1<'a> {
 
     /// Number of SequenceRuleSet tables
     pub fn seq_rule_set_count(&self) -> u16 {
-        let range = self.shape.seq_rule_set_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.seq_rule_set_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to SequenceRuleSet tables, from beginning of
     /// SequenceContextFormat1 table (offsets may be NULL)
     pub fn seq_rule_set_offsets(&self) -> &'a [BigEndian<Nullable<Offset16>>] {
-        let range = self.shape.seq_rule_set_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.seq_rule_set_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`seq_rule_set_offsets`][Self::seq_rule_set_offsets].
@@ -1819,6 +1870,44 @@ impl<'a> SequenceContextFormat1<'a> {
         let data = self.data;
         let offsets = self.seq_rule_set_offsets();
         ArrayOfNullableOffsets::new(offsets, data, ())
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn coverage_offset_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn seq_rule_set_count_byte_range(&self) -> Range<usize> {
+        let start = self.coverage_offset_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn seq_rule_set_offsets_byte_range(&self) -> Range<usize> {
+        let seq_rule_set_count = self.seq_rule_set_count();
+        let start = self.seq_rule_set_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(seq_rule_set_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    SequenceContextFormat1::MIN_SIZE
+));
+
+impl Default for SequenceContextFormat1<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_format_1_u16_table_data(),
+        }
     }
 }
 
@@ -1835,20 +1924,10 @@ impl<'a> SomeTable<'a> for SequenceContextFormat1<'a> {
                 FieldType::offset(self.coverage_offset(), self.coverage()),
             )),
             2usize => Some(Field::new("seq_rule_set_count", self.seq_rule_set_count())),
-            3usize => Some({
-                let data = self.data;
-                Field::new(
-                    "seq_rule_set_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<SequenceRuleSet>(),
-                        self.seq_rule_set_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<SequenceRuleSet>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            3usize => Some(Field::new(
+                "seq_rule_set_offsets",
+                FieldType::from(self.seq_rule_sets()),
+            )),
             _ => None,
         }
     }
@@ -1862,61 +1941,48 @@ impl<'a> std::fmt::Debug for SequenceContextFormat1<'a> {
     }
 }
 
-/// Part of [SequenceContextFormat1]
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct SequenceRuleSetMarker {
-    seq_rule_offsets_byte_len: usize,
-}
-
-impl SequenceRuleSetMarker {
-    pub fn seq_rule_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn seq_rule_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.seq_rule_count_byte_range().end;
-        start..start + self.seq_rule_offsets_byte_len
-    }
-}
-
-impl MinByteRange for SequenceRuleSetMarker {
+impl<'a> MinByteRange<'a> for SequenceRuleSet<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.seq_rule_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for SequenceRuleSet<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let seq_rule_count: u16 = cursor.read()?;
-        let seq_rule_offsets_byte_len = (seq_rule_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(seq_rule_offsets_byte_len);
-        cursor.finish(SequenceRuleSetMarker {
-            seq_rule_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Part of [SequenceContextFormat1]
-pub type SequenceRuleSet<'a> = TableRef<'a, SequenceRuleSetMarker>;
+#[derive(Clone)]
+pub struct SequenceRuleSet<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> SequenceRuleSet<'a> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     /// Number of SequenceRule tables
     pub fn seq_rule_count(&self) -> u16 {
-        let range = self.shape.seq_rule_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.seq_rule_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to SequenceRule tables, from beginning of the
     /// SequenceRuleSet table
     pub fn seq_rule_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.seq_rule_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.seq_rule_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`seq_rule_offsets`][Self::seq_rule_offsets].
@@ -1924,6 +1990,32 @@ impl<'a> SequenceRuleSet<'a> {
         let data = self.data;
         let offsets = self.seq_rule_offsets();
         ArrayOfOffsets::new(offsets, data, ())
+    }
+
+    pub fn seq_rule_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn seq_rule_offsets_byte_range(&self) -> Range<usize> {
+        let seq_rule_count = self.seq_rule_count();
+        let start = self.seq_rule_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(seq_rule_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    SequenceRuleSet::MIN_SIZE
+));
+
+impl Default for SequenceRuleSet<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -1935,20 +2027,10 @@ impl<'a> SomeTable<'a> for SequenceRuleSet<'a> {
     fn get_field(&self, idx: usize) -> Option<Field<'a>> {
         match idx {
             0usize => Some(Field::new("seq_rule_count", self.seq_rule_count())),
-            1usize => Some({
-                let data = self.data;
-                Field::new(
-                    "seq_rule_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<SequenceRule>(),
-                        self.seq_rule_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<SequenceRule>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            1usize => Some(Field::new(
+                "seq_rule_offsets",
+                FieldType::from(self.seq_rules()),
+            )),
             _ => None,
         }
     }
@@ -1962,89 +2044,98 @@ impl<'a> std::fmt::Debug for SequenceRuleSet<'a> {
     }
 }
 
-/// Part of [SequenceContextFormat1]
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct SequenceRuleMarker {
-    input_sequence_byte_len: usize,
-    seq_lookup_records_byte_len: usize,
-}
-
-impl SequenceRuleMarker {
-    pub fn glyph_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
-        let start = self.glyph_count_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn input_sequence_byte_range(&self) -> Range<usize> {
-        let start = self.seq_lookup_count_byte_range().end;
-        start..start + self.input_sequence_byte_len
-    }
-
-    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
-        let start = self.input_sequence_byte_range().end;
-        start..start + self.seq_lookup_records_byte_len
-    }
-}
-
-impl MinByteRange for SequenceRuleMarker {
+impl<'a> MinByteRange<'a> for SequenceRule<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.seq_lookup_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for SequenceRule<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let glyph_count: u16 = cursor.read()?;
-        let seq_lookup_count: u16 = cursor.read()?;
-        let input_sequence_byte_len = (transforms::subtract(glyph_count, 1_usize))
-            .checked_mul(GlyphId16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(input_sequence_byte_len);
-        let seq_lookup_records_byte_len = (seq_lookup_count as usize)
-            .checked_mul(SequenceLookupRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(seq_lookup_records_byte_len);
-        cursor.finish(SequenceRuleMarker {
-            input_sequence_byte_len,
-            seq_lookup_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Part of [SequenceContextFormat1]
-pub type SequenceRule<'a> = TableRef<'a, SequenceRuleMarker>;
+#[derive(Clone)]
+pub struct SequenceRule<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> SequenceRule<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Number of glyphs in the input glyph sequence
     pub fn glyph_count(&self) -> u16 {
-        let range = self.shape.glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of SequenceLookupRecords
     pub fn seq_lookup_count(&self) -> u16 {
-        let range = self.shape.seq_lookup_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.seq_lookup_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of input glyph IDs—starting with the second glyph
     pub fn input_sequence(&self) -> &'a [BigEndian<GlyphId16>] {
-        let range = self.shape.input_sequence_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.input_sequence_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Array of Sequence lookup records
     pub fn seq_lookup_records(&self) -> &'a [SequenceLookupRecord] {
-        let range = self.shape.seq_lookup_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.seq_lookup_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn glyph_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
+        let start = self.glyph_count_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn input_sequence_byte_range(&self) -> Range<usize> {
+        let glyph_count = self.glyph_count();
+        let start = self.seq_lookup_count_byte_range().end;
+        let end = start
+            + (transforms::subtract(glyph_count, 1_usize)).saturating_mul(GlyphId16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
+        let seq_lookup_count = self.seq_lookup_count();
+        let start = self.input_sequence_byte_range().end;
+        let end = start
+            + (transforms::to_usize(seq_lookup_count))
+                .saturating_mul(SequenceLookupRecord::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(SequenceRule::MIN_SIZE));
+
+impl Default for SequenceRule<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -2079,83 +2170,53 @@ impl<'a> std::fmt::Debug for SequenceRule<'a> {
     }
 }
 
-impl Format<u16> for SequenceContextFormat2Marker {
+impl Format<u16> for SequenceContextFormat2<'_> {
     const FORMAT: u16 = 2;
 }
 
-/// [Sequence Context Format 2](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#sequence-context-format-2-class-based-glyph-contexts)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct SequenceContextFormat2Marker {
-    class_seq_rule_set_offsets_byte_len: usize,
-}
-
-impl SequenceContextFormat2Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn coverage_offset_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn class_def_offset_byte_range(&self) -> Range<usize> {
-        let start = self.coverage_offset_byte_range().end;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn class_seq_rule_set_count_byte_range(&self) -> Range<usize> {
-        let start = self.class_def_offset_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn class_seq_rule_set_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.class_seq_rule_set_count_byte_range().end;
-        start..start + self.class_seq_rule_set_offsets_byte_len
-    }
-}
-
-impl MinByteRange for SequenceContextFormat2Marker {
+impl<'a> MinByteRange<'a> for SequenceContextFormat2<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.class_seq_rule_set_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for SequenceContextFormat2<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<Offset16>();
-        cursor.advance::<Offset16>();
-        let class_seq_rule_set_count: u16 = cursor.read()?;
-        let class_seq_rule_set_offsets_byte_len = (class_seq_rule_set_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(class_seq_rule_set_offsets_byte_len);
-        cursor.finish(SequenceContextFormat2Marker {
-            class_seq_rule_set_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Sequence Context Format 2](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#sequence-context-format-2-class-based-glyph-contexts)
-pub type SequenceContextFormat2<'a> = TableRef<'a, SequenceContextFormat2Marker>;
+#[derive(Clone)]
+pub struct SequenceContextFormat2<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> SequenceContextFormat2<'a> {
+    pub const MIN_SIZE: usize =
+        (u16::RAW_BYTE_LEN + Offset16::RAW_BYTE_LEN + Offset16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier: format = 2
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Offset to Coverage table, from beginning of
     /// SequenceContextFormat2 table
     pub fn coverage_offset(&self) -> Offset16 {
-        let range = self.shape.coverage_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.coverage_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`coverage_offset`][Self::coverage_offset].
@@ -2167,8 +2228,8 @@ impl<'a> SequenceContextFormat2<'a> {
     /// Offset to ClassDef table, from beginning of
     /// SequenceContextFormat2 table
     pub fn class_def_offset(&self) -> Offset16 {
-        let range = self.shape.class_def_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.class_def_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`class_def_offset`][Self::class_def_offset].
@@ -2179,15 +2240,15 @@ impl<'a> SequenceContextFormat2<'a> {
 
     /// Number of ClassSequenceRuleSet tables
     pub fn class_seq_rule_set_count(&self) -> u16 {
-        let range = self.shape.class_seq_rule_set_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.class_seq_rule_set_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to ClassSequenceRuleSet tables, from beginning
     /// of SequenceContextFormat2 table (may be NULL)
     pub fn class_seq_rule_set_offsets(&self) -> &'a [BigEndian<Nullable<Offset16>>] {
-        let range = self.shape.class_seq_rule_set_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.class_seq_rule_set_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`class_seq_rule_set_offsets`][Self::class_seq_rule_set_offsets].
@@ -2197,6 +2258,39 @@ impl<'a> SequenceContextFormat2<'a> {
         let data = self.data;
         let offsets = self.class_seq_rule_set_offsets();
         ArrayOfNullableOffsets::new(offsets, data, ())
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn coverage_offset_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn class_def_offset_byte_range(&self) -> Range<usize> {
+        let start = self.coverage_offset_byte_range().end;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn class_seq_rule_set_count_byte_range(&self) -> Range<usize> {
+        let start = self.class_def_offset_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn class_seq_rule_set_offsets_byte_range(&self) -> Range<usize> {
+        let class_seq_rule_set_count = self.class_seq_rule_set_count();
+        let start = self.class_seq_rule_set_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(class_seq_rule_set_count))
+                .saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
     }
 }
 
@@ -2220,20 +2314,10 @@ impl<'a> SomeTable<'a> for SequenceContextFormat2<'a> {
                 "class_seq_rule_set_count",
                 self.class_seq_rule_set_count(),
             )),
-            4usize => Some({
-                let data = self.data;
-                Field::new(
-                    "class_seq_rule_set_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<ClassSequenceRuleSet>(),
-                        self.class_seq_rule_set_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<ClassSequenceRuleSet>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            4usize => Some(Field::new(
+                "class_seq_rule_set_offsets",
+                FieldType::from(self.class_seq_rule_sets()),
+            )),
             _ => None,
         }
     }
@@ -2247,61 +2331,48 @@ impl<'a> std::fmt::Debug for SequenceContextFormat2<'a> {
     }
 }
 
-/// Part of [SequenceContextFormat2]
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ClassSequenceRuleSetMarker {
-    class_seq_rule_offsets_byte_len: usize,
-}
-
-impl ClassSequenceRuleSetMarker {
-    pub fn class_seq_rule_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn class_seq_rule_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.class_seq_rule_count_byte_range().end;
-        start..start + self.class_seq_rule_offsets_byte_len
-    }
-}
-
-impl MinByteRange for ClassSequenceRuleSetMarker {
+impl<'a> MinByteRange<'a> for ClassSequenceRuleSet<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.class_seq_rule_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ClassSequenceRuleSet<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let class_seq_rule_count: u16 = cursor.read()?;
-        let class_seq_rule_offsets_byte_len = (class_seq_rule_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(class_seq_rule_offsets_byte_len);
-        cursor.finish(ClassSequenceRuleSetMarker {
-            class_seq_rule_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Part of [SequenceContextFormat2]
-pub type ClassSequenceRuleSet<'a> = TableRef<'a, ClassSequenceRuleSetMarker>;
+#[derive(Clone)]
+pub struct ClassSequenceRuleSet<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ClassSequenceRuleSet<'a> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     /// Number of ClassSequenceRule tables
     pub fn class_seq_rule_count(&self) -> u16 {
-        let range = self.shape.class_seq_rule_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.class_seq_rule_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to ClassSequenceRule tables, from beginning of
     /// ClassSequenceRuleSet table
     pub fn class_seq_rule_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.class_seq_rule_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.class_seq_rule_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`class_seq_rule_offsets`][Self::class_seq_rule_offsets].
@@ -2309,6 +2380,32 @@ impl<'a> ClassSequenceRuleSet<'a> {
         let data = self.data;
         let offsets = self.class_seq_rule_offsets();
         ArrayOfOffsets::new(offsets, data, ())
+    }
+
+    pub fn class_seq_rule_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn class_seq_rule_offsets_byte_range(&self) -> Range<usize> {
+        let class_seq_rule_count = self.class_seq_rule_count();
+        let start = self.class_seq_rule_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(class_seq_rule_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ClassSequenceRuleSet::MIN_SIZE
+));
+
+impl Default for ClassSequenceRuleSet<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -2323,20 +2420,10 @@ impl<'a> SomeTable<'a> for ClassSequenceRuleSet<'a> {
                 "class_seq_rule_count",
                 self.class_seq_rule_count(),
             )),
-            1usize => Some({
-                let data = self.data;
-                Field::new(
-                    "class_seq_rule_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<ClassSequenceRule>(),
-                        self.class_seq_rule_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<ClassSequenceRule>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            1usize => Some(Field::new(
+                "class_seq_rule_offsets",
+                FieldType::from(self.class_seq_rules()),
+            )),
             _ => None,
         }
     }
@@ -2350,90 +2437,101 @@ impl<'a> std::fmt::Debug for ClassSequenceRuleSet<'a> {
     }
 }
 
-/// Part of [SequenceContextFormat2]
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ClassSequenceRuleMarker {
-    input_sequence_byte_len: usize,
-    seq_lookup_records_byte_len: usize,
-}
-
-impl ClassSequenceRuleMarker {
-    pub fn glyph_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
-        let start = self.glyph_count_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn input_sequence_byte_range(&self) -> Range<usize> {
-        let start = self.seq_lookup_count_byte_range().end;
-        start..start + self.input_sequence_byte_len
-    }
-
-    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
-        let start = self.input_sequence_byte_range().end;
-        start..start + self.seq_lookup_records_byte_len
-    }
-}
-
-impl MinByteRange for ClassSequenceRuleMarker {
+impl<'a> MinByteRange<'a> for ClassSequenceRule<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.seq_lookup_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ClassSequenceRule<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let glyph_count: u16 = cursor.read()?;
-        let seq_lookup_count: u16 = cursor.read()?;
-        let input_sequence_byte_len = (transforms::subtract(glyph_count, 1_usize))
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(input_sequence_byte_len);
-        let seq_lookup_records_byte_len = (seq_lookup_count as usize)
-            .checked_mul(SequenceLookupRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(seq_lookup_records_byte_len);
-        cursor.finish(ClassSequenceRuleMarker {
-            input_sequence_byte_len,
-            seq_lookup_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Part of [SequenceContextFormat2]
-pub type ClassSequenceRule<'a> = TableRef<'a, ClassSequenceRuleMarker>;
+#[derive(Clone)]
+pub struct ClassSequenceRule<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ClassSequenceRule<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Number of glyphs to be matched
     pub fn glyph_count(&self) -> u16 {
-        let range = self.shape.glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of SequenceLookupRecords
     pub fn seq_lookup_count(&self) -> u16 {
-        let range = self.shape.seq_lookup_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.seq_lookup_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Sequence of classes to be matched to the input glyph sequence,
     /// beginning with the second glyph position
     pub fn input_sequence(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.input_sequence_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.input_sequence_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Array of SequenceLookupRecords
     pub fn seq_lookup_records(&self) -> &'a [SequenceLookupRecord] {
-        let range = self.shape.seq_lookup_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.seq_lookup_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn glyph_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
+        let start = self.glyph_count_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn input_sequence_byte_range(&self) -> Range<usize> {
+        let glyph_count = self.glyph_count();
+        let start = self.seq_lookup_count_byte_range().end;
+        let end =
+            start + (transforms::subtract(glyph_count, 1_usize)).saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
+        let seq_lookup_count = self.seq_lookup_count();
+        let start = self.input_sequence_byte_range().end;
+        let end = start
+            + (transforms::to_usize(seq_lookup_count))
+                .saturating_mul(SequenceLookupRecord::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ClassSequenceRule::MIN_SIZE
+));
+
+impl Default for ClassSequenceRule<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -2468,100 +2566,64 @@ impl<'a> std::fmt::Debug for ClassSequenceRule<'a> {
     }
 }
 
-impl Format<u16> for SequenceContextFormat3Marker {
+impl Format<u16> for SequenceContextFormat3<'_> {
     const FORMAT: u16 = 3;
 }
 
-/// [Sequence Context Format 3](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#sequence-context-format-3-coverage-based-glyph-contexts)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct SequenceContextFormat3Marker {
-    coverage_offsets_byte_len: usize,
-    seq_lookup_records_byte_len: usize,
-}
-
-impl SequenceContextFormat3Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
-        let start = self.glyph_count_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn coverage_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.seq_lookup_count_byte_range().end;
-        start..start + self.coverage_offsets_byte_len
-    }
-
-    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
-        let start = self.coverage_offsets_byte_range().end;
-        start..start + self.seq_lookup_records_byte_len
-    }
-}
-
-impl MinByteRange for SequenceContextFormat3Marker {
+impl<'a> MinByteRange<'a> for SequenceContextFormat3<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.seq_lookup_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for SequenceContextFormat3<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let glyph_count: u16 = cursor.read()?;
-        let seq_lookup_count: u16 = cursor.read()?;
-        let coverage_offsets_byte_len = (glyph_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(coverage_offsets_byte_len);
-        let seq_lookup_records_byte_len = (seq_lookup_count as usize)
-            .checked_mul(SequenceLookupRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(seq_lookup_records_byte_len);
-        cursor.finish(SequenceContextFormat3Marker {
-            coverage_offsets_byte_len,
-            seq_lookup_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Sequence Context Format 3](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#sequence-context-format-3-coverage-based-glyph-contexts)
-pub type SequenceContextFormat3<'a> = TableRef<'a, SequenceContextFormat3Marker>;
+#[derive(Clone)]
+pub struct SequenceContextFormat3<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> SequenceContextFormat3<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier: format = 3
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of glyphs in the input sequence
     pub fn glyph_count(&self) -> u16 {
-        let range = self.shape.glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of SequenceLookupRecords
     pub fn seq_lookup_count(&self) -> u16 {
-        let range = self.shape.seq_lookup_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.seq_lookup_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to Coverage tables, from beginning of
     /// SequenceContextFormat3 subtable
     pub fn coverage_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.coverage_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.coverage_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`coverage_offsets`][Self::coverage_offsets].
@@ -2573,8 +2635,43 @@ impl<'a> SequenceContextFormat3<'a> {
 
     /// Array of SequenceLookupRecords
     pub fn seq_lookup_records(&self) -> &'a [SequenceLookupRecord] {
-        let range = self.shape.seq_lookup_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.seq_lookup_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
+        let start = self.glyph_count_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn coverage_offsets_byte_range(&self) -> Range<usize> {
+        let glyph_count = self.glyph_count();
+        let start = self.seq_lookup_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(glyph_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
+        let seq_lookup_count = self.seq_lookup_count();
+        let start = self.coverage_offsets_byte_range().end;
+        let end = start
+            + (transforms::to_usize(seq_lookup_count))
+                .saturating_mul(SequenceLookupRecord::RAW_BYTE_LEN);
+        start..end
     }
 }
 
@@ -2588,20 +2685,10 @@ impl<'a> SomeTable<'a> for SequenceContextFormat3<'a> {
             0usize => Some(Field::new("format", self.format())),
             1usize => Some(Field::new("glyph_count", self.glyph_count())),
             2usize => Some(Field::new("seq_lookup_count", self.seq_lookup_count())),
-            3usize => Some({
-                let data = self.data;
-                Field::new(
-                    "coverage_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<CoverageTable>(),
-                        self.coverage_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<CoverageTable>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            3usize => Some(Field::new(
+                "coverage_offsets",
+                FieldType::from(self.coverages()),
+            )),
             4usize => Some(Field::new(
                 "seq_lookup_records",
                 traversal::FieldType::array_of_records(
@@ -2630,6 +2717,12 @@ pub enum SequenceContext<'a> {
     Format3(SequenceContextFormat3<'a>),
 }
 
+impl Default for SequenceContext<'_> {
+    fn default() -> Self {
+        Self::Format1(Default::default())
+    }
+}
+
 impl<'a> SequenceContext<'a> {
     ///Return the `FontData` used to resolve offsets for this table.
     pub fn offset_data(&self) -> FontData<'a> {
@@ -2654,20 +2747,27 @@ impl<'a> FontRead<'a> for SequenceContext<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
         let format: u16 = data.read_at(0usize)?;
         match format {
-            SequenceContextFormat1Marker::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
-            SequenceContextFormat2Marker::FORMAT => Ok(Self::Format2(FontRead::read(data)?)),
-            SequenceContextFormat3Marker::FORMAT => Ok(Self::Format3(FontRead::read(data)?)),
+            SequenceContextFormat1::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
+            SequenceContextFormat2::FORMAT => Ok(Self::Format2(FontRead::read(data)?)),
+            SequenceContextFormat3::FORMAT => Ok(Self::Format3(FontRead::read(data)?)),
             other => Err(ReadError::InvalidFormat(other.into())),
         }
     }
 }
 
-impl MinByteRange for SequenceContext<'_> {
+impl<'a> MinByteRange<'a> for SequenceContext<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         match self {
             Self::Format1(item) => item.min_byte_range(),
             Self::Format2(item) => item.min_byte_range(),
             Self::Format3(item) => item.min_byte_range(),
+        }
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        match self {
+            Self::Format1(item) => item.min_table_bytes(),
+            Self::Format2(item) => item.min_table_bytes(),
+            Self::Format3(item) => item.min_table_bytes(),
         }
     }
 }
@@ -2700,77 +2800,52 @@ impl<'a> SomeTable<'a> for SequenceContext<'a> {
     }
 }
 
-impl Format<u16> for ChainedSequenceContextFormat1Marker {
+impl Format<u16> for ChainedSequenceContextFormat1<'_> {
     const FORMAT: u16 = 1;
 }
 
-/// [Chained Sequence Context Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#chained-sequence-context-format-1-simple-glyph-contexts)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ChainedSequenceContextFormat1Marker {
-    chained_seq_rule_set_offsets_byte_len: usize,
-}
-
-impl ChainedSequenceContextFormat1Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn coverage_offset_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn chained_seq_rule_set_count_byte_range(&self) -> Range<usize> {
-        let start = self.coverage_offset_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn chained_seq_rule_set_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.chained_seq_rule_set_count_byte_range().end;
-        start..start + self.chained_seq_rule_set_offsets_byte_len
-    }
-}
-
-impl MinByteRange for ChainedSequenceContextFormat1Marker {
+impl<'a> MinByteRange<'a> for ChainedSequenceContextFormat1<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.chained_seq_rule_set_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ChainedSequenceContextFormat1<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<Offset16>();
-        let chained_seq_rule_set_count: u16 = cursor.read()?;
-        let chained_seq_rule_set_offsets_byte_len = (chained_seq_rule_set_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(chained_seq_rule_set_offsets_byte_len);
-        cursor.finish(ChainedSequenceContextFormat1Marker {
-            chained_seq_rule_set_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Chained Sequence Context Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#chained-sequence-context-format-1-simple-glyph-contexts)
-pub type ChainedSequenceContextFormat1<'a> = TableRef<'a, ChainedSequenceContextFormat1Marker>;
+#[derive(Clone)]
+pub struct ChainedSequenceContextFormat1<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ChainedSequenceContextFormat1<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + Offset16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier: format = 1
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Offset to Coverage table, from beginning of
     /// ChainSequenceContextFormat1 table
     pub fn coverage_offset(&self) -> Offset16 {
-        let range = self.shape.coverage_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.coverage_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`coverage_offset`][Self::coverage_offset].
@@ -2781,15 +2856,15 @@ impl<'a> ChainedSequenceContextFormat1<'a> {
 
     /// Number of ChainedSequenceRuleSet tables
     pub fn chained_seq_rule_set_count(&self) -> u16 {
-        let range = self.shape.chained_seq_rule_set_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.chained_seq_rule_set_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to ChainedSeqRuleSet tables, from beginning of
     /// ChainedSequenceContextFormat1 table (may be NULL)
     pub fn chained_seq_rule_set_offsets(&self) -> &'a [BigEndian<Nullable<Offset16>>] {
-        let range = self.shape.chained_seq_rule_set_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.chained_seq_rule_set_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`chained_seq_rule_set_offsets`][Self::chained_seq_rule_set_offsets].
@@ -2799,6 +2874,45 @@ impl<'a> ChainedSequenceContextFormat1<'a> {
         let data = self.data;
         let offsets = self.chained_seq_rule_set_offsets();
         ArrayOfNullableOffsets::new(offsets, data, ())
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn coverage_offset_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn chained_seq_rule_set_count_byte_range(&self) -> Range<usize> {
+        let start = self.coverage_offset_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn chained_seq_rule_set_offsets_byte_range(&self) -> Range<usize> {
+        let chained_seq_rule_set_count = self.chained_seq_rule_set_count();
+        let start = self.chained_seq_rule_set_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(chained_seq_rule_set_count))
+                .saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ChainedSequenceContextFormat1::MIN_SIZE
+));
+
+impl Default for ChainedSequenceContextFormat1<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_format_1_u16_table_data(),
+        }
     }
 }
 
@@ -2818,20 +2932,10 @@ impl<'a> SomeTable<'a> for ChainedSequenceContextFormat1<'a> {
                 "chained_seq_rule_set_count",
                 self.chained_seq_rule_set_count(),
             )),
-            3usize => Some({
-                let data = self.data;
-                Field::new(
-                    "chained_seq_rule_set_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<ChainedSequenceRuleSet>(),
-                        self.chained_seq_rule_set_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<ChainedSequenceRuleSet>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            3usize => Some(Field::new(
+                "chained_seq_rule_set_offsets",
+                FieldType::from(self.chained_seq_rule_sets()),
+            )),
             _ => None,
         }
     }
@@ -2845,61 +2949,48 @@ impl<'a> std::fmt::Debug for ChainedSequenceContextFormat1<'a> {
     }
 }
 
-/// Part of [ChainedSequenceContextFormat1]
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ChainedSequenceRuleSetMarker {
-    chained_seq_rule_offsets_byte_len: usize,
-}
-
-impl ChainedSequenceRuleSetMarker {
-    pub fn chained_seq_rule_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn chained_seq_rule_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.chained_seq_rule_count_byte_range().end;
-        start..start + self.chained_seq_rule_offsets_byte_len
-    }
-}
-
-impl MinByteRange for ChainedSequenceRuleSetMarker {
+impl<'a> MinByteRange<'a> for ChainedSequenceRuleSet<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.chained_seq_rule_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ChainedSequenceRuleSet<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let chained_seq_rule_count: u16 = cursor.read()?;
-        let chained_seq_rule_offsets_byte_len = (chained_seq_rule_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(chained_seq_rule_offsets_byte_len);
-        cursor.finish(ChainedSequenceRuleSetMarker {
-            chained_seq_rule_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Part of [ChainedSequenceContextFormat1]
-pub type ChainedSequenceRuleSet<'a> = TableRef<'a, ChainedSequenceRuleSetMarker>;
+#[derive(Clone)]
+pub struct ChainedSequenceRuleSet<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ChainedSequenceRuleSet<'a> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     /// Number of ChainedSequenceRule tables
     pub fn chained_seq_rule_count(&self) -> u16 {
-        let range = self.shape.chained_seq_rule_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.chained_seq_rule_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to ChainedSequenceRule tables, from beginning
     /// of ChainedSequenceRuleSet table
     pub fn chained_seq_rule_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.chained_seq_rule_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.chained_seq_rule_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`chained_seq_rule_offsets`][Self::chained_seq_rule_offsets].
@@ -2907,6 +2998,32 @@ impl<'a> ChainedSequenceRuleSet<'a> {
         let data = self.data;
         let offsets = self.chained_seq_rule_offsets();
         ArrayOfOffsets::new(offsets, data, ())
+    }
+
+    pub fn chained_seq_rule_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn chained_seq_rule_offsets_byte_range(&self) -> Range<usize> {
+        let chained_seq_rule_count = self.chained_seq_rule_count();
+        let start = self.chained_seq_rule_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(chained_seq_rule_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ChainedSequenceRuleSet::MIN_SIZE
+));
+
+impl Default for ChainedSequenceRuleSet<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -2921,20 +3038,10 @@ impl<'a> SomeTable<'a> for ChainedSequenceRuleSet<'a> {
                 "chained_seq_rule_count",
                 self.chained_seq_rule_count(),
             )),
-            1usize => Some({
-                let data = self.data;
-                Field::new(
-                    "chained_seq_rule_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<ChainedSequenceRule>(),
-                        self.chained_seq_rule_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<ChainedSequenceRule>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            1usize => Some(Field::new(
+                "chained_seq_rule_offsets",
+                FieldType::from(self.chained_seq_rules()),
+            )),
             _ => None,
         }
     }
@@ -2948,147 +3055,154 @@ impl<'a> std::fmt::Debug for ChainedSequenceRuleSet<'a> {
     }
 }
 
-/// Part of [ChainedSequenceContextFormat1]
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ChainedSequenceRuleMarker {
-    backtrack_sequence_byte_len: usize,
-    input_sequence_byte_len: usize,
-    lookahead_sequence_byte_len: usize,
-    seq_lookup_records_byte_len: usize,
-}
-
-impl ChainedSequenceRuleMarker {
-    pub fn backtrack_glyph_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn backtrack_sequence_byte_range(&self) -> Range<usize> {
-        let start = self.backtrack_glyph_count_byte_range().end;
-        start..start + self.backtrack_sequence_byte_len
-    }
-
-    pub fn input_glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.backtrack_sequence_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn input_sequence_byte_range(&self) -> Range<usize> {
-        let start = self.input_glyph_count_byte_range().end;
-        start..start + self.input_sequence_byte_len
-    }
-
-    pub fn lookahead_glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.input_sequence_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn lookahead_sequence_byte_range(&self) -> Range<usize> {
-        let start = self.lookahead_glyph_count_byte_range().end;
-        start..start + self.lookahead_sequence_byte_len
-    }
-
-    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
-        let start = self.lookahead_sequence_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
-        let start = self.seq_lookup_count_byte_range().end;
-        start..start + self.seq_lookup_records_byte_len
-    }
-}
-
-impl MinByteRange for ChainedSequenceRuleMarker {
+impl<'a> MinByteRange<'a> for ChainedSequenceRule<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.seq_lookup_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ChainedSequenceRule<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let backtrack_glyph_count: u16 = cursor.read()?;
-        let backtrack_sequence_byte_len = (backtrack_glyph_count as usize)
-            .checked_mul(GlyphId16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(backtrack_sequence_byte_len);
-        let input_glyph_count: u16 = cursor.read()?;
-        let input_sequence_byte_len = (transforms::subtract(input_glyph_count, 1_usize))
-            .checked_mul(GlyphId16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(input_sequence_byte_len);
-        let lookahead_glyph_count: u16 = cursor.read()?;
-        let lookahead_sequence_byte_len = (lookahead_glyph_count as usize)
-            .checked_mul(GlyphId16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(lookahead_sequence_byte_len);
-        let seq_lookup_count: u16 = cursor.read()?;
-        let seq_lookup_records_byte_len = (seq_lookup_count as usize)
-            .checked_mul(SequenceLookupRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(seq_lookup_records_byte_len);
-        cursor.finish(ChainedSequenceRuleMarker {
-            backtrack_sequence_byte_len,
-            input_sequence_byte_len,
-            lookahead_sequence_byte_len,
-            seq_lookup_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Part of [ChainedSequenceContextFormat1]
-pub type ChainedSequenceRule<'a> = TableRef<'a, ChainedSequenceRuleMarker>;
+#[derive(Clone)]
+pub struct ChainedSequenceRule<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ChainedSequenceRule<'a> {
+    pub const MIN_SIZE: usize =
+        (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Number of glyphs in the backtrack sequence
     pub fn backtrack_glyph_count(&self) -> u16 {
-        let range = self.shape.backtrack_glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.backtrack_glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of backtrack glyph IDs
     pub fn backtrack_sequence(&self) -> &'a [BigEndian<GlyphId16>] {
-        let range = self.shape.backtrack_sequence_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.backtrack_sequence_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Number of glyphs in the input sequence
     pub fn input_glyph_count(&self) -> u16 {
-        let range = self.shape.input_glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.input_glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     /// Array of input glyph IDs—start with second glyph
     pub fn input_sequence(&self) -> &'a [BigEndian<GlyphId16>] {
-        let range = self.shape.input_sequence_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.input_sequence_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Number of glyphs in the lookahead sequence
     pub fn lookahead_glyph_count(&self) -> u16 {
-        let range = self.shape.lookahead_glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lookahead_glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     /// Array of lookahead glyph IDs
     pub fn lookahead_sequence(&self) -> &'a [BigEndian<GlyphId16>] {
-        let range = self.shape.lookahead_sequence_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.lookahead_sequence_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Number of SequenceLookupRecords
     pub fn seq_lookup_count(&self) -> u16 {
-        let range = self.shape.seq_lookup_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.seq_lookup_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     /// Array of SequenceLookupRecords
     pub fn seq_lookup_records(&self) -> &'a [SequenceLookupRecord] {
-        let range = self.shape.seq_lookup_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.seq_lookup_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn backtrack_glyph_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn backtrack_sequence_byte_range(&self) -> Range<usize> {
+        let backtrack_glyph_count = self.backtrack_glyph_count();
+        let start = self.backtrack_glyph_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(backtrack_glyph_count)).saturating_mul(GlyphId16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn input_glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.backtrack_sequence_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn input_sequence_byte_range(&self) -> Range<usize> {
+        let input_glyph_count = self.input_glyph_count();
+        let start = self.input_glyph_count_byte_range().end;
+        let end = start
+            + (transforms::subtract(input_glyph_count, 1_usize))
+                .saturating_mul(GlyphId16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn lookahead_glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.input_sequence_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lookahead_sequence_byte_range(&self) -> Range<usize> {
+        let lookahead_glyph_count = self.lookahead_glyph_count();
+        let start = self.lookahead_glyph_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(lookahead_glyph_count)).saturating_mul(GlyphId16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
+        let start = self.lookahead_sequence_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
+        let seq_lookup_count = self.seq_lookup_count();
+        let start = self.seq_lookup_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(seq_lookup_count))
+                .saturating_mul(SequenceLookupRecord::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ChainedSequenceRule::MIN_SIZE
+));
+
+impl Default for ChainedSequenceRule<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -3133,96 +3247,57 @@ impl<'a> std::fmt::Debug for ChainedSequenceRule<'a> {
     }
 }
 
-impl Format<u16> for ChainedSequenceContextFormat2Marker {
+impl Format<u16> for ChainedSequenceContextFormat2<'_> {
     const FORMAT: u16 = 2;
 }
 
-/// [Chained Sequence Context Format 2](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#chained-sequence-context-format-2-class-based-glyph-contexts)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ChainedSequenceContextFormat2Marker {
-    chained_class_seq_rule_set_offsets_byte_len: usize,
-}
-
-impl ChainedSequenceContextFormat2Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn coverage_offset_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn backtrack_class_def_offset_byte_range(&self) -> Range<usize> {
-        let start = self.coverage_offset_byte_range().end;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn input_class_def_offset_byte_range(&self) -> Range<usize> {
-        let start = self.backtrack_class_def_offset_byte_range().end;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn lookahead_class_def_offset_byte_range(&self) -> Range<usize> {
-        let start = self.input_class_def_offset_byte_range().end;
-        start..start + Offset16::RAW_BYTE_LEN
-    }
-
-    pub fn chained_class_seq_rule_set_count_byte_range(&self) -> Range<usize> {
-        let start = self.lookahead_class_def_offset_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn chained_class_seq_rule_set_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.chained_class_seq_rule_set_count_byte_range().end;
-        start..start + self.chained_class_seq_rule_set_offsets_byte_len
-    }
-}
-
-impl MinByteRange for ChainedSequenceContextFormat2Marker {
+impl<'a> MinByteRange<'a> for ChainedSequenceContextFormat2<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.chained_class_seq_rule_set_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ChainedSequenceContextFormat2<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<Offset16>();
-        cursor.advance::<Offset16>();
-        cursor.advance::<Offset16>();
-        cursor.advance::<Offset16>();
-        let chained_class_seq_rule_set_count: u16 = cursor.read()?;
-        let chained_class_seq_rule_set_offsets_byte_len = (chained_class_seq_rule_set_count
-            as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(chained_class_seq_rule_set_offsets_byte_len);
-        cursor.finish(ChainedSequenceContextFormat2Marker {
-            chained_class_seq_rule_set_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Chained Sequence Context Format 2](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#chained-sequence-context-format-2-class-based-glyph-contexts)
-pub type ChainedSequenceContextFormat2<'a> = TableRef<'a, ChainedSequenceContextFormat2Marker>;
+#[derive(Clone)]
+pub struct ChainedSequenceContextFormat2<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ChainedSequenceContextFormat2<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN
+        + Offset16::RAW_BYTE_LEN
+        + Offset16::RAW_BYTE_LEN
+        + Offset16::RAW_BYTE_LEN
+        + Offset16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier: format = 2
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Offset to Coverage table, from beginning of
     /// ChainedSequenceContextFormat2 table
     pub fn coverage_offset(&self) -> Offset16 {
-        let range = self.shape.coverage_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.coverage_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`coverage_offset`][Self::coverage_offset].
@@ -3234,8 +3309,8 @@ impl<'a> ChainedSequenceContextFormat2<'a> {
     /// Offset to ClassDef table containing backtrack sequence context,
     /// from beginning of ChainedSequenceContextFormat2 table
     pub fn backtrack_class_def_offset(&self) -> Offset16 {
-        let range = self.shape.backtrack_class_def_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.backtrack_class_def_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`backtrack_class_def_offset`][Self::backtrack_class_def_offset].
@@ -3247,8 +3322,8 @@ impl<'a> ChainedSequenceContextFormat2<'a> {
     /// Offset to ClassDef table containing input sequence context,
     /// from beginning of ChainedSequenceContextFormat2 table
     pub fn input_class_def_offset(&self) -> Offset16 {
-        let range = self.shape.input_class_def_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.input_class_def_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`input_class_def_offset`][Self::input_class_def_offset].
@@ -3260,8 +3335,8 @@ impl<'a> ChainedSequenceContextFormat2<'a> {
     /// Offset to ClassDef table containing lookahead sequence context,
     /// from beginning of ChainedSequenceContextFormat2 table
     pub fn lookahead_class_def_offset(&self) -> Offset16 {
-        let range = self.shape.lookahead_class_def_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lookahead_class_def_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`lookahead_class_def_offset`][Self::lookahead_class_def_offset].
@@ -3272,15 +3347,15 @@ impl<'a> ChainedSequenceContextFormat2<'a> {
 
     /// Number of ChainedClassSequenceRuleSet tables
     pub fn chained_class_seq_rule_set_count(&self) -> u16 {
-        let range = self.shape.chained_class_seq_rule_set_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.chained_class_seq_rule_set_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to ChainedClassSequenceRuleSet tables, from
     /// beginning of ChainedSequenceContextFormat2 table (may be NULL)
     pub fn chained_class_seq_rule_set_offsets(&self) -> &'a [BigEndian<Nullable<Offset16>>] {
-        let range = self.shape.chained_class_seq_rule_set_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.chained_class_seq_rule_set_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`chained_class_seq_rule_set_offsets`][Self::chained_class_seq_rule_set_offsets].
@@ -3290,6 +3365,51 @@ impl<'a> ChainedSequenceContextFormat2<'a> {
         let data = self.data;
         let offsets = self.chained_class_seq_rule_set_offsets();
         ArrayOfNullableOffsets::new(offsets, data, ())
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn coverage_offset_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn backtrack_class_def_offset_byte_range(&self) -> Range<usize> {
+        let start = self.coverage_offset_byte_range().end;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn input_class_def_offset_byte_range(&self) -> Range<usize> {
+        let start = self.backtrack_class_def_offset_byte_range().end;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lookahead_class_def_offset_byte_range(&self) -> Range<usize> {
+        let start = self.input_class_def_offset_byte_range().end;
+        let end = start + Offset16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn chained_class_seq_rule_set_count_byte_range(&self) -> Range<usize> {
+        let start = self.lookahead_class_def_offset_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn chained_class_seq_rule_set_offsets_byte_range(&self) -> Range<usize> {
+        let chained_class_seq_rule_set_count = self.chained_class_seq_rule_set_count();
+        let start = self.chained_class_seq_rule_set_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(chained_class_seq_rule_set_count))
+                .saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
     }
 }
 
@@ -3327,20 +3447,10 @@ impl<'a> SomeTable<'a> for ChainedSequenceContextFormat2<'a> {
                 "chained_class_seq_rule_set_count",
                 self.chained_class_seq_rule_set_count(),
             )),
-            6usize => Some({
-                let data = self.data;
-                Field::new(
-                    "chained_class_seq_rule_set_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<ChainedClassSequenceRuleSet>(),
-                        self.chained_class_seq_rule_set_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<ChainedClassSequenceRuleSet>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            6usize => Some(Field::new(
+                "chained_class_seq_rule_set_offsets",
+                FieldType::from(self.chained_class_seq_rule_sets()),
+            )),
             _ => None,
         }
     }
@@ -3354,61 +3464,48 @@ impl<'a> std::fmt::Debug for ChainedSequenceContextFormat2<'a> {
     }
 }
 
-/// Part of [ChainedSequenceContextFormat2]
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ChainedClassSequenceRuleSetMarker {
-    chained_class_seq_rule_offsets_byte_len: usize,
-}
-
-impl ChainedClassSequenceRuleSetMarker {
-    pub fn chained_class_seq_rule_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn chained_class_seq_rule_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.chained_class_seq_rule_count_byte_range().end;
-        start..start + self.chained_class_seq_rule_offsets_byte_len
-    }
-}
-
-impl MinByteRange for ChainedClassSequenceRuleSetMarker {
+impl<'a> MinByteRange<'a> for ChainedClassSequenceRuleSet<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.chained_class_seq_rule_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ChainedClassSequenceRuleSet<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let chained_class_seq_rule_count: u16 = cursor.read()?;
-        let chained_class_seq_rule_offsets_byte_len = (chained_class_seq_rule_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(chained_class_seq_rule_offsets_byte_len);
-        cursor.finish(ChainedClassSequenceRuleSetMarker {
-            chained_class_seq_rule_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Part of [ChainedSequenceContextFormat2]
-pub type ChainedClassSequenceRuleSet<'a> = TableRef<'a, ChainedClassSequenceRuleSetMarker>;
+#[derive(Clone)]
+pub struct ChainedClassSequenceRuleSet<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ChainedClassSequenceRuleSet<'a> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     /// Number of ChainedClassSequenceRule tables
     pub fn chained_class_seq_rule_count(&self) -> u16 {
-        let range = self.shape.chained_class_seq_rule_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.chained_class_seq_rule_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to ChainedClassSequenceRule tables, from
     /// beginning of ChainedClassSequenceRuleSet
     pub fn chained_class_seq_rule_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.chained_class_seq_rule_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.chained_class_seq_rule_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`chained_class_seq_rule_offsets`][Self::chained_class_seq_rule_offsets].
@@ -3418,6 +3515,33 @@ impl<'a> ChainedClassSequenceRuleSet<'a> {
         let data = self.data;
         let offsets = self.chained_class_seq_rule_offsets();
         ArrayOfOffsets::new(offsets, data, ())
+    }
+
+    pub fn chained_class_seq_rule_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn chained_class_seq_rule_offsets_byte_range(&self) -> Range<usize> {
+        let chained_class_seq_rule_count = self.chained_class_seq_rule_count();
+        let start = self.chained_class_seq_rule_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(chained_class_seq_rule_count))
+                .saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ChainedClassSequenceRuleSet::MIN_SIZE
+));
+
+impl Default for ChainedClassSequenceRuleSet<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -3432,20 +3556,10 @@ impl<'a> SomeTable<'a> for ChainedClassSequenceRuleSet<'a> {
                 "chained_class_seq_rule_count",
                 self.chained_class_seq_rule_count(),
             )),
-            1usize => Some({
-                let data = self.data;
-                Field::new(
-                    "chained_class_seq_rule_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<ChainedClassSequenceRule>(),
-                        self.chained_class_seq_rule_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<ChainedClassSequenceRule>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            1usize => Some(Field::new(
+                "chained_class_seq_rule_offsets",
+                FieldType::from(self.chained_class_seq_rules()),
+            )),
             _ => None,
         }
     }
@@ -3459,148 +3573,154 @@ impl<'a> std::fmt::Debug for ChainedClassSequenceRuleSet<'a> {
     }
 }
 
-/// Part of [ChainedSequenceContextFormat2]
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ChainedClassSequenceRuleMarker {
-    backtrack_sequence_byte_len: usize,
-    input_sequence_byte_len: usize,
-    lookahead_sequence_byte_len: usize,
-    seq_lookup_records_byte_len: usize,
-}
-
-impl ChainedClassSequenceRuleMarker {
-    pub fn backtrack_glyph_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn backtrack_sequence_byte_range(&self) -> Range<usize> {
-        let start = self.backtrack_glyph_count_byte_range().end;
-        start..start + self.backtrack_sequence_byte_len
-    }
-
-    pub fn input_glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.backtrack_sequence_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn input_sequence_byte_range(&self) -> Range<usize> {
-        let start = self.input_glyph_count_byte_range().end;
-        start..start + self.input_sequence_byte_len
-    }
-
-    pub fn lookahead_glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.input_sequence_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn lookahead_sequence_byte_range(&self) -> Range<usize> {
-        let start = self.lookahead_glyph_count_byte_range().end;
-        start..start + self.lookahead_sequence_byte_len
-    }
-
-    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
-        let start = self.lookahead_sequence_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
-        let start = self.seq_lookup_count_byte_range().end;
-        start..start + self.seq_lookup_records_byte_len
-    }
-}
-
-impl MinByteRange for ChainedClassSequenceRuleMarker {
+impl<'a> MinByteRange<'a> for ChainedClassSequenceRule<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.seq_lookup_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ChainedClassSequenceRule<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let backtrack_glyph_count: u16 = cursor.read()?;
-        let backtrack_sequence_byte_len = (backtrack_glyph_count as usize)
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(backtrack_sequence_byte_len);
-        let input_glyph_count: u16 = cursor.read()?;
-        let input_sequence_byte_len = (transforms::subtract(input_glyph_count, 1_usize))
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(input_sequence_byte_len);
-        let lookahead_glyph_count: u16 = cursor.read()?;
-        let lookahead_sequence_byte_len = (lookahead_glyph_count as usize)
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(lookahead_sequence_byte_len);
-        let seq_lookup_count: u16 = cursor.read()?;
-        let seq_lookup_records_byte_len = (seq_lookup_count as usize)
-            .checked_mul(SequenceLookupRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(seq_lookup_records_byte_len);
-        cursor.finish(ChainedClassSequenceRuleMarker {
-            backtrack_sequence_byte_len,
-            input_sequence_byte_len,
-            lookahead_sequence_byte_len,
-            seq_lookup_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Part of [ChainedSequenceContextFormat2]
-pub type ChainedClassSequenceRule<'a> = TableRef<'a, ChainedClassSequenceRuleMarker>;
+#[derive(Clone)]
+pub struct ChainedClassSequenceRule<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ChainedClassSequenceRule<'a> {
+    pub const MIN_SIZE: usize =
+        (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Number of glyphs in the backtrack sequence
     pub fn backtrack_glyph_count(&self) -> u16 {
-        let range = self.shape.backtrack_glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.backtrack_glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of backtrack-sequence classes
     pub fn backtrack_sequence(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.backtrack_sequence_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.backtrack_sequence_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Total number of glyphs in the input sequence
     pub fn input_glyph_count(&self) -> u16 {
-        let range = self.shape.input_glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.input_glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     /// Array of input sequence classes, beginning with the second
     /// glyph position
     pub fn input_sequence(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.input_sequence_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.input_sequence_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Number of glyphs in the lookahead sequence
     pub fn lookahead_glyph_count(&self) -> u16 {
-        let range = self.shape.lookahead_glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lookahead_glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     /// Array of lookahead-sequence classes
     pub fn lookahead_sequence(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.lookahead_sequence_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.lookahead_sequence_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// Number of SequenceLookupRecords
     pub fn seq_lookup_count(&self) -> u16 {
-        let range = self.shape.seq_lookup_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.seq_lookup_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     /// Array of SequenceLookupRecords
     pub fn seq_lookup_records(&self) -> &'a [SequenceLookupRecord] {
-        let range = self.shape.seq_lookup_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.seq_lookup_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn backtrack_glyph_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn backtrack_sequence_byte_range(&self) -> Range<usize> {
+        let backtrack_glyph_count = self.backtrack_glyph_count();
+        let start = self.backtrack_glyph_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(backtrack_glyph_count)).saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn input_glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.backtrack_sequence_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn input_sequence_byte_range(&self) -> Range<usize> {
+        let input_glyph_count = self.input_glyph_count();
+        let start = self.input_glyph_count_byte_range().end;
+        let end = start
+            + (transforms::subtract(input_glyph_count, 1_usize)).saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn lookahead_glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.input_sequence_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lookahead_sequence_byte_range(&self) -> Range<usize> {
+        let lookahead_glyph_count = self.lookahead_glyph_count();
+        let start = self.lookahead_glyph_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(lookahead_glyph_count)).saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
+        let start = self.lookahead_sequence_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
+        let seq_lookup_count = self.seq_lookup_count();
+        let start = self.seq_lookup_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(seq_lookup_count))
+                .saturating_mul(SequenceLookupRecord::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ChainedClassSequenceRule::MIN_SIZE
+));
+
+impl Default for ChainedClassSequenceRule<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -3645,127 +3765,61 @@ impl<'a> std::fmt::Debug for ChainedClassSequenceRule<'a> {
     }
 }
 
-impl Format<u16> for ChainedSequenceContextFormat3Marker {
+impl Format<u16> for ChainedSequenceContextFormat3<'_> {
     const FORMAT: u16 = 3;
 }
 
-/// [Chained Sequence Context Format 3](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#chained-sequence-context-format-3-coverage-based-glyph-contexts)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ChainedSequenceContextFormat3Marker {
-    backtrack_coverage_offsets_byte_len: usize,
-    input_coverage_offsets_byte_len: usize,
-    lookahead_coverage_offsets_byte_len: usize,
-    seq_lookup_records_byte_len: usize,
-}
-
-impl ChainedSequenceContextFormat3Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn backtrack_glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn backtrack_coverage_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.backtrack_glyph_count_byte_range().end;
-        start..start + self.backtrack_coverage_offsets_byte_len
-    }
-
-    pub fn input_glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.backtrack_coverage_offsets_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn input_coverage_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.input_glyph_count_byte_range().end;
-        start..start + self.input_coverage_offsets_byte_len
-    }
-
-    pub fn lookahead_glyph_count_byte_range(&self) -> Range<usize> {
-        let start = self.input_coverage_offsets_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn lookahead_coverage_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.lookahead_glyph_count_byte_range().end;
-        start..start + self.lookahead_coverage_offsets_byte_len
-    }
-
-    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
-        let start = self.lookahead_coverage_offsets_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
-        let start = self.seq_lookup_count_byte_range().end;
-        start..start + self.seq_lookup_records_byte_len
-    }
-}
-
-impl MinByteRange for ChainedSequenceContextFormat3Marker {
+impl<'a> MinByteRange<'a> for ChainedSequenceContextFormat3<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.seq_lookup_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ChainedSequenceContextFormat3<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let backtrack_glyph_count: u16 = cursor.read()?;
-        let backtrack_coverage_offsets_byte_len = (backtrack_glyph_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(backtrack_coverage_offsets_byte_len);
-        let input_glyph_count: u16 = cursor.read()?;
-        let input_coverage_offsets_byte_len = (input_glyph_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(input_coverage_offsets_byte_len);
-        let lookahead_glyph_count: u16 = cursor.read()?;
-        let lookahead_coverage_offsets_byte_len = (lookahead_glyph_count as usize)
-            .checked_mul(Offset16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(lookahead_coverage_offsets_byte_len);
-        let seq_lookup_count: u16 = cursor.read()?;
-        let seq_lookup_records_byte_len = (seq_lookup_count as usize)
-            .checked_mul(SequenceLookupRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(seq_lookup_records_byte_len);
-        cursor.finish(ChainedSequenceContextFormat3Marker {
-            backtrack_coverage_offsets_byte_len,
-            input_coverage_offsets_byte_len,
-            lookahead_coverage_offsets_byte_len,
-            seq_lookup_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Chained Sequence Context Format 3](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#chained-sequence-context-format-3-coverage-based-glyph-contexts)
-pub type ChainedSequenceContextFormat3<'a> = TableRef<'a, ChainedSequenceContextFormat3Marker>;
+#[derive(Clone)]
+pub struct ChainedSequenceContextFormat3<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ChainedSequenceContextFormat3<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format identifier: format = 3
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of glyphs in the backtrack sequence
     pub fn backtrack_glyph_count(&self) -> u16 {
-        let range = self.shape.backtrack_glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.backtrack_glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to coverage tables for the backtrack sequence
     pub fn backtrack_coverage_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.backtrack_coverage_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.backtrack_coverage_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`backtrack_coverage_offsets`][Self::backtrack_coverage_offsets].
@@ -3777,14 +3831,14 @@ impl<'a> ChainedSequenceContextFormat3<'a> {
 
     /// Number of glyphs in the input sequence
     pub fn input_glyph_count(&self) -> u16 {
-        let range = self.shape.input_glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.input_glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     /// Array of offsets to coverage tables for the input sequence
     pub fn input_coverage_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.input_coverage_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.input_coverage_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`input_coverage_offsets`][Self::input_coverage_offsets].
@@ -3796,14 +3850,14 @@ impl<'a> ChainedSequenceContextFormat3<'a> {
 
     /// Number of glyphs in the lookahead sequence
     pub fn lookahead_glyph_count(&self) -> u16 {
-        let range = self.shape.lookahead_glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lookahead_glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     /// Array of offsets to coverage tables for the lookahead sequence
     pub fn lookahead_coverage_offsets(&self) -> &'a [BigEndian<Offset16>] {
-        let range = self.shape.lookahead_coverage_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.lookahead_coverage_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`lookahead_coverage_offsets`][Self::lookahead_coverage_offsets].
@@ -3815,14 +3869,77 @@ impl<'a> ChainedSequenceContextFormat3<'a> {
 
     /// Number of SequenceLookupRecords
     pub fn seq_lookup_count(&self) -> u16 {
-        let range = self.shape.seq_lookup_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.seq_lookup_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap_or_default()
     }
 
     /// Array of SequenceLookupRecords
     pub fn seq_lookup_records(&self) -> &'a [SequenceLookupRecord] {
-        let range = self.shape.seq_lookup_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.seq_lookup_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn backtrack_glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn backtrack_coverage_offsets_byte_range(&self) -> Range<usize> {
+        let backtrack_glyph_count = self.backtrack_glyph_count();
+        let start = self.backtrack_glyph_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(backtrack_glyph_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn input_glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.backtrack_coverage_offsets_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn input_coverage_offsets_byte_range(&self) -> Range<usize> {
+        let input_glyph_count = self.input_glyph_count();
+        let start = self.input_glyph_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(input_glyph_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn lookahead_glyph_count_byte_range(&self) -> Range<usize> {
+        let start = self.input_coverage_offsets_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lookahead_coverage_offsets_byte_range(&self) -> Range<usize> {
+        let lookahead_glyph_count = self.lookahead_glyph_count();
+        let start = self.lookahead_glyph_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(lookahead_glyph_count)).saturating_mul(Offset16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn seq_lookup_count_byte_range(&self) -> Range<usize> {
+        let start = self.lookahead_coverage_offsets_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn seq_lookup_records_byte_range(&self) -> Range<usize> {
+        let seq_lookup_count = self.seq_lookup_count();
+        let start = self.seq_lookup_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(seq_lookup_count))
+                .saturating_mul(SequenceLookupRecord::RAW_BYTE_LEN);
+        start..end
     }
 }
 
@@ -3838,53 +3955,23 @@ impl<'a> SomeTable<'a> for ChainedSequenceContextFormat3<'a> {
                 "backtrack_glyph_count",
                 self.backtrack_glyph_count(),
             )),
-            2usize => Some({
-                let data = self.data;
-                Field::new(
-                    "backtrack_coverage_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<CoverageTable>(),
-                        self.backtrack_coverage_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<CoverageTable>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            2usize => Some(Field::new(
+                "backtrack_coverage_offsets",
+                FieldType::from(self.backtrack_coverages()),
+            )),
             3usize => Some(Field::new("input_glyph_count", self.input_glyph_count())),
-            4usize => Some({
-                let data = self.data;
-                Field::new(
-                    "input_coverage_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<CoverageTable>(),
-                        self.input_coverage_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<CoverageTable>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            4usize => Some(Field::new(
+                "input_coverage_offsets",
+                FieldType::from(self.input_coverages()),
+            )),
             5usize => Some(Field::new(
                 "lookahead_glyph_count",
                 self.lookahead_glyph_count(),
             )),
-            6usize => Some({
-                let data = self.data;
-                Field::new(
-                    "lookahead_coverage_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<CoverageTable>(),
-                        self.lookahead_coverage_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<CoverageTable>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            6usize => Some(Field::new(
+                "lookahead_coverage_offsets",
+                FieldType::from(self.lookahead_coverages()),
+            )),
             7usize => Some(Field::new("seq_lookup_count", self.seq_lookup_count())),
             8usize => Some(Field::new(
                 "seq_lookup_records",
@@ -3914,6 +4001,12 @@ pub enum ChainedSequenceContext<'a> {
     Format3(ChainedSequenceContextFormat3<'a>),
 }
 
+impl Default for ChainedSequenceContext<'_> {
+    fn default() -> Self {
+        Self::Format1(Default::default())
+    }
+}
+
 impl<'a> ChainedSequenceContext<'a> {
     ///Return the `FontData` used to resolve offsets for this table.
     pub fn offset_data(&self) -> FontData<'a> {
@@ -3938,20 +4031,27 @@ impl<'a> FontRead<'a> for ChainedSequenceContext<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
         let format: u16 = data.read_at(0usize)?;
         match format {
-            ChainedSequenceContextFormat1Marker::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
-            ChainedSequenceContextFormat2Marker::FORMAT => Ok(Self::Format2(FontRead::read(data)?)),
-            ChainedSequenceContextFormat3Marker::FORMAT => Ok(Self::Format3(FontRead::read(data)?)),
+            ChainedSequenceContextFormat1::FORMAT => Ok(Self::Format1(FontRead::read(data)?)),
+            ChainedSequenceContextFormat2::FORMAT => Ok(Self::Format2(FontRead::read(data)?)),
+            ChainedSequenceContextFormat3::FORMAT => Ok(Self::Format3(FontRead::read(data)?)),
             other => Err(ReadError::InvalidFormat(other.into())),
         }
     }
 }
 
-impl MinByteRange for ChainedSequenceContext<'_> {
+impl<'a> MinByteRange<'a> for ChainedSequenceContext<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         match self {
             Self::Format1(item) => item.min_byte_range(),
             Self::Format2(item) => item.min_byte_range(),
             Self::Format3(item) => item.min_byte_range(),
+        }
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        match self {
+            Self::Format1(item) => item.min_table_bytes(),
+            Self::Format2(item) => item.min_table_bytes(),
+            Self::Format3(item) => item.min_table_bytes(),
         }
     }
 }
@@ -4038,84 +4138,98 @@ impl<'a> From<DeltaFormat> for FieldType<'a> {
     }
 }
 
-/// [Device Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#device-and-variationindex-tables)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct DeviceMarker {
-    delta_value_byte_len: usize,
-}
-
-impl DeviceMarker {
-    pub fn start_size_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn end_size_byte_range(&self) -> Range<usize> {
-        let start = self.start_size_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn delta_format_byte_range(&self) -> Range<usize> {
-        let start = self.end_size_byte_range().end;
-        start..start + DeltaFormat::RAW_BYTE_LEN
-    }
-
-    pub fn delta_value_byte_range(&self) -> Range<usize> {
-        let start = self.delta_format_byte_range().end;
-        start..start + self.delta_value_byte_len
-    }
-}
-
-impl MinByteRange for DeviceMarker {
+impl<'a> MinByteRange<'a> for Device<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.delta_value_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for Device<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let start_size: u16 = cursor.read()?;
-        let end_size: u16 = cursor.read()?;
-        let delta_format: DeltaFormat = cursor.read()?;
-        let delta_value_byte_len = (DeltaFormat::value_count(delta_format, start_size, end_size))
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(delta_value_byte_len);
-        cursor.finish(DeviceMarker {
-            delta_value_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Device Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#device-and-variationindex-tables)
-pub type Device<'a> = TableRef<'a, DeviceMarker>;
+#[derive(Clone)]
+pub struct Device<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Device<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + DeltaFormat::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Smallest size to correct, in ppem
     pub fn start_size(&self) -> u16 {
-        let range = self.shape.start_size_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.start_size_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Largest size to correct, in ppem
     pub fn end_size(&self) -> u16 {
-        let range = self.shape.end_size_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.end_size_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Format of deltaValue array data: 0x0001, 0x0002, or 0x0003
     pub fn delta_format(&self) -> DeltaFormat {
-        let range = self.shape.delta_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.delta_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of compressed data
     pub fn delta_value(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.delta_value_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.delta_value_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn start_size_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn end_size_byte_range(&self) -> Range<usize> {
+        let start = self.start_size_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn delta_format_byte_range(&self) -> Range<usize> {
+        let start = self.end_size_byte_range().end;
+        let end = start + DeltaFormat::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn delta_value_byte_range(&self) -> Range<usize> {
+        let delta_format = self.delta_format();
+        let start_size = self.start_size();
+        let end_size = self.end_size();
+        let start = self.delta_format_byte_range().end;
+        let end = start
+            + (DeltaFormat::value_count(delta_format, start_size, end_size))
+                .saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Device::MIN_SIZE));
+
+impl Default for Device<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -4143,67 +4257,83 @@ impl<'a> std::fmt::Debug for Device<'a> {
     }
 }
 
-/// Variation index table
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct VariationIndexMarker {}
-
-impl VariationIndexMarker {
-    pub fn delta_set_outer_index_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn delta_set_inner_index_byte_range(&self) -> Range<usize> {
-        let start = self.delta_set_outer_index_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn delta_format_byte_range(&self) -> Range<usize> {
-        let start = self.delta_set_inner_index_byte_range().end;
-        start..start + DeltaFormat::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for VariationIndexMarker {
+impl<'a> MinByteRange<'a> for VariationIndex<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.delta_format_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for VariationIndex<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<DeltaFormat>();
-        cursor.finish(VariationIndexMarker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Variation index table
-pub type VariationIndex<'a> = TableRef<'a, VariationIndexMarker>;
+#[derive(Clone)]
+pub struct VariationIndex<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> VariationIndex<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + DeltaFormat::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// A delta-set outer index — used to select an item variation
     /// data subtable within the item variation store.
     pub fn delta_set_outer_index(&self) -> u16 {
-        let range = self.shape.delta_set_outer_index_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.delta_set_outer_index_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// A delta-set inner index — used to select a delta-set row
     /// within an item variation data subtable.
     pub fn delta_set_inner_index(&self) -> u16 {
-        let range = self.shape.delta_set_inner_index_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.delta_set_inner_index_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Format, = 0x8000
     pub fn delta_format(&self) -> DeltaFormat {
-        let range = self.shape.delta_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.delta_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
+    }
+
+    pub fn delta_set_outer_index_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn delta_set_inner_index_byte_range(&self) -> Range<usize> {
+        let start = self.delta_set_outer_index_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn delta_format_byte_range(&self) -> Range<usize> {
+        let start = self.delta_set_inner_index_byte_range().end;
+        let end = start + DeltaFormat::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(VariationIndex::MIN_SIZE));
+
+impl Default for VariationIndex<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -4243,6 +4373,12 @@ pub enum DeviceOrVariationIndex<'a> {
     VariationIndex(VariationIndex<'a>),
 }
 
+impl Default for DeviceOrVariationIndex<'_> {
+    fn default() -> Self {
+        Self::Device(Default::default())
+    }
+}
+
 impl<'a> DeviceOrVariationIndex<'a> {
     ///Return the `FontData` used to resolve offsets for this table.
     pub fn offset_data(&self) -> FontData<'a> {
@@ -4270,11 +4406,17 @@ impl<'a> FontRead<'a> for DeviceOrVariationIndex<'a> {
     }
 }
 
-impl MinByteRange for DeviceOrVariationIndex<'_> {
+impl<'a> MinByteRange<'a> for DeviceOrVariationIndex<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         match self {
             Self::Device(item) => item.min_byte_range(),
             Self::VariationIndex(item) => item.min_byte_range(),
+        }
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        match self {
+            Self::Device(item) => item.min_table_bytes(),
+            Self::VariationIndex(item) => item.min_table_bytes(),
         }
     }
 }
@@ -4306,71 +4448,85 @@ impl<'a> SomeTable<'a> for DeviceOrVariationIndex<'a> {
     }
 }
 
-/// [FeatureVariations Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#featurevariations-table)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct FeatureVariationsMarker {
-    feature_variation_records_byte_len: usize,
-}
-
-impl FeatureVariationsMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + MajorMinor::RAW_BYTE_LEN
-    }
-
-    pub fn feature_variation_record_count_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + u32::RAW_BYTE_LEN
-    }
-
-    pub fn feature_variation_records_byte_range(&self) -> Range<usize> {
-        let start = self.feature_variation_record_count_byte_range().end;
-        start..start + self.feature_variation_records_byte_len
-    }
-}
-
-impl MinByteRange for FeatureVariationsMarker {
+impl<'a> MinByteRange<'a> for FeatureVariations<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.feature_variation_records_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for FeatureVariations<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<MajorMinor>();
-        let feature_variation_record_count: u32 = cursor.read()?;
-        let feature_variation_records_byte_len = (feature_variation_record_count as usize)
-            .checked_mul(FeatureVariationRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(feature_variation_records_byte_len);
-        cursor.finish(FeatureVariationsMarker {
-            feature_variation_records_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [FeatureVariations Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#featurevariations-table)
-pub type FeatureVariations<'a> = TableRef<'a, FeatureVariationsMarker>;
+#[derive(Clone)]
+pub struct FeatureVariations<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> FeatureVariations<'a> {
+    pub const MIN_SIZE: usize = (MajorMinor::RAW_BYTE_LEN + u32::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     pub fn version(&self) -> MajorMinor {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of feature variation records.
     pub fn feature_variation_record_count(&self) -> u32 {
-        let range = self.shape.feature_variation_record_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.feature_variation_record_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of feature variation records.
     pub fn feature_variation_records(&self) -> &'a [FeatureVariationRecord] {
-        let range = self.shape.feature_variation_records_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.feature_variation_records_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + MajorMinor::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn feature_variation_record_count_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + u32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn feature_variation_records_byte_range(&self) -> Range<usize> {
+        let feature_variation_record_count = self.feature_variation_record_count();
+        let start = self.feature_variation_record_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(feature_variation_record_count))
+                .saturating_mul(FeatureVariationRecord::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    FeatureVariations::MIN_SIZE
+));
+
+impl Default for FeatureVariations<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -4486,61 +4642,48 @@ impl<'a> SomeRecord<'a> for FeatureVariationRecord {
     }
 }
 
-/// [ConditionSet Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#conditionset-table)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ConditionSetMarker {
-    condition_offsets_byte_len: usize,
-}
-
-impl ConditionSetMarker {
-    pub fn condition_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn condition_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.condition_count_byte_range().end;
-        start..start + self.condition_offsets_byte_len
-    }
-}
-
-impl MinByteRange for ConditionSetMarker {
+impl<'a> MinByteRange<'a> for ConditionSet<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.condition_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ConditionSet<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let condition_count: u16 = cursor.read()?;
-        let condition_offsets_byte_len = (condition_count as usize)
-            .checked_mul(Offset32::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(condition_offsets_byte_len);
-        cursor.finish(ConditionSetMarker {
-            condition_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [ConditionSet Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#conditionset-table)
-pub type ConditionSet<'a> = TableRef<'a, ConditionSetMarker>;
+#[derive(Clone)]
+pub struct ConditionSet<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ConditionSet<'a> {
+    pub const MIN_SIZE: usize = u16::RAW_BYTE_LEN;
+    basic_table_impls!(impl_the_methods);
+
     /// Number of conditions for this condition set.
     pub fn condition_count(&self) -> u16 {
-        let range = self.shape.condition_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.condition_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of offsets to condition tables, from beginning of the
     /// ConditionSet table.
     pub fn condition_offsets(&self) -> &'a [BigEndian<Offset32>] {
-        let range = self.shape.condition_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.condition_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`condition_offsets`][Self::condition_offsets].
@@ -4548,6 +4691,30 @@ impl<'a> ConditionSet<'a> {
         let data = self.data;
         let offsets = self.condition_offsets();
         ArrayOfOffsets::new(offsets, data, ())
+    }
+
+    pub fn condition_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn condition_offsets_byte_range(&self) -> Range<usize> {
+        let condition_count = self.condition_count();
+        let start = self.condition_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(condition_count)).saturating_mul(Offset32::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(ConditionSet::MIN_SIZE));
+
+impl Default for ConditionSet<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -4559,20 +4726,10 @@ impl<'a> SomeTable<'a> for ConditionSet<'a> {
     fn get_field(&self, idx: usize) -> Option<Field<'a>> {
         match idx {
             0usize => Some(Field::new("condition_count", self.condition_count())),
-            1usize => Some({
-                let data = self.data;
-                Field::new(
-                    "condition_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<Condition>(),
-                        self.condition_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<Condition>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            1usize => Some(Field::new(
+                "condition_offsets",
+                FieldType::from(self.conditions()),
+            )),
             _ => None,
         }
     }
@@ -4597,6 +4754,12 @@ pub enum Condition<'a> {
     Format3And(ConditionFormat3<'a>),
     Format4Or(ConditionFormat4<'a>),
     Format5Negate(ConditionFormat5<'a>),
+}
+
+impl Default for Condition<'_> {
+    fn default() -> Self {
+        Self::Format1AxisRange(Default::default())
+    }
 }
 
 impl<'a> Condition<'a> {
@@ -4627,17 +4790,17 @@ impl<'a> FontRead<'a> for Condition<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
         let format: u16 = data.read_at(0usize)?;
         match format {
-            ConditionFormat1Marker::FORMAT => Ok(Self::Format1AxisRange(FontRead::read(data)?)),
-            ConditionFormat2Marker::FORMAT => Ok(Self::Format2VariableValue(FontRead::read(data)?)),
-            ConditionFormat3Marker::FORMAT => Ok(Self::Format3And(FontRead::read(data)?)),
-            ConditionFormat4Marker::FORMAT => Ok(Self::Format4Or(FontRead::read(data)?)),
-            ConditionFormat5Marker::FORMAT => Ok(Self::Format5Negate(FontRead::read(data)?)),
+            ConditionFormat1::FORMAT => Ok(Self::Format1AxisRange(FontRead::read(data)?)),
+            ConditionFormat2::FORMAT => Ok(Self::Format2VariableValue(FontRead::read(data)?)),
+            ConditionFormat3::FORMAT => Ok(Self::Format3And(FontRead::read(data)?)),
+            ConditionFormat4::FORMAT => Ok(Self::Format4Or(FontRead::read(data)?)),
+            ConditionFormat5::FORMAT => Ok(Self::Format5Negate(FontRead::read(data)?)),
             other => Err(ReadError::InvalidFormat(other.into())),
         }
     }
 }
 
-impl MinByteRange for Condition<'_> {
+impl<'a> MinByteRange<'a> for Condition<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         match self {
             Self::Format1AxisRange(item) => item.min_byte_range(),
@@ -4645,6 +4808,15 @@ impl MinByteRange for Condition<'_> {
             Self::Format3And(item) => item.min_byte_range(),
             Self::Format4Or(item) => item.min_byte_range(),
             Self::Format5Negate(item) => item.min_byte_range(),
+        }
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        match self {
+            Self::Format1AxisRange(item) => item.min_table_bytes(),
+            Self::Format2VariableValue(item) => item.min_table_bytes(),
+            Self::Format3And(item) => item.min_table_bytes(),
+            Self::Format4Or(item) => item.min_table_bytes(),
+            Self::Format5Negate(item) => item.min_table_bytes(),
         }
     }
 }
@@ -4679,84 +4851,103 @@ impl<'a> SomeTable<'a> for Condition<'a> {
     }
 }
 
-impl Format<u16> for ConditionFormat1Marker {
+impl Format<u16> for ConditionFormat1<'_> {
     const FORMAT: u16 = 1;
 }
 
-/// [Condition Table Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#condition-table-format-1-font-variation-axis-range): Font Variation Axis Range
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ConditionFormat1Marker {}
-
-impl ConditionFormat1Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn axis_index_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn filter_range_min_value_byte_range(&self) -> Range<usize> {
-        let start = self.axis_index_byte_range().end;
-        start..start + F2Dot14::RAW_BYTE_LEN
-    }
-
-    pub fn filter_range_max_value_byte_range(&self) -> Range<usize> {
-        let start = self.filter_range_min_value_byte_range().end;
-        start..start + F2Dot14::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for ConditionFormat1Marker {
+impl<'a> MinByteRange<'a> for ConditionFormat1<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.filter_range_max_value_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ConditionFormat1<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<F2Dot14>();
-        cursor.advance::<F2Dot14>();
-        cursor.finish(ConditionFormat1Marker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Condition Table Format 1](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#condition-table-format-1-font-variation-axis-range): Font Variation Axis Range
-pub type ConditionFormat1<'a> = TableRef<'a, ConditionFormat1Marker>;
+#[derive(Clone)]
+pub struct ConditionFormat1<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ConditionFormat1<'a> {
+    pub const MIN_SIZE: usize =
+        (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + F2Dot14::RAW_BYTE_LEN + F2Dot14::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format, = 1
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Index (zero-based) for the variation axis within the 'fvar'
     /// table.
     pub fn axis_index(&self) -> u16 {
-        let range = self.shape.axis_index_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.axis_index_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Minimum value of the font variation instances that satisfy this
     /// condition.
     pub fn filter_range_min_value(&self) -> F2Dot14 {
-        let range = self.shape.filter_range_min_value_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.filter_range_min_value_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Maximum value of the font variation instances that satisfy this
     /// condition.
     pub fn filter_range_max_value(&self) -> F2Dot14 {
-        let range = self.shape.filter_range_max_value_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.filter_range_max_value_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn axis_index_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn filter_range_min_value_byte_range(&self) -> Range<usize> {
+        let start = self.axis_index_byte_range().end;
+        let end = start + F2Dot14::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn filter_range_max_value_byte_range(&self) -> Range<usize> {
+        let start = self.filter_range_min_value_byte_range().end;
+        let end = start + F2Dot14::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    ConditionFormat1::MIN_SIZE
+));
+
+impl Default for ConditionFormat1<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_format_1_u16_table_data(),
+        }
     }
 }
 
@@ -4790,69 +4981,75 @@ impl<'a> std::fmt::Debug for ConditionFormat1<'a> {
     }
 }
 
-impl Format<u16> for ConditionFormat2Marker {
+impl Format<u16> for ConditionFormat2<'_> {
     const FORMAT: u16 = 2;
 }
 
-/// [Condition Table Format 2](https://github.com/fonttools/fonttools/blob/5e6b12d12fa08abafbeb7570f47707fbedf69a45/Lib/fontTools/ttLib/tables/otData.py#L3237-L3255): Variation index
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ConditionFormat2Marker {}
-
-impl ConditionFormat2Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn default_value_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + i16::RAW_BYTE_LEN
-    }
-
-    pub fn var_index_byte_range(&self) -> Range<usize> {
-        let start = self.default_value_byte_range().end;
-        start..start + u32::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for ConditionFormat2Marker {
+impl<'a> MinByteRange<'a> for ConditionFormat2<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.var_index_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ConditionFormat2<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<i16>();
-        cursor.advance::<u32>();
-        cursor.finish(ConditionFormat2Marker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Condition Table Format 2](https://github.com/fonttools/fonttools/blob/5e6b12d12fa08abafbeb7570f47707fbedf69a45/Lib/fontTools/ttLib/tables/otData.py#L3237-L3255): Variation index
-pub type ConditionFormat2<'a> = TableRef<'a, ConditionFormat2Marker>;
+#[derive(Clone)]
+pub struct ConditionFormat2<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ConditionFormat2<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + i16::RAW_BYTE_LEN + u32::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format, = 2
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Value at default instance.
     pub fn default_value(&self) -> i16 {
-        let range = self.shape.default_value_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.default_value_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Variation index to vary the value based on current designspace location.
     pub fn var_index(&self) -> u32 {
-        let range = self.shape.var_index_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.var_index_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn default_value_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + i16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn var_index_byte_range(&self) -> Range<usize> {
+        let start = self.default_value_byte_range().end;
+        let end = start + u32::RAW_BYTE_LEN;
+        start..end
     }
 }
 
@@ -4879,76 +5076,57 @@ impl<'a> std::fmt::Debug for ConditionFormat2<'a> {
     }
 }
 
-impl Format<u16> for ConditionFormat3Marker {
+impl Format<u16> for ConditionFormat3<'_> {
     const FORMAT: u16 = 3;
 }
 
-/// [Condition Table Format 3](https://github.com/fonttools/fonttools/blob/5e6b12d12fa08abafbeb7570f47707fbedf69a45/Lib/fontTools/ttLib/tables/otData.py#L3257-L3275): AND
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ConditionFormat3Marker {
-    condition_offsets_byte_len: usize,
-}
-
-impl ConditionFormat3Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn condition_count_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + u8::RAW_BYTE_LEN
-    }
-
-    pub fn condition_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.condition_count_byte_range().end;
-        start..start + self.condition_offsets_byte_len
-    }
-}
-
-impl MinByteRange for ConditionFormat3Marker {
+impl<'a> MinByteRange<'a> for ConditionFormat3<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.condition_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ConditionFormat3<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let condition_count: u8 = cursor.read()?;
-        let condition_offsets_byte_len = (condition_count as usize)
-            .checked_mul(Offset24::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(condition_offsets_byte_len);
-        cursor.finish(ConditionFormat3Marker {
-            condition_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Condition Table Format 3](https://github.com/fonttools/fonttools/blob/5e6b12d12fa08abafbeb7570f47707fbedf69a45/Lib/fontTools/ttLib/tables/otData.py#L3257-L3275): AND
-pub type ConditionFormat3<'a> = TableRef<'a, ConditionFormat3Marker>;
+#[derive(Clone)]
+pub struct ConditionFormat3<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ConditionFormat3<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u8::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format, = 3
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of conditions.
     pub fn condition_count(&self) -> u8 {
-        let range = self.shape.condition_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.condition_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of condition tables for this conjunction (AND) expression.
     pub fn condition_offsets(&self) -> &'a [BigEndian<Offset24>] {
-        let range = self.shape.condition_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.condition_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`condition_offsets`][Self::condition_offsets].
@@ -4956,6 +5134,26 @@ impl<'a> ConditionFormat3<'a> {
         let data = self.data;
         let offsets = self.condition_offsets();
         ArrayOfOffsets::new(offsets, data, ())
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn condition_count_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + u8::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn condition_offsets_byte_range(&self) -> Range<usize> {
+        let condition_count = self.condition_count();
+        let start = self.condition_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(condition_count)).saturating_mul(Offset24::RAW_BYTE_LEN);
+        start..end
     }
 }
 
@@ -4968,20 +5166,10 @@ impl<'a> SomeTable<'a> for ConditionFormat3<'a> {
         match idx {
             0usize => Some(Field::new("format", self.format())),
             1usize => Some(Field::new("condition_count", self.condition_count())),
-            2usize => Some({
-                let data = self.data;
-                Field::new(
-                    "condition_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<Condition>(),
-                        self.condition_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<Condition>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            2usize => Some(Field::new(
+                "condition_offsets",
+                FieldType::from(self.conditions()),
+            )),
             _ => None,
         }
     }
@@ -4995,76 +5183,57 @@ impl<'a> std::fmt::Debug for ConditionFormat3<'a> {
     }
 }
 
-impl Format<u16> for ConditionFormat4Marker {
+impl Format<u16> for ConditionFormat4<'_> {
     const FORMAT: u16 = 4;
 }
 
-/// [Condition Table Format 4](https://github.com/fonttools/fonttools/blob/5e6b12d12fa08abafbeb7570f47707fbedf69a45/Lib/fontTools/ttLib/tables/otData.py#L3276-L3295): OR
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ConditionFormat4Marker {
-    condition_offsets_byte_len: usize,
-}
-
-impl ConditionFormat4Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn condition_count_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + u8::RAW_BYTE_LEN
-    }
-
-    pub fn condition_offsets_byte_range(&self) -> Range<usize> {
-        let start = self.condition_count_byte_range().end;
-        start..start + self.condition_offsets_byte_len
-    }
-}
-
-impl MinByteRange for ConditionFormat4Marker {
+impl<'a> MinByteRange<'a> for ConditionFormat4<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.condition_offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ConditionFormat4<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        let condition_count: u8 = cursor.read()?;
-        let condition_offsets_byte_len = (condition_count as usize)
-            .checked_mul(Offset24::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(condition_offsets_byte_len);
-        cursor.finish(ConditionFormat4Marker {
-            condition_offsets_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Condition Table Format 4](https://github.com/fonttools/fonttools/blob/5e6b12d12fa08abafbeb7570f47707fbedf69a45/Lib/fontTools/ttLib/tables/otData.py#L3276-L3295): OR
-pub type ConditionFormat4<'a> = TableRef<'a, ConditionFormat4Marker>;
+#[derive(Clone)]
+pub struct ConditionFormat4<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ConditionFormat4<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u8::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format, = 4
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of conditions.
     pub fn condition_count(&self) -> u8 {
-        let range = self.shape.condition_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.condition_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of condition tables for this disjunction (OR) expression.
     pub fn condition_offsets(&self) -> &'a [BigEndian<Offset24>] {
-        let range = self.shape.condition_offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.condition_offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// A dynamically resolving wrapper for [`condition_offsets`][Self::condition_offsets].
@@ -5072,6 +5241,26 @@ impl<'a> ConditionFormat4<'a> {
         let data = self.data;
         let offsets = self.condition_offsets();
         ArrayOfOffsets::new(offsets, data, ())
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn condition_count_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + u8::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn condition_offsets_byte_range(&self) -> Range<usize> {
+        let condition_count = self.condition_count();
+        let start = self.condition_count_byte_range().end;
+        let end =
+            start + (transforms::to_usize(condition_count)).saturating_mul(Offset24::RAW_BYTE_LEN);
+        start..end
     }
 }
 
@@ -5084,20 +5273,10 @@ impl<'a> SomeTable<'a> for ConditionFormat4<'a> {
         match idx {
             0usize => Some(Field::new("format", self.format())),
             1usize => Some(Field::new("condition_count", self.condition_count())),
-            2usize => Some({
-                let data = self.data;
-                Field::new(
-                    "condition_offsets",
-                    FieldType::array_of_offsets(
-                        better_type_name::<Condition>(),
-                        self.condition_offsets(),
-                        move |off| {
-                            let target = off.get().resolve::<Condition>(data);
-                            FieldType::offset(off.get(), target)
-                        },
-                    ),
-                )
-            }),
+            2usize => Some(Field::new(
+                "condition_offsets",
+                FieldType::from(self.conditions()),
+            )),
             _ => None,
         }
     }
@@ -5111,63 +5290,69 @@ impl<'a> std::fmt::Debug for ConditionFormat4<'a> {
     }
 }
 
-impl Format<u16> for ConditionFormat5Marker {
+impl Format<u16> for ConditionFormat5<'_> {
     const FORMAT: u16 = 5;
 }
 
-/// [Condition Table Format 5](https://github.com/fonttools/fonttools/blob/5e6b12d12fa08abafbeb7570f47707fbedf69a45/Lib/fontTools/ttLib/tables/otData.py#L3296-L3308): NOT
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct ConditionFormat5Marker {}
-
-impl ConditionFormat5Marker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn condition_offset_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + Offset24::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for ConditionFormat5Marker {
+impl<'a> MinByteRange<'a> for ConditionFormat5<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.condition_offset_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for ConditionFormat5<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<Offset24>();
-        cursor.finish(ConditionFormat5Marker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [Condition Table Format 5](https://github.com/fonttools/fonttools/blob/5e6b12d12fa08abafbeb7570f47707fbedf69a45/Lib/fontTools/ttLib/tables/otData.py#L3296-L3308): NOT
-pub type ConditionFormat5<'a> = TableRef<'a, ConditionFormat5Marker>;
+#[derive(Clone)]
+pub struct ConditionFormat5<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> ConditionFormat5<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + Offset24::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format, = 5
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Condition to negate.
     pub fn condition_offset(&self) -> Offset24 {
-        let range = self.shape.condition_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.condition_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`condition_offset`][Self::condition_offset].
     pub fn condition(&self) -> Result<Condition<'a>, ReadError> {
         let data = self.data;
         self.condition_offset().resolve(data)
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn condition_offset_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + Offset24::RAW_BYTE_LEN;
+        start..end
     }
 }
 
@@ -5196,72 +5381,86 @@ impl<'a> std::fmt::Debug for ConditionFormat5<'a> {
     }
 }
 
-/// [FeatureTableSubstitution Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#featuretablesubstitution-table)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct FeatureTableSubstitutionMarker {
-    substitutions_byte_len: usize,
-}
-
-impl FeatureTableSubstitutionMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + MajorMinor::RAW_BYTE_LEN
-    }
-
-    pub fn substitution_count_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn substitutions_byte_range(&self) -> Range<usize> {
-        let start = self.substitution_count_byte_range().end;
-        start..start + self.substitutions_byte_len
-    }
-}
-
-impl MinByteRange for FeatureTableSubstitutionMarker {
+impl<'a> MinByteRange<'a> for FeatureTableSubstitution<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.substitutions_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for FeatureTableSubstitution<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<MajorMinor>();
-        let substitution_count: u16 = cursor.read()?;
-        let substitutions_byte_len = (substitution_count as usize)
-            .checked_mul(FeatureTableSubstitutionRecord::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(substitutions_byte_len);
-        cursor.finish(FeatureTableSubstitutionMarker {
-            substitutions_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// [FeatureTableSubstitution Table](https://docs.microsoft.com/en-us/typography/opentype/spec/chapter2#featuretablesubstitution-table)
-pub type FeatureTableSubstitution<'a> = TableRef<'a, FeatureTableSubstitutionMarker>;
+#[derive(Clone)]
+pub struct FeatureTableSubstitution<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> FeatureTableSubstitution<'a> {
+    pub const MIN_SIZE: usize = (MajorMinor::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Major & minor version of the table: (1, 0)
     pub fn version(&self) -> MajorMinor {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of feature table substitution records.
     pub fn substitution_count(&self) -> u16 {
-        let range = self.shape.substitution_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.substitution_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Array of feature table substitution records.
     pub fn substitutions(&self) -> &'a [FeatureTableSubstitutionRecord] {
-        let range = self.shape.substitutions_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.substitutions_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + MajorMinor::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn substitution_count_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn substitutions_byte_range(&self) -> Range<usize> {
+        let substitution_count = self.substitution_count();
+        let start = self.substitution_count_byte_range().end;
+        let end = start
+            + (transforms::to_usize(substitution_count))
+                .saturating_mul(FeatureTableSubstitutionRecord::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    FeatureTableSubstitution::MIN_SIZE
+));
+
+impl Default for FeatureTableSubstitution<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -5345,66 +5544,47 @@ impl<'a> SomeRecord<'a> for FeatureTableSubstitutionRecord {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct SizeParamsMarker {}
-
-impl SizeParamsMarker {
-    pub fn design_size_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn identifier_byte_range(&self) -> Range<usize> {
-        let start = self.design_size_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn name_entry_byte_range(&self) -> Range<usize> {
-        let start = self.identifier_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn range_start_byte_range(&self) -> Range<usize> {
-        let start = self.name_entry_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn range_end_byte_range(&self) -> Range<usize> {
-        let start = self.range_start_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for SizeParamsMarker {
+impl<'a> MinByteRange<'a> for SizeParams<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.range_end_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for SizeParams<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.finish(SizeParamsMarker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
-pub type SizeParams<'a> = TableRef<'a, SizeParamsMarker>;
+#[derive(Clone)]
+pub struct SizeParams<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> SizeParams<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// The first value represents the design size in 720/inch units (decipoints).
     ///
     /// The design size entry must be non-zero. When there is a design size but
     /// no recommended size range, the rest of the array will consist of zeros.
     pub fn design_size(&self) -> u16 {
-        let range = self.shape.design_size_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.design_size_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The second value has no independent meaning, but serves as an identifier that associates fonts in a subfamily.
@@ -5414,8 +5594,8 @@ impl<'a> SizeParams<'a> {
     /// which differ in weight or style shall have the same subfamily value.
     /// If this value is zero, the remaining fields in the array will be ignored.
     pub fn identifier(&self) -> u16 {
-        let range = self.shape.identifier_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.identifier_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The third value enables applications to use a single name for the subfamily identified by the second value.
@@ -5429,8 +5609,8 @@ impl<'a> SizeParams<'a> {
     /// represent the subfamily in a menu. Applications will choose the
     /// appropriate version based on their selection criteria.
     pub fn name_entry(&self) -> u16 {
-        let range = self.shape.name_entry_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.name_entry_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The fourth and fifth values represent the small end of the recommended
@@ -5439,13 +5619,53 @@ impl<'a> SizeParams<'a> {
     ///
     /// Ranges must not overlap, and should generally be contiguous.
     pub fn range_start(&self) -> u16 {
-        let range = self.shape.range_start_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.range_start_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     pub fn range_end(&self) -> u16 {
-        let range = self.shape.range_end_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.range_end_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
+    }
+
+    pub fn design_size_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn identifier_byte_range(&self) -> Range<usize> {
+        let start = self.design_size_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn name_entry_byte_range(&self) -> Range<usize> {
+        let start = self.identifier_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn range_start_byte_range(&self) -> Range<usize> {
+        let start = self.name_entry_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn range_end_byte_range(&self) -> Range<usize> {
+        let start = self.range_start_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(SizeParams::MIN_SIZE));
+
+impl Default for SizeParams<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -5474,44 +5694,39 @@ impl<'a> std::fmt::Debug for SizeParams<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct StylisticSetParamsMarker {}
-
-impl StylisticSetParamsMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn ui_name_id_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + NameId::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for StylisticSetParamsMarker {
+impl<'a> MinByteRange<'a> for StylisticSetParams<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.ui_name_id_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for StylisticSetParams<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<NameId>();
-        cursor.finish(StylisticSetParamsMarker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
-pub type StylisticSetParams<'a> = TableRef<'a, StylisticSetParamsMarker>;
+#[derive(Clone)]
+pub struct StylisticSetParams<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> StylisticSetParams<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + NameId::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     pub fn version(&self) -> u16 {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The 'name' table name ID that specifies a string (or strings, for
@@ -5524,8 +5739,32 @@ impl<'a> StylisticSetParams<'a> {
     /// as a fallback. The string should be kept to a minimal length to fit
     /// comfortably with different application interfaces.
     pub fn ui_name_id(&self) -> NameId {
-        let range = self.shape.ui_name_id_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.ui_name_id_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn ui_name_id_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + NameId::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    StylisticSetParams::MIN_SIZE
+));
+
+impl Default for StylisticSetParams<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -5551,143 +5790,163 @@ impl<'a> std::fmt::Debug for StylisticSetParams<'a> {
     }
 }
 
-impl Format<u16> for CharacterVariantParamsMarker {
+impl Format<u16> for CharacterVariantParams<'_> {
     const FORMAT: u16 = 0;
 }
 
-/// featureParams for ['cv01'-'cv99'](https://docs.microsoft.com/en-us/typography/opentype/spec/features_ae#cv01-cv99)
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct CharacterVariantParamsMarker {
-    character_byte_len: usize,
-}
-
-impl CharacterVariantParamsMarker {
-    pub fn format_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn feat_ui_label_name_id_byte_range(&self) -> Range<usize> {
-        let start = self.format_byte_range().end;
-        start..start + NameId::RAW_BYTE_LEN
-    }
-
-    pub fn feat_ui_tooltip_text_name_id_byte_range(&self) -> Range<usize> {
-        let start = self.feat_ui_label_name_id_byte_range().end;
-        start..start + NameId::RAW_BYTE_LEN
-    }
-
-    pub fn sample_text_name_id_byte_range(&self) -> Range<usize> {
-        let start = self.feat_ui_tooltip_text_name_id_byte_range().end;
-        start..start + NameId::RAW_BYTE_LEN
-    }
-
-    pub fn num_named_parameters_byte_range(&self) -> Range<usize> {
-        let start = self.sample_text_name_id_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn first_param_ui_label_name_id_byte_range(&self) -> Range<usize> {
-        let start = self.num_named_parameters_byte_range().end;
-        start..start + NameId::RAW_BYTE_LEN
-    }
-
-    pub fn char_count_byte_range(&self) -> Range<usize> {
-        let start = self.first_param_ui_label_name_id_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn character_byte_range(&self) -> Range<usize> {
-        let start = self.char_count_byte_range().end;
-        start..start + self.character_byte_len
-    }
-}
-
-impl MinByteRange for CharacterVariantParamsMarker {
+impl<'a> MinByteRange<'a> for CharacterVariantParams<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.character_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for CharacterVariantParams<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<NameId>();
-        cursor.advance::<NameId>();
-        cursor.advance::<NameId>();
-        cursor.advance::<u16>();
-        cursor.advance::<NameId>();
-        let char_count: u16 = cursor.read()?;
-        let character_byte_len = (char_count as usize)
-            .checked_mul(Uint24::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(character_byte_len);
-        cursor.finish(CharacterVariantParamsMarker { character_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// featureParams for ['cv01'-'cv99'](https://docs.microsoft.com/en-us/typography/opentype/spec/features_ae#cv01-cv99)
-pub type CharacterVariantParams<'a> = TableRef<'a, CharacterVariantParamsMarker>;
+#[derive(Clone)]
+pub struct CharacterVariantParams<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> CharacterVariantParams<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN
+        + NameId::RAW_BYTE_LEN
+        + NameId::RAW_BYTE_LEN
+        + NameId::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + NameId::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Format number is set to 0.
     pub fn format(&self) -> u16 {
-        let range = self.shape.format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The 'name' table name ID that specifies a string (or strings,
     /// for multiple languages) for a user-interface label for this
     /// feature. (May be NULL.)
     pub fn feat_ui_label_name_id(&self) -> NameId {
-        let range = self.shape.feat_ui_label_name_id_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.feat_ui_label_name_id_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The 'name' table name ID that specifies a string (or strings,
     /// for multiple languages) that an application can use for tooltip
     /// text for this feature. (May be NULL.)
     pub fn feat_ui_tooltip_text_name_id(&self) -> NameId {
-        let range = self.shape.feat_ui_tooltip_text_name_id_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.feat_ui_tooltip_text_name_id_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The 'name' table name ID that specifies sample text that
     /// illustrates the effect of this feature. (May be NULL.)
     pub fn sample_text_name_id(&self) -> NameId {
-        let range = self.shape.sample_text_name_id_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.sample_text_name_id_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of named parameters. (May be zero.)
     pub fn num_named_parameters(&self) -> u16 {
-        let range = self.shape.num_named_parameters_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.num_named_parameters_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The first 'name' table name ID used to specify strings for
     /// user-interface labels for the feature parameters. (Must be zero
     /// if numParameters is zero.)
     pub fn first_param_ui_label_name_id(&self) -> NameId {
-        let range = self.shape.first_param_ui_label_name_id_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.first_param_ui_label_name_id_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The count of characters for which this feature provides glyph
     /// variants. (May be zero.)
     pub fn char_count(&self) -> u16 {
-        let range = self.shape.char_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.char_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The Unicode Scalar Value of the characters for which this
     /// feature provides glyph variants.
     pub fn character(&self) -> &'a [BigEndian<Uint24>] {
-        let range = self.shape.character_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.character_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn format_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn feat_ui_label_name_id_byte_range(&self) -> Range<usize> {
+        let start = self.format_byte_range().end;
+        let end = start + NameId::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn feat_ui_tooltip_text_name_id_byte_range(&self) -> Range<usize> {
+        let start = self.feat_ui_label_name_id_byte_range().end;
+        let end = start + NameId::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn sample_text_name_id_byte_range(&self) -> Range<usize> {
+        let start = self.feat_ui_tooltip_text_name_id_byte_range().end;
+        let end = start + NameId::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn num_named_parameters_byte_range(&self) -> Range<usize> {
+        let start = self.sample_text_name_id_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn first_param_ui_label_name_id_byte_range(&self) -> Range<usize> {
+        let start = self.num_named_parameters_byte_range().end;
+        let end = start + NameId::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn char_count_byte_range(&self) -> Range<usize> {
+        let start = self.first_param_ui_label_name_id_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn character_byte_range(&self) -> Range<usize> {
+        let char_count = self.char_count();
+        let start = self.char_count_byte_range().end;
+        let end = start + (transforms::to_usize(char_count)).saturating_mul(Uint24::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    CharacterVariantParams::MIN_SIZE
+));
+
+impl Default for CharacterVariantParams<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 

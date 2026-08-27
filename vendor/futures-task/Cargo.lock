@@ -2,5 +2,5 @@
 # It is not intended for manual editing.
 [[package]]
 name = "futures-task"
-version = "0.3.32"
+version = "0.3.34"
 

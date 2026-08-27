@@ -12,8 +12,9 @@
 //! job has to finish before others get a chance to run. When a thread is idle, it waits for the
 //! next job or shuts down after a certain timeout.
 //!
-//! The default number of threads (set to 500) can be altered by setting BLOCKING_MAX_THREADS environment
-//! variable with value between 1 and 10000.
+//! The default number of threads (set to 500) can be altered by setting `BLOCKING_MAX_THREADS` environment
+//! variable with value between 1 and 10000. This can also be set, at runtime, via the
+//! [`set_max_blocking_threads`] function.
 //!
 //! [IOCP]: https://en.wikipedia.org/wiki/Input/output_completion_port
 //! [AIO]: http://man7.org/linux/man-pages/man2/io_submit.2.html
@@ -92,7 +93,7 @@ use std::num::NonZeroUsize;
 use std::panic;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Condvar, Mutex, MutexGuard};
+use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
@@ -135,6 +136,48 @@ const MAX_MAX_THREADS: usize = 10000;
 #[cfg(not(target_family = "wasm"))]
 const MAX_THREADS_ENV: &str = "BLOCKING_MAX_THREADS";
 
+/// Set the maximum number of threads used by the backing thread pool.
+///
+/// # Example
+///
+/// ```no_run
+/// use blocking::unblock;
+/// use std::fs::{read_dir, File};
+/// use std::io::prelude::*;
+/// # use std::num::NonZeroUsize;
+///
+/// blocking::set_max_blocking_threads(NonZeroUsize::new(100).unwrap());
+///
+/// # fn test() -> std::io::Result<()> {
+/// let mut files = Vec::new();
+/// for entry in read_dir("/path/to/large/directory").unwrap() {
+///     files.push(unblock(move || -> std::io::Result<String> {
+///         let mut contents = String::new();
+///         let mut file = File::open(entry?.path())?;
+///         file.read_to_string(&mut contents)?;
+///         Ok(contents)
+///     }));
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub fn set_max_blocking_threads(threads: NonZeroUsize) {
+    let executor = Executor::get();
+    let mut inner = executor
+        .inner
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    let old_limit = inner.thread_limit;
+    inner.thread_limit = Some(threads);
+    if let Some(old_limit) = old_limit {
+        // If the limit has decreased, wake up all threads to terminate those over
+        // the new limit.
+        if old_limit > threads {
+            executor.cvar.notify_all();
+        }
+    }
+}
+
 /// The blocking executor.
 struct Executor {
     /// Inner state of the executor.
@@ -156,20 +199,11 @@ struct Inner {
     /// This is the number of idle threads + the number of active threads.
     thread_count: usize,
 
-    // TODO: The option is only used for const-initialization. This can be replaced with
-    // a normal VecDeque when the MSRV can be bumped passed
     /// The queue of blocking tasks.
-    queue: Option<VecDeque<Runnable>>,
+    queue: VecDeque<Runnable>,
 
     /// Maximum number of threads in the pool
     thread_limit: Option<NonZeroUsize>,
-}
-
-impl Inner {
-    #[inline]
-    fn queue(&mut self) -> &mut VecDeque<Runnable> {
-        self.queue.get_or_insert_with(VecDeque::new)
-    }
 }
 
 impl Executor {
@@ -199,7 +233,7 @@ impl Executor {
                 inner: Mutex::new(Inner {
                     idle_count: 0,
                     thread_count: 0,
-                    queue: None,
+                    queue: VecDeque::new(),
                     thread_limit: None,
                 }),
                 cvar: Condvar::new(),
@@ -237,13 +271,13 @@ impl Executor {
         #[cfg(feature = "tracing")]
         let _span = tracing::trace_span!("blocking::main_loop").entered();
 
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         loop {
             // This thread is not idle anymore because it's going to run tasks.
             inner.idle_count -= 1;
 
             // Run tasks in the queue.
-            while let Some(runnable) = inner.queue().pop_front() {
+            while let Some(runnable) = inner.queue.pop_front() {
                 // We have found a task - grow the pool if needed.
                 self.grow_pool(inner);
 
@@ -251,7 +285,7 @@ impl Executor {
                 panic::catch_unwind(|| runnable.run()).ok();
 
                 // Re-lock the inner state and continue.
-                inner = self.inner.lock().unwrap();
+                inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
             }
 
             // This thread is now becoming idle.
@@ -264,8 +298,11 @@ impl Executor {
             let (lock, res) = self.cvar.wait_timeout(inner, timeout).unwrap();
             inner = lock;
 
-            // If there are no tasks after a while, stop this thread.
-            if res.timed_out() && inner.queue().is_empty() {
+            // If there are too many threads active in the pool, stop this thread.
+            if (Some(inner.thread_count) > inner.thread_limit.map(NonZeroUsize::get))
+                // If there are no tasks after a while, stop this thread.
+                && (res.timed_out() && inner.queue.is_empty())
+            {
                 inner.idle_count -= 1;
                 inner.thread_count -= 1;
                 break;
@@ -281,8 +318,8 @@ impl Executor {
 
     /// Schedules a runnable task for execution.
     fn schedule(&'static self, runnable: Runnable) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.queue().push_back(runnable);
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        inner.queue.push_back(runnable);
 
         // Notify a sleeping thread and spawn more threads if needed.
         self.cvar.notify_one();
@@ -294,7 +331,7 @@ impl Executor {
         #[cfg(feature = "tracing")]
         let _span = tracing::trace_span!(
             "grow_pool",
-            queue_len = inner.queue().len(),
+            queue_len = inner.queue.len(),
             idle_count = inner.idle_count,
             thread_count = inner.thread_count,
         )
@@ -307,7 +344,7 @@ impl Executor {
 
         // If runnable tasks greatly outnumber idle threads and there aren't too many threads
         // already, then be aggressive: wake all idle threads and spawn one more thread.
-        while inner.queue().len() > inner.idle_count * 5 && inner.thread_count < thread_limit {
+        while inner.queue.len() > inner.idle_count * 5 && inner.thread_count < thread_limit {
             #[cfg(feature = "tracing")]
             tracing::trace!("spawning a new thread to handle blocking tasks");
 

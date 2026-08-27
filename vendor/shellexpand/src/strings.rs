@@ -26,10 +26,10 @@ impl<S: AsRef<str> + ?Sized> AsRefXstrExt for S {
 }
 
 impl WstrExt for str {
-    fn as_str(&self) -> Option<&str> { Some(self) }
-    fn len(&self) -> usize { str::len(self) }
-    fn to_ostring(&self) -> String { self.to_owned() }
-    fn strip_prefix(&self, c: char) -> Option<&Self> {
+    fn wstr_as_str(&self) -> Option<&str> { Some(self) }
+    fn wstr_len(&self) -> usize { str::len(self) }
+    fn wstr_to_ostring(&self) -> String { self.to_owned() }
+    fn wstr_strip_prefix(&self, c: char) -> Option<&Self> {
         if self.starts_with(c) {
             Some(&self[c.len_utf8()..])
         } else {
@@ -44,7 +44,7 @@ impl<'s> WstrRefExt for &'s str {
     /// Must be used only for the-{}-unbracketed $varname expansion variable name termination detection
     ///
     /// The implementation for `paths.rs` is ... limited.
-    fn chars_approx(self) -> Chars<'s> {
+    fn wstr_chars_approx(self) -> Chars<'s> {
         self.chars()
     }
 }

@@ -11,14 +11,16 @@
 
 [package]
 edition = "2018"
+rust-version = "1.71"
 name = "fax"
-version = "0.2.6"
+version = "0.2.7"
 authors = ["Sebastian K <s3bk@protonmail.com>"]
 build = false
 exclude = [
     "T-REC-T.6-198811-I!!PDF-E.pdf",
     ".vscode/*",
     ".gitignore",
+    "test-files",
 ]
 autolib = false
 autobins = false
@@ -37,6 +39,7 @@ repository = "https://github.com/pdf-rs/fax"
 
 [features]
 debug = []
+generate_bitmaps = ["dep:fax_derive"]
 
 [lib]
 name = "fax"
@@ -70,8 +73,13 @@ path = "examples/validate.rs"
 name = "check"
 path = "tests/check.rs"
 
+[[test]]
+name = "errors"
+path = "tests/errors.rs"
+
 [dependencies.fax_derive]
 version = "0.2.0"
+optional = true
 
 [dev-dependencies.tiff]
-version = "0.9"
+version = "0.11.3"

@@ -1,18 +1,12 @@
 use std::{
     cmp::Ordering,
     ffi::CString,
-    hash::{
-        Hash,
-        Hasher,
-    },
+    hash::{Hash, Hasher},
     io,
     os::raw::c_int,
     os::unix::ffi::OsStrExt,
     path::Path,
-    sync::{
-        Arc,
-        Weak,
-    },
+    sync::{Arc, Weak},
 };
 
 use inotify_sys as ffi;
@@ -206,10 +200,15 @@ bitflags! {
         /// See [`inotify_sys::IN_EXCL_UNLINK`].
         const EXCL_UNLINK = ffi::IN_EXCL_UNLINK;
 
-        /// If a watch for the inode exists, amend it instead of replacing it
+        /// If a watch for the inode exists, amend it instead of replacing it. Conflicts with [`WatchMask::MASK_CREATE`].
         ///
         /// See [`inotify_sys::IN_MASK_ADD`].
         const MASK_ADD = ffi::IN_MASK_ADD;
+
+        /// Only create watches, errors if a watch on this inode already exists. Conflicts with [`WatchMask::MASK_ADD`].
+        ///
+        /// See [`inotify_sys::IN_MASK_CREATE`].
+        const MASK_CREATE = ffi::IN_MASK_CREATE;
 
         /// Only receive one event, then remove the watch
         ///
@@ -254,9 +253,7 @@ pub struct Watches {
 impl Watches {
     /// Init watches with an inotify file descriptor
     pub(crate) fn new(fd: Arc<FdGuard>) -> Self {
-        Watches {
-            fd,
-        }
+        Watches { fd }
     }
 
     /// Adds or updates a watch for the given path
@@ -322,23 +319,21 @@ impl Watches {
     /// ```
     ///
     /// [`inotify_add_watch`]: inotify_sys::inotify_add_watch
-    pub fn add<P>(&mut self, path: P, mask: WatchMask)
-                        -> io::Result<WatchDescriptor>
-        where P: AsRef<Path>
+    pub fn add<P>(&mut self, path: P, mask: WatchMask) -> io::Result<WatchDescriptor>
+    where
+        P: AsRef<Path>,
     {
         let path = CString::new(path.as_ref().as_os_str().as_bytes())?;
 
-        let wd = unsafe {
-            ffi::inotify_add_watch(
-                **self.fd,
-                path.as_ptr() as *const _,
-                mask.bits(),
-            )
-        };
+        let wd =
+            unsafe { ffi::inotify_add_watch(**self.fd, path.as_ptr() as *const _, mask.bits()) };
 
         match wd {
             -1 => Err(io::Error::last_os_error()),
-            _  => Ok(WatchDescriptor{ id: wd, fd: Arc::downgrade(&self.fd) }),
+            _ => Ok(WatchDescriptor {
+                id: wd,
+                fd: Arc::downgrade(&self.fd),
+            }),
         }
     }
 
@@ -402,14 +397,12 @@ impl Watches {
 
         let result = unsafe { ffi::inotify_rm_watch(**self.fd, wd.id) };
         match result {
-            0  => Ok(()),
+            0 => Ok(()),
             -1 => Err(io::Error::last_os_error()),
-            _  => panic!(
-                "unexpected return code from inotify_rm_watch ({})", result)
+            _ => panic!("unexpected return code from inotify_rm_watch ({})", result),
         }
     }
 }
-
 
 /// Represents a watch on an inode
 ///
@@ -419,7 +412,7 @@ impl Watches {
 ///
 /// [`Event`]: crate::Event
 #[derive(Clone, Debug)]
-pub struct WatchDescriptor{
+pub struct WatchDescriptor {
     pub(crate) id: c_int,
     pub(crate) fd: Weak<FdGuard>,
 }
@@ -428,7 +421,7 @@ impl Eq for WatchDescriptor {}
 
 impl PartialEq for WatchDescriptor {
     fn eq(&self, other: &Self) -> bool {
-        let self_fd  = self.fd.upgrade();
+        let self_fd = self.fd.upgrade();
         let other_fd = other.fd.upgrade();
 
         self.id == other.id && self_fd.is_some() && self_fd == other_fd

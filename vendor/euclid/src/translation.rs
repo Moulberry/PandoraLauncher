@@ -20,6 +20,8 @@ use core::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use num_traits::NumCast;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -72,6 +74,13 @@ where
             y,
             _unit: PhantomData,
         })
+    }
+}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, Src, Dst> MallocSizeOf for Translation2D<T, Src, Dst> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.x.size_of(ops) + self.y.size_of(ops)
     }
 }
 
@@ -432,6 +441,13 @@ where
             z,
             _unit: PhantomData,
         })
+    }
+}
+
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, Src, Dst> MallocSizeOf for Translation3D<T, Src, Dst> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.x.size_of(ops) + self.y.size_of(ops) + self.z.size_of(ops)
     }
 }
 
@@ -833,6 +849,7 @@ impl<T: fmt::Debug, Src, Dst> fmt::Debug for Translation3D<T, Src, Dst> {
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod _2d {
     #[test]
     fn simple() {
@@ -939,6 +956,7 @@ mod _2d {
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod _3d {
     #[test]
     fn simple() {

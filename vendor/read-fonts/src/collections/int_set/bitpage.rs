@@ -1,5 +1,6 @@
 //! Stores a page of bits, used inside of bitset's.
 
+use alloc::vec::Vec;
 use std::{hash::Hash, ops::RangeInclusive};
 
 // the integer type underlying our bit set

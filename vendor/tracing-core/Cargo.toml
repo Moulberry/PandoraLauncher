@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.65.0"
 name = "tracing-core"
-version = "0.1.35"
+version = "0.1.36"
 authors = ["Tokio Contributors <team@tokio.rs>"]
 build = false
 autolib = false

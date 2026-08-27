@@ -80,7 +80,7 @@ where
                         let res = res.map(|body| ResponseBody {
                             inner: body,
                             classify_eos: None,
-                            on_eos: None,
+                            on_eos: on_eos.zip(Some(Instant::now())),
                             on_body_chunk,
                             on_failure: Some(on_failure),
                             start,

@@ -1,6 +1,26 @@
 # CHANGELOG: wayland-client
 
-## Unreleased
+## 0.31.15 -- 2026-07-22
+
+Backport from `master`.
+
+#### Additions
+- Updated Wayland core protocol to 1.26
+
+## 0.31.14-- 2026-03-30
+
+- Updated Wayland core protocol to 1.25
+
+#### Additions
+
+- Add `GlobalList::destroy` to destroy registry with `wl_fixes`
+
+## 0.31.13 -- 2026-03-04
+
+#### Additions
+
+- Add `system` and `dlopen` features, enabling `wayland-backend` features
+- Add `Connection::set_max_buffer_size`
 
 ## 0.31.11 -- 2025-07-28
 

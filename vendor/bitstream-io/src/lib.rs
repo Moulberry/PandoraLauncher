@@ -152,7 +152,7 @@ extern crate alloc;
 extern crate std;
 
 #[cfg(not(feature = "std"))]
-use core2::io;
+use no_std_io2::io;
 
 use core::convert::TryInto;
 use core::num::NonZero;
@@ -170,7 +170,6 @@ pub use read::{
     BitRead, BitRead2, BitReader, ByteRead, ByteReader, FromBitStream, FromBitStreamUsing,
     FromBitStreamWith, FromByteStream, FromByteStreamUsing, FromByteStreamWith,
 };
-#[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
 #[cfg(feature = "alloc")]
 pub use write::BitRecorder;
 pub use write::{
@@ -1966,6 +1965,23 @@ impl<const MAX: u32> SignedBitCount<MAX> {
     #[inline(always)]
     pub const fn count(&self) -> BitCount<MAX> {
         self.bits
+    }
+
+    /// Returns bit count without sign
+    ///
+    /// This value is 1 less than the signed bit count.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use bitstream_io::{BitCount, SignedBitCount};
+    ///
+    /// let signed_count = SignedBitCount::<10>::new::<5>();
+    /// assert_eq!(signed_count.unsigned_count(), BitCount::<10>::new::<4>());
+    /// ```
+    #[inline(always)]
+    pub const fn unsigned_count(&self) -> BitCount<MAX> {
+        self.unsigned
     }
 
     /// Returns this bit count's range for the given signed type

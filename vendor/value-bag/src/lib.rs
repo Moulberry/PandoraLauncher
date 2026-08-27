@@ -7,7 +7,7 @@
 //! The producer of a [`ValueBag`] may use a different strategy for capturing than the eventual
 //! consumer. They don't need to coordinate directly.
 
-#![doc(html_root_url = "https://docs.rs/value-bag/1.12.0")]
+#![doc(html_root_url = "https://docs.rs/value-bag/1.13.2")]
 #![no_std]
 #![allow(
     clippy::unnecessary_fallible_conversions,

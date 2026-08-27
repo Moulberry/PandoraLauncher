@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "linktime-proc-macro"
-version = "0.1.0"
+version = "0.2.3"
 authors = ["Matt Mastracci <matthew@mastracci.com>"]
 build = false
 autolib = false
@@ -20,16 +20,21 @@ autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
-description = "proc-macro support for the linktime crates"
+description = "proc-macro helpers for linktime crates (ctors, dtors, linker sections)"
 readme = "README.md"
+categories = [
+    "development-tools::procedural-macro-helpers",
+    "development-tools::build-utils",
+]
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/mmastrac/rust-ctor"
+repository = "https://github.com/mmastrac/linktime"
 
 [features]
 ctor = []
 default = []
 dtor = []
 link_section = []
+scattered_collect = []
 
 [lib]
 name = "linktime_proc_macro"

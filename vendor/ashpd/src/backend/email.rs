@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::{
-    AppID, WindowIdentifierType,
+    MaybeAppID, WindowIdentifierType,
     backend::{
         Result,
         request::{Request, RequestImpl},
@@ -18,7 +18,7 @@ pub trait EmailImpl: RequestImpl {
     async fn compose(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         window_identifier: Option<WindowIdentifierType>,
         options: EmailOptions,
     ) -> Result<()>;
@@ -51,7 +51,7 @@ impl EmailInterface {
     async fn compose_email(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         options: EmailOptions,
     ) -> Result<Response<()>> {

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.87"
 name = "ashpd"
-version = "0.13.2"
+version = "0.13.13"
 authors = ["Bilal Elmoussaoui <bil.elmoussaoui@gmail.com>"]
 build = false
 autolib = false
@@ -161,7 +161,7 @@ raw_handle = ["raw-window-handle"]
 realtime = []
 remote_desktop = ["dep:serde_repr"]
 screencast = ["dep:serde_repr"]
-screenshot = []
+screenshot = ["dep:serde_repr"]
 secret = []
 settings = []
 tokio = [

@@ -4,7 +4,9 @@ use std::fmt;
 use std::fmt::Write;
 
 #[cfg(feature = "git2")]
-pub use crate::git::{get_repo_description, get_repo_head};
+pub use crate::git_impl::{get_repo_description, get_repo_head};
+#[cfg(all(feature = "gix", not(feature = "git2")))]
+pub use crate::gix_impl::{GixError, get_repo_description, get_repo_head};
 
 #[cfg(feature = "chrono")]
 pub use crate::krono::strptime;

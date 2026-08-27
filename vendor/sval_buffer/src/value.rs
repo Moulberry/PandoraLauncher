@@ -1,103 +1,26 @@
 use crate::{
-    std::{
-        marker::PhantomData,
-        mem,
-        ops::{Deref, DerefMut, Range},
-    },
-    BinaryBuf, Error, TextBuf,
+    std::ops::{Deref, DerefMut},
+    Error,
 };
+
+use core::mem;
 
 use sval_ref::ValueRef as _;
 
-#[derive(Debug, Clone)]
-struct BufMut<T, const N: usize> {
-    #[cfg(feature = "alloc")]
-    inner: crate::std::vec::Vec<T>,
-    #[cfg(not(feature = "alloc"))]
-    inner: array_vec::ArrayVec<T, N>,
-}
+use self::raw::{
+    into_value_parts, stream_parts, BinaryHeader, BorrowedBinary, BorrowedText, Encode, EnumHeader,
+    MapHeader, MapKeyHeader, MapValueHeader, RecordHeader, RecordTupleHeader,
+    RecordTupleValueHeader, RecordValueHeader, SeqHeader, SeqValueHeader, TagHintPart, TagPart,
+    TaggedHeader, TextHeader, TupleHeader, TupleValueHeader, ValueBufParts, ValueParts,
+};
 
-impl<T, const N: usize> Default for BufMut<T, N> {
-    fn default() -> Self {
-        BufMut {
-            inner: Default::default(),
-        }
-    }
-}
+#[cfg(feature = "alloc")]
+use self::raw::make_owned;
 
-impl<T, const N: usize> Deref for BufMut<T, N> {
-    type Target = [T];
+#[cfg(not(feature = "alloc"))]
+use self::raw::ArrayVec;
 
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<T, const N: usize> DerefMut for BufMut<T, N> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}
-
-impl<T, const N: usize> BufMut<T, N> {
-    fn push(&mut self, value: T) -> Result<(), Error> {
-        #[cfg(feature = "alloc")]
-        {
-            self.inner.push(value);
-
-            Ok(())
-        }
-        #[cfg(not(feature = "alloc"))]
-        {
-            self.inner.push(value)
-        }
-    }
-
-    fn pop(&mut self) -> Option<T> {
-        self.inner.pop()
-    }
-
-    fn clear(&mut self) {
-        self.inner.clear()
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Buf<T, const N: usize> {
-    #[cfg(feature = "alloc")]
-    inner: crate::std::boxed::Box<[T]>,
-    #[cfg(not(feature = "alloc"))]
-    inner: array_vec::ArrayVec<T, N>,
-}
-
-impl<T, const N: usize> Deref for Buf<T, N> {
-    type Target = [T];
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<T, const N: usize> DerefMut for Buf<T, N> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}
-
-impl<T, const N: usize> From<BufMut<T, N>> for Buf<T, N> {
-    fn from(value: BufMut<T, N>) -> Self {
-        #[cfg(feature = "alloc")]
-        {
-            Buf {
-                inner: value.inner.into_boxed_slice(),
-            }
-        }
-        #[cfg(not(feature = "alloc"))]
-        {
-            Buf { inner: value.inner }
-        }
-    }
-}
+mod raw;
 
 /**
 Buffer arbitrary values into a tree-like structure.
@@ -107,11 +30,14 @@ will fail.
 */
 #[derive(Debug)]
 pub struct ValueBuf<'sval> {
-    parts: BufMut<ValuePart<'sval>, 1>,
-    stack: BufMut<usize, 1>,
-    is_in_text_or_binary: bool,
+    parts: ValueBufParts<'sval>,
+    // A frame for each open container, for header patching on `end`
+    stack: BufMut<Frame, STACK_CAP>,
+    // The text or binary value currently being collected
+    buffering: Buffering<'sval>,
+    // An accumulated descriptive error during buffering
+    // `sval`'s errors don't carry any information, so we track it here
     err: Option<Error>,
-    _marker: PhantomData<&'sval ()>,
 }
 
 /**
@@ -121,8 +47,7 @@ This type is more compact than `ValueBuf`.
 */
 #[derive(Debug, Clone)]
 pub struct Value<'sval> {
-    parts: Buf<ValuePart<'sval>, 1>,
-    _marker: PhantomData<&'sval ()>,
+    parts: ValueParts<'sval>,
 }
 
 impl<'sval> Default for ValueBuf<'sval> {
@@ -137,11 +62,10 @@ impl<'sval> ValueBuf<'sval> {
     */
     pub fn new() -> Self {
         ValueBuf {
-            parts: Default::default(),
+            parts: ValueBufParts::new(),
             stack: Default::default(),
-            is_in_text_or_binary: false,
+            buffering: Buffering::Value,
             err: None,
-            _marker: PhantomData,
         }
     }
 
@@ -165,7 +89,7 @@ impl<'sval> ValueBuf<'sval> {
     Whether or not the contents of the value buffer are complete.
     */
     pub fn is_complete(&self) -> bool {
-        self.stack.len() == 0 && self.parts.len() > 0 && !self.is_in_text_or_binary
+        self.stack.len() == 0 && self.parts.len() > 0 && matches!(self.buffering, Buffering::Value)
     }
 
     /**
@@ -175,14 +99,13 @@ impl<'sval> ValueBuf<'sval> {
         let ValueBuf {
             parts,
             stack,
-            is_in_text_or_binary,
+            buffering,
             err,
-            _marker,
         } = self;
 
         parts.clear();
         stack.clear();
-        *is_in_text_or_binary = false;
+        *buffering = Buffering::Value;
         *err = None;
     }
 
@@ -191,8 +114,7 @@ impl<'sval> ValueBuf<'sval> {
     */
     pub fn to_value(&self) -> Value<'sval> {
         Value {
-            parts: self.parts.clone().into(),
-            _marker: PhantomData,
+            parts: into_value_parts(self.parts.clone()),
         }
     }
 
@@ -201,8 +123,7 @@ impl<'sval> ValueBuf<'sval> {
     */
     pub fn into_value(self) -> Value<'sval> {
         Value {
-            parts: self.parts.into(),
-            _marker: PhantomData,
+            parts: into_value_parts(self.parts),
         }
     }
 
@@ -215,35 +136,14 @@ impl<'sval> ValueBuf<'sval> {
         #[cfg(feature = "alloc")]
         {
             let ValueBuf {
-                mut parts,
-                mut stack,
-                mut is_in_text_or_binary,
-                mut err,
-                _marker,
+                parts, stack, err, ..
             } = self;
 
-            // Re-assign all parts within the value in-place without re-allocating for them
-            // This will take care of converted any actually borrowed data into owned
-            for part in parts.iter_mut() {
-                crate::assert_static(part.into_owned_in_place());
-            }
-
-            // SAFETY: `parts` no longer contains any data borrowed for `'sval`
-            let mut parts = unsafe {
-                mem::transmute::<BufMut<ValuePart<'sval>, 1>, BufMut<ValuePart<'static>, 1>>(parts)
-            };
-
-            crate::assert_static(&mut parts);
-            crate::assert_static(&mut stack);
-            crate::assert_static(&mut is_in_text_or_binary);
-            crate::assert_static(&mut err);
-
             Ok(ValueBuf {
-                parts,
+                parts: make_owned(parts)?,
                 stack,
-                is_in_text_or_binary,
+                buffering: Buffering::Value,
                 err,
-                _marker: PhantomData,
             })
         }
         #[cfg(not(feature = "alloc"))]
@@ -287,8 +187,6 @@ impl ValueBuf<'static> {
     pub fn collect_owned(v: impl sval::Value) -> Result<Self, Error> {
         let mut buf = ValueBuf::new();
 
-        // Buffering the value as computed means any borrowed data will
-        // have to be converted into owned anyways
         match sval::stream_computed(&mut buf, v) {
             Ok(()) => Ok(buf),
             Err(_) => Err(buf
@@ -316,23 +214,10 @@ impl<'sval> Value<'sval> {
     pub fn into_owned(self) -> Result<Value<'static>, Error> {
         #[cfg(feature = "alloc")]
         {
-            let Value { mut parts, _marker } = self;
-
-            // Re-assign all parts within the value in-place without re-allocating for them
-            // This will take care of converted any actually borrowed data into owned
-            for part in parts.iter_mut() {
-                crate::assert_static(part.into_owned_in_place());
-            }
-
-            // SAFETY: `parts` no longer contains any data borrowed for `'sval`
-            let mut parts = unsafe {
-                mem::transmute::<Buf<ValuePart<'sval>, 1>, Buf<ValuePart<'static>, 1>>(parts)
-            };
-            crate::assert_static(&mut parts);
+            let Value { parts } = self;
 
             Ok(Value {
-                parts,
-                _marker: PhantomData,
+                parts: make_owned(parts)?,
             })
         }
         #[cfg(not(feature = "alloc"))]
@@ -361,7 +246,7 @@ impl<'a> sval::Value for ValueBuf<'a> {
 
 impl<'sval> sval_ref::ValueRef<'sval> for ValueBuf<'sval> {
     fn stream_ref<S: sval::Stream<'sval> + ?Sized>(&self, stream: &mut S) -> sval::Result {
-        stream_ref(&self.parts, stream)
+        stream_parts(&self.parts, stream)
     }
 }
 
@@ -373,183 +258,191 @@ impl<'a> sval::Value for Value<'a> {
 
 impl<'sval> sval_ref::ValueRef<'sval> for Value<'sval> {
     fn stream_ref<S: sval::Stream<'sval> + ?Sized>(&self, stream: &mut S) -> sval::Result {
-        stream_ref(&self.parts, stream)
+        stream_parts(&self.parts, stream)
     }
 }
 
-fn stream_ref<'a, 'sval, S: sval::Stream<'sval> + ?Sized>(
-    parts: &'a [ValuePart<'sval>],
-    stream: &mut S,
-) -> sval::Result {
-    // If the buffer is empty then stream null
-    if parts.len() == 0 {
-        return stream.null();
-    }
-
-    ValueSlice::new(parts).stream_ref(stream)
+/**
+Buffer a value.
+*/
+pub fn stream_to_value<'sval>(
+    v: &'sval (impl sval::Value + ?Sized),
+) -> Result<ValueBuf<'sval>, Error> {
+    ValueBuf::collect(v)
 }
+
+/**
+Buffer an owned value.
+*/
+pub fn stream_to_value_owned(v: impl sval::Value) -> Result<ValueBuf<'static>, Error> {
+    ValueBuf::collect_owned(v)
+}
+
+// The maximum size to inline small borrowed text fragments
+// This reduces the size of buffered values and makes conversion
+// into owned cheaper, but changes borrowed fragments into computed ones
+#[cfg(feature = "alloc")]
+const MAX_INLINE_FRAGMENT_LEN: usize = 24;
+
+#[derive(Debug, Clone, Copy)]
+enum Buffering<'sval> {
+    Value,
+    Text(BufferingState<'sval, str>),
+    Binary(BufferingState<'sval, [u8]>),
+}
+
+#[derive(Debug)]
+enum BufferingState<'sval, T: ?Sized> {
+    Empty,
+    Borrowed(&'sval T),
+    Inline { len_at: usize },
+}
+
+impl<'sval, T: ?Sized> Clone for BufferingState<'sval, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'sval, T: ?Sized> Copy for BufferingState<'sval, T> {}
 
 impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
     fn null(&mut self) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::Null))
+        self.try_catch(|buf| buf.encode_value(()))
     }
 
     fn bool(&mut self, value: bool) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::Bool(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn text_begin(&mut self, _: Option<usize>) -> sval::Result {
-        self.try_catch(|buf| {
-            buf.is_in_text_or_binary = true;
-            buf.push_kind(ValueKind::Text(TextBuf::new()))
-        })?;
-
-        Ok(())
+        self.try_catch(|buf| buf.buffering_begin(Buffering::Text(BufferingState::Empty)))
     }
 
     fn text_fragment(&mut self, fragment: &'sval str) -> sval::Result {
-        self.try_catch(|buf| match buf.current_mut().kind {
-            ValueKind::Text(ref mut text) => text.push_fragment(fragment),
-            _ => Err(Error::outside_container("text")),
-        })
+        self.try_catch(|buf| buf.buffering_push_text(fragment))
     }
 
     fn text_fragment_computed(&mut self, fragment: &str) -> sval::Result {
-        self.try_catch(|buf| match buf.current_mut().kind {
-            ValueKind::Text(ref mut text) => text.push_fragment_computed(fragment),
-            _ => Err(Error::outside_container("text")),
-        })
+        self.try_catch(|buf| buf.encode_buffering_text_inline(fragment))
     }
 
     fn text_end(&mut self) -> sval::Result {
-        self.is_in_text_or_binary = false;
-
-        Ok(())
+        self.try_catch(|buf| buf.encode_text_end())
     }
 
     fn binary_begin(&mut self, _: Option<usize>) -> sval::Result {
-        self.try_catch(|buf| {
-            buf.is_in_text_or_binary = true;
-            buf.push_kind(ValueKind::Binary(BinaryBuf::new()))
-        })
+        self.try_catch(|buf| buf.buffering_begin(Buffering::Binary(BufferingState::Empty)))
     }
 
     fn binary_fragment(&mut self, fragment: &'sval [u8]) -> sval::Result {
-        self.try_catch(|buf| match buf.current_mut().kind {
-            ValueKind::Binary(ref mut binary) => binary.push_fragment(fragment),
-            _ => Err(Error::outside_container("binary")),
-        })
+        self.try_catch(|buf| buf.buffering_push_binary(fragment))
     }
 
     fn binary_fragment_computed(&mut self, fragment: &[u8]) -> sval::Result {
-        self.try_catch(|buf| match buf.current_mut().kind {
-            ValueKind::Binary(ref mut binary) => binary.push_fragment_computed(fragment),
-            _ => Err(Error::outside_container("binary")),
-        })
+        self.try_catch(|buf| buf.encode_buffering_binary_inline(fragment))
     }
 
     fn binary_end(&mut self) -> sval::Result {
-        self.is_in_text_or_binary = false;
-
-        Ok(())
+        self.try_catch(|buf| buf.encode_binary_end())
     }
 
     fn u8(&mut self, value: u8) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::U8(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn u16(&mut self, value: u16) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::U16(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn u32(&mut self, value: u32) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::U32(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn u64(&mut self, value: u64) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::U64(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn u128(&mut self, value: u128) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::U128(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn i8(&mut self, value: i8) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::I8(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn i16(&mut self, value: i16) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::I16(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn i32(&mut self, value: i32) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::I32(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn i64(&mut self, value: i64) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::I64(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn i128(&mut self, value: i128) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::I128(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn f32(&mut self, value: f32) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::F32(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
     fn f64(&mut self, value: f64) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::F64(value)))
+        self.try_catch(|buf| buf.encode_value(value))
     }
 
-    fn map_begin(&mut self, num_entries_hint: Option<usize>) -> sval::Result {
+    fn map_begin(&mut self, _num_entries_hint: Option<usize>) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::Map {
+            buf.encode_container_begin(MapHeader {
                 len: 0,
-                num_entries_hint,
+                num_entries: 0,
             })
         })
     }
 
     fn map_key_begin(&mut self) -> sval::Result {
-        self.try_catch(|buf| buf.push_begin(ValueKind::MapKey { len: 0 }))
+        self.try_catch(|buf| buf.encode_entry_begin(MapKeyHeader { len: 0 }))
     }
 
     fn map_key_end(&mut self) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn map_value_begin(&mut self) -> sval::Result {
-        self.try_catch(|buf| buf.push_begin(ValueKind::MapValue { len: 0 }))
+        self.try_catch(|buf| buf.encode_container_begin(MapValueHeader { len: 0 }))
     }
 
     fn map_value_end(&mut self) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn map_end(&mut self) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
-    fn seq_begin(&mut self, num_entries_hint: Option<usize>) -> sval::Result {
+    fn seq_begin(&mut self, _num_entries_hint: Option<usize>) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::Seq {
+            buf.encode_container_begin(SeqHeader {
                 len: 0,
-                num_entries_hint,
+                num_entries: 0,
             })
         })
     }
 
     fn seq_value_begin(&mut self) -> sval::Result {
-        self.try_catch(|buf| buf.push_begin(ValueKind::SeqValue { len: 0 }))
+        self.try_catch(|buf| buf.encode_entry_begin(SeqValueHeader { len: 0 }))
     }
 
     fn seq_value_end(&mut self) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn seq_end(&mut self) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn enum_begin(
@@ -559,7 +452,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         index: Option<&sval::Index>,
     ) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::Enum {
+            buf.encode_container_begin(EnumHeader {
                 len: 0,
                 tag: tag.cloned(),
                 index: index.cloned(),
@@ -580,7 +473,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         _: Option<&sval::Label>,
         _: Option<&sval::Index>,
     ) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn tagged_begin(
@@ -590,7 +483,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         index: Option<&sval::Index>,
     ) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::Tagged {
+            buf.encode_container_begin(TaggedHeader {
                 len: 0,
                 tag: tag.cloned(),
                 index: index.cloned(),
@@ -611,7 +504,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         _: Option<&sval::Label>,
         _: Option<&sval::Index>,
     ) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn tag(
@@ -621,7 +514,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         index: Option<&sval::Index>,
     ) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_kind(ValueKind::Tag {
+            buf.encode_value(TagPart {
                 tag: tag.cloned(),
                 index: index.cloned(),
                 label: label
@@ -636,7 +529,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
     }
 
     fn tag_hint(&mut self, tag: &sval::Tag) -> sval::Result {
-        self.try_catch(|buf| buf.push_kind(ValueKind::TagHint { tag: tag.clone() }))
+        self.try_catch(|buf| buf.encode_value_discard(TagHintPart { tag: tag.clone() }))
     }
 
     fn record_begin(
@@ -644,10 +537,10 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         tag: Option<&sval::Tag>,
         label: Option<&sval::Label>,
         index: Option<&sval::Index>,
-        num_entries: Option<usize>,
+        _num_entries: Option<usize>,
     ) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::Record {
+            buf.encode_container_begin(RecordHeader {
                 len: 0,
                 tag: tag.cloned(),
                 index: index.cloned(),
@@ -658,14 +551,14 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
                             .map_err(|_| Error::no_alloc("owned label"))
                     })
                     .transpose()?,
-                num_entries,
+                num_entries: 0,
             })
         })
     }
 
     fn record_value_begin(&mut self, tag: Option<&sval::Tag>, label: &sval::Label) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::RecordValue {
+            buf.encode_entry_begin(RecordValueHeader {
                 len: 0,
                 tag: tag.cloned(),
                 label: label
@@ -676,7 +569,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
     }
 
     fn record_value_end(&mut self, _: Option<&sval::Tag>, _: &sval::Label) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn record_end(
@@ -685,7 +578,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         _: Option<&sval::Label>,
         _: Option<&sval::Index>,
     ) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn tuple_begin(
@@ -693,10 +586,10 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         tag: Option<&sval::Tag>,
         label: Option<&sval::Label>,
         index: Option<&sval::Index>,
-        num_entries: Option<usize>,
+        _num_entries: Option<usize>,
     ) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::Tuple {
+            buf.encode_container_begin(TupleHeader {
                 len: 0,
                 tag: tag.cloned(),
                 index: index.cloned(),
@@ -707,14 +600,14 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
                             .map_err(|_| Error::no_alloc("owned label"))
                     })
                     .transpose()?,
-                num_entries,
+                num_entries: 0,
             })
         })
     }
 
     fn tuple_value_begin(&mut self, tag: Option<&sval::Tag>, index: &sval::Index) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::TupleValue {
+            buf.encode_entry_begin(TupleValueHeader {
                 len: 0,
                 tag: tag.cloned(),
                 index: index.clone(),
@@ -723,7 +616,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
     }
 
     fn tuple_value_end(&mut self, _: Option<&sval::Tag>, _: &sval::Index) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn tuple_end(
@@ -732,7 +625,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         _: Option<&sval::Label>,
         _: Option<&sval::Index>,
     ) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn record_tuple_begin(
@@ -740,10 +633,10 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         tag: Option<&sval::Tag>,
         label: Option<&sval::Label>,
         index: Option<&sval::Index>,
-        num_entries: Option<usize>,
+        _num_entries: Option<usize>,
     ) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::RecordTuple {
+            buf.encode_container_begin(RecordTupleHeader {
                 len: 0,
                 tag: tag.cloned(),
                 index: index.cloned(),
@@ -754,7 +647,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
                             .map_err(|_| Error::no_alloc("owned label"))
                     })
                     .transpose()?,
-                num_entries,
+                num_entries: 0,
             })
         })
     }
@@ -766,7 +659,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         index: &sval::Index,
     ) -> sval::Result {
         self.try_catch(|buf| {
-            buf.push_begin(ValueKind::RecordTupleValue {
+            buf.encode_entry_begin(RecordTupleValueHeader {
                 len: 0,
                 tag: tag.cloned(),
                 label: label
@@ -783,7 +676,7 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         _: &sval::Label,
         _: &sval::Index,
     ) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
 
     fn record_tuple_end(
@@ -792,711 +685,433 @@ impl<'sval> sval::Stream<'sval> for ValueBuf<'sval> {
         _: Option<&sval::Label>,
         _: Option<&sval::Index>,
     ) -> sval::Result {
-        self.try_catch(|buf| buf.push_end())
+        self.try_catch(|buf| buf.encode_container_end())
     }
-}
-
-/**
-Buffer a value.
-*/
-pub fn stream_to_value<'sval>(
-    v: &'sval (impl sval::Value + ?Sized),
-) -> Result<ValueBuf<'sval>, Error> {
-    ValueBuf::collect(v)
-}
-
-/**
-Buffer an owned value.
-*/
-pub fn stream_to_value_owned(v: impl sval::Value) -> Result<ValueBuf<'static>, Error> {
-    ValueBuf::collect_owned(v)
-}
-
-#[repr(transparent)]
-struct ValueSlice<'sval>([ValuePart<'sval>]);
-
-#[derive(Debug, Clone, PartialEq)]
-struct ValuePart<'sval> {
-    kind: ValueKind<'sval>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum ValueKind<'sval> {
-    Null,
-    Bool(bool),
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-    U128(u128),
-    I8(i8),
-    I16(i16),
-    I32(i32),
-    I64(i64),
-    I128(i128),
-    F32(f32),
-    F64(f64),
-    Text(TextBuf<'sval>),
-    Binary(BinaryBuf<'sval>),
-    Map {
-        len: usize,
-        num_entries_hint: Option<usize>,
-    },
-    MapKey {
-        len: usize,
-    },
-    MapValue {
-        len: usize,
-    },
-    Seq {
-        len: usize,
-        num_entries_hint: Option<usize>,
-    },
-    SeqValue {
-        len: usize,
-    },
-    Tag {
-        tag: Option<sval::Tag>,
-        label: Option<sval::Label<'static>>,
-        index: Option<sval::Index>,
-    },
-    TagHint {
-        tag: sval::Tag,
-    },
-    Enum {
-        len: usize,
-        tag: Option<sval::Tag>,
-        label: Option<sval::Label<'static>>,
-        index: Option<sval::Index>,
-    },
-    Tagged {
-        len: usize,
-        tag: Option<sval::Tag>,
-        label: Option<sval::Label<'static>>,
-        index: Option<sval::Index>,
-    },
-    Record {
-        len: usize,
-        tag: Option<sval::Tag>,
-        label: Option<sval::Label<'static>>,
-        index: Option<sval::Index>,
-        num_entries: Option<usize>,
-    },
-    RecordValue {
-        len: usize,
-        tag: Option<sval::Tag>,
-        label: sval::Label<'static>,
-    },
-    Tuple {
-        len: usize,
-        tag: Option<sval::Tag>,
-        label: Option<sval::Label<'static>>,
-        index: Option<sval::Index>,
-        num_entries: Option<usize>,
-    },
-    TupleValue {
-        len: usize,
-        tag: Option<sval::Tag>,
-        index: sval::Index,
-    },
-    RecordTuple {
-        len: usize,
-        tag: Option<sval::Tag>,
-        label: Option<sval::Label<'static>>,
-        index: Option<sval::Index>,
-        num_entries: Option<usize>,
-    },
-    RecordTupleValue {
-        len: usize,
-        tag: Option<sval::Tag>,
-        label: sval::Label<'static>,
-        index: sval::Index,
-    },
 }
 
 impl<'sval> ValueBuf<'sval> {
-    fn push_kind(&mut self, kind: ValueKind<'sval>) -> Result<(), Error> {
-        self.parts.push(ValuePart { kind })
+    /**
+    Encode a part into the buffer, failing if it's not in a value context.
+    */
+    #[inline]
+    fn encode_value<T: Encode<'sval>>(&mut self, header: T) -> Result<(), Error> {
+        if !matches!(self.buffering, Buffering::Value) {
+            return Err(Error::invalid_value(
+                "attempt to buffer value instead of text or binary",
+            ));
+        }
+
+        self.encode_value_always(header)
     }
 
-    fn push_begin(&mut self, kind: ValueKind<'sval>) -> Result<(), Error> {
-        self.stack.push(self.parts.len())?;
-        self.parts.push(ValuePart { kind })
+    /**
+    Encode a part into the buffer, discarding it if it's not in a value context.
+    */
+    #[inline]
+    fn encode_value_discard<T: Encode<'sval>>(&mut self, header: T) -> Result<(), Error> {
+        if !matches!(self.buffering, Buffering::Value) {
+            // Discard rather than error when outside a value
+            return Ok(());
+        }
+
+        self.encode_value_always(header)
     }
 
-    fn push_end(&mut self) -> Result<(), Error> {
-        let index = self
+    /**
+    Encode a part into the buffer regardless of whether its in a value context.
+    */
+    #[inline]
+    fn encode_value_always<T: Encode<'sval>>(&mut self, header: T) -> Result<(), Error> {
+        header.encode(&mut self.parts)
+    }
+
+    #[inline]
+    fn encode_container_begin<T: Encode<'sval>>(&mut self, header: T) -> Result<(), Error> {
+        let len_at = self.parts.next_len_at();
+
+        // In no-std builds the stack's capacity is fixed; reserve the
+        // frame's slot before encoding anything, so a full stack can't
+        // leave a container header behind with no frame to patch it. With
+        // `alloc`, `push` grows on demand and can't fail
+        #[cfg(not(feature = "alloc"))]
+        self.stack.reserve(1)?;
+
+        self.encode_value(header)?;
+
+        // `encode_part` performs validation that protects `stack`, so we
+        // call it first; the slot reserved above means this can't fail
+        self.stack.push(Frame::new::<T>(len_at))
+    }
+
+    #[inline]
+    fn encode_entry_begin<T: Encode<'sval>>(&mut self, header: T) -> Result<(), Error> {
+        self.encode_container_begin(header)?;
+
+        // Count this entry in its parent's frame; the parent is the frame
+        // just below the entry's own. The count is written into
+        // entry-tracking headers when the parent ends
+        let len = self.stack.len();
+        if len >= 2 {
+            self.stack[len - 2].count_entry();
+        }
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn encode_container_end(&mut self) -> Result<(), Error> {
+        if !matches!(self.buffering, Buffering::Value) {
+            return Err(Error::invalid_value(
+                "attempt to buffer value instead text or binary",
+            ));
+        }
+
+        let frame = self
             .stack
             .pop()
             .ok_or_else(|| Error::invalid_value("unbalanced calls to `begin` and `end`"))?;
 
-        let len = self.parts.len() - index - 1;
+        // The container's body starts after its header and runs to the
+        // current end of the buffer
+        let len = self.parts.len() - (frame.len_at() + frame.header_size());
 
-        *match &mut self.parts.get_mut(index).unwrap().kind {
-            ValueKind::Map { len, .. } => len,
-            ValueKind::MapKey { len } => len,
-            ValueKind::MapValue { len } => len,
-            ValueKind::Seq { len, .. } => len,
-            ValueKind::SeqValue { len } => len,
-            ValueKind::Enum { len, .. } => len,
-            ValueKind::Tagged { len, .. } => len,
-            ValueKind::Record { len, .. } => len,
-            ValueKind::RecordValue { len, .. } => len,
-            ValueKind::Tuple { len, .. } => len,
-            ValueKind::TupleValue { len, .. } => len,
-            ValueKind::RecordTuple { len, .. } => len,
-            ValueKind::RecordTupleValue { len, .. } => len,
-            ValueKind::Null
-            | ValueKind::Bool(_)
-            | ValueKind::U8(_)
-            | ValueKind::U16(_)
-            | ValueKind::U32(_)
-            | ValueKind::U64(_)
-            | ValueKind::U128(_)
-            | ValueKind::I8(_)
-            | ValueKind::I16(_)
-            | ValueKind::I32(_)
-            | ValueKind::I64(_)
-            | ValueKind::I128(_)
-            | ValueKind::F32(_)
-            | ValueKind::F64(_)
-            | ValueKind::Text(_)
-            | ValueKind::Binary(_)
-            | ValueKind::Tag { .. }
-            | ValueKind::TagHint { .. } => {
-                return Err(Error::invalid_value("can't end at this index"))
-            }
-        } = len;
+        self.parts
+            .patch_container_end(frame.len_at(), len, frame.num_entries());
 
         Ok(())
     }
 
-    fn current_mut(&mut self) -> &mut ValuePart<'sval> {
-        self.parts.last_mut().expect("missing current")
-    }
-}
+    #[inline]
+    fn buffering_begin(&mut self, buffering: Buffering<'sval>) -> Result<(), Error> {
+        match self.buffering {
+            Buffering::Value => {
+                self.buffering = buffering;
 
-impl<'sval> ValueSlice<'sval> {
-    fn new<'a>(parts: &'a [ValuePart<'sval>]) -> &'a ValueSlice<'sval> {
-        unsafe { mem::transmute::<&'a [ValuePart<'sval>], &'a ValueSlice<'sval>>(parts) }
-    }
-
-    fn get(&self, i: usize) -> Option<&ValuePart<'sval>> {
-        self.0.get(i)
-    }
-
-    fn slice<'a>(&'a self, range: Range<usize>) -> &'a ValueSlice<'sval> {
-        match self.0.get(range.clone()) {
-            Some(_) => (),
-            None => {
-                panic!("{:?} is out of range for {:?}", range, &self.0);
+                Ok(())
             }
+            _ => Err(Error::invalid_value("already buffering")),
         }
+    }
 
-        // SAFETY: `&[ValuePart]` and `&ValueSlice` have the same ABI
-        unsafe { mem::transmute::<&'a [ValuePart<'sval>], &'a ValueSlice<'sval>>(&self.0[range]) }
+    #[inline]
+    fn encode_buffering_text_borrowed(&mut self, v: &'sval str) -> Result<(), Error> {
+        self.encode_value(BorrowedText { fragment: v })
+    }
+
+    #[inline]
+    fn encode_buffering_binary_borrowed(&mut self, v: &'sval [u8]) -> Result<(), Error> {
+        self.encode_value(BorrowedBinary { fragment: v })
+    }
+
+    #[inline]
+    fn encode_buffering_text_inline(&mut self, fragment: &str) -> Result<(), Error> {
+        match self.buffering {
+            // We're already buffering text; append to the inline entry
+            Buffering::Text(BufferingState::Inline { len_at }) => {
+                // SAFETY: `len_at` is the length field of the text part
+                // ending the buffer while state is `Inline`, and `fragment`
+                // is UTF8
+                unsafe { self.parts.push_raw_bytes(len_at, fragment.as_bytes()) }
+            }
+            // We've only seen borrowed text so far; we need to convert it into inline, then append
+            Buffering::Text(BufferingState::Borrowed(prev)) => {
+                let len_at = self.parts.next_len_at();
+                self.encode_value_always(TextHeader { len: 0 })?;
+
+                // SAFETY: `len_at` is the length field of the text part
+                // just encoded at the end of the buffer, and `prev` and
+                // `fragment` are UTF8
+                unsafe {
+                    self.parts.push_raw_bytes(len_at, prev.as_bytes())?;
+
+                    self.buffering = Buffering::Text(BufferingState::Inline { len_at });
+
+                    self.parts.push_raw_bytes(len_at, fragment.as_bytes())
+                }
+            }
+            // We haven't seen any text yet; start buffering an inline entry
+            Buffering::Text(BufferingState::Empty) => {
+                let len_at = self.parts.next_len_at();
+                self.encode_value_always(TextHeader { len: 0 })?;
+
+                // SAFETY: `len_at` is the length field of the text part
+                // just encoded at the end of the buffer, and `fragment` is UTF8
+                unsafe { self.parts.push_raw_bytes(len_at, fragment.as_bytes()) }?;
+
+                self.buffering = Buffering::Text(BufferingState::Inline { len_at });
+
+                Ok(())
+            }
+            _ => Err(Error::outside_container("text")),
+        }
+    }
+
+    #[inline]
+    fn encode_buffering_binary_inline(&mut self, fragment: &[u8]) -> Result<(), Error> {
+        match self.buffering {
+            // We're already buffering binary; append to the inline entry
+            Buffering::Binary(BufferingState::Inline { len_at }) => {
+                // SAFETY: `len_at` is the length field of the binary part
+                // ending the buffer while state is `Inline`
+                unsafe { self.parts.push_raw_bytes(len_at, fragment) }
+            }
+            // We've only seen borrowed binary so far; we need to convert it into inline, then append
+            Buffering::Binary(BufferingState::Borrowed(prev)) => {
+                let len_at = self.parts.next_len_at();
+                self.encode_value_always(BinaryHeader { len: 0 })?;
+
+                // SAFETY: `len_at` is the length field of the binary part
+                // just encoded at the end of the buffer
+                unsafe {
+                    self.parts.push_raw_bytes(len_at, prev)?;
+
+                    self.buffering = Buffering::Binary(BufferingState::Inline { len_at });
+
+                    self.parts.push_raw_bytes(len_at, fragment)
+                }
+            }
+            // We haven't seen any binary yet; start buffering an inline entry
+            Buffering::Binary(BufferingState::Empty) => {
+                let len_at = self.parts.next_len_at();
+                self.encode_value_always(BinaryHeader { len: 0 })?;
+
+                // SAFETY: `len_at` is the length field of the binary part
+                // just encoded at the end of the buffer
+                unsafe { self.parts.push_raw_bytes(len_at, fragment) }?;
+
+                self.buffering = Buffering::Binary(BufferingState::Inline { len_at });
+
+                Ok(())
+            }
+            _ => Err(Error::outside_container("binary")),
+        }
+    }
+
+    #[inline]
+    fn encode_text_end(&mut self) -> Result<(), Error> {
+        match mem::replace(&mut self.buffering, Buffering::Value) {
+            // Empty text
+            Buffering::Text(BufferingState::Empty) => self.encode_value(TextHeader { len: 0 }),
+            // A single borrowed text fragment (this is the most common case)
+            Buffering::Text(BufferingState::Borrowed(v)) => {
+                // Copy small fragments into the buffer instead of borrowing
+                // them: while nothing else is borrowed it keeps `into_owned`
+                // free. Once something is borrowed anyway that benefit is
+                // gone, so keep borrowing and skip the copies
+                #[cfg(feature = "alloc")]
+                if v.len() <= MAX_INLINE_FRAGMENT_LEN && !self.parts.is_borrowed() {
+                    return self.encode_text_inline_copy(v);
+                }
+
+                self.encode_buffering_text_borrowed(v)
+            }
+            // A buffered text fragment
+            Buffering::Text(BufferingState::Inline { .. }) => Ok(()),
+            _ => Err(Error::outside_container("text")),
+        }
+    }
+
+    #[inline]
+    fn encode_binary_end(&mut self) -> Result<(), Error> {
+        match mem::replace(&mut self.buffering, Buffering::Value) {
+            // Empty binary
+            Buffering::Binary(BufferingState::Empty) => self.encode_value(BinaryHeader { len: 0 }),
+            // A single borrowed binary fragment (this is the most common case)
+            Buffering::Binary(BufferingState::Borrowed(v)) => {
+                // Copy small fragments into the buffer instead of borrowing
+                // them; see `encode_text_end`
+                #[cfg(feature = "alloc")]
+                if v.len() <= MAX_INLINE_FRAGMENT_LEN && !self.parts.is_borrowed() {
+                    return self.encode_binary_inline_copy(v);
+                }
+
+                self.encode_buffering_binary_borrowed(v)
+            }
+            // A buffered binary fragment
+            Buffering::Binary(BufferingState::Inline { .. }) => Ok(()),
+            _ => Err(Error::outside_container("binary")),
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[inline(never)]
+    fn encode_text_inline_copy(&mut self, v: &str) -> Result<(), Error> {
+        let len_at = self.parts.next_len_at();
+        self.encode_value_always(TextHeader { len: 0 })?;
+
+        // SAFETY: `len_at` is the length field of the text part just
+        // encoded at the end of the buffer, and `v` is UTF8
+        unsafe { self.parts.push_raw_bytes(len_at, v.as_bytes()) }
+    }
+
+    #[cfg(feature = "alloc")]
+    #[inline(never)]
+    fn encode_binary_inline_copy(&mut self, v: &[u8]) -> Result<(), Error> {
+        let len_at = self.parts.next_len_at();
+        self.encode_value_always(BinaryHeader { len: 0 })?;
+
+        // SAFETY: `len_at` is the length field of the binary part just
+        // encoded at the end of the buffer
+        unsafe { self.parts.push_raw_bytes(len_at, v) }
+    }
+
+    #[inline]
+    fn buffering_push_text(&mut self, fragment: &'sval str) -> Result<(), Error> {
+        match self.buffering {
+            // This is the first fragment; we'll keep it borrowed if it's the only one
+            Buffering::Text(BufferingState::Empty) => {
+                self.buffering = Buffering::Text(BufferingState::Borrowed(fragment));
+
+                Ok(())
+            }
+            // We're already buffering; push the fragment
+            Buffering::Text(_) => self.encode_buffering_text_inline(fragment),
+            _ => Err(Error::outside_container("text")),
+        }
+    }
+
+    #[inline]
+    fn buffering_push_binary(&mut self, fragment: &'sval [u8]) -> Result<(), Error> {
+        match self.buffering {
+            // This is the first fragment; we'll keep it borrowed if it's the only one
+            Buffering::Binary(BufferingState::Empty) => {
+                self.buffering = Buffering::Binary(BufferingState::Borrowed(fragment));
+
+                Ok(())
+            }
+            // We're already buffering; push the fragment
+            Buffering::Binary(_) => self.encode_buffering_binary_inline(fragment),
+            _ => Err(Error::outside_container("binary")),
+        }
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Frame {
+    // Offset of the container header's `len` field
+    len_at: u32,
+    // The number of direct entries seen so far
+    entries: u32,
+    // The size of the header's payload struct
+    size: u8,
+    // Whether the header tracks its number of entries
+    entry_tracking: bool,
+}
+
+impl Frame {
+    #[inline]
+    fn new<'sval, T: Encode<'sval>>(len_at: usize) -> Self {
+        debug_assert!(mem::size_of::<T>() <= u8::MAX as usize);
+        debug_assert!(len_at <= u32::MAX as usize);
+
+        Frame {
+            len_at: len_at as u32,
+            entries: 0,
+            size: mem::size_of::<T>() as u8,
+            entry_tracking: T::is_entry_tracking(),
+        }
+    }
+
+    #[inline]
+    fn len_at(self) -> usize {
+        self.len_at as usize
+    }
+
+    #[inline]
+    fn header_size(self) -> usize {
+        self.size as usize
+    }
+
+    #[inline]
+    fn num_entries(self) -> Option<u32> {
+        if self.entry_tracking {
+            Some(self.entries)
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn count_entry(&mut self) {
+        self.entries += 1;
+    }
+}
+
+// The maximum container nesting depth in no-std builds.
 #[cfg(feature = "alloc")]
-impl<'sval> ValuePart<'sval> {
-    fn into_owned_in_place(&mut self) -> &mut ValuePart<'static> {
-        let ValuePart { kind } = self;
-
-        match kind {
-            ValueKind::Text(ref mut text) => crate::assert_static(text.into_owned_in_place()),
-            ValueKind::Binary(ref mut binary) => crate::assert_static(binary.into_owned_in_place()),
-            ValueKind::Null => (),
-            ValueKind::Bool(v) => crate::assert_static(v),
-            ValueKind::U8(v) => crate::assert_static(v),
-            ValueKind::U16(v) => crate::assert_static(v),
-            ValueKind::U32(v) => crate::assert_static(v),
-            ValueKind::U64(v) => crate::assert_static(v),
-            ValueKind::U128(v) => crate::assert_static(v),
-            ValueKind::I8(v) => crate::assert_static(v),
-            ValueKind::I16(v) => crate::assert_static(v),
-            ValueKind::I32(v) => crate::assert_static(v),
-            ValueKind::I64(v) => crate::assert_static(v),
-            ValueKind::I128(v) => crate::assert_static(v),
-            ValueKind::F32(v) => crate::assert_static(v),
-            ValueKind::F64(v) => crate::assert_static(v),
-            ValueKind::Map {
-                len,
-                num_entries_hint,
-            } => {
-                crate::assert_static(len);
-                crate::assert_static(num_entries_hint)
-            }
-            ValueKind::MapKey { len } => crate::assert_static(len),
-            ValueKind::MapValue { len } => crate::assert_static(len),
-            ValueKind::Seq {
-                len,
-                num_entries_hint,
-            } => {
-                crate::assert_static(len);
-                crate::assert_static(num_entries_hint)
-            }
-            ValueKind::SeqValue { len } => crate::assert_static(len),
-            ValueKind::Tag { tag, label, index } => {
-                crate::assert_static(tag);
-                crate::assert_static(label);
-                crate::assert_static(index)
-            }
-            ValueKind::TagHint { tag } => {
-                crate::assert_static(tag);
-            }
-            ValueKind::Enum {
-                len,
-                tag,
-                label,
-                index,
-            } => {
-                crate::assert_static(len);
-                crate::assert_static(tag);
-                crate::assert_static(label);
-                crate::assert_static(index)
-            }
-            ValueKind::Tagged {
-                len,
-                tag,
-                label,
-                index,
-            } => {
-                crate::assert_static(len);
-                crate::assert_static(tag);
-                crate::assert_static(label);
-                crate::assert_static(index)
-            }
-            ValueKind::Record {
-                len,
-                tag,
-                label,
-                index,
-                num_entries,
-            } => {
-                crate::assert_static(len);
-                crate::assert_static(tag);
-                crate::assert_static(label);
-                crate::assert_static(index);
-                crate::assert_static(num_entries)
-            }
-            ValueKind::RecordValue { len, tag, label } => {
-                crate::assert_static(len);
-                crate::assert_static(tag);
-                crate::assert_static(label)
-            }
-            ValueKind::Tuple {
-                len,
-                tag,
-                label,
-                index,
-                num_entries,
-            } => {
-                crate::assert_static(len);
-                crate::assert_static(tag);
-                crate::assert_static(label);
-                crate::assert_static(index);
-                crate::assert_static(num_entries)
-            }
-            ValueKind::TupleValue { len, tag, index } => {
-                crate::assert_static(len);
-                crate::assert_static(tag);
-                crate::assert_static(index)
-            }
-            ValueKind::RecordTuple {
-                len,
-                tag,
-                label,
-                index,
-                num_entries,
-            } => {
-                crate::assert_static(len);
-                crate::assert_static(tag);
-                crate::assert_static(label);
-                crate::assert_static(index);
-                crate::assert_static(num_entries)
-            }
-            ValueKind::RecordTupleValue {
-                len,
-                tag,
-                label,
-                index,
-            } => {
-                crate::assert_static(len);
-                crate::assert_static(tag);
-                crate::assert_static(label);
-                crate::assert_static(index)
-            }
-        }
-
-        // SAFETY: `self` no longer contains any data borrowed for `'sval`
-        unsafe { mem::transmute::<&mut ValuePart<'sval>, &mut ValuePart<'static>>(self) }
-    }
-}
-
-impl<'a> sval::Value for ValueSlice<'a> {
-    fn stream<'sval, S: sval::Stream<'sval> + ?Sized>(&'sval self, stream: &mut S) -> sval::Result {
-        self.stream_ref(stream)
-    }
-}
-
-impl<'sval> sval_ref::ValueRef<'sval> for ValueSlice<'sval> {
-    fn stream_ref<'a, S: sval::Stream<'sval> + ?Sized>(&'a self, stream: &mut S) -> sval::Result {
-        let mut i = 0;
-
-        fn stream_value<'a, 'sval, S: sval::Stream<'sval> + ?Sized>(
-            stream: &mut S,
-            i: &mut usize,
-            len: usize,
-            value: &ValueSlice<'sval>,
-            f: impl FnOnce(&mut S, &ValueSlice<'sval>) -> sval::Result,
-        ) -> sval::Result {
-            let value = value.slice({
-                let start = *i + 1;
-                let end = start + len;
-
-                start..end
-            });
-
-            f(stream, value)?;
-
-            *i += len;
-
-            Ok(())
-        }
-
-        while let Some(part) = self.get(i) {
-            let part: &ValuePart<'sval> = part;
-            match &part.kind {
-                ValueKind::Null => stream.null()?,
-                ValueKind::Bool(v) => stream.bool(*v)?,
-                ValueKind::U8(v) => stream.u8(*v)?,
-                ValueKind::U16(v) => stream.u16(*v)?,
-                ValueKind::U32(v) => stream.u32(*v)?,
-                ValueKind::U64(v) => stream.u64(*v)?,
-                ValueKind::U128(v) => stream.u128(*v)?,
-                ValueKind::I8(v) => stream.i8(*v)?,
-                ValueKind::I16(v) => stream.i16(*v)?,
-                ValueKind::I32(v) => stream.i32(*v)?,
-                ValueKind::I64(v) => stream.i64(*v)?,
-                ValueKind::I128(v) => stream.i128(*v)?,
-                ValueKind::F32(v) => stream.f32(*v)?,
-                ValueKind::F64(v) => stream.f64(*v)?,
-                ValueKind::Text(v) => sval_ref::stream_ref(stream, v)?,
-                ValueKind::Binary(v) => sval_ref::stream_ref(stream, v)?,
-                ValueKind::Map {
-                    len,
-                    num_entries_hint,
-                } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.map_begin(*num_entries_hint)?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.map_end()
-                    })?;
-                }
-                ValueKind::MapKey { len } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.map_key_begin()?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.map_key_end()
-                    })?;
-                }
-                ValueKind::MapValue { len } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.map_value_begin()?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.map_value_end()
-                    })?;
-                }
-                ValueKind::Seq {
-                    len,
-                    num_entries_hint,
-                } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.seq_begin(*num_entries_hint)?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.seq_end()
-                    })?;
-                }
-                ValueKind::SeqValue { len } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.seq_value_begin()?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.seq_value_end()
-                    })?;
-                }
-                ValueKind::Tag { tag, label, index } => {
-                    stream.tag(tag.as_ref(), label.as_ref(), index.as_ref())?;
-                }
-                ValueKind::TagHint { tag } => {
-                    stream.tag_hint(tag)?;
-                }
-                ValueKind::Enum {
-                    len,
-                    tag,
-                    label,
-                    index,
-                } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.enum_begin(tag.as_ref(), label.as_ref(), index.as_ref())?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.enum_end(tag.as_ref(), label.as_ref(), index.as_ref())
-                    })?;
-                }
-                ValueKind::Tagged {
-                    len,
-                    tag,
-                    label,
-                    index,
-                } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.tagged_begin(tag.as_ref(), label.as_ref(), index.as_ref())?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.tagged_end(tag.as_ref(), label.as_ref(), index.as_ref())
-                    })?;
-                }
-                ValueKind::Record {
-                    len,
-                    tag,
-                    label,
-                    index,
-                    num_entries,
-                } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.record_begin(
-                            tag.as_ref(),
-                            label.as_ref(),
-                            index.as_ref(),
-                            *num_entries,
-                        )?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.record_end(tag.as_ref(), label.as_ref(), index.as_ref())
-                    })?;
-                }
-                ValueKind::RecordValue { len, tag, label } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.record_value_begin(tag.as_ref(), label)?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.record_value_end(tag.as_ref(), label)
-                    })?;
-                }
-                ValueKind::Tuple {
-                    len,
-                    tag,
-                    label,
-                    index,
-                    num_entries,
-                } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.tuple_begin(
-                            tag.as_ref(),
-                            label.as_ref(),
-                            index.as_ref(),
-                            *num_entries,
-                        )?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.tuple_end(tag.as_ref(), label.as_ref(), index.as_ref())
-                    })?;
-                }
-                ValueKind::TupleValue { len, tag, index } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.tuple_value_begin(tag.as_ref(), index)?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.tuple_value_end(tag.as_ref(), index)
-                    })?;
-                }
-                ValueKind::RecordTuple {
-                    len,
-                    tag,
-                    label,
-                    index,
-                    num_entries,
-                } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.record_tuple_begin(
-                            tag.as_ref(),
-                            label.as_ref(),
-                            index.as_ref(),
-                            *num_entries,
-                        )?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.record_tuple_end(tag.as_ref(), label.as_ref(), index.as_ref())
-                    })?;
-                }
-                ValueKind::RecordTupleValue {
-                    len,
-                    tag,
-                    label,
-                    index,
-                } => {
-                    stream_value(stream, &mut i, *len, self, |stream, body| {
-                        stream.record_tuple_value_begin(tag.as_ref(), label, index)?;
-                        sval_ref::stream_ref(stream, body)?;
-                        stream.record_tuple_value_end(tag.as_ref(), label, index)
-                    })?;
-                }
-            }
-
-            i += 1;
-        }
-
-        Ok(())
-    }
-}
+const STACK_CAP: usize = 1;
 
 #[cfg(not(feature = "alloc"))]
-mod array_vec {
-    use crate::{
-        std::{
-            fmt, mem,
-            ops::{Deref, DerefMut},
-        },
-        Error,
-    };
+const STACK_CAP: usize = 16;
 
-    pub(super) struct ArrayVec<T, const N: usize> {
-        buf: [mem::MaybeUninit<T>; N],
-        len: usize,
+#[derive(Debug)]
+struct BufMut<T, const N: usize> {
+    #[cfg(feature = "alloc")]
+    inner: crate::std::vec::Vec<T>,
+    #[cfg(not(feature = "alloc"))]
+    inner: ArrayVec<T, N>,
+}
+
+impl<T, const N: usize> Default for BufMut<T, N> {
+    fn default() -> Self {
+        BufMut {
+            inner: Default::default(),
+        }
     }
+}
 
-    impl<T: Clone, const N: usize> Clone for ArrayVec<T, N> {
-        fn clone(&self) -> Self {
-            let mut buf = Self::default();
+impl<T, const N: usize> Deref for BufMut<T, N> {
+    type Target = [T];
 
-            for value in self.iter().cloned() {
-                buf.push(value).unwrap();
-            }
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
 
-            buf
+impl<T, const N: usize> DerefMut for BufMut<T, N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl<T, const N: usize> BufMut<T, N> {
+    #[cfg(not(feature = "alloc"))]
+    #[inline]
+    fn reserve(&mut self, extra: usize) -> Result<(), Error> {
+        if self.inner.len() + extra > N {
+            Err(Error::no_alloc("container frame"))
+        } else {
+            Ok(())
         }
     }
 
-    impl<T, const N: usize> Default for ArrayVec<T, N> {
-        fn default() -> Self {
-            ArrayVec {
-                // SAFETY: An array of uninitialized values is valid
-                buf: unsafe {
-                    mem::MaybeUninit::<[mem::MaybeUninit<T>; N]>::uninit().assume_init()
-                },
-                len: 0,
-            }
-        }
-    }
-
-    impl<T, const N: usize> Drop for ArrayVec<T, N> {
-        fn drop(&mut self) {
-            // SAFETY: Values up to `self.len` are initialized
-            unsafe {
-                crate::std::ptr::drop_in_place::<[T]>(&mut **self as *mut [T]);
-            }
-        }
-    }
-
-    impl<T: fmt::Debug, const N: usize> fmt::Debug for ArrayVec<T, N> {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            fmt::Debug::fmt(&**self, f)
-        }
-    }
-
-    impl<T, const N: usize> Deref for ArrayVec<T, N> {
-        type Target = [T];
-
-        fn deref(&self) -> &Self::Target {
-            let buf = &self.buf[..self.len];
-
-            // SAFETY: Values up to `self.len` are initialized
-            unsafe { &*(buf as *const [mem::MaybeUninit<T>] as *const [T]) }
-        }
-    }
-
-    impl<T, const N: usize> DerefMut for ArrayVec<T, N> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            let buf = &mut self.buf[..self.len];
-
-            // SAFETY: Values up to `self.len` are initialized
-            unsafe { &mut *(buf as *mut [mem::MaybeUninit<T>] as *mut [T]) }
-        }
-    }
-
-    impl<T, const N: usize> ArrayVec<T, N> {
-        pub(super) fn push(&mut self, value: T) -> Result<(), Error> {
-            if self.len == N {
-                return Err(Error::no_alloc("vec push"));
-            }
-
-            mem::MaybeUninit::write(&mut self.buf[self.len], value);
-            self.len += 1;
+    fn push(&mut self, value: T) -> Result<(), Error> {
+        #[cfg(feature = "alloc")]
+        {
+            self.inner.push(value);
 
             Ok(())
         }
-
-        pub(super) fn pop(&mut self) -> Option<T> {
-            match self.len.checked_sub(1) {
-                Some(i) => {
-                    self.len = i;
-
-                    // SAFETY: The value at `i` is initialized and being moved out of
-                    Some(unsafe { mem::MaybeUninit::assume_init_read(&self.buf[i]) })
-                }
-                None => None,
-            }
-        }
-
-        pub(super) fn clear(&mut self) {
-            *self = Default::default()
+        #[cfg(not(feature = "alloc"))]
+        {
+            self.inner.push(value)
         }
     }
 
-    #[cfg(test)]
-    mod tests {
-        use super::*;
+    fn pop(&mut self) -> Option<T> {
+        self.inner.pop()
+    }
 
-        use alloc::rc::Rc;
-
-        #[test]
-        fn push_pop() {
-            let mut vec = ArrayVec::<_, 2>::default();
-
-            assert!(vec.pop().is_none());
-
-            assert!(vec.push(1).is_ok());
-            assert!(vec.push(2).is_ok());
-            assert!(vec.push(3).is_err());
-
-            assert_eq!(2, vec.pop().unwrap());
-            assert_eq!(1, vec.pop().unwrap());
-            assert!(vec.pop().is_none());
-
-            assert!(vec.push(1).is_ok());
-
-            assert_eq!(1, vec.pop().unwrap());
-            assert!(vec.pop().is_none());
-        }
-
-        #[test]
-        fn destructors() {
-            let mut vec = ArrayVec::<_, 5>::default();
-
-            let a = Rc::new(1);
-            let b = Rc::new(2);
-
-            vec.push(a.clone()).unwrap();
-            vec.push(b.clone()).unwrap();
-
-            assert_eq!(2, Rc::strong_count(&a));
-            assert_eq!(2, Rc::strong_count(&b));
-
-            drop(vec);
-
-            assert_eq!(1, Rc::strong_count(&a));
-            assert_eq!(1, Rc::strong_count(&b));
-        }
+    fn clear(&mut self) {
+        self.inner.clear()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::{value::raw::test_util::*, BinaryBuf, TextBuf};
 
     use sval::Stream as _;
 
@@ -1582,114 +1197,50 @@ mod tests {
         for (value, expected) in [
             (
                 ValueBuf::collect(&true).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::Bool(true),
-                }],
+                vec![ValueKind::Bool(true)],
             ),
-            (
-                ValueBuf::collect(&1i8).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::I8(1),
-                }],
-            ),
-            (
-                ValueBuf::collect(&2i16).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::I16(2),
-                }],
-            ),
-            (
-                ValueBuf::collect(&3i32).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::I32(3),
-                }],
-            ),
-            (
-                ValueBuf::collect(&4i64).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::I64(4),
-                }],
-            ),
-            (
-                ValueBuf::collect(&5i128).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::I128(5),
-                }],
-            ),
-            (
-                ValueBuf::collect(&1u8).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::U8(1),
-                }],
-            ),
-            (
-                ValueBuf::collect(&2u16).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::U16(2),
-                }],
-            ),
-            (
-                ValueBuf::collect(&3u32).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::U32(3),
-                }],
-            ),
-            (
-                ValueBuf::collect(&4u64).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::U64(4),
-                }],
-            ),
-            (
-                ValueBuf::collect(&5u128).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::U128(5),
-                }],
-            ),
+            (ValueBuf::collect(&1i8).unwrap(), vec![ValueKind::I8(1)]),
+            (ValueBuf::collect(&2i16).unwrap(), vec![ValueKind::I16(2)]),
+            (ValueBuf::collect(&3i32).unwrap(), vec![ValueKind::I32(3)]),
+            (ValueBuf::collect(&4i64).unwrap(), vec![ValueKind::I64(4)]),
+            (ValueBuf::collect(&5i128).unwrap(), vec![ValueKind::I128(5)]),
+            (ValueBuf::collect(&1u8).unwrap(), vec![ValueKind::U8(1)]),
+            (ValueBuf::collect(&2u16).unwrap(), vec![ValueKind::U16(2)]),
+            (ValueBuf::collect(&3u32).unwrap(), vec![ValueKind::U32(3)]),
+            (ValueBuf::collect(&4u64).unwrap(), vec![ValueKind::U64(4)]),
+            (ValueBuf::collect(&5u128).unwrap(), vec![ValueKind::U128(5)]),
             (
                 ValueBuf::collect(&3.14f32).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::F32(3.14),
-                }],
+                vec![ValueKind::F32(3.14)],
             ),
             (
                 ValueBuf::collect(&3.1415f64).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::F64(3.1415),
-                }],
+                vec![ValueKind::F64(3.1415)],
             ),
             (
                 ValueBuf::collect("abc").unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::Text(TextBuf::from("abc")),
-                }],
+                vec![ValueKind::Text(TextBuf::from("abc"))],
             ),
             (
                 ValueBuf::collect(sval::BinarySlice::new(b"abc")).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::Binary(BinaryBuf::from(b"abc")),
-                }],
+                vec![ValueKind::Binary(BinaryBuf::from(b"abc"))],
             ),
             (
                 ValueBuf::collect(sval::MapSlice::<&str, i32>::new(&[])).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::Map {
-                        len: 0,
-                        num_entries_hint: Some(0),
-                    },
+                vec![ValueKind::Map {
+                    num_parts: 0,
+                    num_entries: 0,
                 }],
             ),
             (
                 ValueBuf::collect(&[] as &[i32]).unwrap(),
-                vec![ValuePart {
-                    kind: ValueKind::Seq {
-                        len: 0,
-                        num_entries_hint: Some(0),
-                    },
+                vec![ValueKind::Seq {
+                    num_parts: 0,
+                    num_entries: 0,
                 }],
             ),
         ] {
-            assert_eq!(expected, &*value.parts, "{:?}", value);
+            assert_eq!(expected, value.parts.decode(), "{:?}", value);
         }
     }
 
@@ -1703,15 +1254,13 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            &[ValuePart {
-                kind: ValueKind::Enum {
-                    len: 0,
-                    tag: None,
-                    label: Some(sval::Label::new("Enum")),
-                    index: None
-                }
+            vec![ValueKind::Enum {
+                num_parts: 0,
+                tag: None,
+                label: Some(sval::Label::new("Enum")),
+                index: None
             }],
-            &*buf.parts
+            buf.parts.decode()
         );
     }
 
@@ -1725,16 +1274,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            &[ValuePart {
-                kind: ValueKind::Record {
-                    len: 0,
-                    tag: None,
-                    label: Some(sval::Label::new("Record")),
-                    index: None,
-                    num_entries: Some(0)
-                }
+            vec![ValueKind::Record {
+                num_parts: 0,
+                tag: None,
+                label: Some(sval::Label::new("Record")),
+                index: None,
+                num_entries: Some(0)
             }],
-            &*buf.parts
+            buf.parts.decode()
         );
     }
 
@@ -1748,16 +1295,14 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            &[ValuePart {
-                kind: ValueKind::Tuple {
-                    len: 0,
-                    tag: None,
-                    label: Some(sval::Label::new("Tuple")),
-                    index: None,
-                    num_entries: Some(0)
-                }
+            vec![ValueKind::Tuple {
+                num_parts: 0,
+                tag: None,
+                label: Some(sval::Label::new("Tuple")),
+                index: None,
+                num_entries: Some(0)
             }],
-            &*buf.parts
+            buf.parts.decode()
         );
     }
 
@@ -1768,8 +1313,8 @@ mod tests {
         buf.i32(42).unwrap();
 
         assert_eq!(
-            &*Value::collect(&42i32).unwrap().parts,
-            &*buf.to_value().parts
+            Value::collect(&42i32).unwrap().parts.decode(),
+            buf.to_value().parts.decode()
         );
 
         buf.clear();
@@ -1777,9 +1322,41 @@ mod tests {
         buf.bool(true).unwrap();
 
         assert_eq!(
-            &*Value::collect(&true).unwrap().parts,
-            &*buf.to_value().parts
+            Value::collect(&true).unwrap().parts.decode(),
+            buf.to_value().parts.decode()
         );
+    }
+
+    #[test]
+    fn buffer_computed_text() {
+        // Computed fragments are buffered inline, so they work even without
+        // an allocator
+        let mut buf = ValueBuf::new();
+
+        buf.text_begin(None).unwrap();
+        buf.text_fragment_computed("ab").unwrap();
+        buf.text_fragment_computed("cd").unwrap();
+        buf.text_end().unwrap();
+
+        assert!(buf.is_complete());
+
+        match buf.parts.decode()[0] {
+            ValueKind::Text(ref text) => assert_eq!("abcd", text.as_str()),
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn buffer_value_inside_text() {
+        // A value streamed in the middle of a text string would corrupt the
+        // encoding, so it must fail
+        let mut buf = ValueBuf::new();
+
+        buf.text_begin(None).unwrap();
+        buf.text_fragment_computed("ab").unwrap();
+
+        // Write some invalid data in the middle
+        assert!(buf.bool(true).is_err());
     }
 
     #[test]
@@ -1806,7 +1383,9 @@ mod tests {
 mod alloc_tests {
     use super::*;
 
-    use crate::std::string::String;
+    use crate::value::raw::test_util::*;
+
+    use libstd::string::String;
 
     use sval::Stream as _;
     use sval_derive_macros::*;
@@ -1818,7 +1397,7 @@ mod alloc_tests {
         let buf = ValueBuf::collect_owned(&short_lived).unwrap();
         drop(short_lived);
 
-        match buf.parts[0].kind {
+        match buf.parts.decode()[0] {
             ValueKind::Text(ref text) => {
                 assert!(text.as_borrowed_str().is_none());
                 assert_eq!("abc", text.as_str());
@@ -1829,18 +1408,41 @@ mod alloc_tests {
 
     #[test]
     fn into_owned() {
+        // Long enough that it's buffered as borrowed rather than inlined
+        let short_lived = String::from("a value too long to buffer inline");
+
+        let buf = ValueBuf::collect(&short_lived).unwrap();
+        assert!(buf.parts.is_borrowed());
+
+        let owned = buf.into_owned().unwrap();
+        drop(short_lived);
+
+        // The buffer is rebuilt into a single allocation of exactly the
+        // required size
+        assert_eq!(owned.parts.len(), owned.parts.capacity());
+
+        match owned.parts.decode()[0] {
+            ValueKind::Text(ref text) => {
+                assert!(text.as_borrowed_str().is_none());
+                assert_eq!("a value too long to buffer inline", text.as_str());
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn small_borrowed_text_inlined() {
+        // Small borrowed fragments are copied into the buffer up front, so
+        // nothing borrows and `into_owned` has nothing to convert
         let short_lived = String::from("abc");
 
         let buf = ValueBuf::collect(&short_lived).unwrap();
-        let borrowed_ptr = buf.parts.as_ptr() as *const ();
+        assert!(!buf.parts.is_borrowed());
 
         let owned = buf.into_owned().unwrap();
-        let owned_ptr = owned.parts.as_ptr() as *const ();
         drop(short_lived);
 
-        assert!(core::ptr::eq(borrowed_ptr, owned_ptr));
-
-        match owned.parts[0].kind {
+        match owned.parts.decode()[0] {
             ValueKind::Text(ref text) => {
                 assert!(text.as_borrowed_str().is_none());
                 assert_eq!("abc", text.as_str());
@@ -1850,32 +1452,249 @@ mod alloc_tests {
     }
 
     #[test]
+    fn small_borrowed_text_stays_borrowed_after_borrow() {
+        // Once something is already borrowed, small fragments keep borrowing
+        // too: `into_owned` will walk the buffer regardless, so there's
+        // nothing to gain from copying them
+        let long = String::from("a value too long to buffer inline");
+        let small = String::from("abc");
+
+        let value = (&long, &small);
+        let buf = ValueBuf::collect(&value).unwrap();
+
+        assert!(buf.parts.is_borrowed());
+
+        // The tuple decodes flat: the small string is the second tuple
+        // value's payload
+        match buf.parts.decode()[4] {
+            ValueKind::Text(ref text) => {
+                assert!(text.as_borrowed_str().is_some());
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn into_owned_binary_clone_and_drop() {
+        // A borrowed binary value converted to owned in-place, then cloned so
+        // two buffers own independent copies. Dropping both must not
+        // double-free or leak (checked by miri).
+        let short_lived = alloc::vec![1u8, 2, 3];
+
+        let buf = ValueBuf::collect(sval::BinarySlice::new(&short_lived)).unwrap();
+
+        let owned = buf.into_owned().unwrap();
+        let cloned = owned.to_value();
+        drop(short_lived);
+
+        for decoded in [owned.parts.decode(), cloned.parts.decode()] {
+            match decoded[0] {
+                ValueKind::Binary(ref binary) => {
+                    assert!(binary.as_borrowed_slice().is_none());
+                    assert_eq!(&[1, 2, 3], binary.as_slice());
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        drop(cloned);
+        drop(owned);
+    }
+
+    #[test]
+    fn into_owned_nested() {
+        // Borrowed text nested inside containers. Converting it to owned
+        // changes the size of the text parts, so every enclosing container's
+        // length has to be patched.
+        #[derive(Value)]
+        struct Nested<'a> {
+            id: i32,
+            title: &'a str,
+            attributes: &'a [&'a str],
+        }
+
+        let title = String::from("A very important document");
+        let attributes = [String::from("#1"), String::from("a longer attribute")];
+
+        let data = Nested {
+            id: 42,
+            title: &title,
+            attributes: &[&attributes[0], &attributes[1]],
+        };
+
+        // Fully-computed collection is already owned; converting borrowed
+        // data must produce the same value
+        let expected = ValueBuf::collect_owned(&data).unwrap();
+        let owned = ValueBuf::collect(&data).unwrap().into_owned().unwrap();
+
+        assert_eq!(expected.parts.decode(), owned.parts.decode());
+
+        drop(title);
+        drop(attributes);
+
+        // The owned buffer must still stream correctly
+        let roundtrip = ValueBuf::collect(&owned).unwrap();
+        assert_eq!(owned.parts.decode(), roundtrip.parts.decode());
+    }
+
+    #[test]
+    fn text_mixed_fragments() {
+        // A borrowed fragment followed by more fragments is moved into a
+        // single inline part
+        let mut buf = ValueBuf::new();
+
+        buf.text_begin(None).unwrap();
+        buf.text_fragment("borrowed").unwrap();
+        buf.text_fragment_computed(" computed ").unwrap();
+        buf.text_fragment("borrowed").unwrap();
+        buf.text_end().unwrap();
+
+        match buf.parts.decode()[0] {
+            ValueKind::Text(ref text) => {
+                assert!(text.as_borrowed_str().is_none());
+                assert_eq!("borrowed computed borrowed", text.as_str());
+            }
+            _ => unreachable!(),
+        }
+
+        // The buffer owns nothing that needs dropping or converting
+        assert!(!buf.parts.is_owned());
+        assert!(!buf.parts.is_borrowed());
+    }
+
+    #[test]
+    fn incomplete_buffering_is_safe_to_walk() {
+        // A value abandoned in the middle of a text string. The inline
+        // part's length is patched on every append, so the buffer stays
+        // well-formed and every walk over it (clone, drop with owned labels,
+        // conversion, streaming) is sound even though the value is
+        // incomplete
+        let computed = String::from("computed");
+
+        let mut buf = ValueBuf::new();
+        buf.record_begin(
+            None,
+            Some(&sval::Label::new_computed(&computed)),
+            None,
+            None,
+        )
+        .unwrap();
+        buf.record_value_begin(None, &sval::Label::new_computed(&computed))
+            .unwrap();
+        buf.text_begin(None).unwrap();
+        buf.text_fragment_computed("nönsense \u{9F} bytes ÿ")
+            .unwrap();
+
+        assert!(!buf.is_complete());
+
+        let value = buf.to_value();
+
+        let mut tokens = sval_test::TokenBuf::new();
+        value.stream_ref(&mut tokens).unwrap();
+
+        let owned = value.into_owned().unwrap();
+
+        drop(owned);
+        drop(buf);
+    }
+
+    #[test]
+    fn incomplete_buffering_reuse() {
+        let mut buf = ValueBuf::new();
+
+        buf.text_begin(None).unwrap();
+        buf.text_fragment_computed("abandoned").unwrap();
+
+        buf.clear();
+        buf.i32(42).unwrap();
+
+        assert!(buf.is_complete());
+        assert_eq!(
+            ValueBuf::collect(&42i32).unwrap().parts.decode(),
+            buf.parts.decode()
+        );
+    }
+
+    #[test]
+    fn owned_clone_and_drop() {
+        let short_lived = String::from("a computed string");
+        let buf = ValueBuf::collect_owned(&short_lived).unwrap();
+        drop(short_lived);
+
+        let cloned = buf.to_value();
+
+        assert_eq!(buf.parts.decode(), cloned.parts.decode());
+
+        drop(cloned);
+        drop(buf);
+    }
+
+    #[test]
+    fn owned_label() {
+        let short_lived = String::from("field");
+
+        let mut buf = ValueBuf::new();
+        buf.record_begin(None, Some(&sval::Label::new("R")), None, Some(1))
+            .unwrap();
+        buf.record_value_begin(None, &sval::Label::new_computed(&short_lived))
+            .unwrap();
+        buf.i32(1).unwrap();
+        buf.record_value_end(None, &sval::Label::new_computed(&short_lived))
+            .unwrap();
+        buf.record_end(None, Some(&sval::Label::new("R")), None)
+            .unwrap();
+
+        let owned = buf.into_owned().unwrap();
+        drop(short_lived);
+
+        let roundtrip = ValueBuf::collect(&owned).unwrap();
+        assert_eq!(owned.parts.decode(), roundtrip.parts.decode());
+    }
+
+    #[test]
+    fn computed_text_multi_fragment() {
+        let mut buf = ValueBuf::new();
+        buf.text_begin(None).unwrap();
+        buf.text_fragment_computed("ab").unwrap();
+        buf.text_fragment_computed("cd").unwrap();
+        buf.text_end().unwrap();
+
+        match buf.parts.decode()[0] {
+            ValueKind::Text(ref text) => {
+                assert_eq!("abcd", text.as_str());
+                assert!(text.as_borrowed_str().is_none());
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
     fn buffer_option() {
-        let expected = vec![ValuePart {
-            kind: ValueKind::Tag {
-                tag: Some(sval::tags::RUST_OPTION_NONE),
-                label: Some(sval::Label::new("None")),
-                index: Some(sval::Index::new(0)),
-            },
+        let expected = vec![ValueKind::Tag {
+            tag: Some(sval::tags::RUST_OPTION_NONE),
+            label: Some(sval::Label::new("None")),
+            index: Some(sval::Index::new(0)),
         }];
 
-        assert_eq!(expected, &*ValueBuf::collect(&None::<i32>).unwrap().parts);
+        assert_eq!(
+            expected,
+            ValueBuf::collect(&None::<i32>).unwrap().parts.decode()
+        );
 
         let expected = vec![
-            ValuePart {
-                kind: ValueKind::Tagged {
-                    len: 1,
-                    tag: Some(sval::tags::RUST_OPTION_SOME),
-                    label: Some(sval::Label::new("Some")),
-                    index: Some(sval::Index::new(1)),
-                },
+            ValueKind::Tagged {
+                num_parts: 1,
+                tag: Some(sval::tags::RUST_OPTION_SOME),
+                label: Some(sval::Label::new("Some")),
+                index: Some(sval::Index::new(1)),
             },
-            ValuePart {
-                kind: ValueKind::I32(42),
-            },
+            ValueKind::I32(42),
         ];
 
-        assert_eq!(expected, &*ValueBuf::collect(&Some(42i32)).unwrap().parts);
+        assert_eq!(
+            expected,
+            ValueBuf::collect(&Some(42i32)).unwrap().parts.decode()
+        );
     }
 
     #[test]
@@ -1903,39 +1722,21 @@ mod alloc_tests {
         value.map_end().unwrap();
 
         let expected = vec![
-            ValuePart {
-                kind: ValueKind::Map {
-                    len: 8,
-                    num_entries_hint: Some(2),
-                },
+            ValueKind::Map {
+                num_parts: 8,
+                num_entries: 2,
             },
-            ValuePart {
-                kind: ValueKind::MapKey { len: 1 },
-            },
-            ValuePart {
-                kind: ValueKind::I32(0),
-            },
-            ValuePart {
-                kind: ValueKind::MapValue { len: 1 },
-            },
-            ValuePart {
-                kind: ValueKind::Bool(false),
-            },
-            ValuePart {
-                kind: ValueKind::MapKey { len: 1 },
-            },
-            ValuePart {
-                kind: ValueKind::I32(1),
-            },
-            ValuePart {
-                kind: ValueKind::MapValue { len: 1 },
-            },
-            ValuePart {
-                kind: ValueKind::Bool(true),
-            },
+            ValueKind::MapKey { num_parts: 1 },
+            ValueKind::I32(0),
+            ValueKind::MapValue { num_parts: 1 },
+            ValueKind::Bool(false),
+            ValueKind::MapKey { num_parts: 1 },
+            ValueKind::I32(1),
+            ValueKind::MapValue { num_parts: 1 },
+            ValueKind::Bool(true),
         ];
 
-        assert_eq!(expected, &*value.parts);
+        assert_eq!(expected, value.parts.decode());
     }
 
     #[test]
@@ -1955,27 +1756,17 @@ mod alloc_tests {
         value.seq_end().unwrap();
 
         let expected = vec![
-            ValuePart {
-                kind: ValueKind::Seq {
-                    len: 4,
-                    num_entries_hint: Some(2),
-                },
+            ValueKind::Seq {
+                num_parts: 4,
+                num_entries: 2,
             },
-            ValuePart {
-                kind: ValueKind::SeqValue { len: 1 },
-            },
-            ValuePart {
-                kind: ValueKind::Bool(false),
-            },
-            ValuePart {
-                kind: ValueKind::SeqValue { len: 1 },
-            },
-            ValuePart {
-                kind: ValueKind::Bool(true),
-            },
+            ValueKind::SeqValue { num_parts: 1 },
+            ValueKind::Bool(false),
+            ValueKind::SeqValue { num_parts: 1 },
+            ValueKind::Bool(true),
         ];
 
-        assert_eq!(expected, &*value.parts);
+        assert_eq!(expected, value.parts.decode());
     }
 
     #[test]
@@ -2016,38 +1807,28 @@ mod alloc_tests {
             .unwrap();
 
         let expected = vec![
-            ValuePart {
-                kind: ValueKind::Record {
-                    len: 4,
-                    tag: Some(sval::Tag::new("test")),
-                    label: Some(sval::Label::new("A")),
-                    index: Some(sval::Index::new(1)),
-                    num_entries: Some(2),
-                },
+            ValueKind::Record {
+                num_parts: 4,
+                tag: Some(sval::Tag::new("test")),
+                label: Some(sval::Label::new("A")),
+                index: Some(sval::Index::new(1)),
+                num_entries: Some(2),
             },
-            ValuePart {
-                kind: ValueKind::RecordValue {
-                    len: 1,
-                    tag: None,
-                    label: sval::Label::new("a"),
-                },
+            ValueKind::RecordValue {
+                num_parts: 1,
+                tag: None,
+                label: sval::Label::new("a"),
             },
-            ValuePart {
-                kind: ValueKind::Bool(false),
+            ValueKind::Bool(false),
+            ValueKind::RecordValue {
+                num_parts: 1,
+                tag: None,
+                label: sval::Label::new("b"),
             },
-            ValuePart {
-                kind: ValueKind::RecordValue {
-                    len: 1,
-                    tag: None,
-                    label: sval::Label::new("b"),
-                },
-            },
-            ValuePart {
-                kind: ValueKind::Bool(true),
-            },
+            ValueKind::Bool(true),
         ];
 
-        assert_eq!(expected, &*value.parts);
+        assert_eq!(expected, value.parts.decode());
     }
 
     #[test]
@@ -2080,38 +1861,28 @@ mod alloc_tests {
             .unwrap();
 
         let expected = vec![
-            ValuePart {
-                kind: ValueKind::Tuple {
-                    len: 4,
-                    tag: Some(sval::Tag::new("test")),
-                    label: Some(sval::Label::new("A")),
-                    index: Some(sval::Index::new(1)),
-                    num_entries: Some(2),
-                },
+            ValueKind::Tuple {
+                num_parts: 4,
+                tag: Some(sval::Tag::new("test")),
+                label: Some(sval::Label::new("A")),
+                index: Some(sval::Index::new(1)),
+                num_entries: Some(2),
             },
-            ValuePart {
-                kind: ValueKind::TupleValue {
-                    len: 1,
-                    tag: None,
-                    index: sval::Index::new(0),
-                },
+            ValueKind::TupleValue {
+                num_parts: 1,
+                tag: None,
+                index: sval::Index::new(0),
             },
-            ValuePart {
-                kind: ValueKind::Bool(false),
+            ValueKind::Bool(false),
+            ValueKind::TupleValue {
+                num_parts: 1,
+                tag: None,
+                index: sval::Index::new(1),
             },
-            ValuePart {
-                kind: ValueKind::TupleValue {
-                    len: 1,
-                    tag: None,
-                    index: sval::Index::new(1),
-                },
-            },
-            ValuePart {
-                kind: ValueKind::Bool(true),
-            },
+            ValueKind::Bool(true),
         ];
 
-        assert_eq!(expected, &*value.parts);
+        assert_eq!(expected, value.parts.decode());
     }
 
     #[test]
@@ -2152,40 +1923,30 @@ mod alloc_tests {
             .unwrap();
 
         let expected = vec![
-            ValuePart {
-                kind: ValueKind::RecordTuple {
-                    len: 4,
-                    tag: Some(sval::Tag::new("test")),
-                    label: Some(sval::Label::new("A")),
-                    index: Some(sval::Index::new(1)),
-                    num_entries: Some(2),
-                },
+            ValueKind::RecordTuple {
+                num_parts: 4,
+                tag: Some(sval::Tag::new("test")),
+                label: Some(sval::Label::new("A")),
+                index: Some(sval::Index::new(1)),
+                num_entries: Some(2),
             },
-            ValuePart {
-                kind: ValueKind::RecordTupleValue {
-                    len: 1,
-                    tag: None,
-                    label: sval::Label::new("a"),
-                    index: sval::Index::new(0),
-                },
+            ValueKind::RecordTupleValue {
+                num_parts: 1,
+                tag: None,
+                label: sval::Label::new("a"),
+                index: sval::Index::new(0),
             },
-            ValuePart {
-                kind: ValueKind::Bool(false),
+            ValueKind::Bool(false),
+            ValueKind::RecordTupleValue {
+                num_parts: 1,
+                tag: None,
+                label: sval::Label::new("b"),
+                index: sval::Index::new(1),
             },
-            ValuePart {
-                kind: ValueKind::RecordTupleValue {
-                    len: 1,
-                    tag: None,
-                    label: sval::Label::new("b"),
-                    index: sval::Index::new(1),
-                },
-            },
-            ValuePart {
-                kind: ValueKind::Bool(true),
-            },
+            ValueKind::Bool(true),
         ];
 
-        assert_eq!(expected, &*value.parts);
+        assert_eq!(expected, value.parts.decode());
     }
 
     #[test]
@@ -2217,24 +1978,20 @@ mod alloc_tests {
             .unwrap();
 
         let expected = vec![
-            ValuePart {
-                kind: ValueKind::Enum {
-                    len: 1,
-                    tag: Some(sval::Tag::new("test")),
-                    label: Some(sval::Label::new("A")),
-                    index: Some(sval::Index::new(1)),
-                },
+            ValueKind::Enum {
+                num_parts: 1,
+                tag: Some(sval::Tag::new("test")),
+                label: Some(sval::Label::new("A")),
+                index: Some(sval::Index::new(1)),
             },
-            ValuePart {
-                kind: ValueKind::Tag {
-                    tag: None,
-                    label: Some(sval::Label::new("B")),
-                    index: Some(sval::Index::new(0)),
-                },
+            ValueKind::Tag {
+                tag: None,
+                label: Some(sval::Label::new("B")),
+                index: Some(sval::Index::new(0)),
             },
         ];
 
-        assert_eq!(expected, &*value.parts);
+        assert_eq!(expected, value.parts.decode());
     }
 
     #[test]
@@ -2259,42 +2016,26 @@ mod alloc_tests {
         value.tag_hint(&sval::Tag::new("test")).unwrap();
 
         let expected = vec![
-            ValuePart {
-                kind: ValueKind::TagHint {
-                    tag: sval::Tag::new("test"),
-                },
+            ValueKind::TagHint {
+                tag: sval::Tag::new("test"),
             },
-            ValuePart {
-                kind: ValueKind::Seq {
-                    len: 5,
-                    num_entries_hint: Some(2),
-                },
+            ValueKind::Seq {
+                num_parts: 5,
+                num_entries: 2,
             },
-            ValuePart {
-                kind: ValueKind::SeqValue { len: 2 },
+            ValueKind::SeqValue { num_parts: 2 },
+            ValueKind::TagHint {
+                tag: sval::Tag::new("test"),
             },
-            ValuePart {
-                kind: ValueKind::TagHint {
-                    tag: sval::Tag::new("test"),
-                },
-            },
-            ValuePart {
-                kind: ValueKind::Bool(false),
-            },
-            ValuePart {
-                kind: ValueKind::SeqValue { len: 1 },
-            },
-            ValuePart {
-                kind: ValueKind::Bool(true),
-            },
-            ValuePart {
-                kind: ValueKind::TagHint {
-                    tag: sval::Tag::new("test"),
-                },
+            ValueKind::Bool(false),
+            ValueKind::SeqValue { num_parts: 1 },
+            ValueKind::Bool(true),
+            ValueKind::TagHint {
+                tag: sval::Tag::new("test"),
             },
         ];
 
-        assert_eq!(expected, &*value.parts);
+        assert_eq!(expected, value.parts.decode());
     }
 
     #[test]
@@ -2336,7 +2077,378 @@ mod alloc_tests {
         ] {
             let value_2 = ValueBuf::collect(&value_1).unwrap();
 
-            assert_eq!(&*value_1.parts, &*value_2.parts, "{:?}", value_1);
+            assert_eq!(
+                value_1.parts.decode(),
+                value_2.parts.decode(),
+                "{:?}",
+                value_1
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod safety_tests {
+    use super::*;
+
+    use libstd::{panic, string::String, vec::Vec};
+    use rand::seq::IndexedRandom;
+    use sval::Stream as _;
+
+    #[derive(Debug, Clone, Copy)]
+    enum Fault {
+        None,
+        Err,
+        Panic,
+    }
+
+    impl Fault {
+        const ALL: [Fault; 3] = [Fault::None, Fault::Err, Fault::Panic];
+
+        fn apply(self, f: impl FnOnce() -> sval::Result) -> sval::Result {
+            match self {
+                Fault::None => f(),
+                Fault::Err => sval::error(),
+                Fault::Panic => panic!("explicit panic"),
+            }
+        }
+    }
+
+    type Op = (
+        &'static str,
+        fn(&mut ValueBuf<'static>, fault: Fault) -> sval::Result,
+    );
+
+    // Fragment contents deliberately include bytes that look like owned or
+    // invalid part tags if a walk misreads them as part boundaries
+    const TEXT_FRAGMENT: &str = "nönsense \u{9F} bytes ÿ";
+    const BINARY_FRAGMENT: &[u8] = &[0xFF, 0x9F, 0xC0, 1, 2, 3];
+
+    fn test_tag() -> sval::Tag {
+        sval::Tag::new("test")
+    }
+
+    fn test_index() -> sval::Index {
+        sval::Index::new(1)
+    }
+
+    fn computed(storage: &String) -> sval::Label<'_> {
+        sval::Label::new_computed(storage)
+    }
+
+    const BUFFERING_OPS: usize = 8;
+
+    const OPS: &[Op] = &[
+        ("text_begin", |buf, fault| {
+            fault.apply(|| buf.text_begin(Some(4)))
+        }),
+        ("text_fragment", |buf, fault| {
+            fault.apply(|| buf.text_fragment(TEXT_FRAGMENT))
+        }),
+        ("text_fragment_computed", |buf, fault| {
+            fault.apply(|| {
+                let storage = String::from(TEXT_FRAGMENT);
+                let r = buf.text_fragment_computed(&storage);
+                r
+            })
+        }),
+        ("text_end", |buf, fault| fault.apply(|| buf.text_end())),
+        ("binary_begin", |buf, fault| {
+            fault.apply(|| buf.binary_begin(Some(4)))
+        }),
+        ("binary_fragment", |buf, fault| {
+            fault.apply(|| buf.binary_fragment(BINARY_FRAGMENT))
+        }),
+        ("binary_fragment_computed", |buf, fault| {
+            fault.apply(|| {
+                let storage = Vec::from(BINARY_FRAGMENT);
+                let r = buf.binary_fragment_computed(&storage);
+                r
+            })
+        }),
+        ("binary_end", |buf, fault| fault.apply(|| buf.binary_end())),
+        ("null", |buf, fault| fault.apply(|| buf.null())),
+        ("bool", |buf, fault| fault.apply(|| buf.bool(true))),
+        ("u8", |buf, fault| fault.apply(|| buf.u8(1))),
+        ("u16", |buf, fault| fault.apply(|| buf.u16(2))),
+        ("u32", |buf, fault| fault.apply(|| buf.u32(3))),
+        ("u64", |buf, fault| fault.apply(|| buf.u64(4))),
+        ("u128", |buf, fault| fault.apply(|| buf.u128(5))),
+        ("i8", |buf, fault| fault.apply(|| buf.i8(-1))),
+        ("i16", |buf, fault| fault.apply(|| buf.i16(-2))),
+        ("i32", |buf, fault| fault.apply(|| buf.i32(-3))),
+        ("i64", |buf, fault| fault.apply(|| buf.i64(-4))),
+        ("i128", |buf, fault| fault.apply(|| buf.i128(-5))),
+        ("f32", |buf, fault| fault.apply(|| buf.f32(3.14))),
+        ("f64", |buf, fault| fault.apply(|| buf.f64(3.1415))),
+        ("map_begin", |buf, fault| {
+            fault.apply(|| buf.map_begin(Some(1)))
+        }),
+        ("map_key_begin", |buf, fault| {
+            fault.apply(|| buf.map_key_begin())
+        }),
+        ("map_key_end", |buf, fault| {
+            fault.apply(|| buf.map_key_end())
+        }),
+        ("map_value_begin", |buf, fault| {
+            fault.apply(|| buf.map_value_begin())
+        }),
+        ("map_value_end", |buf, fault| {
+            fault.apply(|| buf.map_value_end())
+        }),
+        ("map_end", |buf, fault| fault.apply(|| buf.map_end())),
+        ("seq_begin", |buf, fault| {
+            fault.apply(|| buf.seq_begin(Some(1)))
+        }),
+        ("seq_value_begin", |buf, fault| {
+            fault.apply(|| buf.seq_value_begin())
+        }),
+        ("seq_value_end", |buf, fault| {
+            fault.apply(|| buf.seq_value_end())
+        }),
+        ("seq_end", |buf, fault| fault.apply(|| buf.seq_end())),
+        ("enum_begin", |buf, fault| {
+            fault.apply(|| {
+                let storage = String::from("owned-label");
+                let r = buf.enum_begin(
+                    Some(&test_tag()),
+                    Some(&computed(&storage)),
+                    Some(&test_index()),
+                );
+                r
+            })
+        }),
+        ("enum_end", |buf, fault| {
+            fault.apply(|| buf.enum_end(None, Some(&sval::Label::new("label")), None))
+        }),
+        ("tagged_begin", |buf, fault| {
+            fault.apply(|| {
+                let storage = String::from("owned-label");
+                let r = buf.tagged_begin(
+                    Some(&test_tag()),
+                    Some(&computed(&storage)),
+                    Some(&test_index()),
+                );
+                r
+            })
+        }),
+        ("tagged_end", |buf, fault| {
+            fault.apply(|| buf.tagged_end(None, Some(&sval::Label::new("label")), None))
+        }),
+        ("tag", |buf, fault| {
+            fault.apply(|| {
+                let storage = String::from("owned-label");
+                let r = buf.tag(
+                    Some(&test_tag()),
+                    Some(&computed(&storage)),
+                    Some(&test_index()),
+                );
+                r
+            })
+        }),
+        ("tag_hint", |buf, fault| {
+            fault.apply(|| buf.tag_hint(&test_tag()))
+        }),
+        ("record_begin", |buf, fault| {
+            fault.apply(|| {
+                let storage = String::from("owned-label");
+                let r = buf.record_begin(
+                    Some(&test_tag()),
+                    Some(&computed(&storage)),
+                    Some(&test_index()),
+                    Some(1),
+                );
+                r
+            })
+        }),
+        ("record_value_begin", |buf, fault| {
+            fault.apply(|| {
+                let storage = String::from("owned-label");
+                let r = buf.record_value_begin(Some(&test_tag()), &computed(&storage));
+                r
+            })
+        }),
+        ("record_value_end", |buf, fault| {
+            fault.apply(|| buf.record_value_end(None, &sval::Label::new("label")))
+        }),
+        ("record_end", |buf, fault| {
+            fault.apply(|| buf.record_end(None, Some(&sval::Label::new("label")), None))
+        }),
+        ("tuple_begin", |buf, fault| {
+            fault.apply(|| {
+                let storage = String::from("owned-label");
+                let r = buf.tuple_begin(
+                    Some(&test_tag()),
+                    Some(&computed(&storage)),
+                    Some(&test_index()),
+                    Some(1),
+                );
+                r
+            })
+        }),
+        ("tuple_value_begin", |buf, fault| {
+            fault.apply(|| buf.tuple_value_begin(Some(&test_tag()), &test_index()))
+        }),
+        ("tuple_value_end", |buf, fault| {
+            fault.apply(|| buf.tuple_value_end(None, &test_index()))
+        }),
+        ("tuple_end", |buf, fault| {
+            fault.apply(|| buf.tuple_end(None, Some(&sval::Label::new("label")), None))
+        }),
+        ("record_tuple_begin", |buf, fault| {
+            fault.apply(|| {
+                let storage = String::from("owned-label");
+                let r = buf.record_tuple_begin(
+                    Some(&test_tag()),
+                    Some(&computed(&storage)),
+                    Some(&test_index()),
+                    Some(1),
+                );
+                r
+            })
+        }),
+        ("record_tuple_value_begin", |buf, fault| {
+            fault.apply(|| {
+                let storage = String::from("owned-label");
+                let r = buf.record_tuple_value_begin(
+                    Some(&test_tag()),
+                    &computed(&storage),
+                    &test_index(),
+                );
+                r
+            })
+        }),
+        ("record_tuple_value_end", |buf, fault| {
+            fault.apply(|| {
+                buf.record_tuple_value_end(None, &sval::Label::new("label"), &test_index())
+            })
+        }),
+        ("record_tuple_end", |buf, fault| {
+            fault.apply(|| buf.record_tuple_end(None, Some(&sval::Label::new("label")), None))
+        }),
+    ];
+
+    fn exercise(mut buf: ValueBuf<'static>, desc: impl Fn() -> String) {
+        // Clone the buffer, deep-cloning any owned payloads
+        let value = buf.to_value();
+
+        let _ = value.parts.decode();
+
+        {
+            let _ = ValueBuf::collect(&value);
+        }
+
+        if let Ok(owned) = value.into_owned() {
+            let _ = ValueBuf::collect(&owned);
+        }
+
+        buf.clear();
+        buf.i32(42).unwrap();
+        assert!(buf.is_complete(), "buffer unusable after: {}", desc());
+    }
+
+    fn exhaustive(ops: &[Op], max_len: usize) {
+        let mut sequences = 0usize;
+
+        for len in 0..=max_len {
+            let mut seq = alloc::vec![0usize; len];
+
+            'sequences: loop {
+                let mut buf = ValueBuf::new();
+
+                for &op in seq.iter() {
+                    let _ = (ops[op].1)(&mut buf, Fault::None);
+                }
+
+                exercise(buf, || {
+                    seq.iter()
+                        .map(|&op| ops[op].0)
+                        .collect::<Vec<_>>()
+                        .join(" -> ")
+                });
+
+                sequences += 1;
+
+                // Advance to the next sequence, in mixed-radix order
+                for slot in seq.iter_mut() {
+                    *slot += 1;
+
+                    if *slot < ops.len() {
+                        continue 'sequences;
+                    }
+
+                    *slot = 0;
+                }
+
+                break;
+            }
+        }
+
+        // Every sequence of every length must actually have run
+        let expected = (0..=max_len as u32)
+            .map(|len| ops.len().pow(len))
+            .sum::<usize>();
+        assert_eq!(expected, sequences);
+    }
+
+    #[test]
+    fn exhaustive_stream_calls() {
+        // Every combination of stream calls up to a fixed length
+        let max_len = if cfg!(miri) { 2 } else { 3 };
+
+        exhaustive(OPS, max_len);
+    }
+
+    #[test]
+    fn exhaustive_buffering_calls() {
+        // Longer combinations of just the text and binary calls, which are
+        // the only ones that hold buffering state between calls
+        let max_len = if cfg!(miri) { 3 } else { 5 };
+
+        exhaustive(&OPS[..BUFFERING_OPS], max_len);
+    }
+
+    #[test]
+    fn abandoned_prefixes() {
+        for prefix in 0..=OPS.len() {
+            let mut buf = ValueBuf::new();
+
+            for (name, apply) in &OPS[..prefix] {
+                // The full sequence is valid, so with an allocator every call
+                // must succeed. Without one it can hit the fixed capacity and
+                // error, which must still leave the buffer safe to walk.
+                if cfg!(feature = "alloc") {
+                    apply(&mut buf, Fault::None).unwrap_or_else(|_| panic!("{} failed", name));
+                } else {
+                    let _ = apply(&mut buf, Fault::None);
+                }
+            }
+
+            exercise(buf, || {
+                OPS[..prefix]
+                    .iter()
+                    .map(|(name, _)| *name)
+                    .collect::<Vec<_>>()
+                    .join(" -> ")
+            });
+        }
+    }
+
+    #[test]
+    fn scrambled() {
+        // Quick smoke test to weed out UB from panicking/erroring stream calls
+        for _ in 0..500 {
+            let mut buf = ValueBuf::new();
+
+            for _ in 0..rand::random_range(0..10) {
+                let fault = Fault::ALL.choose(&mut rand::rng()).unwrap();
+                let (_, op) = OPS.choose(&mut rand::rng()).unwrap();
+
+                let _ = panic::catch_unwind(panic::AssertUnwindSafe(|| op(&mut buf, *fault)));
+            }
+
+            // Attempt to use the buffer
+            let _ = ValueBuf::collect(&buf);
         }
     }
 }

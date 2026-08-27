@@ -3,7 +3,6 @@
 This is a minimal struct that represents a 2-dimensional vector and rectangular slices of it. It's intended for describing image data, and regions of images (AKA bitmap descriptors, frames with a pitch or stride, planes). It's useful when working with image data, and can be used as the common struct for exchanging image pixels between crates.
 
 * [API Reference](https://docs.rs/imgref)
-* [Installation](https://crates.io/crates/imgref)
 
 In graphics code it's very common to pass `width` and `height` along with a `Vec` or a slice of pixels — all as separate arguments. This gets very repetitive, and can lead to errors.
 
@@ -42,7 +41,7 @@ fn main() {
 
 ## Type aliases
 
-<img src="imgref.png" width="446" alt="Illustration: stride is width of the whole buffer.">
+<img src="https://raw.githubusercontent.com/kornelski/imgref/refs/heads/main/imgref.png" width="446" alt="Illustration: stride is width of the whole buffer.">
 
 These are described in [more detail in the reference](https://docs.rs/imgref).
 
@@ -60,4 +59,4 @@ Use this type to accept read-only images as arguments in functions. Note that `I
 
 ### Requirements
 
-* Latest stable Rust (1.42+)
+* Latest stable Rust

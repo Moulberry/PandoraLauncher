@@ -39,6 +39,7 @@
 //! foreign function interfaces (provided the underlying scalar type is also `repr(C)`).
 //!
 #![deny(unconditional_recursion)]
+#![warn(clippy::semicolon_if_nothing_returned)]
 
 pub use crate::angle::Angle;
 pub use crate::box2d::Box2D;
@@ -46,7 +47,7 @@ pub use crate::homogen::HomogeneousVector;
 pub use crate::length::Length;
 pub use crate::point::{point2, point3, Point2D, Point3D};
 pub use crate::scale::Scale;
-pub use crate::transform2d::Transform2D;
+pub use crate::transform2d::{ScaleOffset2D, Transform2D};
 pub use crate::transform3d::Transform3D;
 pub use crate::vector::{bvec2, bvec3, BoolVector2D, BoolVector3D};
 pub use crate::vector::{vec2, vec3, Vector2D, Vector3D};
@@ -58,12 +59,14 @@ pub use crate::rotation::{Rotation2D, Rotation3D};
 pub use crate::side_offsets::SideOffsets2D;
 pub use crate::size::{size2, size3, Size2D, Size3D};
 pub use crate::translation::{Translation2D, Translation3D};
+#[cfg(any(feature = "std", feature = "libm"))]
 pub use crate::trig::Trig;
 
 #[macro_use]
 mod macros;
 
 mod angle;
+#[cfg(any(feature = "std", feature = "libm"))]
 pub mod approxeq;
 pub mod approxord;
 mod box2d;
@@ -81,6 +84,7 @@ mod size;
 mod transform2d;
 mod transform3d;
 mod translation;
+#[cfg(any(feature = "std", feature = "libm"))]
 mod trig;
 mod vector;
 
@@ -112,4 +116,5 @@ pub mod default {
     pub type Translation3D<T> = super::Translation3D<T, UnknownUnit, UnknownUnit>;
     pub type Scale<T> = super::Scale<T, UnknownUnit, UnknownUnit>;
     pub type RigidTransform3D<T> = super::RigidTransform3D<T, UnknownUnit, UnknownUnit>;
+    pub type ScaleOffset2D<T> = super::ScaleOffset2D<T, UnknownUnit, UnknownUnit>;
 }

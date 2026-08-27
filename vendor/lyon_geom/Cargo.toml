@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "lyon_geom"
-version = "1.0.17"
+version = "1.0.19"
 authors = ["Nicolas Silva <nical@fastmail.com>"]
 build = false
 autolib = false

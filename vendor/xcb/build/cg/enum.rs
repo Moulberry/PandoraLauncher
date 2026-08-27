@@ -226,6 +226,10 @@ impl CodeGen {
         if let Some(doc) = doc {
             doc.emit(out, 1)?;
         }
+        writeln!(
+            out,
+            "    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]"
+        )?;
         writeln!(out, "    pub struct {}: u32 {{", rs_typ)?;
         for item in items {
             if let Some(text) = &item.2 {

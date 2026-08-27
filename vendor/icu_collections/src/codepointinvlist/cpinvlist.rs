@@ -12,7 +12,7 @@ use core::{char, ops::RangeBounds, ops::RangeInclusive};
 use potential_utf::PotentialCodePoint;
 use yoke::Yokeable;
 use zerofrom::ZeroFrom;
-use zerovec::{ule::AsULE, zerovec, ZeroVec};
+use zerovec::{ZeroVec, ule::AsULE, zerovec};
 
 use super::InvalidSetError;
 use crate::codepointinvlist::utils::{deconstruct_range, is_valid_zv};
@@ -33,7 +33,7 @@ const ALL_VEC: ZeroVec<PotentialCodePoint> = zerovec!(PotentialCodePoint; Potent
 #[zerovec::make_varule(CodePointInversionListULE)]
 #[zerovec::skip_derive(Ord)]
 #[zerovec::derive(Debug)]
-#[derive(Debug, Eq, PartialEq, Clone, Yokeable, ZeroFrom)]
+#[derive(Debug, Eq, PartialEq, Clone, Yokeable, ZeroFrom, Hash)]
 #[cfg_attr(not(feature = "alloc"), zerovec::skip_derive(ZeroMapKV, ToOwned))]
 pub struct CodePointInversionList<'data> {
     // If we wanted to use an array to keep the memory on the stack, there is an unsafe nightly feature
@@ -120,7 +120,7 @@ impl UnicodeCodePoint {
         if cp <= char::MAX as u32 {
             Ok(Self(cp))
         } else {
-            Err(format!("Not a Unicode code point {}", cp))
+            Err(format!("Not a Unicode code point {cp}"))
         }
     }
 
@@ -221,7 +221,7 @@ impl<'data> CodePointInversionList<'data> {
     pub fn try_from_inversion_list(
         inv_list: ZeroVec<'data, PotentialCodePoint>,
     ) -> Result<Self, InvalidSetError> {
-        #[allow(clippy::indexing_slicing)] // chunks
+        #[expect(clippy::indexing_slicing)] // chunks
         if is_valid_zv(&inv_list) {
             let size = inv_list
                 .as_ule_slice()
@@ -254,6 +254,8 @@ impl<'data> CodePointInversionList<'data> {
     ///
     /// The inversion list must be of even length, sorted ascending non-overlapping,
     /// and within the bounds of `0x0 -> 0x10FFFF` inclusive, and end points being exclusive.
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     ///
     /// # Examples
     ///
@@ -290,6 +292,8 @@ impl<'data> CodePointInversionList<'data> {
     }
 
     /// Attempts to convert this list into a fully-owned one. No-op if already fully owned
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     #[cfg(feature = "alloc")]
     pub fn into_owned(self) -> CodePointInversionList<'static> {
         CodePointInversionList {
@@ -299,6 +303,8 @@ impl<'data> CodePointInversionList<'data> {
     }
 
     /// Returns an owned inversion list representing the current [`CodePointInversionList`]
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     #[cfg(feature = "alloc")]
     pub fn get_inversion_list_vec(&self) -> Vec<u32> {
         self.as_inversion_list().iter().map(u32::from).collect()
@@ -323,7 +329,7 @@ impl<'data> CodePointInversionList<'data> {
     ///     (expected[1] - expected[0]) as usize
     /// );
     /// ```
-    pub fn all() -> Self {
+    pub const fn all() -> Self {
         Self {
             inv_list: ALL_VEC,
             size: (char::MAX as u32) + 1,
@@ -362,7 +368,7 @@ impl<'data> CodePointInversionList<'data> {
     ///
     /// Public only to the crate, not exposed to public
     #[cfg(feature = "alloc")]
-    pub(crate) fn as_inversion_list(&self) -> &ZeroVec<PotentialCodePoint> {
+    pub(crate) fn as_inversion_list(&self) -> &ZeroVec<'_, PotentialCodePoint> {
         &self.inv_list
     }
 
@@ -385,7 +391,7 @@ impl<'data> CodePointInversionList<'data> {
     /// assert_eq!(None, ex_iter_chars.next());
     /// ```
     pub fn iter_chars(&self) -> impl Iterator<Item = char> + '_ {
-        #[allow(clippy::indexing_slicing)] // chunks
+        #[expect(clippy::indexing_slicing)] // chunks
         self.inv_list
             .as_ule_slice()
             .chunks(2)
@@ -418,7 +424,7 @@ impl<'data> CodePointInversionList<'data> {
     /// assert_eq!(None, example_iter_ranges.next());
     /// ```
     pub fn iter_ranges(&self) -> impl ExactSizeIterator<Item = RangeInclusive<u32>> + '_ {
-        #[allow(clippy::indexing_slicing)] // chunks
+        #[expect(clippy::indexing_slicing)] // chunks
         self.inv_list.as_ule_slice().chunks(2).map(|pair| {
             let range_start = u32::from(PotentialCodePoint::from_unaligned(pair[0]));
             let range_limit = u32::from(PotentialCodePoint::from_unaligned(pair[1]));
@@ -471,7 +477,7 @@ impl<'data> CodePointInversionList<'data> {
         } else {
             None
         };
-        #[allow(clippy::indexing_slicing)] // chunks
+        #[expect(clippy::indexing_slicing)] // chunks
         let chunks = middle.chunks(2).map(|pair| {
             let range_start = u32::from(PotentialCodePoint::from_unaligned(pair[0]));
             let range_limit = u32::from(PotentialCodePoint::from_unaligned(pair[1]));
@@ -611,7 +617,6 @@ impl<'data> CodePointInversionList<'data> {
     ///
     /// ```
     /// use icu::collections::codepointinvlist::CodePointInversionList;
-    /// use std::char;
     /// let check =
     ///     char::from_u32(0xD7FE).unwrap()..char::from_u32(0xE001).unwrap();
     /// let example_list = [0xD7FE, 0xD7FF, 0xE000, 0xE001];
@@ -653,8 +658,8 @@ impl<'data> CodePointInversionList<'data> {
     ///     &example_list,
     /// )
     /// .unwrap();
-    /// let a_to_d = CodePointInversionList::try_from_u32_inversion_list_slice(&[
-    ///     0x41, 0x45,
+    /// let a_b_d = CodePointInversionList::try_from_u32_inversion_list_slice(&[
+    ///     0x41, 0x42, 0x44, 0x45,
     /// ])
     /// .unwrap();
     /// let f_to_t = CodePointInversionList::try_from_u32_inversion_list_slice(&[
@@ -665,7 +670,7 @@ impl<'data> CodePointInversionList<'data> {
     ///     0x52, 0x58,
     /// ])
     /// .unwrap();
-    /// assert!(example.contains_set(&a_to_d)); // contains all
+    /// assert!(example.contains_set(&a_b_d)); // contains all
     /// assert!(!example.contains_set(&f_to_t)); // contains none
     /// assert!(!example.contains_set(&r_to_x)); // contains some
     /// ```
@@ -679,15 +684,15 @@ impl<'data> CodePointInversionList<'data> {
 
         let ranges = self.iter_ranges();
         for range in ranges {
-            match check_elem {
-                Some(ref check_range) => {
-                    if check_range.start() >= range.start()
-                        && check_range.end() <= &(range.end() + 1)
-                    {
-                        check_elem = set_ranges.next();
-                    }
+            loop {
+                let Some(ref check_range) = check_elem else {
+                    return true;
+                };
+                if check_range.start() >= range.start() && check_range.end() <= &(range.end() + 1) {
+                    check_elem = set_ranges.next();
+                } else {
+                    break;
                 }
-                _ => break,
             }
         }
         check_elem.is_none()

@@ -140,7 +140,7 @@ fn validate_sig(sig: &Signature) -> Result<()> {
                     // (mut) self: (<path>::)Pin<&mut Self>
                     if args.args.len() == 1
                         && ty.ident == "Pin"
-                        && get_ty_path(elem).map_or(false, |path| path.is_ident("Self"))
+                        && get_ty_path(elem).is_some_and(|path| path.is_ident("Self"))
                     {
                         if sig.unsafety.is_some() {
                             bail!(sig.unsafety, "implementing the method `drop` is not unsafe");
@@ -180,8 +180,7 @@ fn expand_impl(item: &mut ItemImpl) {
         ::pin_project::__private::PinnedDrop
     };
 
-    let method =
-        if let ImplItem::Fn(method) = &mut item.items[0] { method } else { unreachable!() };
+    let ImplItem::Fn(method) = &mut item.items[0] else { unreachable!() };
 
     // `fn drop(mut self: Pin<&mut Self>)` -> `fn __drop_inner<T>(mut __self: Pin<&mut Receiver>)`
     let drop_inner = {
@@ -205,7 +204,7 @@ fn expand_impl(item: &mut ItemImpl) {
             colon_token: Colon::default(),
             ty: receiver.ty,
         });
-        let self_ty = if let Type::Path(ty) = &*item.self_ty { ty } else { unreachable!() };
+        let Type::Path(self_ty) = &*item.self_ty else { unreachable!() };
         let mut visitor = ReplaceReceiver(self_ty);
         visitor.visit_signature_mut(&mut drop_inner.sig);
         visitor.visit_block_mut(&mut drop_inner.block);

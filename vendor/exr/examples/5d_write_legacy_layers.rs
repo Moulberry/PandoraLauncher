@@ -1,9 +1,7 @@
-
 #[macro_use]
 extern crate smallvec;
-extern crate rand;
 extern crate half;
-
+extern crate rand;
 
 // exr imports
 extern crate exr;
@@ -13,9 +11,9 @@ extern crate exr;
 /// Generate an image with channel groups and write it to a file.
 /// Some legacy software may group layers that contain a `.` in the layer name.
 ///
-/// Note: This is an OpenEXR legacy strategy. OpenEXR supports layers natively since 2013.
-/// Use the natively supported exrs `Layer` types instead, if possible.
-///
+/// Note: This is an OpenEXR legacy strategy. OpenEXR supports layers natively
+/// since 2013. Use the natively supported exrs `Layer` types instead, if
+/// possible.
 fn main() {
     use exr::prelude::*;
     // TODO simplify handling these types of layers using read() and write()
@@ -25,12 +23,8 @@ fn main() {
     let create_channel = |name: &str| -> AnyChannel<FlatSamples> {
         let color: f16 = f16::from_bits(rand::random::<u16>());
 
-        AnyChannel::new(
-            name,
-            FlatSamples::F16(vec![color; size.area() ])
-        )
+        AnyChannel::new(name, FlatSamples::F16(vec![color; size.area()]))
     };
-
 
     // The channels have the following structure:
     //
@@ -58,9 +52,15 @@ fn main() {
         size,
         LayerAttributes::named("test-image"),
         Encoding::FAST_LOSSLESS,
-        AnyChannels::sort(smallvec![ // the order does not actually matter
-            foreground_r, foreground_g, foreground_b, foreground_a,
-            background_r, background_g, background_b
+        AnyChannels::sort(smallvec![
+            // the order does not actually matter
+            foreground_r,
+            foreground_g,
+            foreground_b,
+            foreground_a,
+            background_r,
+            background_g,
+            background_b
         ]),
     );
 

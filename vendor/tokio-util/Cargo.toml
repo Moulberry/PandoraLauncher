@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "tokio-util"
-version = "0.7.18"
+version = "0.7.19"
 authors = ["Tokio Contributors <team@tokio.rs>"]
 build = false
 autolib = false
@@ -32,13 +32,13 @@ repository = "https://github.com/tokio-rs/tokio"
 
 [package.metadata.docs.rs]
 all-features = true
-rustc-args = [
+rustdoc-args = [
     "--cfg",
     "docsrs",
     "--cfg",
     "tokio_unstable",
 ]
-rustdoc-args = [
+rustc-args = [
     "--cfg",
     "docsrs",
     "--cfg",
@@ -50,7 +50,7 @@ features = ["full"]
 
 [features]
 __docs_rs = ["futures-util"]
-codec = []
+codec = ["libc"]
 compat = ["futures-io"]
 default = []
 full = [
@@ -152,6 +152,10 @@ name = "io_sync_bridge"
 path = "tests/io_sync_bridge.rs"
 
 [[test]]
+name = "io_write_all_vectored"
+path = "tests/io_write_all_vectored.rs"
+
+[[test]]
 name = "length_delimited"
 path = "tests/length_delimited.rs"
 
@@ -229,7 +233,7 @@ version = "0.4.4"
 optional = true
 
 [dependencies.tokio]
-version = "1.44.0"
+version = "1.47.0"
 features = ["sync"]
 
 [dependencies.tracing]
@@ -269,6 +273,10 @@ features = [
     "futures",
     "checkpoint",
 ]
+
+[target."cfg(unix)".dependencies.libc]
+version = "0.2.168"
+optional = true
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

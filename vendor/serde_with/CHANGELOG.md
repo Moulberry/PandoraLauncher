@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [3.22.0] - 2026-08-09
+
+### Added
+
+* Add support for `jiff` v0.2 behind the new `jiff_0_2` feature flag (#936)
+    `jiff::SignedDuration` works with `DurationSeconds` and its variants.
+    `jiff::Timestamp`, `jiff::Zoned`, and `jiff::civil::DateTime` work with `TimestampSeconds` and its variants.
+    Deserializing a `jiff::Zoned` uses the system time zone, like `chrono::DateTime<Local>`.
+
+### Fixed
+
+* Extend the [GHSA-7gcf-g7xr-8hxj](https://github.com/jonasbb/serde_with/security/advisories/GHSA-7gcf-g7xr-8hxj) fix to the duplicate-key-prevention collections.
+    The `rust::sets_duplicate_value_is_error`, `rust::maps_duplicate_key_is_error`, `rust::sets_last_value_wins`, and `rust::maps_first_key_wins` adapters created their backing sets/maps with `with_capacity_and_hasher` using the raw deserializer `size_hint`, bypassing the `size_hint_cautious` cap added in #966 (the `clippy.toml` `disallowed_methods` lint only covers `Vec::with_capacity`, not `with_capacity_and_hasher`, so these sites were not flagged).
+    Attacker-controlled input claiming a huge length could panic with `Hash table capacity overflow` before a single element was read. All such constructions now route through `size_hint_cautious`.
+
+## [3.21.0] - 2026-06-04
+
+### Security
+
+* [GHSA-7gcf-g7xr-8hxj](https://github.com/jonasbb/serde_with/security/advisories/GHSA-7gcf-g7xr-8hxj): KeyValueMap serialization panics on empty sequence or map entries
+    Bad or attacker controlled values could cause a panic while allocating too large values.
+    Fixed in #966 by setting a maximum allocation size during the creation of collections like `Vec` or sets.
+
+    Thanks to @7thParkk for reporting the issue.
+
+### Added
+
+* Add `NoneAsZero` adapter that maps `Option<NonZero*>` to a plain integer, encoding `None` as `0` by @SAY-5 (#486)
+
+### Changed
+
+* Re-enable link-to-definition on docs.rs (#964)
+
+### Fixed
+
+* Fix some doc links to point to the correct types (#963)
+* Re-enable `unused_qualifications` and fix the resulting findings by @lms0806 (#962)
+
 ## [3.20.0] - 2026-05-10
 
 ### Added

@@ -47,7 +47,9 @@ If the choice is not obvious in your case, consider these differences:
   simply by testing their ends for equality. For key types that represent
   points on a continuum, defining these functions may be awkward and error-prone.
   For key types that represent discrete objects, this is usually much
-  more straightforward.
+  more straightforward. (For floats specifically, the **ordered-float5**
+  feature described below provides these functions, taking the successor
+  of a float to be the next representable float.)
 
 
 ## Example: use with Chrono
@@ -111,6 +113,25 @@ rangemap = { version = "1", features = ["serde1"] }
 
 You can similarly enable support for _quickcheck_ by enabling
 the **quickcheck** feature.
+
+If you enable the **ordered-float5** feature it will introduce a dependency
+on the _ordered-float_ crate, and provide the successor and predecessor
+functions that [`RangeInclusiveMap`] and [`RangeInclusiveSet`] need in
+order to accept `NotNan<f32>` and `NotNan<f64>` keys.
+
+Note that the successor of a float is taken to be the _next representable_
+float, one ULP (unit in the last place) away. So ranges that are one ULP
+apart are adjacent, and will therefore be coalesced if they map to the
+same value: inserting `0.0..=1.0` and `1.0000000000000002..=2.0` will
+leave you with the single range `0.0..=2.0`. If that isn't what you want,
+consider using [`RangeMap`] or [`RangeSet`] with half-open ranges instead.
+
+This feature is named for the major version of _ordered-float_ that it
+targets, because enabling it makes that crate part of rangemap's public
+API: you have to be using the same major version of it that we are.
+Naming it this way leaves room to support a future major version
+alongside this one, rather than forcing a breaking change on everyone
+already using the feature.
 
 ## Building without the Rust standard library
 

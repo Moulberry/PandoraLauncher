@@ -196,7 +196,7 @@ mod mock {
             }
         }
 
-        pub fn engine(&mut self) -> Engine {
+        pub fn engine(&mut self) -> Engine<'_> {
             let font_code = &[];
             let cv_code = &[];
             let glyph_code = &[];

@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.60"
 name = "crossbeam-queue"
-version = "0.3.12"
+version = "0.3.13"
 build = false
 autolib = false
 autobins = false
@@ -38,6 +38,15 @@ categories = [
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/crossbeam-rs/crossbeam"
 
+[features]
+alloc = []
+default = ["std"]
+nightly = ["crossbeam-utils/nightly"]
+std = [
+    "alloc",
+    "crossbeam-utils/std",
+]
+
 [lib]
 name = "crossbeam_queue"
 path = "src/lib.rs"
@@ -56,15 +65,6 @@ default-features = false
 
 [dev-dependencies.rand]
 version = "0.8"
-
-[features]
-alloc = []
-default = ["std"]
-nightly = ["crossbeam-utils/nightly"]
-std = [
-    "alloc",
-    "crossbeam-utils/std",
-]
 
 [lints.clippy.declare_interior_mutable_const]
 level = "allow"

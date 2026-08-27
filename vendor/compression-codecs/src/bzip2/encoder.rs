@@ -1,6 +1,6 @@
-use crate::{bzip2::params::Bzip2EncoderParams, Encode};
+use crate::{bzip2::params::Bzip2EncoderParams, EncodeV2};
 use bzip2::{Action, Compress, Compression, Status};
-use compression_core::util::PartialBuffer;
+use compression_core::util::{PartialBuffer, WriteBuffer};
 use std::{fmt, io};
 
 pub struct BzEncoder {
@@ -48,8 +48,8 @@ impl BzEncoder {
 
     fn encode(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
+        input: &mut PartialBuffer<&[u8]>,
+        output: &mut WriteBuffer<'_>,
         action: Action,
     ) -> io::Result<Status> {
         let prior_in = self.compress.total_in();
@@ -57,21 +57,23 @@ impl BzEncoder {
 
         let status = self
             .compress
-            .compress(input.unwritten(), output.unwritten_mut(), action)
+            // Safety: We **trust** bzip2 to only write initialized bytes into it
+            .compress_uninit(input.unwritten(), unsafe { output.unwritten_mut() }, action)
             .map_err(io::Error::other)?;
 
         input.advance((self.compress.total_in() - prior_in) as usize);
-        output.advance((self.compress.total_out() - prior_out) as usize);
+        // Safety: We **trust** bzip2 to properly write bytes into it
+        unsafe { output.assume_init_and_advance((self.compress.total_out() - prior_out) as usize) };
 
         Ok(status)
     }
 }
 
-impl Encode for BzEncoder {
+impl EncodeV2 for BzEncoder {
     fn encode(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
+        input: &mut PartialBuffer<&[u8]>,
+        output: &mut WriteBuffer<'_>,
     ) -> io::Result<()> {
         match self.encode(input, output, Action::Run)? {
             // Decompression went fine, nothing much to report.
@@ -95,10 +97,7 @@ impl Encode for BzEncoder {
         }
     }
 
-    fn flush(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> io::Result<bool> {
+    fn flush(&mut self, output: &mut WriteBuffer<'_>) -> io::Result<bool> {
         match self.encode(&mut PartialBuffer::new(&[][..]), output, Action::Flush)? {
             // Decompression went fine, nothing much to report.
             Status::Ok => unreachable!(),
@@ -121,10 +120,7 @@ impl Encode for BzEncoder {
         }
     }
 
-    fn finish(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> io::Result<bool> {
+    fn finish(&mut self, output: &mut WriteBuffer<'_>) -> io::Result<bool> {
         match self.encode(&mut PartialBuffer::new(&[][..]), output, Action::Finish)? {
             // Decompression went fine, nothing much to report.
             Status::Ok => Ok(false),

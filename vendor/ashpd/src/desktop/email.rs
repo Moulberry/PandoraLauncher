@@ -254,6 +254,19 @@ impl EmailRequest {
         self
     }
 
+    #[must_use]
+    /// Attaches multiple files to the email.
+    pub fn attach_multiple(
+        mut self,
+        attachments: impl IntoIterator<Item = impl Into<OwnedFd>>,
+    ) -> Self {
+        self.options.attachment_fds = attachments
+            .into_iter()
+            .map(|fd| zvariant::OwnedFd::from(fd.into()))
+            .collect();
+        self
+    }
+
     /// Attaches a file to the email.
     #[must_use]
     pub fn attach(mut self, attachment: OwnedFd) -> Self {

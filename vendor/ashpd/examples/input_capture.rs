@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use ashpd::desktop::input_capture::{
     Barrier, BarrierID, Capabilities, CreateSessionOptions, InputCapture, ReleaseOptions,
+    StartOptions,
 };
 use futures_util::StreamExt;
 
@@ -9,13 +10,33 @@ use futures_util::StreamExt;
 async fn main() -> ashpd::Result<()> {
     let input_capture = InputCapture::new().await?;
 
-    let (session, _capabilities) = input_capture
-        .create_session(
-            None,
-            CreateSessionOptions::default()
-                .set_capabilities(Capabilities::Keyboard | Capabilities::Pointer),
-        )
-        .await?;
+    let capabilities = Capabilities::Keyboard | Capabilities::Pointer;
+    // Try create_session2 + start first, fall back to legacy
+    let session = match input_capture.create_session2(Default::default()).await {
+        Ok(session) => {
+            let start_request = input_capture
+                .start(
+                    &session,
+                    None,
+                    StartOptions::default().set_capabilities(capabilities),
+                )
+                .await?;
+            let _start_response = start_request.response()?;
+            session
+        }
+        Err(ashpd::Error::RequiresVersion(_want, _have)) => {
+            let (session, _caps) = input_capture
+                .create_session(
+                    None,
+                    CreateSessionOptions::default().set_capabilities(capabilities),
+                )
+                .await?;
+            session
+        }
+        Err(err) => {
+            return Err(err);
+        }
+    };
 
     let zones_response = input_capture.zones(&session, Default::default()).await?;
     let zones = zones_response.response()?;

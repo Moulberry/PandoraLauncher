@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.88"
 name = "serde_with_macros"
-version = "3.20.0"
+version = "3.22.0"
 authors = ["Jonas Bushart"]
 build = false
 include = [
@@ -160,6 +160,7 @@ version = "1.0.111"
 [lints.clippy]
 cloned_instead_of_copied = "warn"
 default_trait_access = "warn"
+disallowed_methods = "warn"
 doc_markdown = "warn"
 explicit_auto_deref = "allow"
 manual-unwrap-or-default = "allow"
@@ -172,6 +173,7 @@ trivial_casts = "warn"
 trivial_numeric_casts = "warn"
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
+unused_qualifications = "warn"
 variant_size_differences = "warn"
 
 [lints.rust.rust_2018_idioms]

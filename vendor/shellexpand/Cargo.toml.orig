@@ -1,6 +1,6 @@
 [package]
 name = "shellexpand"
-version = "3.1.1"
+version = "3.1.2"
 edition = "2018"
 authors = ["Vladimir Matveev <vmatveev@citrine.cc>", "Ian Jackson <iwj@torproject.org>"]
 license = "MIT/Apache-2.0"
@@ -15,6 +15,8 @@ rust-version = "1.31"
 dirs = { version = ">=4, <7", optional = true }
 
 bstr = { version = "1.0.0-pre.2", optional = true }
+# We use RawOsStr::as_raw_bytes, which in os_str_bytes 0.7.x is behind a "conversions" feature
+# and that feature isn't the versions we need for our MSRV.  So we are stuck on 0.6 for now.
 os_str_bytes = { version = ">=5, <7", optional = true }
 
 [features]

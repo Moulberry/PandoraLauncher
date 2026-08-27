@@ -38,17 +38,18 @@
 // "Test algorithm dispatch without CPU indicator or Neon extension capability bits"
 // in util/all_tests.json
 
-// The Neoverse N1, V1, V2, and Apple M1 micro-architectures are detected to
+// The Neoverse N1, V1, V2, V3, and Apple M1 micro-architectures are detected to
 // allow selecting the fasted implementations for SHA3/SHAKE and AES-GCM.
-// Combination of all CPU indicator bits: 0x7080
+// Combination of all CPU indicator bits: 0x47080
 // NOTE: If you add further CPU indicator bits, adjust
 // "Test algorithm dispatch without CPU indicator bits" in util/all_tests.json.
 #define ARMV8_NEOVERSE_N1 (1 << 7)
 #define ARMV8_NEOVERSE_V1 (1 << 12)
 #define ARMV8_APPLE_M (1 << 13)
 #define ARMV8_NEOVERSE_V2 (1 << 14)
+#define ARMV8_NEOVERSE_V3 (1 << 18)
 
-// Combination of CPU indicator bits and Armv8 Neon extension bits: 0x78fc
+// Combination of CPU indicator bits and Armv8 Neon extension bits: 0x478fc
 
 // ARMV8_DIT indicates support for the Data-Independent Timing (DIT) flag.
 #define ARMV8_DIT (1 << 15)
@@ -77,6 +78,7 @@
 # define ARM_CPU_PART_N1           0xD0C
 # define ARM_CPU_PART_V1           0xD40
 # define ARM_CPU_PART_V2           0xD4F
+# define ARM_CPU_PART_V3           0xD84
 
 # define MIDR_PARTNUM_SHIFT       4
 # define MIDR_PARTNUM_MASK        (0xfffUL << MIDR_PARTNUM_SHIFT)

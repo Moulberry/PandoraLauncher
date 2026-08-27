@@ -65,7 +65,7 @@ extern "C" {
 // ServiceIndicatorTest.AWSLCVersionString
 // Note: there are two versions of this test. Only one test is compiled
 // depending on FIPS mode.
-#define AWSLC_VERSION_NUMBER_STRING "5.1.0"
+#define AWSLC_VERSION_NUMBER_STRING "5.5.0"
 
 // AWSLC_FIPS_VERSION_NUMBER is the FIPS version number of mainline AWS-LC,
 // independent of |AWSLC_VERSION_NUMBER_STRING|. It is incremented each time a

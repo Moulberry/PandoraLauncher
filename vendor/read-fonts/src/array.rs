@@ -61,6 +61,21 @@ where
     }
 }
 
+impl<T> Default for ComputedArray<'_, T>
+where
+    T: ReadArgs,
+    T::Args: Default,
+{
+    fn default() -> Self {
+        Self {
+            item_len: 0,
+            len: 0,
+            data: Default::default(),
+            args: Default::default(),
+        }
+    }
+}
+
 impl<'a, T> ComputedArray<'a, T>
 where
     T: FontReadWithArgs<'a>,
@@ -127,6 +142,10 @@ impl<'a, T: FontRead<'a> + VarSize> VarLenArray<'a, T> {
     /// much faster to first collect all the items into a `Vec` beforehand,
     /// and then fetch them from there.
     pub fn get(&self, idx: usize) -> Option<Result<T, ReadError>> {
+        if self.data.is_empty() {
+            return None;
+        }
+
         let mut pos = 0usize;
         for _ in 0..idx {
             pos = pos.checked_add(T::read_len_at(self.data, pos)?)?;
@@ -164,6 +183,15 @@ impl<'a, T> FontRead<'a> for VarLenArray<'a, T> {
             data,
             phantom: core::marker::PhantomData,
         })
+    }
+}
+
+impl<T> Default for VarLenArray<'_, T> {
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            phantom: std::marker::PhantomData,
+        }
     }
 }
 

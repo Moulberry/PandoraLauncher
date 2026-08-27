@@ -133,7 +133,7 @@ impl<'computed> Label<'computed> {
      */
     #[inline(always)]
     pub const fn with_tag(mut self, tag: &Tag) -> Self {
-        self.tag = Some(tag.cloned());
+        self.tag = Some(*tag);
         self
     }
 
@@ -205,7 +205,7 @@ or to avoid some unnecessary work.
 
 The contents of a tag aren't considered public, only equality between two tag identifiers.
 */
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Tag {
     id: u64,
     data: &'static str,
@@ -289,16 +289,6 @@ impl Tag {
             data,
         }
     }
-
-    // NOTE: This method is only private to avoid exposing it prematurely
-    // There's no real reason we shouldn't
-    #[inline(always)]
-    const fn cloned(&self) -> Tag {
-        Tag {
-            id: self.id,
-            data: self.data,
-        }
-    }
 }
 
 impl fmt::Debug for Tag {
@@ -310,7 +300,7 @@ impl fmt::Debug for Tag {
 /**
 The index of a value in its parent context.
 */
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Index(i128, Option<Tag>);
 
 impl From<i32> for Index {
@@ -484,7 +474,7 @@ impl Index {
      */
     #[inline(always)]
     pub const fn with_tag(mut self, tag: &Tag) -> Self {
-        self.1 = Some(tag.cloned());
+        self.1 = Some(*tag);
         self
     }
 

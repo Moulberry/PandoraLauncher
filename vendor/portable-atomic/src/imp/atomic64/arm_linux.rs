@@ -3,12 +3,17 @@
 /*
 64-bit atomic implementation using kuser_cmpxchg64 on pre-v6 Arm Linux/Android.
 
+See "Atomic operation overview by architecture" in atomic-maybe-uninit for a more comprehensive and
+detailed description of the atomic and synchronize instructions in this architecture:
+https://github.com/taiki-e/atomic-maybe-uninit/blob/HEAD/src/arch/README.md#arm
+
 Refs:
-- https://github.com/torvalds/linux/blob/v6.13/Documentation/arch/arm/kernel_user_helpers.rst
+- https://github.com/torvalds/linux/blob/v6.19/Documentation/arch/arm/kernel_user_helpers.rst
 - https://github.com/rust-lang/compiler-builtins/blob/compiler_builtins-v0.1.124/src/arm_linux.rs
+- https://github.com/taiki-e/atomic-maybe-uninit
 
 Note: __kuser_cmpxchg64 is always SeqCst.
-https://github.com/torvalds/linux/blob/v6.13/arch/arm/kernel/entry-armv.S#L700-L707
+https://github.com/taiki-e/atomic-maybe-uninit/blob/v0.3.21/src/arch/arm.rs#L230
 
 Note: On Miri and ThreadSanitizer which do not support inline assembly, we don't use
 this module and use fallback implementation instead.
@@ -16,38 +21,49 @@ this module and use fallback implementation instead.
 
 // TODO: Since Rust 1.64, the Linux kernel requirement for Rust when using std is 3.2+, so it should
 // be possible to omit the dynamic kernel version check if the std feature is enabled on Rust 1.64+.
-// https://blog.rust-lang.org/2022/08/01/Increasing-glibc-kernel-requirements.html
+// https://blog.rust-lang.org/2022/08/01/Increasing-glibc-kernel-requirements
 
 include!("macros.rs");
 
 #[path = "../fallback/outline_atomics.rs"]
 mod fallback;
 
+#[cfg(test)] // test-only (unused)
+#[cfg(not(portable_atomic_no_outline_atomics))]
+#[cfg(any(
+    all(
+        target_os = "linux",
+        any(
+            target_env = "gnu",
+            target_env = "musl",
+            target_env = "ohos",
+            all(target_env = "uclibc", not(target_feature = "crt-static")),
+        ),
+    ),
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "openbsd",
+))]
+#[path = "../detect/auxv.rs"]
+mod test_detect_auxv;
+
 #[cfg(not(portable_atomic_no_asm))]
 use core::arch::asm;
 use core::{mem, sync::atomic::Ordering};
 
+#[cfg(portable_atomic_no_strict_provenance)]
+use crate::utils::ptr::PtrExt as _;
 use crate::utils::{Pair, U64};
 
-// https://github.com/torvalds/linux/blob/v6.13/Documentation/arch/arm/kernel_user_helpers.rst
+// https://github.com/torvalds/linux/blob/v6.19/Documentation/arch/arm/kernel_user_helpers.rst
 const KUSER_HELPER_VERSION: usize = 0xFFFF0FFC;
 // __kuser_helper_version >= 5 (kernel version 3.1+)
 const KUSER_CMPXCHG64: usize = 0xFFFF0F60;
 #[inline]
 fn __kuser_helper_version() -> i32 {
-    use core::sync::atomic::AtomicI32;
-
-    static CACHE: AtomicI32 = AtomicI32::new(0);
-    let mut v = CACHE.load(Ordering::Relaxed);
-    if v != 0 {
-        return v;
-    }
-    // SAFETY: core assumes that at least __kuser_memory_barrier (__kuser_helper_version >= 3,
-    // kernel version 2.6.15+) is available on this platform. __kuser_helper_version
-    // is always available on such a platform.
-    v = unsafe { crate::utils::ptr::with_exposed_provenance::<i32>(KUSER_HELPER_VERSION).read() };
-    CACHE.store(v, Ordering::Relaxed);
-    v
+    // SAFETY: core assumes that at least __kuser_memory_barrier (__kuser_helper_version >= 3) is
+    // available on this platform. __kuser_helper_version is always available on such a platform.
+    unsafe { crate::utils::ptr::with_exposed_provenance::<i32>(KUSER_HELPER_VERSION).read() }
 }
 #[inline]
 fn has_kuser_cmpxchg64() -> bool {
@@ -60,7 +76,9 @@ fn has_kuser_cmpxchg64() -> bool {
 }
 #[inline]
 unsafe fn __kuser_cmpxchg64(old_val: *const u64, new_val: *const u64, ptr: *mut u64) -> bool {
-    // SAFETY: the caller must uphold the safety contract.
+    // SAFETY: kernel docs specify a known address with the given signature.
+    // And the caller must guarantee that the pointer is valid for read and write,
+    // aligned to the element size, and __kuser_helper_version >= 5.
     unsafe {
         let f: extern "C" fn(*const u64, *const u64, *mut u64) -> u32 =
             mem::transmute(crate::utils::ptr::with_exposed_provenance::<()>(KUSER_CMPXCHG64));
@@ -96,7 +114,7 @@ macro_rules! select_atomic {
         #[inline]
         unsafe fn $name($dst: *mut u64 $(, $($arg)*)?, _: Ordering) $(-> $ret_ty)? {
             unsafe fn kuser_cmpxchg64_fn($dst: *mut u64 $(, $($arg)*)?) $(-> $ret_ty)? {
-                debug_assert!($dst as usize % 8 == 0);
+                debug_assert!($dst.addr() % 8 == 0);
                 debug_assert!(has_kuser_cmpxchg64());
                 // SAFETY: the caller must uphold the safety contract.
                 unsafe {
@@ -166,7 +184,7 @@ unsafe fn atomic_compare_exchange(
     _: Ordering,
 ) -> Result<u64, u64> {
     unsafe fn kuser_cmpxchg64_fn(dst: *mut u64, old: u64, new: u64) -> (u64, bool) {
-        debug_assert!(dst as usize % 8 == 0);
+        debug_assert!(dst.addr() % 8 == 0);
         debug_assert!(has_kuser_cmpxchg64());
         // SAFETY: the caller must uphold the safety contract.
         unsafe {

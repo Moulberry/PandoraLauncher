@@ -438,3 +438,49 @@ rsa_verify!(
     &TEST_MESSAGE_RSA_PKCS1_1024_SHA512,
     FipsServiceStatus::Approved
 );
+
+mod pqdsa {
+    use super::TEST_MESSAGE;
+    use crate::fips::{assert_fips_status_indicator, FipsServiceStatus};
+    use crate::signature::{
+        KeyPair, PqdsaKeyPair, VerificationAlgorithm, ML_DSA_44, ML_DSA_44_SIGNING, ML_DSA_65,
+        ML_DSA_65_SIGNING, ML_DSA_87, ML_DSA_87_SIGNING,
+    };
+
+    macro_rules! mldsa_generate_sign_verify {
+        ($name:ident, $sign_alg:expr, $verify_alg:expr) => {
+            #[test]
+            fn $name() {
+                let keypair = assert_fips_status_indicator!(
+                    PqdsaKeyPair::generate($sign_alg),
+                    FipsServiceStatus::Approved
+                )
+                .unwrap();
+
+                let mut signature = vec![0u8; $sign_alg.signature_len()];
+                let signature_len = assert_fips_status_indicator!(
+                    keypair.sign(TEST_MESSAGE.as_bytes(), &mut signature),
+                    FipsServiceStatus::Approved
+                )
+                .unwrap();
+                assert_eq!(signature_len, signature.len());
+
+                let public_key = keypair.public_key();
+
+                assert_fips_status_indicator!(
+                    $verify_alg.verify_sig(
+                        public_key.as_ref(),
+                        TEST_MESSAGE.as_bytes(),
+                        signature.as_ref()
+                    ),
+                    FipsServiceStatus::Approved
+                )
+                .unwrap();
+            }
+        };
+    }
+
+    mldsa_generate_sign_verify!(mldsa_44_generate_sign_verify, &ML_DSA_44_SIGNING, ML_DSA_44);
+    mldsa_generate_sign_verify!(mldsa_65_generate_sign_verify, &ML_DSA_65_SIGNING, ML_DSA_65);
+    mldsa_generate_sign_verify!(mldsa_87_generate_sign_verify, &ML_DSA_87_SIGNING, ML_DSA_87);
+}

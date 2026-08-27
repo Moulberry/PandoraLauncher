@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "gvariant", allow(deprecated))]
+
 use serde::{Deserialize, Serialize};
 use zvariant::{LE, Str, Structure, Type, Value, as_value, serialized::Context, to_bytes};
 
@@ -34,6 +36,25 @@ fn struct_value() {
     let encoded = to_bytes(ctxt, &v).unwrap();
     let decoded: as_value::Deserialize<'_, Foo> = encoded.deserialize().unwrap().0;
     assert_eq!(decoded.0, foo);
+
+    // A struct with underaligned tail.
+    let foo: (u32, u8) = (u32::MAX, 0x40);
+    let encoded = to_bytes(ctxt, &foo).unwrap();
+    assert_eq!(encoded.bytes(), [0xff, 0xff, 0xff, 0xff, 0x40]);
+    let decoded: (u32, u8) = encoded.deserialize().unwrap().0;
+    assert_eq!(decoded, foo);
+
+    #[cfg(feature = "gvariant")]
+    {
+        let ctxt = Context::new_gvariant(LE, 0);
+        let encoded = to_bytes(ctxt, &foo).unwrap();
+        assert_eq!(
+            encoded.bytes(),
+            [0xff, 0xff, 0xff, 0xff, 0x40, 0x00, 0x00, 0x00]
+        );
+        let decoded: (u32, u8) = encoded.deserialize().unwrap().0;
+        assert_eq!(decoded, foo);
+    }
 
     // Unit struct should be treated as a 0-sized tuple (the same as unit type)
     #[derive(Serialize, Deserialize, Type, PartialEq, Debug)]

@@ -81,7 +81,9 @@ impl<W: fmt::Write + ?Sized> PartsWrite for CoreWriteAsPartsWrite<W> {
 #[derive(Debug)]
 #[allow(clippy::exhaustive_structs)] // public adapter
 pub struct WithPart<T: ?Sized> {
+    /// The [`Part`]
     pub part: Part,
+    /// The value
     pub writeable: T,
 }
 
@@ -101,15 +103,15 @@ impl<T: Writeable + ?Sized> Writeable for WithPart<T> {
         self.writeable.writeable_length_hint()
     }
 
+    fn writeable_borrow(&self) -> Option<&str> {
+        self.writeable.writeable_borrow()
+    }
+
     #[inline]
-    fn write_to_string(&self) -> Cow<str> {
+    #[cfg(feature = "alloc")]
+    fn write_to_string(&self) -> Cow<'_, str> {
         self.writeable.write_to_string()
     }
 }
 
-impl<T: Writeable + ?Sized> fmt::Display for WithPart<T> {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Writeable::write_to(&self, f)
-    }
-}
+crate::impl_display_with_writeable!(@display, WithPart<T>, where T: Writeable + ?Sized);

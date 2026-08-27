@@ -22,9 +22,18 @@ impl EmojiSetData {
     ///
     /// [📚 Help choosing a constructor](icu_provider::constructors)
     #[cfg(feature = "compiled_data")]
-    #[allow(clippy::new_ret_no_self)]
+    #[expect(clippy::new_ret_no_self)]
     pub const fn new<P: EmojiSet>() -> EmojiSetDataBorrowed<'static> {
         EmojiSetDataBorrowed::new::<P>()
+    }
+
+    #[cfg(feature = "serde")]
+    #[doc = icu_provider::gen_buffer_unstable_docs!(BUFFER, Self::new)]
+    pub fn try_new_with_buffer_provider<P: EmojiSet>(
+        provider: &(impl BufferProvider + ?Sized),
+    ) -> Result<EmojiSetData, DataError> {
+        use icu_provider::buf::AsDeserializingBufferProvider;
+        Self::try_new_unstable::<P>(&provider.as_deserializing())
     }
 
     /// A version of `new()` that uses custom data provided by a [`DataProvider`].
@@ -118,6 +127,12 @@ impl EmojiSetDataBorrowed<'_> {
         self.set.contains_str(s)
     }
 
+    /// See [`Self::contains_str`].
+    #[inline]
+    pub fn contains_utf8(self, s: &[u8]) -> bool {
+        self.set.contains_utf8(s)
+    }
+
     /// Check if the set contains the code point.
     #[inline]
     pub fn contains(self, ch: char) -> bool {
@@ -162,10 +177,30 @@ impl EmojiSetDataBorrowed<'static> {
 /// 🚫 This trait is sealed; it cannot be implemented by user code. If an API requests an item that implements this
 /// trait, please consider using a type from the implementors listed below.
 /// </div>
-pub trait EmojiSet: crate::private::Sealed {
+pub trait EmojiSet: crate::private::Sealed + Sized {
     #[doc(hidden)]
     type DataMarker: DataMarker<DataStruct = PropertyUnicodeSet<'static>>;
     #[doc(hidden)]
     #[cfg(feature = "compiled_data")]
     const SINGLETON: &'static PropertyUnicodeSet<'static>;
+    /// The name of this property
+    const NAME: &'static [u8];
+    /// The abbreviated name of this property, if it exists, otherwise the name
+    const SHORT_NAME: &'static [u8];
+
+    /// Convenience method for `EmojiSetData::new().contains(ch)`
+    ///
+    /// ✨ *Enabled with the `compiled_data` Cargo feature.*
+    #[cfg(feature = "compiled_data")]
+    fn for_char(ch: char) -> bool {
+        EmojiSetData::new::<Self>().contains(ch)
+    }
+
+    /// Convenience method for `EmojiSetData::new().contains_str(s)`
+    ///
+    /// ✨ *Enabled with the `compiled_data` Cargo feature.*
+    #[cfg(feature = "compiled_data")]
+    fn for_str(s: &str) -> bool {
+        EmojiSetData::new::<Self>().contains_str(s)
+    }
 }

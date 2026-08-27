@@ -55,7 +55,7 @@
     </enum>
 
     <enum name="capability" bitfield="true">
-      <entry name="blur" value="0"
+      <entry name="blur" value="1"
              summary="the compositor supports applying blur"/>
     </enum>
 

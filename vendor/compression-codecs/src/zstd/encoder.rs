@@ -1,10 +1,13 @@
-use crate::zstd::params::CParameter;
-use crate::Encode;
-use compression_core::unshared::Unshared;
-use compression_core::util::PartialBuffer;
-use libzstd::stream::raw::{Encoder, Operation};
-use std::io;
-use std::io::Result;
+use crate::{
+    zstd::{params::CParameter, OperationExt},
+    EncodeV2,
+};
+use compression_core::{
+    unshared::Unshared,
+    util::{PartialBuffer, WriteBuffer},
+};
+use libzstd::stream::raw::Encoder;
+use std::io::{self, Result};
 
 #[derive(Debug)]
 pub struct ZstdEncoder {
@@ -36,40 +39,21 @@ impl ZstdEncoder {
     }
 }
 
-impl Encode for ZstdEncoder {
+impl EncodeV2 for ZstdEncoder {
     fn encode(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
+        input: &mut PartialBuffer<&[u8]>,
+        output: &mut WriteBuffer<'_>,
     ) -> Result<()> {
-        let status = self
-            .encoder
-            .get_mut()
-            .run_on_buffers(input.unwritten(), output.unwritten_mut())?;
-        input.advance(status.bytes_read);
-        output.advance(status.bytes_written);
+        self.encoder.run(input, output)?;
         Ok(())
     }
 
-    fn flush(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> Result<bool> {
-        let mut out_buf = zstd_safe::OutBuffer::around(output.unwritten_mut());
-        let bytes_left = self.encoder.get_mut().flush(&mut out_buf)?;
-        let len = out_buf.as_slice().len();
-        output.advance(len);
-        Ok(bytes_left == 0)
+    fn flush(&mut self, output: &mut WriteBuffer<'_>) -> Result<bool> {
+        self.encoder.flush(output)
     }
 
-    fn finish(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> Result<bool> {
-        let mut out_buf = zstd_safe::OutBuffer::around(output.unwritten_mut());
-        let bytes_left = self.encoder.get_mut().finish(&mut out_buf, true)?;
-        let len = out_buf.as_slice().len();
-        output.advance(len);
-        Ok(bytes_left == 0)
+    fn finish(&mut self, output: &mut WriteBuffer<'_>) -> Result<bool> {
+        self.encoder.finish(output)
     }
 }

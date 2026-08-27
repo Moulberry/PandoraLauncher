@@ -3,7 +3,7 @@
 use core::fmt;
 use read_fonts::types::GlyphId;
 
-pub use read_fonts::{tables::postscript::Error as CffError, ReadError};
+pub use read_fonts::{ps::error::Error as CffError, ReadError};
 
 pub use super::glyf::HintError;
 pub use super::path::ToPathError;

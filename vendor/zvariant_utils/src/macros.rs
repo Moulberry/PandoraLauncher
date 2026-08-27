@@ -3,26 +3,27 @@ use syn::{
     punctuated::Punctuated, spanned::Spanned,
 };
 
-// find the #[@attr_name] attribute in @attrs
-fn find_attribute_meta(attrs: &[Attribute], attr_names: &[&str]) -> Result<Option<MetaList>> {
-    // Find attribute with path matching one of the allowed attribute names,
-    let search_result = attrs.iter().find_map(|a| {
-        attr_names
+// find all #[@attr_name] attributes in @attrs
+fn find_attribute_metas(attrs: &[Attribute], attr_names: &[&str]) -> Result<Vec<MetaList>> {
+    let mut lists = Vec::new();
+    for attr in attrs {
+        let Some(attr_name) = attr_names
             .iter()
-            .find_map(|attr_name| a.path().is_ident(attr_name).then_some((attr_name, a)))
-    });
-
-    let (attr_name, meta) = match search_result {
-        Some((attr_name, a)) => (attr_name, &a.meta),
-        _ => return Ok(None),
-    };
-    match meta.require_list() {
-        Ok(n) => Ok(Some(n.clone())),
-        _ => Err(syn::Error::new(
-            meta.span(),
-            format!("{attr_name} meta must specify a meta list"),
-        )),
+            .find(|attr_name| attr.path().is_ident(attr_name))
+        else {
+            continue;
+        };
+        match attr.meta.require_list() {
+            Ok(n) => lists.push(n.clone()),
+            _ => {
+                return Err(syn::Error::new(
+                    attr.meta.span(),
+                    format!("{attr_name} meta must specify a meta list"),
+                ));
+            }
+        }
     }
+    Ok(lists)
 }
 
 fn get_meta_value<'a>(meta: &'a Meta, attr: &str) -> Result<&'a Lit> {
@@ -126,20 +127,24 @@ pub fn iter_meta_lists(
     attrs: &[Attribute],
     list_names: &[&str],
 ) -> Result<impl Iterator<Item = Meta>> {
-    let meta = find_attribute_meta(attrs, list_names)?;
-
-    Ok(meta
-        .map(|meta| meta.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated))
-        .transpose()?
+    let metas = find_attribute_metas(attrs, list_names)?
         .into_iter()
-        .flatten())
+        .map(|meta| meta.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated))
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(metas.into_iter().flatten())
 }
 
 /// Generates one or more structures used for parsing attributes in proc macros.
 ///
-/// Generated structures have one static method called parse that accepts a slice of [`Attribute`]s.
-/// The method finds attributes that contain meta lists (look like `#[your_custom_ident(...)]`) and
-/// fills a newly allocated structure with values of the attributes if any.
+/// Generated structures have a static `parse` method that accepts a slice of [`Attribute`]s, and
+/// a static `parse_with_lists` method that additionally takes the attribute list names to look
+/// for (`parse` is a thin wrapper that passes the names given to the `crate` clause below). Both
+/// methods find attributes that contain meta lists (look like `#[your_custom_ident(...)]`) and
+/// fill a newly allocated structure with values of the attributes if any. When more than one
+/// matching attribute list is present on the same item, their metas are merged; conflicting or
+/// duplicate values across the lists are then rejected the same way duplicates within a single
+/// list are.
 ///
 /// The expected input looks as follows:
 ///
@@ -232,7 +237,8 @@ pub fn iter_meta_lists(
 /// ```
 ///
 /// It will be possible to use both `#[zvariant(...)]` and `#[zbus(...)]` attributes with
-/// `FooAttributes`.
+/// `FooAttributes`. If both are present on the same item, their attributes are merged; a value
+/// given by both (or given twice within one of them) is a duplicate-attribute error.
 ///
 /// Don't forget to add all the supported attributes to your proc macro definition.
 ///
@@ -480,17 +486,21 @@ macro_rules! def_attrs {
                 Ok(parsed)
             }
 
-            pub fn parse(attrs: &[::syn::Attribute]) -> ::syn::Result<Self> {
+            pub fn parse_with_lists(
+                attrs: &[::syn::Attribute],
+                lists: &[&str],
+            ) -> ::syn::Result<Self> {
                 let mut parsed = $name::default();
 
-                for nested_meta in $crate::macros::iter_meta_lists(
-                    attrs,
-                    ALLOWED_LISTS,
-                )? {
+                for nested_meta in $crate::macros::iter_meta_lists(attrs, lists)? {
                     parsed.parse_meta(&nested_meta)?;
                 }
 
                 Ok(parsed)
+            }
+
+            pub fn parse(attrs: &[::syn::Attribute]) -> ::syn::Result<Self> {
+                Self::parse_with_lists(attrs, ALLOWED_LISTS)
             }
         }
     };
@@ -532,5 +542,68 @@ pub fn ty_is_option(ty: &Type) -> bool {
             ..
         }) => segments.last().unwrap().ident == "Option",
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use syn::{DeriveInput, Meta, parse_quote};
+
+    crate::def_attrs! {
+        crate zvariant, zgvariant;
+
+        pub TestAttributes("test item") { signature str, rename_all str };
+    }
+
+    #[test]
+    fn parse_with_lists_merges_all_matching_lists() {
+        let input: DeriveInput = parse_quote! {
+            #[zvariant(signature = "a{sv}")]
+            #[zgvariant(rename_all = "camelCase")]
+            struct Foo;
+        };
+        let attrs =
+            TestAttributes::parse_with_lists(&input.attrs, &["zvariant", "zgvariant"]).unwrap();
+        assert_eq!(attrs.signature.as_deref(), Some("a{sv}"));
+        assert_eq!(attrs.rename_all.as_deref(), Some("camelCase"));
+    }
+
+    #[test]
+    fn parse_with_lists_errors_on_cross_namespace_duplicate() {
+        let input: DeriveInput = parse_quote! {
+            #[zvariant(signature = "s")]
+            #[zgvariant(signature = "s")]
+            struct Foo;
+        };
+        let err =
+            TestAttributes::parse_with_lists(&input.attrs, &["zvariant", "zgvariant"]).unwrap_err();
+        assert!(err.to_string().contains("duplicate"));
+    }
+
+    #[test]
+    fn parse_with_lists_ignores_unlisted_namespaces() {
+        let input: DeriveInput = parse_quote! {
+            #[zgvariant(signature = "s")]
+            struct Foo;
+        };
+        let attrs = TestAttributes::parse_with_lists(&input.attrs, &["zvariant"]).unwrap();
+        assert!(attrs.signature.is_none());
+    }
+
+    #[test]
+    fn parse_uses_default_lists() {
+        let input: DeriveInput = parse_quote! {
+            #[zvariant(signature = "s")]
+            struct Foo;
+        };
+        let attrs = TestAttributes::parse(&input.attrs).unwrap();
+        assert_eq!(attrs.signature.as_deref(), Some("s"));
+    }
+
+    #[test]
+    fn parse_nested_metas_builds_from_metas() {
+        let meta: Meta = parse_quote!(signature = "s");
+        let attrs = TestAttributes::parse_nested_metas(vec![meta]).unwrap();
+        assert_eq!(attrs.signature.as_deref(), Some("s"));
     }
 }

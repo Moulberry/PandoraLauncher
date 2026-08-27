@@ -167,14 +167,14 @@ cfg_if! {
     } else if #[cfg(all(target_arch = "x86_64", target_env = "sgx"))] {
         mod rdrand;
         pub use rdrand::*;
-    } else if #[cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))] {
+    } else if #[cfg(all(target_family = "wasm", any(target_os = "unknown", target_os = "none")))] {
         cfg_if! {
             if #[cfg(feature = "wasm_js")] {
                 mod wasm_js;
                 pub use wasm_js::*;
             } else {
                 compile_error!(concat!(
-                    "The wasm32-unknown-unknown targets are not supported by default; \
+                    "The wasm32/64-unknown-unknown are not supported by default; \
                     you may need to enable the \"wasm_js\" crate feature. \
                     For more information see: \
                     https://docs.rs/getrandom/", env!("CARGO_PKG_VERSION"), "/#webassembly-support"

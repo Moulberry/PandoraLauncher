@@ -6,6 +6,7 @@ use std::error::Error as StdError;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::iter::Sum;
+use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::time::{Duration as StdDuration, Instant as StdInstant, SystemTime};
@@ -13,6 +14,7 @@ use std::time::{Duration as StdDuration, Instant as StdInstant, SystemTime};
 use quickcheck::Arbitrary;
 use rand08::distributions::{Distribution as DistributionRand08, Standard as StandardRand08};
 use rand09::distr::{Distribution as DistributionRand09, StandardUniform as StandardUniformRand09};
+use rstest::rstest;
 use serde::{Deserialize, Serialize};
 #[expect(deprecated)]
 use time::Instant;
@@ -21,159 +23,156 @@ use time::format_description::{BorrowedFormatItem, Component, modifier, well_kno
 use time::formatting::Formattable;
 use time::parsing::{Parsable, Parsed};
 use time::{
-    Date, Duration, Error, Month, OffsetDateTime, PrimitiveDateTime, Time, UtcDateTime, UtcOffset,
-    Weekday, error, ext,
+    Date, Error, Month, OffsetDateTime, PlainDateTime, SignedDuration, Time, UtcDateTime,
+    UtcOffset, Weekday, error, ext,
 };
 
-#[expect(clippy::cognitive_complexity, reason = "all test the same thing")]
-#[test]
-fn alignment() {
-    macro_rules! assert_alignment {
-        ($t:ty, $alignment:expr) => {
-            let alignment = $alignment;
-            assert_eq!(
-                align_of::<$t>(),
-                alignment,
-                "alignment of `{}` was {}",
-                stringify!($t),
-                alignment,
-            );
-        };
-    }
-
-    assert_alignment!(Date, 4);
-    assert_alignment!(Duration, 8);
-    assert_alignment!(OffsetDateTime, 4);
-    assert_alignment!(PrimitiveDateTime, 4);
-    assert_alignment!(UtcDateTime, 4);
-    assert_alignment!(Time, 4);
-    assert_alignment!(UtcOffset, 1);
-    assert_alignment!(error::ComponentRange, 8);
-    assert_alignment!(error::ConversionRange, 1);
-    assert_alignment!(error::DifferentVariant, 1);
-    assert_alignment!(error::IndeterminateOffset, 1);
-    assert_alignment!(modifier::Day, 1);
-    assert_alignment!(modifier::Hour, 1);
-    assert_alignment!(modifier::Minute, 1);
-    assert_alignment!(modifier::Month, 1);
-    assert_alignment!(modifier::OffsetHour, 1);
-    assert_alignment!(modifier::OffsetMinute, 1);
-    assert_alignment!(modifier::OffsetSecond, 1);
-    assert_alignment!(modifier::Ordinal, 1);
-    assert_alignment!(modifier::Period, 1);
-    assert_alignment!(modifier::Second, 1);
-    assert_alignment!(modifier::Subsecond, 1);
-    assert_alignment!(modifier::WeekNumber, 1);
-    assert_alignment!(modifier::Weekday, 1);
-    assert_alignment!(modifier::Year, 1);
-    assert_alignment!(well_known::Rfc2822, 1);
-    assert_alignment!(well_known::Rfc3339, 1);
-    assert_alignment!(
-        well_known::Iso8601<{ iso8601::Config::DEFAULT.encode() }>,
-        1
+#[rstest]
+#[case(PhantomData::<Date>, 4)]
+#[case(PhantomData::<SignedDuration>, 8)]
+#[case(PhantomData::<OffsetDateTime>, 4)]
+#[case(PhantomData::<PlainDateTime>, 4)]
+#[case(PhantomData::<UtcDateTime>, 4)]
+#[case(PhantomData::<Time>, 4)]
+#[case(PhantomData::<UtcOffset>, 1)]
+#[case(PhantomData::<error::ComponentRange>, 8)]
+#[case(PhantomData::<error::ConversionRange>, 1)]
+#[case(PhantomData::<error::DifferentVariant>, 1)]
+#[case(PhantomData::<error::IndeterminateOffset>, 1)]
+#[case(PhantomData::<modifier::Day>, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::Hour>, 1)]
+#[case(PhantomData::<modifier::Minute>, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::Month>, 1)]
+#[case(PhantomData::<modifier::OffsetHour>, 1)]
+#[case(PhantomData::<modifier::OffsetMinute>, 1)]
+#[case(PhantomData::<modifier::OffsetSecond>, 1)]
+#[case(PhantomData::<modifier::Ordinal>, 1)]
+#[case(PhantomData::<modifier::Period>, 1)]
+#[case(PhantomData::<modifier::Second>, 1)]
+#[case(PhantomData::<modifier::Subsecond>, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::WeekNumber>, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::Weekday>, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::Year>, 1)]
+#[case(PhantomData::<well_known::Rfc2822>, 1)]
+#[case(PhantomData::<well_known::Rfc3339>, 1)]
+#[case(PhantomData::<well_known::Iso8601<{ iso8601::Config::DEFAULT.encode() }>>, 1)]
+#[case(PhantomData::<iso8601::Config>, 1)]
+#[case(PhantomData::<iso8601::DateKind>, 1)]
+#[case(PhantomData::<iso8601::FormattedComponents>, 1)]
+#[case(PhantomData::<iso8601::OffsetPrecision>, 1)]
+#[case(PhantomData::<iso8601::TimePrecision>, 1)]
+#[case(PhantomData::<Parsed>, align_of::<u128>())]
+#[case(PhantomData::<Month>, 1)]
+#[case(PhantomData::<Weekday>, 1)]
+#[case(PhantomData::<Error>, 8)]
+#[case(PhantomData::<error::Format>, 8)]
+#[case(PhantomData::<error::InvalidFormatDescription>, 8)]
+#[case(PhantomData::<error::Parse>, 8)]
+#[case(PhantomData::<error::ParseFromDescription>, 8)]
+#[case(PhantomData::<error::TryFromParsed>, 8)]
+#[case(PhantomData::<Component>, 2)]
+#[case(PhantomData::<BorrowedFormatItem<'_>>, 8)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::MonthRepr>, 1)]
+#[case(PhantomData::<modifier::Padding>, 1)]
+#[case(PhantomData::<modifier::SubsecondDigits>, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::WeekNumberRepr>, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::WeekdayRepr>, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::YearRepr>, 1)]
+fn alignment<T>(#[case] _type: PhantomData<T>, #[case] expected: usize) {
+    assert_eq!(
+        align_of::<T>(),
+        expected,
+        "alignment of `{}` was {expected}",
+        std::any::type_name::<T>()
     );
-    assert_alignment!(iso8601::Config, 1);
-    assert_alignment!(iso8601::DateKind, 1);
-    assert_alignment!(iso8601::FormattedComponents, 1);
-    assert_alignment!(iso8601::OffsetPrecision, 1);
-    assert_alignment!(iso8601::TimePrecision, 1);
-    assert_alignment!(Parsed, align_of::<u128>());
-    assert_alignment!(Month, 1);
-    assert_alignment!(Weekday, 1);
-    assert_alignment!(Error, 8);
-    assert_alignment!(error::Format, 8);
-    assert_alignment!(error::InvalidFormatDescription, 8);
-    assert_alignment!(error::Parse, 8);
-    assert_alignment!(error::ParseFromDescription, 8);
-    assert_alignment!(error::TryFromParsed, 8);
-    assert_alignment!(Component, 2);
-    assert_alignment!(BorrowedFormatItem<'_>, 8);
-    assert_alignment!(modifier::MonthRepr, 1);
-    assert_alignment!(modifier::Padding, 1);
-    assert_alignment!(modifier::SubsecondDigits, 1);
-    assert_alignment!(modifier::WeekNumberRepr, 1);
-    assert_alignment!(modifier::WeekdayRepr, 1);
-    assert_alignment!(modifier::YearRepr, 1);
 }
 
-#[expect(clippy::cognitive_complexity, reason = "all test the same thing")]
-#[test]
-fn size() {
-    macro_rules! assert_size {
-        ($t:ty, $size:literal, $opt_size:literal) => {
-            assert!(
-                size_of::<$t>() <= $size,
-                concat!("size of `{}` used to be ", $size, ", but is now {}"),
-                stringify!($t),
-                size_of::<$t>(),
-            );
-            assert!(
-                size_of::<Option<$t>>() <= $opt_size,
-                concat!(
-                    "size of `Option<{}>` used to be ",
-                    $opt_size,
-                    ", but is now {}"
-                ),
-                stringify!($t),
-                size_of::<Option<$t>>(),
-            );
-        };
-    }
-
-    assert_size!(Date, 4, 4);
-    assert_size!(Duration, 16, 16);
-    assert_size!(OffsetDateTime, 16, 16);
-    assert_size!(PrimitiveDateTime, 12, 12);
-    assert_size!(UtcDateTime, 12, 12);
-    assert_size!(Time, 8, 8);
-    assert_size!(UtcOffset, 3, 4);
-    assert_size!(error::ComponentRange, 24, 24);
-    assert_size!(error::ConversionRange, 0, 1);
-    assert_size!(error::DifferentVariant, 0, 1);
-    assert_size!(error::IndeterminateOffset, 0, 1);
-    assert_size!(modifier::Day, 1, 1);
-    assert_size!(modifier::Hour, 2, 2);
-    assert_size!(modifier::Minute, 1, 1);
-    assert_size!(modifier::Month, 3, 3);
-    assert_size!(modifier::OffsetHour, 2, 2);
-    assert_size!(modifier::OffsetMinute, 1, 1);
-    assert_size!(modifier::OffsetSecond, 1, 1);
-    assert_size!(modifier::Ordinal, 1, 1);
-    assert_size!(modifier::Period, 2, 2);
-    assert_size!(modifier::Second, 1, 1);
-    assert_size!(modifier::Subsecond, 1, 1);
-    assert_size!(modifier::WeekNumber, 2, 2);
-    assert_size!(modifier::Weekday, 3, 3);
-    assert_size!(modifier::Year, 5, 5);
-    assert_size!(well_known::Rfc2822, 0, 1);
-    assert_size!(well_known::Rfc3339, 0, 1);
-    assert_size!(
-        well_known::Iso8601<{ iso8601::Config::DEFAULT.encode() }>,
-        0,
-        1
+#[rstest]
+#[case(PhantomData::<Date>, 4, 4)]
+#[case(PhantomData::<SignedDuration>, 16, 16)]
+#[case(PhantomData::<OffsetDateTime>, 16, 16)]
+#[case(PhantomData::<PlainDateTime>, 12, 12)]
+#[case(PhantomData::<UtcDateTime>, 12, 12)]
+#[case(PhantomData::<Time>, 8, 8)]
+#[case(PhantomData::<UtcOffset>, 3, 4)]
+#[case(PhantomData::<error::ComponentRange>, 24, 24)]
+#[case(PhantomData::<error::ConversionRange>, 0, 1)]
+#[case(PhantomData::<error::DifferentVariant>, 0, 1)]
+#[case(PhantomData::<error::IndeterminateOffset>, 0, 1)]
+#[case(PhantomData::<modifier::Day>, 1, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::Hour>, 2, 2)]
+#[case(PhantomData::<modifier::Minute>, 1, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::Month>, 3, 3)]
+#[case(PhantomData::<modifier::OffsetHour>, 2, 2)]
+#[case(PhantomData::<modifier::OffsetMinute>, 1, 1)]
+#[case(PhantomData::<modifier::OffsetSecond>, 1, 1)]
+#[case(PhantomData::<modifier::Ordinal>, 1, 1)]
+#[case(PhantomData::<modifier::Period>, 2, 2)]
+#[case(PhantomData::<modifier::Second>, 1, 1)]
+#[case(PhantomData::<modifier::Subsecond>, 1, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::WeekNumber>, 2, 2)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::Weekday>, 3, 3)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::Year>, 5, 5)]
+#[case(PhantomData::<well_known::Rfc2822>, 0, 1)]
+#[case(PhantomData::<well_known::Rfc3339>, 0, 1)]
+#[case(PhantomData::<well_known::Iso8601<{ iso8601::Config::DEFAULT.encode() }>>, 0, 1)]
+#[case(PhantomData::<iso8601::Config>, 7, 7)]
+#[case(PhantomData::<iso8601::DateKind>, 1, 1)]
+#[case(PhantomData::<iso8601::FormattedComponents>, 1, 1)]
+#[case(PhantomData::<iso8601::OffsetPrecision>, 1, 1)]
+#[case(PhantomData::<iso8601::TimePrecision>, 2, 2)]
+#[case(PhantomData::<Parsed>, 64, 64)]
+#[case(PhantomData::<Month>, 1, 1)]
+#[case(PhantomData::<Weekday>, 1, 1)]
+#[case(PhantomData::<Error>, 48, 48)]
+#[case(PhantomData::<error::Format>, 24, 24)]
+#[case(PhantomData::<error::InvalidFormatDescription>, 48, 48)]
+#[case(PhantomData::<error::Parse>, 32, 32)]
+#[case(PhantomData::<error::ParseFromDescription>, 24, 24)]
+#[case(PhantomData::<error::TryFromParsed>, 24, 24)]
+#[case(PhantomData::<Component>, 6, 6)]
+#[case(PhantomData::<BorrowedFormatItem<'_>>, 24, 24)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::MonthRepr>, 1, 1)]
+#[case(PhantomData::<modifier::Padding>, 1, 1)]
+#[case(PhantomData::<modifier::SubsecondDigits>, 1, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::WeekNumberRepr>, 1, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::WeekdayRepr>, 1, 1)]
+#[expect(deprecated)]
+#[case(PhantomData::<modifier::YearRepr>, 1, 1)]
+fn size<T>(
+    #[case] _type: PhantomData<T>,
+    #[case] expected_size: usize,
+    #[case] expected_opt_size: usize,
+) {
+    assert!(
+        size_of::<T>() <= expected_size,
+        "size of `{}` used to be {expected_size}, but is now {}",
+        std::any::type_name::<T>(),
+        size_of::<T>(),
     );
-    assert_size!(iso8601::Config, 7, 7);
-    assert_size!(iso8601::DateKind, 1, 1);
-    assert_size!(iso8601::FormattedComponents, 1, 1);
-    assert_size!(iso8601::OffsetPrecision, 1, 1);
-    assert_size!(iso8601::TimePrecision, 2, 2);
-    assert_size!(Parsed, 64, 64);
-    assert_size!(Month, 1, 1);
-    assert_size!(Weekday, 1, 1);
-    assert_size!(Error, 48, 48);
-    assert_size!(error::Format, 24, 24);
-    assert_size!(error::InvalidFormatDescription, 48, 48);
-    assert_size!(error::Parse, 32, 32);
-    assert_size!(error::ParseFromDescription, 24, 24);
-    assert_size!(error::TryFromParsed, 24, 24);
-    assert_size!(Component, 6, 6);
-    assert_size!(BorrowedFormatItem<'_>, 24, 24);
-    assert_size!(modifier::MonthRepr, 1, 1);
-    assert_size!(modifier::Padding, 1, 1);
-    assert_size!(modifier::SubsecondDigits, 1, 1);
-    assert_size!(modifier::WeekNumberRepr, 1, 1);
-    assert_size!(modifier::WeekdayRepr, 1, 1);
-    assert_size!(modifier::YearRepr, 1, 1);
+    assert!(
+        size_of::<Option<T>>() <= expected_opt_size,
+        "size of `Option<{}>` used to be {expected_opt_size}, but is now {}",
+        std::any::type_name::<T>(),
+        size_of::<Option<T>>(),
+    );
 }
 
 macro_rules! assert_obj_safe {
@@ -198,9 +197,9 @@ macro_rules! assert_impl {
 }
 
 assert_impl! { @'a; Date:
-    Add<Duration, Output = Date>,
+    Add<SignedDuration, Output = Date>,
     Add<StdDuration, Output = Date>,
-    AddAssign<Duration>,
+    AddAssign<SignedDuration>,
     AddAssign<StdDuration>,
     Arbitrary,
     Clone,
@@ -212,10 +211,10 @@ assert_impl! { @'a; Date:
     PartialEq<Date>,
     PartialOrd<Date>,
     Serialize,
-    Sub<Date, Output = Duration>,
-    Sub<Duration, Output = Date>,
+    Sub<Date, Output = SignedDuration>,
+    Sub<SignedDuration, Output = Date>,
     Sub<StdDuration, Output = Date>,
-    SubAssign<Duration>,
+    SubAssign<SignedDuration>,
     SubAssign<StdDuration>,
     TryFrom<Parsed, Error = error::TryFromParsed>,
     Copy,
@@ -226,26 +225,26 @@ assert_impl! { @'a; Date:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { @'a; Duration:
-    Add<Duration, Output = Duration>,
-    Add<StdDuration, Output = Duration>,
-    AddAssign<Duration>,
+assert_impl! { @'a; SignedDuration:
+    Add<SignedDuration, Output = SignedDuration>,
+    Add<StdDuration, Output = SignedDuration>,
+    AddAssign<SignedDuration>,
     AddAssign<StdDuration>,
     Arbitrary,
     Clone,
     Debug,
     Default,
     Deserialize<'a>,
-    Div<Duration, Output = f64>,
+    Div<SignedDuration, Output = f64>,
     Div<StdDuration, Output = f64>,
-    Div<f32, Output = Duration>,
-    Div<f64, Output = Duration>,
-    Div<i16, Output = Duration>,
-    Div<i32, Output = Duration>,
-    Div<i8, Output = Duration>,
-    Div<u16, Output = Duration>,
-    Div<u32, Output = Duration>,
-    Div<u8, Output = Duration>,
+    Div<f32, Output = SignedDuration>,
+    Div<f64, Output = SignedDuration>,
+    Div<i16, Output = SignedDuration>,
+    Div<i32, Output = SignedDuration>,
+    Div<i8, Output = SignedDuration>,
+    Div<u16, Output = SignedDuration>,
+    Div<u32, Output = SignedDuration>,
+    Div<u8, Output = SignedDuration>,
     DivAssign<f32>,
     DivAssign<f64>,
     DivAssign<i16>,
@@ -255,14 +254,14 @@ assert_impl! { @'a; Duration:
     DivAssign<u32>,
     DivAssign<u8>,
     Hash,
-    Mul<f32, Output = Duration>,
-    Mul<f64, Output = Duration>,
-    Mul<i16, Output = Duration>,
-    Mul<i32, Output = Duration>,
-    Mul<i8, Output = Duration>,
-    Mul<u16, Output = Duration>,
-    Mul<u32, Output = Duration>,
-    Mul<u8, Output = Duration>,
+    Mul<f32, Output = SignedDuration>,
+    Mul<f64, Output = SignedDuration>,
+    Mul<i16, Output = SignedDuration>,
+    Mul<i32, Output = SignedDuration>,
+    Mul<i8, Output = SignedDuration>,
+    Mul<u16, Output = SignedDuration>,
+    Mul<u32, Output = SignedDuration>,
+    Mul<u8, Output = SignedDuration>,
     MulAssign<f32>,
     MulAssign<f64>,
     MulAssign<i16>,
@@ -271,19 +270,19 @@ assert_impl! { @'a; Duration:
     MulAssign<u16>,
     MulAssign<u32>,
     MulAssign<u8>,
-    Neg<Output = Duration>,
+    Neg<Output = SignedDuration>,
     Ord,
-    PartialEq<Duration>,
+    PartialEq<SignedDuration>,
     PartialEq<StdDuration>,
-    PartialOrd<Duration>,
+    PartialOrd<SignedDuration>,
     PartialOrd<StdDuration>,
     Serialize,
-    Sub<Duration, Output = Duration>,
-    Sub<StdDuration, Output = Duration>,
-    SubAssign<Duration>,
+    Sub<SignedDuration, Output = SignedDuration>,
+    Sub<StdDuration, Output = SignedDuration>,
+    SubAssign<SignedDuration>,
     SubAssign<StdDuration>,
-    Sum<&'a Duration>,
-    Sum<Duration>,
+    Sum<&'a SignedDuration>,
+    Sum<SignedDuration>,
     TryFrom<StdDuration, Error = error::ConversionRange>,
     Copy,
     Eq,
@@ -294,9 +293,9 @@ assert_impl! { @'a; Duration:
     UnwindSafe,
 }
 assert_impl! { #[expect(deprecated)] Instant:
-    Add<Duration, Output = Instant>,
+    Add<SignedDuration, Output = Instant>,
     Add<StdDuration, Output = Instant>,
-    AddAssign<Duration>,
+    AddAssign<SignedDuration>,
     AddAssign<StdDuration>,
     AsRef<StdInstant>,
     Borrow<StdInstant>,
@@ -309,11 +308,11 @@ assert_impl! { #[expect(deprecated)] Instant:
     PartialEq<StdInstant>,
     PartialOrd<Instant>,
     PartialOrd<StdInstant>,
-    Sub<Duration, Output = Instant>,
+    Sub<SignedDuration, Output = Instant>,
     Sub<StdDuration, Output = Instant>,
-    Sub<Instant, Output = Duration>,
-    Sub<StdInstant, Output = Duration>,
-    SubAssign<Duration>,
+    Sub<Instant, Output = SignedDuration>,
+    Sub<StdInstant, Output = SignedDuration>,
+    SubAssign<SignedDuration>,
     SubAssign<StdDuration>,
     Copy,
     Eq,
@@ -324,9 +323,9 @@ assert_impl! { #[expect(deprecated)] Instant:
     UnwindSafe,
 }
 assert_impl! { @'a; OffsetDateTime:
-    Add<Duration, Output = OffsetDateTime>,
+    Add<SignedDuration, Output = OffsetDateTime>,
     Add<StdDuration, Output = OffsetDateTime>,
-    AddAssign<Duration>,
+    AddAssign<SignedDuration>,
     AddAssign<StdDuration>,
     Arbitrary,
     Clone,
@@ -341,11 +340,11 @@ assert_impl! { @'a; OffsetDateTime:
     PartialOrd<OffsetDateTime>,
     PartialOrd<SystemTime>,
     Serialize,
-    Sub<OffsetDateTime, Output = Duration>,
-    Sub<SystemTime, Output = Duration>,
-    Sub<Duration, Output = OffsetDateTime>,
+    Sub<OffsetDateTime, Output = SignedDuration>,
+    Sub<SystemTime, Output = SignedDuration>,
+    Sub<SignedDuration, Output = OffsetDateTime>,
     Sub<StdDuration, Output = OffsetDateTime>,
-    SubAssign<Duration>,
+    SubAssign<SignedDuration>,
     SubAssign<StdDuration>,
     TryFrom<Parsed, Error = error::TryFromParsed>,
     Copy,
@@ -356,10 +355,10 @@ assert_impl! { @'a; OffsetDateTime:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { @'a; PrimitiveDateTime:
-    Add<Duration, Output = PrimitiveDateTime>,
-    Add<StdDuration, Output = PrimitiveDateTime>,
-    AddAssign<Duration>,
+assert_impl! { @'a; PlainDateTime:
+    Add<SignedDuration, Output = PlainDateTime>,
+    Add<StdDuration, Output = PlainDateTime>,
+    AddAssign<SignedDuration>,
     AddAssign<StdDuration>,
     Arbitrary,
     Clone,
@@ -368,13 +367,13 @@ assert_impl! { @'a; PrimitiveDateTime:
     Display,
     Hash,
     Ord,
-    PartialEq<PrimitiveDateTime>,
-    PartialOrd<PrimitiveDateTime>,
+    PartialEq<PlainDateTime>,
+    PartialOrd<PlainDateTime>,
     Serialize,
-    Sub<Duration, Output = PrimitiveDateTime>,
-    Sub<StdDuration, Output = PrimitiveDateTime>,
-    Sub<PrimitiveDateTime>,
-    SubAssign<Duration>,
+    Sub<SignedDuration, Output = PlainDateTime>,
+    Sub<StdDuration, Output = PlainDateTime>,
+    Sub<PlainDateTime>,
+    SubAssign<SignedDuration>,
     SubAssign<StdDuration>,
     TryFrom<Parsed, Error = error::TryFromParsed>,
     Copy,
@@ -386,9 +385,9 @@ assert_impl! { @'a; PrimitiveDateTime:
     UnwindSafe,
 }
 assert_impl! { @'a; UtcDateTime:
-    Add<Duration, Output = UtcDateTime>,
+    Add<SignedDuration, Output = UtcDateTime>,
     Add<StdDuration, Output = UtcDateTime>,
-    AddAssign<Duration>,
+    AddAssign<SignedDuration>,
     AddAssign<StdDuration>,
     Arbitrary,
     Clone,
@@ -404,11 +403,11 @@ assert_impl! { @'a; UtcDateTime:
     PartialOrd<OffsetDateTime>,
     PartialOrd<SystemTime>,
     Serialize,
-    Sub<Duration, Output = UtcDateTime>,
+    Sub<SignedDuration, Output = UtcDateTime>,
     Sub<StdDuration, Output = UtcDateTime>,
     Sub<UtcDateTime>,
     Sub<OffsetDateTime>,
-    SubAssign<Duration>,
+    SubAssign<SignedDuration>,
     SubAssign<StdDuration>,
     TryFrom<Parsed, Error = error::TryFromParsed>,
     Copy,
@@ -420,9 +419,9 @@ assert_impl! { @'a; UtcDateTime:
     UnwindSafe,
 }
 assert_impl! { @'a; Time:
-    Add<Duration, Output = Time>,
+    Add<SignedDuration, Output = Time>,
     Add<StdDuration, Output = Time>,
-    AddAssign<Duration>,
+    AddAssign<SignedDuration>,
     AddAssign<StdDuration>,
     Arbitrary,
     Clone,
@@ -434,10 +433,10 @@ assert_impl! { @'a; Time:
     PartialEq<Time>,
     PartialOrd<Time>,
     Serialize,
-    Sub<Duration, Output = Time>,
+    Sub<SignedDuration, Output = Time>,
     Sub<StdDuration, Output = Time>,
-    Sub<Time, Output = Duration>,
-    SubAssign<Duration>,
+    Sub<Time, Output = SignedDuration>,
+    SubAssign<SignedDuration>,
     SubAssign<StdDuration>,
     TryFrom<Parsed, Error = error::TryFromParsed>,
     Copy,
@@ -545,7 +544,33 @@ assert_impl! { modifier::Day:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { modifier::Hour:
+assert_impl! { modifier::Hour12:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::Hour12>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::Hour24:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::Hour24>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { #[expect(deprecated)] modifier::Hour:
     Clone,
     Debug,
     Default,
@@ -571,7 +596,46 @@ assert_impl! { modifier::Minute:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { modifier::Month:
+assert_impl! { modifier::MonthNumerical:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::MonthNumerical>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::MonthShort:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::MonthShort>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::MonthLong:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::MonthLong>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { #[expect(deprecated)] modifier::Month:
     Clone,
     Debug,
     Default,
@@ -675,7 +739,46 @@ assert_impl! { modifier::Subsecond:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { modifier::WeekNumber:
+assert_impl! { modifier::WeekNumberIso:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::WeekNumberIso>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::WeekNumberSunday:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::WeekNumberSunday>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::WeekNumberMonday:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::WeekNumberMonday>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { #[expect(deprecated)] modifier::WeekNumber:
     Clone,
     Debug,
     Default,
@@ -688,7 +791,59 @@ assert_impl! { modifier::WeekNumber:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { modifier::Weekday:
+assert_impl! { modifier::WeekdayShort:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::WeekdayShort>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::WeekdayLong:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::WeekdayLong>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::WeekdaySunday:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::WeekdaySunday>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::WeekdayMonday:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::WeekdayMonday>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { #[expect(deprecated)] modifier::Weekday:
     Clone,
     Debug,
     Default,
@@ -701,7 +856,137 @@ assert_impl! { modifier::Weekday:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { modifier::Year:
+assert_impl! { modifier::CalendarYearFullExtendedRange:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::CalendarYearFullExtendedRange>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::CalendarYearFullStandardRange:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::CalendarYearFullStandardRange>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::IsoYearFullExtendedRange:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::IsoYearFullExtendedRange>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::IsoYearFullStandardRange:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::IsoYearFullStandardRange>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::CalendarYearCenturyExtendedRange:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::CalendarYearCenturyExtendedRange>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::CalendarYearCenturyStandardRange:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::CalendarYearCenturyStandardRange>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::IsoYearCenturyExtendedRange:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::IsoYearCenturyExtendedRange>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::IsoYearCenturyStandardRange:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::IsoYearCenturyStandardRange>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::CalendarYearLastTwo:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::CalendarYearLastTwo>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { modifier::IsoYearLastTwo:
+    Clone,
+    Debug,
+    Default,
+    PartialEq<modifier::IsoYearLastTwo>,
+    Copy,
+    Eq,
+    RefUnwindSafe,
+    Send,
+    Sync,
+    Unpin,
+    UnwindSafe,
+}
+assert_impl! { #[expect(deprecated)] modifier::Year:
     Clone,
     Debug,
     Default,
@@ -982,7 +1267,7 @@ assert_impl! { @'a; &[BorrowedFormatItem<'_>]:
     PartialEq<BorrowedFormatItem<'a>>,
     TryFrom<BorrowedFormatItem<'a>, Error = error::DifferentVariant>,
 }
-assert_impl! { modifier::MonthRepr:
+assert_impl! { #[expect(deprecated)] modifier::MonthRepr:
     Clone,
     Debug,
     Default,
@@ -1021,7 +1306,7 @@ assert_impl! { modifier::SubsecondDigits:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { modifier::WeekNumberRepr:
+assert_impl! { #[expect(deprecated)] modifier::WeekNumberRepr:
     Clone,
     Debug,
     Default,
@@ -1034,7 +1319,7 @@ assert_impl! { modifier::WeekNumberRepr:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { modifier::WeekdayRepr:
+assert_impl! { #[expect(deprecated)] modifier::WeekdayRepr:
     Clone,
     Debug,
     Default,
@@ -1047,7 +1332,7 @@ assert_impl! { modifier::WeekdayRepr:
     Unpin,
     UnwindSafe,
 }
-assert_impl! { modifier::YearRepr:
+assert_impl! { #[expect(deprecated)] modifier::YearRepr:
     Clone,
     Debug,
     Default,
@@ -1062,10 +1347,10 @@ assert_impl! { modifier::YearRepr:
 }
 assert_impl! { StandardRand08:
     DistributionRand08<Date>,
-    DistributionRand08<Duration>,
+    DistributionRand08<SignedDuration>,
     DistributionRand08<OffsetDateTime>,
     DistributionRand08<UtcDateTime>,
-    DistributionRand08<PrimitiveDateTime>,
+    DistributionRand08<PlainDateTime>,
     DistributionRand08<Time>,
     DistributionRand08<UtcOffset>,
     DistributionRand08<Month>,
@@ -1073,67 +1358,67 @@ assert_impl! { StandardRand08:
 }
 assert_impl! { StandardUniformRand09:
     DistributionRand09<Date>,
-    DistributionRand09<Duration>,
+    DistributionRand09<SignedDuration>,
     DistributionRand09<OffsetDateTime>,
     DistributionRand09<UtcDateTime>,
-    DistributionRand09<PrimitiveDateTime>,
+    DistributionRand09<PlainDateTime>,
     DistributionRand09<Time>,
     DistributionRand09<UtcOffset>,
     DistributionRand09<Month>,
     DistributionRand09<Weekday>,
 }
 assert_impl! { StdDuration:
-    Add<Duration, Output = Duration>,
-    AddAssign<Duration>,
-    Div<Duration, Output = f64>,
-    PartialEq<Duration>,
-    PartialOrd<Duration>,
-    Sub<Duration, Output = Duration>,
-    SubAssign<Duration>,
-    TryFrom<Duration>,
+    Add<SignedDuration, Output = SignedDuration>,
+    AddAssign<SignedDuration>,
+    Div<SignedDuration, Output = f64>,
+    PartialEq<SignedDuration>,
+    PartialOrd<SignedDuration>,
+    Sub<SignedDuration, Output = SignedDuration>,
+    SubAssign<SignedDuration>,
+    TryFrom<SignedDuration>,
 }
 assert_impl! { #[expect(deprecated)] StdInstant:
-    Add<Duration, Output = StdInstant>,
-    AddAssign<Duration>,
-    Sub<Duration, Output = StdInstant>,
-    SubAssign<Duration>,
+    Add<SignedDuration, Output = StdInstant>,
+    AddAssign<SignedDuration>,
+    Sub<SignedDuration, Output = StdInstant>,
+    SubAssign<SignedDuration>,
     PartialEq<Instant>,
     PartialOrd<Instant>,
     From<Instant>,
     Sub<Instant>,
 }
 assert_impl! { SystemTime:
-    Add<Duration, Output = SystemTime>,
-    AddAssign<Duration>,
-    Sub<Duration, Output = SystemTime>,
-    SubAssign<Duration>,
+    Add<SignedDuration, Output = SystemTime>,
+    AddAssign<SignedDuration>,
+    Sub<SignedDuration, Output = SystemTime>,
+    SubAssign<SignedDuration>,
     From<OffsetDateTime>,
     PartialEq<OffsetDateTime>,
     PartialOrd<OffsetDateTime>,
     Sub<OffsetDateTime>,
 }
 assert_impl! { i8:
-    Mul<Duration>,
+    Mul<SignedDuration>,
 }
 assert_impl! { i16:
-    Mul<Duration>,
+    Mul<SignedDuration>,
 }
 assert_impl! { i32:
-    Mul<Duration>,
+    Mul<SignedDuration>,
 }
 assert_impl! { u8:
-    Mul<Duration>,
+    Mul<SignedDuration>,
     From<Month>,
 }
 assert_impl! { u16:
-    Mul<Duration>,
+    Mul<SignedDuration>,
 }
 assert_impl! { u32:
-    Mul<Duration>,
+    Mul<SignedDuration>,
 }
 assert_impl! { f32:
-    Mul<Duration>,
+    Mul<SignedDuration>,
 }
 assert_impl! { f64:
-    Mul<Duration>,
+    Mul<SignedDuration>,
 }

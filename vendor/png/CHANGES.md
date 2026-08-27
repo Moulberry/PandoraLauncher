@@ -1,3 +1,47 @@
+## 0.18.1
+
+### Additions
+
+* Added `Filter::MinEntropy` for encoding, which selects the filter that
+  minimizes the Shannon entropy of the filtered row. ([#647])
+* Made `ScaledFloat::SCALING` constant public. ([#650])
+* Support skipping chunks without loading them into memory. ([#630])
+* Allow full unfiltering for partial data, enabling progressive decoding
+  use cases. ([#664])
+
+### Changes
+
+* Improved Paeth unfilter auto-vectorization by changing how loop state
+  is maintained. ([#635])
+* Added `portable_simd` Paeth unfiltering for 3bpp and 4bpp images on nightly.
+  ([#632], [#633])
+* Add early exit for adaptive filter selection when a perfect filter is found.
+  ([#646])
+* Ignore duplicate `acTL` chunks instead of producing errors. ([#651])
+* Require IDAT chunk(s) before fdAT chunks, as mandated by PNG specification.
+  ([#653])
+* Enforce `acTL` frame counts to be valid PNG 4-byte integers (capped at 2^31-1).
+  ([#673])
+
+### Fixes
+
+* Fixed and improved intra-doc links in documentation comments. ([#665])
+* Fixed nightly `portable_simd` build. ([#675])
+
+[#630]: https://github.com/image-rs/image-png/pull/630
+[#632]: https://github.com/image-rs/image-png/pull/632
+[#633]: https://github.com/image-rs/image-png/pull/633
+[#635]: https://github.com/image-rs/image-png/pull/635
+[#646]: https://github.com/image-rs/image-png/pull/646
+[#647]: https://github.com/image-rs/image-png/pull/647
+[#650]: https://github.com/image-rs/image-png/pull/650
+[#651]: https://github.com/image-rs/image-png/pull/651
+[#653]: https://github.com/image-rs/image-png/pull/653
+[#664]: https://github.com/image-rs/image-png/pull/664
+[#665]: https://github.com/image-rs/image-png/pull/665
+[#673]: https://github.com/image-rs/image-png/pull/673
+[#675]: https://github.com/image-rs/image-png/pull/675
+
 ## 0.18.0
 
 ### API Breaking Changes

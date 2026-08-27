@@ -1,14 +1,11 @@
 //! Contains the secondary map implementation.
 
-#[cfg(all(nightly, any(doc, feature = "unstable")))]
 use alloc::collections::TryReserveError;
 use alloc::vec::Vec;
 use core::hint::unreachable_unchecked;
 use core::iter::{Enumerate, Extend, FromIterator, FusedIterator};
 use core::marker::PhantomData;
-use core::mem::replace;
-#[allow(unused_imports)] // MaybeUninit is only used on nightly at the moment.
-use core::mem::MaybeUninit;
+use core::mem::{replace, MaybeUninit};
 use core::num::NonZeroU32;
 use core::ops::{Index, IndexMut};
 
@@ -252,8 +249,6 @@ impl<K: Key, V> SecondaryMap<K, V> {
     /// sec.try_set_capacity(1000).unwrap();
     /// assert!(sec.capacity() >= 1000);
     /// ```
-    #[cfg(all(nightly, any(doc, feature = "unstable")))]
-    #[cfg_attr(all(nightly, doc), doc(cfg(feature = "unstable")))]
     pub fn try_set_capacity(&mut self, new_capacity: usize) -> Result<(), TryReserveError> {
         let new_capacity = new_capacity + 1; // Sentinel.
         if new_capacity > self.slots.capacity() {
@@ -433,8 +428,8 @@ impl<K: Key, V> SecondaryMap<K, V> {
         self.drain();
     }
 
-    /// Clears the slot map, returning all key-value pairs in arbitrary order as
-    /// an iterator. Keeps the allocated memory for reuse.
+    /// Clears the slot map, returning all key-value pairs in an arbitrary order
+    /// as an iterator. Keeps the allocated memory for reuse.
     ///
     /// When the iterator is dropped all elements in the slot map are removed,
     /// even if the iterator was not fully consumed. If the iterator is not
@@ -457,7 +452,7 @@ impl<K: Key, V> SecondaryMap<K, V> {
     /// assert_eq!(sec.len(), 0);
     /// assert_eq!(v, vec![(k, 1)]);
     /// ```
-    pub fn drain(&mut self) -> Drain<K, V> {
+    pub fn drain(&mut self) -> Drain<'_, K, V> {
         Drain { cur: 1, sm: self }
     }
 
@@ -581,26 +576,19 @@ impl<K: Key, V> SecondaryMap<K, V> {
     /// assert_eq!(sec[ka], "apples");
     /// assert_eq!(sec[kb], "butter");
     /// ```
-    #[cfg(has_min_const_generics)]
     pub fn get_disjoint_mut<const N: usize>(&mut self, keys: [K; N]) -> Option<[&mut V; N]> {
-        // Create an uninitialized array of `MaybeUninit`. The `assume_init` is
-        // safe because the type we are claiming to have initialized here is a
-        // bunch of `MaybeUninit`s, which do not require initialization.
-        let mut ptrs: [MaybeUninit<*mut V>; N] = unsafe { MaybeUninit::uninit().assume_init() };
-        let mut slot_versions: [MaybeUninit<u32>; N] =
-            unsafe { MaybeUninit::uninit().assume_init() };
+        let mut slot_versions: [MaybeUninit<u32>; N] = [(); N].map(|_| MaybeUninit::uninit());
 
         let mut i = 0;
         while i < N {
             let kd = keys[i].data();
 
             match self.slots.get_mut(kd.idx as usize) {
-                Some(Occupied { version, value }) if *version == kd.version => {
+                Some(Occupied { version, .. }) if *version == kd.version => {
                     // This key is valid, and the slot is occupied. Temporarily
                     // set the version to 2 so duplicate keys would show up as
                     // invalid, since keys always have an odd version. This
                     // gives us a linear time disjointness check.
-                    ptrs[i] = MaybeUninit::new(&mut *value);
                     slot_versions[i] = MaybeUninit::new(version.get());
                     *version = NonZeroU32::new(2).unwrap();
                 },
@@ -611,12 +599,16 @@ impl<K: Key, V> SecondaryMap<K, V> {
             i += 1;
         }
 
-        // Undo temporary unoccupied markings.
+        // Undo temporary unoccupied markings and gather references.
+        let mut ptrs: [MaybeUninit<*mut V>; N] = [(); N].map(|_| MaybeUninit::uninit());
+        let slots_ptr = self.slots.as_mut_ptr();
         for j in 0..i {
-            let idx = keys[j].data().idx as usize;
             unsafe {
-                match self.slots.get_mut(idx) {
-                    Some(Occupied { version, .. }) => {
+                let idx = keys[j].data().idx as usize;
+                let slot = &mut *slots_ptr.add(idx);
+                match slot {
+                    Occupied { version, value } => {
+                        ptrs[j] = MaybeUninit::new(value);
                         *version = NonZeroU32::new_unchecked(slot_versions[j].assume_init());
                     },
                     _ => unreachable_unchecked(),
@@ -626,7 +618,7 @@ impl<K: Key, V> SecondaryMap<K, V> {
 
         if i == N {
             // All were valid and disjoint.
-            Some(unsafe { core::mem::transmute_copy::<_, [&mut V; N]>(&ptrs) })
+            Some(ptrs.map(|p| unsafe { &mut *p.assume_init() }))
         } else {
             None
         }
@@ -655,20 +647,18 @@ impl<K: Key, V> SecondaryMap<K, V> {
     /// assert_eq!(sec[ka], "apples");
     /// assert_eq!(sec[kb], "butter");
     /// ```
-    #[cfg(has_min_const_generics)]
     pub unsafe fn get_disjoint_unchecked_mut<const N: usize>(
         &mut self,
         keys: [K; N],
     ) -> [&mut V; N] {
-        // Safe, see get_disjoint_mut.
-        let mut ptrs: [MaybeUninit<*mut V>; N] = MaybeUninit::uninit().assume_init();
-        for i in 0..N {
-            ptrs[i] = MaybeUninit::new(self.get_unchecked_mut(keys[i]));
-        }
-        core::mem::transmute_copy::<_, [&mut V; N]>(&ptrs)
+        let slots_ptr = self.slots.as_mut_ptr();
+        keys.map(|k| unsafe {
+            let slot = &mut *slots_ptr.add(k.data().idx as usize);
+            slot.get_unchecked_mut()
+        })
     }
 
-    /// An iterator visiting all key-value pairs in arbitrary order. The
+    /// An iterator visiting all key-value pairs in an arbitrary order. The
     /// iterator element type is `(K, &'a V)`.
     ///
     /// This function must iterate over all slots, empty or not. In the face of
@@ -688,7 +678,7 @@ impl<K: Key, V> SecondaryMap<K, V> {
     ///     println!("key: {:?}, val: {}", k, v);
     /// }
     /// ```
-    pub fn iter(&self) -> Iter<K, V> {
+    pub fn iter(&self) -> Iter<'_, K, V> {
         Iter {
             num_left: self.num_elems,
             slots: self.slots.iter().enumerate(),
@@ -696,7 +686,7 @@ impl<K: Key, V> SecondaryMap<K, V> {
         }
     }
 
-    /// An iterator visiting all key-value pairs in arbitrary order, with
+    /// An iterator visiting all key-value pairs in an arbitrary order, with
     /// mutable references to the values. The iterator element type is
     /// `(K, &'a mut V)`.
     ///
@@ -723,7 +713,7 @@ impl<K: Key, V> SecondaryMap<K, V> {
     /// assert_eq!(sec[k1], 20);
     /// assert_eq!(sec[k2], -30);
     /// ```
-    pub fn iter_mut(&mut self) -> IterMut<K, V> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
         IterMut {
             num_left: self.num_elems,
             slots: self.slots.iter_mut().enumerate(),
@@ -731,8 +721,8 @@ impl<K: Key, V> SecondaryMap<K, V> {
         }
     }
 
-    /// An iterator visiting all keys in arbitrary order. The iterator element
-    /// type is `K`.
+    /// An iterator visiting all keys in an arbitrary order. The iterator
+    /// element type is `K`.
     ///
     /// This function must iterate over all slots, empty or not. In the face of
     /// many deleted elements it can be inefficient.
@@ -751,12 +741,12 @@ impl<K: Key, V> SecondaryMap<K, V> {
     /// let check: HashSet<_> = vec![k0, k1, k2].into_iter().collect();
     /// assert_eq!(keys, check);
     /// ```
-    pub fn keys(&self) -> Keys<K, V> {
+    pub fn keys(&self) -> Keys<'_, K, V> {
         Keys { inner: self.iter() }
     }
 
-    /// An iterator visiting all values in arbitrary order. The iterator element
-    /// type is `&'a V`.
+    /// An iterator visiting all values in an arbitrary order. The iterator
+    /// element type is `&'a V`.
     ///
     /// This function must iterate over all slots, empty or not. In the face of
     /// many deleted elements it can be inefficient.
@@ -775,12 +765,12 @@ impl<K: Key, V> SecondaryMap<K, V> {
     /// let check: HashSet<_> = vec![&10, &20, &30].into_iter().collect();
     /// assert_eq!(values, check);
     /// ```
-    pub fn values(&self) -> Values<K, V> {
+    pub fn values(&self) -> Values<'_, K, V> {
         Values { inner: self.iter() }
     }
 
-    /// An iterator visiting all values mutably in arbitrary order. The iterator
-    /// element type is `&'a mut V`.
+    /// An iterator visiting all values mutably in an arbitrary order. The
+    /// iterator element type is `&'a mut V`.
     ///
     /// This function must iterate over all slots, empty or not. In the face of
     /// many deleted elements it can be inefficient.
@@ -800,7 +790,7 @@ impl<K: Key, V> SecondaryMap<K, V> {
     /// let check: HashSet<_> = vec![30, 60, 90].into_iter().collect();
     /// assert_eq!(values, check);
     /// ```
-    pub fn values_mut(&mut self) -> ValuesMut<K, V> {
+    pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
         ValuesMut {
             inner: self.iter_mut(),
         }
@@ -820,7 +810,7 @@ impl<K: Key, V> SecondaryMap<K, V> {
     /// let v = sec.entry(k).unwrap().or_insert(10);
     /// assert_eq!(*v, 10);
     /// ```
-    pub fn entry(&mut self, key: K) -> Option<Entry<K, V>> {
+    pub fn entry(&mut self, key: K) -> Option<Entry<'_, K, V>> {
         if key.is_null() {
             return None;
         }
@@ -883,8 +873,11 @@ impl<K: Key, V: PartialEq> PartialEq for SecondaryMap<K, V> {
             return false;
         }
 
-        self.iter()
-            .all(|(key, value)| other.get(key).map_or(false, |other_value| *value == *other_value))
+        self.iter().all(|(key, value)| {
+            other
+                .get(key)
+                .map_or(false, |other_value| *value == *other_value)
+        })
     }
 }
 
@@ -1590,7 +1583,7 @@ mod serialize {
             let serde_slot: SerdeSlot<T> = Deserialize::deserialize(deserializer)?;
             let occupied = serde_slot.version % 2 == 1;
             if occupied ^ serde_slot.value.is_some() {
-                return Err(de::Error::custom(&"inconsistent occupation in Slot"));
+                return Err(de::Error::custom("inconsistent occupation in Slot"));
             }
 
             Ok(match serde_slot.value {
@@ -1615,13 +1608,13 @@ mod serialize {
             D: Deserializer<'de>,
         {
             let mut slots: Vec<Slot<V>> = Deserialize::deserialize(deserializer)?;
-            if slots.len() >= (u32::max_value() - 1) as usize {
-                return Err(de::Error::custom(&"too many slots"));
+            if slots.len() >= (u32::MAX - 1) as usize {
+                return Err(de::Error::custom("too many slots"));
             }
 
             // Ensure the first slot exists and is empty for the sentinel.
-            if slots.get(0).map_or(true, |slot| slot.occupied()) {
-                return Err(de::Error::custom(&"first slot not empty"));
+            if slots.first().map_or(true, |slot| slot.occupied()) {
+                return Err(de::Error::custom("first slot not empty"));
             }
 
             slots[0] = Slot::new_vacant();
@@ -1644,7 +1637,6 @@ mod tests {
 
     use crate::*;
 
-    #[cfg(all(nightly, feature = "unstable"))]
     #[test]
     fn disjoint() {
         // Intended to be run with miri to find any potential UB.

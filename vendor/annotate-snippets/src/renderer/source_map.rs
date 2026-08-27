@@ -4,7 +4,7 @@ use alloc::{vec, vec::Vec};
 use core::cmp::{max, min};
 use core::ops::Range;
 
-use crate::renderer::{char_width, num_overlap, LineAnnotation, LineAnnotationType};
+use crate::renderer::{LineAnnotation, LineAnnotationType, char_width, num_overlap};
 use crate::{Annotation, AnnotationKind, Patch};
 
 #[derive(Debug)]
@@ -311,7 +311,7 @@ impl<'a> SourceMap<'a> {
                     self.add_annotation_to_file(&mut annotated_line_infos, line, ann.as_line());
                 }
                 let line_end = ann.end.line - 1;
-                let end_is_empty = self.get_line(line_end).map_or(false, |s| !filter(s));
+                let end_is_empty = self.get_line(line_end).is_some_and(|s| !filter(s));
                 if middle < line_end && !end_is_empty {
                     self.add_annotation_to_file(&mut annotated_line_infos, line_end, ann.as_line());
                 }
@@ -380,13 +380,7 @@ impl<'a> SourceMap<'a> {
         mut patches: Vec<Patch<'b>>,
         fold: bool,
     ) -> Option<SplicedLines<'b>> {
-        fn push_trailing(
-            buf: &mut String,
-            line_opt: Option<&str>,
-            lo: &Loc,
-            hi_opt: Option<&Loc>,
-        ) -> usize {
-            let mut line_count = 0;
+        fn push_trailing(buf: &mut String, line_opt: Option<&str>, lo: &Loc, hi_opt: Option<&Loc>) {
             // Convert CharPos to Usize, as CharPose is character offset
             // Extract low index and high index
             let (lo, hi_opt) = (lo.char, hi_opt.map(|hi| hi.char));
@@ -396,18 +390,10 @@ impl<'a> SourceMap<'a> {
                     let hi_opt = hi_opt.and_then(|hi| line.char_indices().map(|(i, _)| i).nth(hi));
                     match hi_opt {
                         // If high index exist, take string from low to high index
-                        Some(hi) if hi > lo => {
-                            // count how many '\n' exist
-                            line_count = line[lo..hi].matches('\n').count();
-                            buf.push_str(&line[lo..hi]);
-                        }
+                        Some(hi) if hi > lo => buf.push_str(&line[lo..hi]),
                         Some(_) => (),
                         // If high index absence, take string from low index till end string.len
-                        None => {
-                            // count how many '\n' exist
-                            line_count = line[lo..].matches('\n').count();
-                            buf.push_str(&line[lo..]);
-                        }
+                        None => buf.push_str(&line[lo..]),
                     }
                 }
                 // If high index is None
@@ -415,7 +401,6 @@ impl<'a> SourceMap<'a> {
                     buf.push('\n');
                 }
             }
-            line_count
         }
 
         let source_len = self.source.len();
@@ -474,20 +459,11 @@ impl<'a> SourceMap<'a> {
         for part in &trimmed_patches {
             let (cur_lo, cur_hi) = self.span_to_locations(part.span.clone());
             if prev_hi.line == cur_lo.line {
-                let mut count = push_trailing(&mut buf, prev_line, &prev_hi, Some(&cur_lo));
-                while count > 0 {
-                    highlights.push(core::mem::take(&mut line_highlight));
-                    acc = 0;
-                    count -= 1;
-                }
+                push_trailing(&mut buf, prev_line, &prev_hi, Some(&cur_lo));
             } else {
                 acc = 0;
                 highlights.push(core::mem::take(&mut line_highlight));
-                let mut count = push_trailing(&mut buf, prev_line, &prev_hi, None);
-                while count > 0 {
-                    highlights.push(core::mem::take(&mut line_highlight));
-                    count -= 1;
-                }
+                push_trailing(&mut buf, prev_line, &prev_hi, None);
                 // push lines between the previous and current span (if any)
                 for idx in prev_hi.line + 1..(cur_lo.line) {
                     if let Some(line) = self.get_line(idx) {
@@ -560,10 +536,28 @@ impl<'a> SourceMap<'a> {
         while buf.ends_with('\n') {
             buf.pop();
         }
+
+        let (bounding_lo, bounding_hi) = self.span_to_locations(lo..hi);
+        let line_count = bounding_hi.line.saturating_sub(bounding_lo.line) + 1;
+        let mut replaced_highlights: Vec<Vec<SubstitutionHighlight>> = vec![Vec::new(); line_count];
+        for part in &trimmed_patches {
+            let (cur_lo, cur_hi) = self.span_to_locations(part.span.clone());
+            for line in cur_lo.line..=cur_hi.line {
+                let start = if line == cur_lo.line { cur_lo.char } else { 0 };
+                let end = if line == cur_hi.line {
+                    cur_hi.char
+                } else {
+                    self.get_line(line).unwrap_or_default().chars().count()
+                };
+                replaced_highlights[line - bounding_lo.line]
+                    .push(SubstitutionHighlight { start, end });
+            }
+        }
+
         if highlights.iter().all(|parts| parts.is_empty()) {
             None
         } else {
-            Some((buf, trimmed_patches, highlights))
+            Some((buf, trimmed_patches, highlights, replaced_highlights))
         }
     }
 }
@@ -723,6 +717,10 @@ impl<'a> Iterator for CursorLines<'a> {
 pub(crate) type SplicedLines<'a> = (
     String,
     Vec<TrimmedPatch<'a>>,
+    // Char spans to highlight per line of the post-substitution output.
+    Vec<Vec<SubstitutionHighlight>>,
+    // Char spans of the replaced (original) code, per original line in the
+    // bounding range covered by the splice.
     Vec<Vec<SubstitutionHighlight>>,
 );
 
@@ -760,12 +758,9 @@ impl<'a> TrimmedPatch<'a> {
     /// it with "abx" is, since the "c" character is lost.
     pub(crate) fn is_destructive_replacement(&self, sm: &SourceMap<'_>) -> bool {
         self.is_replacement(sm)
-            && !sm
+            && sm
                 .span_to_snippet(self.span.clone())
-                // This should use `is_some_and` when our MSRV is >= 1.70
-                .map_or(false, |s| {
-                    as_substr(s.trim(), self.replacement.trim()).is_some()
-                })
+                .is_none_or(|s| as_substr(s.trim(), self.replacement.trim()).is_none())
     }
 
     fn replaces_meaningful_content(&self, sm: &SourceMap<'_>) -> bool {

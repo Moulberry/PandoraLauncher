@@ -1,9 +1,9 @@
 [package]
 name = "moka"
-version = "0.12.11"
+version = "0.12.16"
 edition = "2021"
-# Rust 1.70 was released on June 1, 2023.
-rust-version = "1.70"
+# Rust 1.71.1 was released on August 3, 2023.
+rust-version = "1.71.1"
 description = "A fast and concurrent cache library inspired by Java Caffeine"
 license = "(MIT OR Apache-2.0) AND Apache-2.0"
 # homepage = "https://"
@@ -12,8 +12,24 @@ repository = "https://github.com/moka-rs/moka"
 keywords = ["cache", "concurrent"]
 categories = ["caching", "concurrency"]
 readme = "README.md"
-exclude = [".devcontainer", ".github", ".gitpod.yml", ".vscode"]
-build = "build.rs"
+exclude = [
+    ".ci_extras/",
+    ".claude/",
+    ".codecov.yml",
+    ".coderabbit.yaml",
+    ".devcontainer",
+    ".github",
+    ".gitignore",
+    ".gitpod.yml",
+    ".markdownlint.json",
+    ".vscode",
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    "examples",
+    "MIGRATION-GUIDE.md",
+    "openspec/",
+    "tests/compile_tests/",
+]
 
 [features]
 default = []
@@ -22,12 +38,12 @@ default = []
 sync = []
 
 # Enable this feature to use `moka::future::Cache`.
-future = ["async-lock", "event-listener", "futures-util"]
+future = ["dep:async-lock", "dep:event-listener", "dep:futures-util"]
 
 # Enable this feature to activate optional logging from caches.
 # Currently cache will emit log only when it encounters a panic in user provided
 # callback closure.
-logging = ["log"]
+logging = ["dep:log"]
 
 # Enable this feature to use `quanta::Instant` for some performance critical
 # operations in the cache instead of `std::time::Instant`. As of v0.12.10, this
@@ -42,11 +58,11 @@ atomic64 = []
 # This unstable feature adds `GlobalDebugCounters::current` function, which returns
 # counters of internal object construction and destruction. It will have some
 # performance impacts and is intended for debugging.
-unstable-debug-counters = ["future", "once_cell"]
+unstable-debug-counters = ["future"]
 
 [dependencies]
 crossbeam-channel = "0.5.15"
-crossbeam-epoch = "0.9.18"
+crossbeam-epoch = "0.9.20"
 crossbeam-utils = "0.8.21"
 equivalent = "1.0"
 parking_lot = "0.12"
@@ -66,9 +82,6 @@ futures-util = { version = "0.3.17", optional = true }
 # Optional dependencies (logging)
 log = { version = "0.4", optional = true }
 
-# Optional dependencies (unstable-debug-counters)
-once_cell = { version = "1.7", optional = true }
-
 [dev-dependencies]
 actix-rt = "2.8"
 ahash = "0.8.3"
@@ -77,8 +90,17 @@ env_logger = "0.10.0"
 getrandom = "0.2"
 once_cell = "1.7"
 rand = "0.8.5"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
-tokio = { version = "1.19", features = ["fs", "io-util", "macros", "rt-multi-thread", "sync", "time" ] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+] }
+tokio = { version = "1.19", features = [
+    "fs",
+    "io-util",
+    "macros",
+    "rt-multi-thread",
+    "sync",
+    "time",
+] }
 
 # We cannot use `cfg(loom)` here because an indirect dependency `concurrent-queue`
 # uses it.
@@ -88,9 +110,6 @@ loom = "0.7"
 [target.'cfg(trybuild)'.dev-dependencies]
 trybuild = "1.0"
 
-[target.'cfg(rustver)'.build-dependencies]
-rustc_version = "0.4.0"
-
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
     "cfg(armv5te)",
@@ -98,7 +117,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
     "cfg(kani)",
     "cfg(moka_loom)",
     "cfg(mips)",
-    "cfg(rustver)",
+    "cfg(run_flaky_tests)",
     "cfg(skip_large_mem_tests)",
     "cfg(trybuild)",
 ] }

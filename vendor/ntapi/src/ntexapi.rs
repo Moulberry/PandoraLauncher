@@ -940,7 +940,8 @@ ENUM!{enum SYSTEM_INFORMATION_CLASS {
     SystemCodeIntegrityUnlockModeInformation = 205,
     SystemLeapSecondInformation = 206,
     SystemFlags2Information = 207,
-    MaxSystemInfoClass = 208,
+    SystemShadowStackInformation = 221,
+    SystemBasicProcessInformation = 252,
 }}
 STRUCT!{struct SYSTEM_BASIC_INFORMATION {
     Reserved: ULONG,
@@ -1118,6 +1119,16 @@ STRUCT!{struct SYSTEM_PROCESS_INFORMATION {
     Threads: [SYSTEM_THREAD_INFORMATION; 1],
 }}
 pub type PSYSTEM_PROCESS_INFORMATION = *mut SYSTEM_PROCESS_INFORMATION;
+
+STRUCT!{struct SYSTEM_BASICPROCESS_INFORMATION {
+    NextEntryOffset: ULONG,
+    UniqueProcessId: HANDLE,
+    InheritedFromUniqueProcessId: HANDLE,
+    SequenceNumber: ULONG64,
+    ImageName: UNICODE_STRING,
+}}
+pub type PSYSTEM_BASICPROCESS_INFORMATION = *mut SYSTEM_BASICPROCESS_INFORMATION;
+
 STRUCT!{struct SYSTEM_CALL_COUNT_INFORMATION {
     Length: ULONG,
     NumberOfTables: ULONG,
@@ -2462,6 +2473,10 @@ STRUCT!{struct SYSTEM_WORKLOAD_ALLOWED_CPU_SET_INFORMATION {
 }}
 pub type PSYSTEM_WORKLOAD_ALLOWED_CPU_SET_INFORMATION =
     *mut SYSTEM_WORKLOAD_ALLOWED_CPU_SET_INFORMATION;
+STRUCT!{struct SYSTEM_SHADOW_STACK_INFORMATION {
+    Flags: ULONG,
+}}
+pub type PSYSTEM_SHADOW_STACK_INFORMATION = *mut SYSTEM_SHADOW_STACK_INFORMATION;
 EXTERN!{extern "system" {
     fn NtQuerySystemInformation(
         SystemInformationClass: SYSTEM_INFORMATION_CLASS,

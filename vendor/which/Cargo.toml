@@ -13,9 +13,10 @@
 edition = "2021"
 rust-version = "1.70"
 name = "which"
-version = "7.0.3"
+version = "8.0.6"
 authors = ["Harry Fei <tiziyuanfang@gmail.com>, Jacob Kiesel <jake@bitcrafters.co>"]
 build = false
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -39,6 +40,12 @@ repository = "https://github.com/harryfei/which-rs.git"
 [package.metadata.docs.rs]
 all-features = true
 
+[features]
+default = ["real-sys"]
+real-sys = ["dep:libc"]
+regex = ["dep:regex"]
+tracing = ["dep:tracing"]
+
 [lib]
 name = "which"
 path = "src/lib.rs"
@@ -47,8 +54,9 @@ path = "src/lib.rs"
 name = "basic"
 path = "tests/basic.rs"
 
-[dependencies.either]
-version = "1.9.0"
+[[test]]
+name = "windows_no_pathext"
+path = "tests/windows_no_pathext.rs"
 
 [dependencies.regex]
 version = "1.10.2"
@@ -62,21 +70,6 @@ default-features = false
 [dev-dependencies.tempfile]
 version = "3.9.0"
 
-[features]
-regex = ["dep:regex"]
-tracing = ["dep:tracing"]
-
-[target.'cfg(any(unix, target_os = "wasi", target_os = "redox"))'.dependencies.rustix]
-version = "1.0.5"
-features = [
-    "fs",
-    "std",
-]
-default-features = false
-
-[target.'cfg(any(windows, unix, target_os = "redox"))'.dependencies.env_home]
-version = "0.1.0"
-
-[target."cfg(windows)".dependencies.winsafe]
-version = "0.0.19"
-features = ["kernel"]
+[target.'cfg(any(unix, target_os = "wasi", target_os = "redox"))'.dependencies.libc]
+version = "0.2"
+optional = true

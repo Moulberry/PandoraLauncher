@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "pathfinder_simd"
-version = "0.5.5"
+version = "0.5.6"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 build = "build.rs"
 autolib = false
@@ -26,6 +26,9 @@ readme = false
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/servo/pathfinder"
 
+[features]
+pf-no-simd = []
+
 [lib]
 name = "pathfinder_simd"
 path = "src/lib.rs"
@@ -34,6 +37,3 @@ path = "src/lib.rs"
 
 [build-dependencies.rustc_version]
 version = "0.4"
-
-[features]
-pf-no-simd = []

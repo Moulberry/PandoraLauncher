@@ -89,8 +89,8 @@ impl FlatBlockFinder {
         const NORM_WEIGHT: f64 = -12434f64;
         const OFFSET: f64 = 2.5694f64;
 
-        let num_blocks_w = (plane.cfg.width + BLOCK_SIZE - 1) / BLOCK_SIZE;
-        let num_blocks_h = (plane.cfg.height + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        let num_blocks_w = plane.cfg.width.div_ceil(BLOCK_SIZE);
+        let num_blocks_h = plane.cfg.height.div_ceil(BLOCK_SIZE);
         let num_blocks = num_blocks_w * num_blocks_h;
         let mut flat_blocks = vec![0u8; num_blocks];
         let mut num_flat = 0;
@@ -405,8 +405,8 @@ impl NoiseModel {
         denoised: &Frame<u8>,
         flat_blocks: &[u8],
     ) -> NoiseStatus {
-        let num_blocks_w = (source.planes[0].cfg.width + BLOCK_SIZE - 1) / BLOCK_SIZE;
-        let num_blocks_h = (source.planes[0].cfg.height + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        let num_blocks_w = source.planes[0].cfg.width.div_ceil(BLOCK_SIZE);
+        let num_blocks_h = source.planes[0].cfg.height.div_ceil(BLOCK_SIZE);
         let mut y_model_different = false;
 
         // Clear the latest equation system

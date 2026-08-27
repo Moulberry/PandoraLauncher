@@ -1,6 +1,6 @@
 [package]
 name = "kqueue"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["William Orr <will@worrbase.com>"]
 description = "kqueue interface for BSDs"
 license = "MIT"
@@ -10,6 +10,7 @@ repository = "https://gitlab.com/rust-kqueue/rust-kqueue"
 readme = "README.md"
 documentation = "https://docs.worrbase.com/rust/kqueue/"
 edition = "2021"
+exclude = [".builds"]
 
 [package.metadata.docs.rs]
 targets = [

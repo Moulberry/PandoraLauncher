@@ -3,9 +3,14 @@
 #[cfg_attr(feature = "compression", doc(hidden))]
 pub use include_flate::flate;
 
+#[cfg(feature = "compression")]
+pub use include_flate;
+
 extern crate rust_embed_impl;
 pub use rust_embed_impl::*;
 
+#[cfg(feature = "compression")]
+pub use rust_embed_utils::EmbeddedCompressedFile;
 pub use rust_embed_utils::{EmbeddedFile, Metadata};
 
 #[doc(hidden)]
@@ -28,6 +33,10 @@ pub extern crate rust_embed_utils as utils;
 /// fn main() {}
 /// ```
 pub trait RustEmbed {
+  /// Get file compressed
+  #[cfg(feature = "compression")]
+  fn compressed(file_path: &str) -> Option<EmbeddedCompressedFile>;
+
   /// Get an embedded file and its metadata.
   ///
   /// If the feature `debug-embed` is enabled or the binary was compiled in

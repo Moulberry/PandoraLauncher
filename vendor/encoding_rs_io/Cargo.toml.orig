@@ -1,6 +1,6 @@
 [package]
 name = "encoding_rs_io"
-version = "0.1.7"  #:version
+version = "0.1.8"  #:version
 authors = ["Andrew Gallant <jamslam@gmail.com>"]
 description = "Streaming transcoding for encoding_rs"
 documentation = "https://docs.rs/encoding_rs_io"

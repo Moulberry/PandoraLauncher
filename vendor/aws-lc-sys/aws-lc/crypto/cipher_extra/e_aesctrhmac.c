@@ -244,6 +244,7 @@ static const EVP_AEAD aead_aes_128_ctr_hmac_sha256 = {
     NULL /* tag_len */,
     NULL /* serialize_state */,
     NULL /* deserialize_state */,
+    aead_ctx_copy_state_trivial /* copy */,
 };
 
 static const EVP_AEAD aead_aes_256_ctr_hmac_sha256 = {
@@ -264,6 +265,7 @@ static const EVP_AEAD aead_aes_256_ctr_hmac_sha256 = {
     NULL /* tag_len */,
     NULL /* serialize_state */,
     NULL /* deserialize_state */,
+    aead_ctx_copy_state_trivial /* copy */,
 };
 
 const EVP_AEAD *EVP_aead_aes_128_ctr_hmac_sha256(void) {

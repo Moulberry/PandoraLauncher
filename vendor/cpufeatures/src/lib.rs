@@ -37,7 +37,7 @@ macro_rules! new {
         mod $mod_name {
             use core::sync::atomic::{AtomicU8, Ordering::Relaxed};
 
-            const UNINIT: u8 = u8::max_value();
+            const UNINIT: u8 = u8::MAX;
             static STORAGE: AtomicU8 = AtomicU8::new(UNINIT);
 
             /// Initialization token

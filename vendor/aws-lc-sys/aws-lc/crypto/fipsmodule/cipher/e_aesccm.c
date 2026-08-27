@@ -403,6 +403,7 @@ DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_128_ccm_bluetooth) {
   out->cleanup = aead_aes_ccm_cleanup;
   out->seal_scatter = aead_aes_ccm_seal_scatter;
   out->open_gather = aead_aes_ccm_open_gather;
+  out->copy = aead_ctx_copy_state_trivial;
 }
 
 static int aead_aes_ccm_bluetooth_8_init(EVP_AEAD_CTX *ctx, const uint8_t *key,
@@ -424,6 +425,7 @@ DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_128_ccm_bluetooth_8) {
   out->cleanup = aead_aes_ccm_cleanup;
   out->seal_scatter = aead_aes_ccm_seal_scatter;
   out->open_gather = aead_aes_ccm_open_gather;
+  out->copy = aead_ctx_copy_state_trivial;
 }
 
 static int aead_aes_ccm_matter_init(EVP_AEAD_CTX *ctx, const uint8_t *key,
@@ -444,6 +446,7 @@ DEFINE_METHOD_FUNCTION(EVP_AEAD, EVP_aead_aes_128_ccm_matter) {
   out->cleanup = aead_aes_ccm_cleanup;
   out->seal_scatter = aead_aes_ccm_seal_scatter;
   out->open_gather = aead_aes_ccm_open_gather;
+  out->copy = aead_ctx_copy_state_trivial;
 }
 
 #if defined(OPENSSL_32_BIT)

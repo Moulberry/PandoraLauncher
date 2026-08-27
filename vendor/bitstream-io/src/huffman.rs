@@ -128,14 +128,35 @@ macro_rules! compile_read_tree_nodes {
 /// A helper macro for compiling individual Huffman tree nodes
 #[macro_export]
 macro_rules! compile_write_tree_nodes {
+    // end case for calculate tree node count
+    ($final:tt) => {
+        1
+    };
+    // recursive case for calculating tree node count
+    ([$bit_0:tt, $bit_1:tt]) => {
+        compile_write_tree_nodes!($bit_0) + compile_write_tree_nodes!($bit_1)
+    };
+    // entry point for generating conditional recursively
     ($value:ident ; $write:ident ; [$bit_0:tt, $bit_1:tt] ; ) => {
-        $crate::compile_write_tree_nodes!($value ; $write ; $bit_0 ; false);
-        $crate::compile_write_tree_nodes!($value ; $write ; $bit_1 ; true);
+        if $crate::compile_write_tree_nodes!($bit_0) <= $crate::compile_write_tree_nodes!($bit_1) {
+            $crate::compile_write_tree_nodes!($value ; $write ; $bit_0 ; false);
+            $crate::compile_write_tree_nodes!($value ; $write ; $bit_1 ; true);
+        } else {
+            $crate::compile_write_tree_nodes!($value ; $write ; $bit_1 ; false);
+            $crate::compile_write_tree_nodes!($value ; $write ; $bit_0 ; true);
+        }
     };
+    // recursive case for generating conditional
     ($value:ident ; $write:ident ; [$bit_0:tt, $bit_1:tt] ; $($bits:tt),*) => {
-        $crate::compile_write_tree_nodes!($value ; $write ; $bit_0 ; $($bits),* , false);
-        $crate::compile_write_tree_nodes!($value ; $write ; $bit_1 ; $($bits),* , true);
+        if $crate::compile_write_tree_nodes!($bit_0) <= $crate::compile_write_tree_nodes!($bit_1) {
+            $crate::compile_write_tree_nodes!($value ; $write ; $bit_0 ; $($bits),* , false);
+            $crate::compile_write_tree_nodes!($value ; $write ; $bit_1 ; $($bits),* , true);
+        } else {
+            $crate::compile_write_tree_nodes!($value ; $write ; $bit_1 ; $($bits),* , false);
+            $crate::compile_write_tree_nodes!($value ; $write ; $bit_0 ; $($bits),* , true);
+        }
     };
+    // final case for generating conditonal which generates bits
     ($value:ident ; $write:ident ; $final:tt ; $( $bits:tt),* ) => {
         if $value == $final {
             $( $write($bits)?; )*

@@ -140,6 +140,46 @@ where
 {
 }
 
+// Wrapper pointer type that is `Send` only for internal use.
+#[repr(transparent)]
+#[doc(hidden)]
+#[derive(Copy, Clone)]
+pub struct SendMutPtr<T>(*mut T);
+
+impl<T> SendMutPtr<T> {
+    #[inline]
+    pub fn new(ptr: *mut T) -> Self {
+        Self(ptr)
+    }
+
+    // SAFETY: Same as `ptr::write` and the usage must be done is such a way that writes to it can't
+    // be raced, for example by letting users decide the timing of the write.
+    #[inline]
+    pub unsafe fn write(self, val: T) {
+        self.0.write(val);
+    }
+
+    // SAFETY: Same as `ptr::read`.
+    #[inline]
+    pub unsafe fn read(self) -> T {
+        read(self.0)
+    }
+
+    // SAFETY: Same as `alloc::dealloc` and `Self::write`.
+    #[inline]
+    pub unsafe fn dealloc(self, layout: Layout) {
+        dealloc(self.0 as *mut u8, layout);
+    }
+
+    #[inline]
+    pub fn into_non_null(self) -> Option<NonNull<T>> {
+        NonNull::new(self.0)
+    }
+}
+
+// SAFETY: See `Self::write`.
+unsafe impl<T> Send for SendMutPtr<T> {}
+
 // This struct is used to safely deallocate only the owner if dependent
 // construction fails.
 //
@@ -184,6 +224,10 @@ impl<Owner, Dependent> Drop for OwnerAndCellDropGuard<Owner, Dependent> {
     }
 }
 
+// SAFETY: The only type dependent code it runs is `drop_in_place` for the `Owner`, so that MUST be
+// `Send`.
+unsafe impl<Owner: Send, Dependent> Send for OwnerAndCellDropGuard<Owner, Dependent> {}
+
 // Older versions of rust do not support addr_of_mut!. What we want to do here
 // is to emulate the behavior of that macro by going (incorrectly) via a
 // reference cast. Technically this is UB, but testing does not show the older
@@ -226,7 +270,7 @@ impl<Owner, Dependent> JoinedCell<Owner, Dependent> {
     }
 }
 
-/// Wrapper type that allows creating a self-referential type that hold a mutable borrow `&mut T`.
+/// Wrapper type that allows creating a self-referential type that holds a mutable borrow `&mut T`.
 ///
 /// Example usage:
 ///

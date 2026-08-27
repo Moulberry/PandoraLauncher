@@ -403,7 +403,7 @@ pub(crate) struct CDataIterator<'a> {
 }
 
 impl<'a> CDataIterator<'a> {
-    pub fn new(value: &'a str) -> Self {
+    pub const fn new(value: &'a str) -> Self {
         Self {
             unprocessed: value,
             finished: false,

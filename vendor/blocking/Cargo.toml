@@ -11,10 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.63"
+rust-version = "1.68"
 name = "blocking"
-version = "1.6.2"
-authors = ["Stjepan Glavina <stjepang@gmail.com>"]
+version = "1.7.0"
 build = false
 exclude = ["/.*"]
 autolib = false

@@ -140,6 +140,49 @@ impl TlsRecordSealingKey {
             .map(|(_, tag)| tag)
     }
 
+    /// Encrypts and signs (“seals”) `in_plaintext` into a separate `out_ciphertext`
+    /// buffer, leaving `in_plaintext` untouched.
+    ///
+    /// This is the out-of-place counterpart to [`Self::seal_in_place_separate_tag`].
+    ///
+    /// `out_ciphertext` must be exactly `in_plaintext.len()` bytes. `extra_in` is
+    /// additional plaintext, such as TLS 1.3's inner content-type byte, that is
+    /// encrypted into `extra_out_and_tag` ahead of the tag, so `extra_out_and_tag` must
+    /// be `extra_in.len() + self.algorithm().tag_len()` bytes. A caller with no extra
+    /// plaintext passes an empty `extra_in` and an `extra_out_and_tag` of
+    /// `self.algorithm().tag_len()` bytes.
+    ///
+    /// `nonce` must be unique and incremented per sealing operation, as for the in-place
+    /// methods: both advance the same counter.
+    ///
+    /// # Errors
+    /// `error::Unspecified` if the buffer lengths are wrong or the encryption operation
+    /// fails. A length mismatch is rejected before the AEAD runs, leaving both output
+    /// buffers untouched.
+    #[inline]
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn seal_out_of_place_scatter<A>(
+        &mut self,
+        nonce: Nonce,
+        aad: Aad<A>,
+        in_plaintext: &[u8],
+        out_ciphertext: &mut [u8],
+        extra_in: &[u8],
+        extra_out_and_tag: &mut [u8],
+    ) -> Result<(), Unspecified>
+    where
+        A: AsRef<[u8]>,
+    {
+        self.key.seal_out_of_place_scatter(
+            nonce,
+            aad.as_ref(),
+            in_plaintext,
+            out_ciphertext,
+            extra_in,
+            extra_out_and_tag,
+        )
+    }
+
     /// The key's AEAD algorithm.
     #[inline]
     #[must_use]

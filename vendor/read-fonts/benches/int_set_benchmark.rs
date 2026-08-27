@@ -1,7 +1,8 @@
 mod bench_helper;
 use bench_helper::{random_set, random_u32_set};
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use read_fonts::collections::{IntSet, U32Set};
+use std::hint::black_box;
 
 struct SetTest {
     set_size: u32,

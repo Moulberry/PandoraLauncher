@@ -7,7 +7,7 @@
 #[macro_export]
 macro_rules! __get_section_windows {
     // Movable sections have an additional backref section.
-    (movable, name=$ident:ident, type=$generic_ty:ty $(, aux=$aux:ident )?) => {
+    (movable, name=$name:tt, type=$generic_ty:ty) => {
         {
             use $crate::__support::Alignment;
             use $crate::__support::PtrBounds;
@@ -23,37 +23,38 @@ macro_rules! __get_section_windows {
                 )
             } else {
                 add_section_link_attribute!(
-                    item data start $ident $($aux)?
+                    item data start $name
                     #[link_section = __]
                     static __START: SyncUnsafeCell<Alignment<$generic_ty>> = SyncUnsafeCell::new(Alignment::new());
                 );
-                let start = unsafe {
-                    let start = &raw const __START;
-                    start.cast::<u8>().add(mem::size_of::<Alignment<$generic_ty>>()) as *const()
-                };
                 add_section_link_attribute!(
-                    item data end $ident $($aux)?
+                    item data end $name
                     #[link_section = __]
                     static __END: SyncUnsafeCell<Alignment<$generic_ty>> = SyncUnsafeCell::new(Alignment::new());
                 );
-                let end = unsafe { &raw const __END as *const () };
-
                 add_section_link_attribute!(
-                    backref data start $ident $($aux)?
+                    backref data start $name
                     #[link_section = __]
                     static __REF_START: SyncUnsafeCell<Alignment<$crate::MovableBackref<$generic_ty>>> =
                         SyncUnsafeCell::new(Alignment::new());
                 );
-                let ref_start = unsafe {
-                    let start = &raw const __REF_START;
-                    start.cast::<u8>().add(mem::size_of::<Alignment<$crate::MovableBackref<$generic_ty>>>()) as *const()
-                };
                 add_section_link_attribute!(
-                    backref data end $ident $($aux)?
+                    backref data end $name
                     #[link_section = __]
                     static __REF_END: SyncUnsafeCell<Alignment<$crate::MovableBackref<$generic_ty>>> =
                         SyncUnsafeCell::new(Alignment::new());
                 );
+
+                let start = unsafe { &raw const __START as *const () };
+                let start = unsafe {
+                    start.cast::<u8>().add(mem::size_of::<Alignment<$generic_ty>>()) as *const()
+                };
+                let end = unsafe { &raw const __END as *const () };
+
+                let ref_start = unsafe { &raw const __REF_START as *const () };
+                let ref_start = unsafe {
+                    ref_start.cast::<u8>().add(mem::size_of::<Alignment<$crate::MovableBackref<$generic_ty>>>()) as *const ()
+                };
                 let ref_end = unsafe { &raw const __REF_END as *const () };
 
                 $crate::__support::MovableBounds::new(
@@ -64,7 +65,7 @@ macro_rules! __get_section_windows {
         }
     };
     // Mutable sections must use UnsafeCell to match items
-    (mutable, name=$ident:ident, type=$generic_ty:ty $(, aux=$aux:ident )?) => {
+    (mutable, name=$ident:tt, type=$generic_ty:ty) => {
         {
             use $crate::__support::Alignment;
             use $crate::__support::PtrBounds;
@@ -77,7 +78,7 @@ macro_rules! __get_section_windows {
                 PtrBounds::new(::core::ptr::null(), ::core::ptr::null())
             } else {
                 add_section_link_attribute!(
-                    item data start $ident $($aux)?
+                    item data start $ident
                     #[link_section = __]
                     static __START: SyncUnsafeCell<Alignment<$generic_ty>> = SyncUnsafeCell::new(Alignment::new());
                 );
@@ -86,7 +87,7 @@ macro_rules! __get_section_windows {
                     start.cast::<u8>().add(mem::size_of::<Alignment<$generic_ty>>()) as *const()
                 };
                 add_section_link_attribute!(
-                    item data end $ident $($aux)?
+                    item data end $ident
                     #[link_section = __]
                     static __END: SyncUnsafeCell<Alignment<$generic_ty>> = SyncUnsafeCell::new(Alignment::new());
                 );
@@ -96,7 +97,7 @@ macro_rules! __get_section_windows {
             }
         }
     };
-    ($section_type:ident, name=$ident:ident, type=$generic_ty:ty $(, aux=$aux:ident )?) => {
+    ($section_type:ident, name=$ident:tt, type=$generic_ty:ty) => {
         {
             use $crate::__support::Alignment;
             use $crate::__support::PtrBounds;
@@ -108,7 +109,7 @@ macro_rules! __get_section_windows {
                 PtrBounds::new(::core::ptr::null(), ::core::ptr::null())
             } else {
                 add_section_link_attribute!(
-                    item data start $ident $($aux)?
+                    item data start $ident
                     #[link_section = __]
                     static __START: Alignment<$generic_ty> = Alignment::new();
                 );
@@ -117,7 +118,7 @@ macro_rules! __get_section_windows {
                     start.cast::<u8>().add(mem::size_of::<Alignment<$generic_ty>>()) as *const()
                 };
                 add_section_link_attribute!(
-                    item data end $ident $($aux)?
+                    item data end $ident
                     #[link_section = __]
                     static __END: Alignment<$generic_ty> = Alignment::new();
                 );
@@ -134,14 +135,14 @@ pub use crate::__get_section_windows as get_section;
 crate::__def_section_name! {
     __section_name_windows,
     {
-        data bare =>    (".data", "$") __ ();
-        data section => (".data", "$") __ ("$b");
-        data start =>   (".data", "$") __ ("$a");
-        data end =>     (".data", "$") __ ("$c");
-        code bare =>    (".text", "$") __ ();
-        code section => (".text", "$") __ ("$b");
-        code start =>   (".text", "$") __ ("$a");
-        code end =>     (".text", "$") __ ("$c");
+        data bare =>    (".data" "$") __ ();
+        data section => (".data" "$") __ ("$b");
+        data start =>   (".data" "$") __ ("$a");
+        data end =>     (".data" "$") __ ("$c");
+        code bare =>    (".text" "$") __ ();
+        code section => (".text" "$") __ ("$b");
+        code start =>   (".text" "$") __ ("$a");
+        code end =>     (".text" "$") __ ("$c");
     }
     AUXILIARY = "$d$";
     REFS = "$r$";

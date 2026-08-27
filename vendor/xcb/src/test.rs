@@ -193,7 +193,7 @@ fn atom_hashmap() {
 #[test]
 fn test_event_new() {
     let time = x::CURRENT_TIME;
-    let requestor = unsafe { x::Window::new(12) };
+    let requestor = x::Window::new(12);
     let selection = x::ATOM_STRING;
     let target = x::ATOM_FAMILY_NAME;
     let property = x::ATOM_RGB_COLOR_MAP;

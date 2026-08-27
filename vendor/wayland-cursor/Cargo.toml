@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.65"
+rust-version = "1.71"
 name = "wayland-cursor"
-version = "0.31.11"
+version = "0.31.14"
 authors = ["Elinor Berger <elinor@safaradeg.net>"]
 build = false
 autolib = false
@@ -51,7 +51,7 @@ version = "1.0.2"
 features = ["shm"]
 
 [dependencies.wayland-client]
-version = "0.31.11"
+version = "0.31.14"
 
 [dependencies.xcursor]
 version = "0.3.1"

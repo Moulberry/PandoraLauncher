@@ -5,50 +5,13 @@
 #[allow(unused_imports)]
 use crate::codegen_prelude::*;
 
-/// The [avar (Axis Variations)](https://docs.microsoft.com/en-us/typography/opentype/spec/avar) table
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct AvarMarker {
-    axis_segment_maps_byte_len: usize,
-    axis_index_map_offset_byte_start: Option<usize>,
-    var_store_offset_byte_start: Option<usize>,
-}
-
-impl AvarMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + MajorMinor::RAW_BYTE_LEN
-    }
-
-    pub fn _reserved_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn axis_count_byte_range(&self) -> Range<usize> {
-        let start = self._reserved_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn axis_segment_maps_byte_range(&self) -> Range<usize> {
-        let start = self.axis_count_byte_range().end;
-        start..start + self.axis_segment_maps_byte_len
-    }
-
-    pub fn axis_index_map_offset_byte_range(&self) -> Option<Range<usize>> {
-        let start = self.axis_index_map_offset_byte_start?;
-        Some(start..start + Offset32::RAW_BYTE_LEN)
-    }
-
-    pub fn var_store_offset_byte_range(&self) -> Option<Range<usize>> {
-        let start = self.var_store_offset_byte_start?;
-        Some(start..start + Offset32::RAW_BYTE_LEN)
-    }
-}
-
-impl MinByteRange for AvarMarker {
+impl<'a> MinByteRange<'a> for Avar<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.axis_segment_maps_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
@@ -59,65 +22,53 @@ impl TopLevelTable for Avar<'_> {
 
 impl<'a> FontRead<'a> for Avar<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let version: MajorMinor = cursor.read()?;
-        cursor.advance::<u16>();
-        let axis_count: u16 = cursor.read()?;
-        let axis_segment_maps_byte_len = {
-            let data = cursor.remaining().ok_or(ReadError::OutOfBounds)?;
-            <SegmentMaps as VarSize>::total_len_for_count(data, axis_count as usize)?
-        };
-        cursor.advance_by(axis_segment_maps_byte_len);
-        let axis_index_map_offset_byte_start = version
-            .compatible((2u16, 0u16))
-            .then(|| cursor.position())
-            .transpose()?;
-        version
-            .compatible((2u16, 0u16))
-            .then(|| cursor.advance::<Offset32>());
-        let var_store_offset_byte_start = version
-            .compatible((2u16, 0u16))
-            .then(|| cursor.position())
-            .transpose()?;
-        version
-            .compatible((2u16, 0u16))
-            .then(|| cursor.advance::<Offset32>());
-        cursor.finish(AvarMarker {
-            axis_segment_maps_byte_len,
-            axis_index_map_offset_byte_start,
-            var_store_offset_byte_start,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [avar (Axis Variations)](https://docs.microsoft.com/en-us/typography/opentype/spec/avar) table
-pub type Avar<'a> = TableRef<'a, AvarMarker>;
+#[derive(Clone)]
+pub struct Avar<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Avar<'a> {
+    pub const MIN_SIZE: usize = (MajorMinor::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Major version number of the axis variations table — set to 1 or 2.
     /// Minor version number of the axis variations table — set to 0.
     pub fn version(&self) -> MajorMinor {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of variation axes for this font. This must be the same number as axisCount in the 'fvar' table.
     pub fn axis_count(&self) -> u16 {
-        let range = self.shape.axis_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.axis_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The segment maps array — one segment map for each axis, in the order of axes specified in the 'fvar' table.
     pub fn axis_segment_maps(&self) -> VarLenArray<'a, SegmentMaps<'a>> {
-        let range = self.shape.axis_segment_maps_byte_range();
-        VarLenArray::read(self.data.split_off(range.start).unwrap()).unwrap()
+        let range = self.axis_segment_maps_byte_range();
+        self.data
+            .split_off(range.start)
+            .and_then(|d| VarLenArray::read(d).ok())
+            .unwrap_or_default()
     }
 
     /// Offset to DeltaSetIndexMap table (may be NULL).
     pub fn axis_index_map_offset(&self) -> Option<Nullable<Offset32>> {
-        let range = self.shape.axis_index_map_offset_byte_range()?;
-        Some(self.data.read_at(range.start).unwrap())
+        let range = self.axis_index_map_offset_byte_range();
+        (!range.is_empty())
+            .then(|| self.data.read_at(range.start).ok())
+            .flatten()
     }
 
     /// Attempt to resolve [`axis_index_map_offset`][Self::axis_index_map_offset].
@@ -128,14 +79,75 @@ impl<'a> Avar<'a> {
 
     /// Offset to ItemVariationStore (may be NULL).
     pub fn var_store_offset(&self) -> Option<Nullable<Offset32>> {
-        let range = self.shape.var_store_offset_byte_range()?;
-        Some(self.data.read_at(range.start).unwrap())
+        let range = self.var_store_offset_byte_range();
+        (!range.is_empty())
+            .then(|| self.data.read_at(range.start).ok())
+            .flatten()
     }
 
     /// Attempt to resolve [`var_store_offset`][Self::var_store_offset].
     pub fn var_store(&self) -> Option<Result<ItemVariationStore<'a>, ReadError>> {
         let data = self.data;
         self.var_store_offset().map(|x| x.resolve(data))?
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + MajorMinor::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn _reserved_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn axis_count_byte_range(&self) -> Range<usize> {
+        let start = self._reserved_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn axis_segment_maps_byte_range(&self) -> Range<usize> {
+        let axis_count = self.axis_count();
+        let start = self.axis_count_byte_range().end;
+        let end = start + {
+            let data = self.data.split_off(start).unwrap_or_default();
+            <SegmentMaps as VarSize>::total_len_for_count(data, transforms::to_usize(axis_count))
+                .unwrap_or(0)
+        };
+        start..end
+    }
+
+    pub fn axis_index_map_offset_byte_range(&self) -> Range<usize> {
+        let start = self.axis_segment_maps_byte_range().end;
+        let end = if self.version().compatible((2u16, 0u16)) {
+            start + Offset32::RAW_BYTE_LEN
+        } else {
+            start
+        };
+        start..end
+    }
+
+    pub fn var_store_offset_byte_range(&self) -> Range<usize> {
+        let start = self.axis_index_map_offset_byte_range().end;
+        let end = if self.version().compatible((2u16, 0u16)) {
+            start + Offset32::RAW_BYTE_LEN
+        } else {
+            start
+        };
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Avar::MIN_SIZE));
+
+impl Default for Avar<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -145,7 +157,6 @@ impl<'a> SomeTable<'a> for Avar<'a> {
         "Avar"
     }
     fn get_field(&self, idx: usize) -> Option<Field<'a>> {
-        let version = self.version();
         match idx {
             0usize => Some(Field::new("version", self.version())),
             1usize => Some(Field::new("axis_count", self.axis_count())),
@@ -157,11 +168,11 @@ impl<'a> SomeTable<'a> for Avar<'a> {
                     self.offset_data(),
                 ),
             )),
-            3usize if version.compatible((2u16, 0u16)) => Some(Field::new(
+            3usize if self.version().compatible((2u16, 0u16)) => Some(Field::new(
                 "axis_index_map_offset",
                 FieldType::offset(self.axis_index_map_offset().unwrap(), self.axis_index_map()),
             )),
-            4usize if version.compatible((2u16, 0u16)) => Some(Field::new(
+            4usize if self.version().compatible((2u16, 0u16)) => Some(Field::new(
                 "var_store_offset",
                 FieldType::offset(self.var_store_offset().unwrap(), self.var_store()),
             )),

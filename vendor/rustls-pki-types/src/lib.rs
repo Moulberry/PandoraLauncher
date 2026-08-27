@@ -1,8 +1,7 @@
 //! This crate provides types for representing X.509 certificates, keys and other types as
 //! commonly used in the rustls ecosystem. It is intended to be used by crates that need to work
 //! with such X.509 types, such as [rustls](https://crates.io/crates/rustls),
-//! [rustls-webpki](https://crates.io/crates/rustls-webpki),
-//! [rustls-pemfile](https://crates.io/crates/rustls-pemfile), and others.
+//! [rustls-webpki](https://crates.io/crates/rustls-webpki), and others.
 //!
 //! Some of these crates used to define their own trivial wrappers around DER-encoded bytes.
 //! However, in order to avoid inconvenient dependency edges, these were all disconnected. By
@@ -61,9 +60,13 @@
 //! in the browser.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![warn(unreachable_pub, clippy::use_self)]
-#![deny(missing_docs)]
-#![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
+#![warn(
+    missing_docs,
+    clippy::exhaustive_enums,
+    clippy::exhaustive_structs,
+    clippy::use_self
+)]
+#![cfg_attr(rustls_pki_types_docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -502,7 +505,8 @@ impl fmt::Debug for PrivatePkcs8KeyDer<'_> {
 /// The most common way to get one of these is to call [`rustls_webpki::anchor_from_trusted_cert()`].
 ///
 /// [`rustls_webpki::anchor_from_trusted_cert()`]: https://docs.rs/rustls-webpki/latest/webpki/fn.anchor_from_trusted_cert.html
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::exhaustive_structs)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct TrustAnchor<'a> {
     /// Value of the `subject` field of the trust anchor
     pub subject: Der<'a>,
@@ -555,7 +559,7 @@ impl TrustAnchor<'_> {
 /// # }
 /// ```
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CertificateRevocationListDer<'a>(Der<'a>);
 
 #[cfg(feature = "alloc")]
@@ -607,7 +611,7 @@ impl From<Vec<u8>> for CertificateRevocationListDer<'_> {
 /// CertificateSigningRequestDer::from_pem_slice(byte_slice).unwrap();
 /// # }
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CertificateSigningRequestDer<'a>(Der<'a>);
 
 #[cfg(feature = "alloc")]
@@ -668,7 +672,7 @@ impl From<Vec<u8>> for CertificateSigningRequestDer<'_> {
 /// assert_eq!(certs.len(), 3);
 /// # }
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CertificateDer<'a>(Der<'a>);
 
 impl<'a> CertificateDer<'a> {
@@ -738,7 +742,7 @@ pub type SubjectPublicKeyInfo<'a> = SubjectPublicKeyInfoDer<'a>;
 /// SubjectPublicKeyInfoDer::from_pem_slice(byte_slice).unwrap();
 /// # }
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct SubjectPublicKeyInfoDer<'a>(Der<'a>);
 
 #[cfg(feature = "alloc")]
@@ -782,8 +786,8 @@ impl SubjectPublicKeyInfoDer<'_> {
 }
 
 /// A TLS-encoded Encrypted Client Hello (ECH) configuration list (`ECHConfigList`); as specified in
-/// [draft-ietf-tls-esni-18 §4](https://datatracker.ietf.org/doc/html/draft-ietf-tls-esni-18#section-4)
-#[derive(Clone, Eq, PartialEq)]
+/// [RFC 9849 §4](https://datatracker.ietf.org/doc/html/rfc9849#section-4)
+#[derive(Clone, Eq, Hash, PartialEq)]
 pub struct EchConfigListBytes<'a>(BytesInner<'a>);
 
 impl EchConfigListBytes<'_> {
@@ -923,6 +927,14 @@ pub trait SignatureVerificationAlgorithm: Send + Sync + fmt::Debug {
     /// for signature verification.
     fn signature_alg_id(&self) -> AlgorithmIdentifier;
 
+    /// Return the FIPS status of this algorithm or implementation.
+    fn fips_status(&self) -> FipsStatus {
+        match self.fips() {
+            true => FipsStatus::Pending,
+            false => FipsStatus::Unvalidated,
+        }
+    }
+
     /// Return `true` if this is backed by a FIPS-approved implementation.
     fn fips(&self) -> bool {
         false
@@ -930,13 +942,14 @@ pub trait SignatureVerificationAlgorithm: Send + Sync + fmt::Debug {
 }
 
 /// A detail-less error when a signature is not valid.
+#[allow(clippy::exhaustive_structs)]
 #[derive(Debug, Copy, Clone)]
 pub struct InvalidSignature;
 
 /// A timestamp, tracking the number of non-leap seconds since the Unix epoch.
 ///
 /// The Unix epoch is defined January 1, 1970 00:00:00 UTC.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnixTime(u64);
 
 impl UnixTime {
@@ -959,12 +972,12 @@ impl UnixTime {
     /// Convert a `Duration` since the start of 1970 to a `UnixTime`
     ///
     /// The `duration` must be relative to the Unix epoch.
-    pub fn since_unix_epoch(duration: Duration) -> Self {
+    pub const fn since_unix_epoch(duration: Duration) -> Self {
         Self(duration.as_secs())
     }
 
     /// Number of seconds since the Unix epoch
-    pub fn as_secs(&self) -> u64 {
+    pub const fn as_secs(&self) -> u64 {
         self.0
     }
 }
@@ -974,7 +987,7 @@ impl UnixTime {
 /// This wrapper type is used to represent DER-encoded data in a way that is agnostic to whether
 /// the data is owned (by a `Vec<u8>`) or borrowed (by a `&[u8]`). Support for the owned
 /// variant is only available when the `alloc` feature is enabled.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, Hash, PartialEq)]
 pub struct Der<'a>(BytesInner<'a>);
 
 impl<'a> Der<'a> {
@@ -1054,6 +1067,12 @@ impl AsRef<[u8]> for BytesInner<'_> {
     }
 }
 
+impl core::hash::Hash for BytesInner<'_> {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        state.write(self.as_ref());
+    }
+}
+
 impl PartialEq for BytesInner<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.as_ref() == other.as_ref()
@@ -1062,13 +1081,39 @@ impl PartialEq for BytesInner<'_> {
 
 impl Eq for BytesInner<'_> {}
 
+/// FIPS validation status of an algorithm or implementation.
+#[allow(clippy::exhaustive_enums)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum FipsStatus {
+    /// Not FIPS tested, or unapproved algorithm.
+    Unvalidated,
+    /// In queue for FIPS validation.
+    Pending,
+    /// FIPS certified, with named certificate.
+    #[non_exhaustive]
+    Certified {
+        /// A name, number or URL referencing the FIPS certificate.
+        certificate: &'static str,
+    },
+}
+
+impl FipsStatus {
+    /// Construct a [`FipsStatus::Certified`].
+    ///
+    /// The argument should be a name, number or URL referencing the FIPS certificate.
+    /// This is for human presentation purposes, it is not for automated use.
+    pub const fn certified(certificate: &'static str) -> Self {
+        Self::Certified { certificate }
+    }
+}
+
 // Format an iterator of u8 into a hex string
 fn hex<'a>(f: &mut fmt::Formatter<'_>, payload: impl IntoIterator<Item = &'a u8>) -> fmt::Result {
     for (i, b) in payload.into_iter().enumerate() {
         if i == 0 {
             write!(f, "0x")?;
         }
-        write!(f, "{:02x}", b)?;
+        write!(f, "{b:02x}")?;
     }
     Ok(())
 }
@@ -1080,13 +1125,19 @@ mod tests {
     #[test]
     fn der_debug() {
         let der = Der::from_slice(&[0x01, 0x02, 0x03]);
-        assert_eq!(format!("{:?}", der), "0x010203");
+        assert_eq!(format!("{der:?}"), "0x010203");
     }
 
     #[test]
     fn alg_id_debug() {
         let alg_id = AlgorithmIdentifier::from_slice(&[0x01, 0x02, 0x03]);
-        assert_eq!(format!("{:?}", alg_id), "0x010203");
+        assert_eq!(format!("{alg_id:?}"), "0x010203");
+    }
+
+    #[test]
+    fn fips_status_debug() {
+        let fips = FipsStatus::certified("hello");
+        assert_eq!(format!("{fips:?}"), "Certified { certificate: \"hello\" }");
     }
 
     #[test]

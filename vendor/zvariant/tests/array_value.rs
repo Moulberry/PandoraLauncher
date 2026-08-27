@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "gvariant", allow(deprecated))]
+
 use std::vec;
 use zvariant::{Array, LE, Type, Value, serialized::Context, to_bytes};
 

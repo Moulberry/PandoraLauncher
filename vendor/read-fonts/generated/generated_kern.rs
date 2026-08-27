@@ -5,70 +5,82 @@
 #[allow(unused_imports)]
 use crate::codegen_prelude::*;
 
-/// The OpenType [kerning](https://learn.microsoft.com/en-us/typography/opentype/spec/kern) table.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct OtKernMarker {
-    subtable_data_byte_len: usize,
-}
-
-impl OtKernMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn n_tables_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn subtable_data_byte_range(&self) -> Range<usize> {
-        let start = self.n_tables_byte_range().end;
-        start..start + self.subtable_data_byte_len
-    }
-}
-
-impl MinByteRange for OtKernMarker {
+impl<'a> MinByteRange<'a> for OtKern<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.subtable_data_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for OtKern<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        let subtable_data_byte_len = cursor.remaining_bytes() / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
-        cursor.advance_by(subtable_data_byte_len);
-        cursor.finish(OtKernMarker {
-            subtable_data_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The OpenType [kerning](https://learn.microsoft.com/en-us/typography/opentype/spec/kern) table.
-pub type OtKern<'a> = TableRef<'a, OtKernMarker>;
+#[derive(Clone)]
+pub struct OtKern<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> OtKern<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Table version number—set to 0.
     pub fn version(&self) -> u16 {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of subtables in the kerning table.
     pub fn n_tables(&self) -> u16 {
-        let range = self.shape.n_tables_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.n_tables_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Data for subtables, immediately following the header.
     pub fn subtable_data(&self) -> &'a [u8] {
-        let range = self.shape.subtable_data_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.subtable_data_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn n_tables_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn subtable_data_byte_range(&self) -> Range<usize> {
+        let start = self.n_tables_byte_range().end;
+        let end =
+            start + self.data.len().saturating_sub(start) / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(OtKern::MIN_SIZE));
+
+impl Default for OtKern<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -95,70 +107,82 @@ impl<'a> std::fmt::Debug for OtKern<'a> {
     }
 }
 
-/// The Apple Advanced Typography [kerning](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6kern.html) table.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct AatKernMarker {
-    subtable_data_byte_len: usize,
-}
-
-impl AatKernMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + MajorMinor::RAW_BYTE_LEN
-    }
-
-    pub fn n_tables_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + u32::RAW_BYTE_LEN
-    }
-
-    pub fn subtable_data_byte_range(&self) -> Range<usize> {
-        let start = self.n_tables_byte_range().end;
-        start..start + self.subtable_data_byte_len
-    }
-}
-
-impl MinByteRange for AatKernMarker {
+impl<'a> MinByteRange<'a> for AatKern<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.subtable_data_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for AatKern<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<MajorMinor>();
-        cursor.advance::<u32>();
-        let subtable_data_byte_len = cursor.remaining_bytes() / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
-        cursor.advance_by(subtable_data_byte_len);
-        cursor.finish(AatKernMarker {
-            subtable_data_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The Apple Advanced Typography [kerning](https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6kern.html) table.
-pub type AatKern<'a> = TableRef<'a, AatKernMarker>;
+#[derive(Clone)]
+pub struct AatKern<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> AatKern<'a> {
+    pub const MIN_SIZE: usize = (MajorMinor::RAW_BYTE_LEN + u32::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// The version number of the kerning table (0x00010000 for the current version).
     pub fn version(&self) -> MajorMinor {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of subtables included in the kerning table.
     pub fn n_tables(&self) -> u32 {
-        let range = self.shape.n_tables_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.n_tables_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Data for subtables, immediately following the header.    
     pub fn subtable_data(&self) -> &'a [u8] {
-        let range = self.shape.subtable_data_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.subtable_data_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + MajorMinor::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn n_tables_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + u32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn subtable_data_byte_range(&self) -> Range<usize> {
+        let start = self.n_tables_byte_range().end;
+        let end =
+            start + self.data.len().saturating_sub(start) / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(AatKern::MIN_SIZE));
+
+impl Default for AatKern<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -185,80 +209,94 @@ impl<'a> std::fmt::Debug for AatKern<'a> {
     }
 }
 
-/// A subtable in an OT `kern` table.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct OtSubtableMarker {
-    data_byte_len: usize,
-}
-
-impl OtSubtableMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn length_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn coverage_byte_range(&self) -> Range<usize> {
-        let start = self.length_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn data_byte_range(&self) -> Range<usize> {
-        let start = self.coverage_byte_range().end;
-        start..start + self.data_byte_len
-    }
-}
-
-impl MinByteRange for OtSubtableMarker {
+impl<'a> MinByteRange<'a> for OtSubtable<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.data_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for OtSubtable<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        let data_byte_len = cursor.remaining_bytes() / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
-        cursor.advance_by(data_byte_len);
-        cursor.finish(OtSubtableMarker { data_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// A subtable in an OT `kern` table.
-pub type OtSubtable<'a> = TableRef<'a, OtSubtableMarker>;
+#[derive(Clone)]
+pub struct OtSubtable<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> OtSubtable<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Kern subtable version number-- set to 0.
     pub fn version(&self) -> u16 {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The length of this subtable in bytes, including this header.
     pub fn length(&self) -> u16 {
-        let range = self.shape.length_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.length_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Circumstances under which this table is used.
     pub fn coverage(&self) -> u16 {
-        let range = self.shape.coverage_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.coverage_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Subtable specific data.
     pub fn data(&self) -> &'a [u8] {
-        let range = self.shape.data_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.data_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn length_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn coverage_byte_range(&self) -> Range<usize> {
+        let start = self.length_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn data_byte_range(&self) -> Range<usize> {
+        let start = self.coverage_byte_range().end;
+        let end =
+            start + self.data.len().saturating_sub(start) / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(OtSubtable::MIN_SIZE));
+
+impl Default for OtSubtable<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -286,80 +324,94 @@ impl<'a> std::fmt::Debug for OtSubtable<'a> {
     }
 }
 
-/// A subtable in an AAT `kern` table.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct AatSubtableMarker {
-    data_byte_len: usize,
-}
-
-impl AatSubtableMarker {
-    pub fn length_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u32::RAW_BYTE_LEN
-    }
-
-    pub fn coverage_byte_range(&self) -> Range<usize> {
-        let start = self.length_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn tuple_index_byte_range(&self) -> Range<usize> {
-        let start = self.coverage_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn data_byte_range(&self) -> Range<usize> {
-        let start = self.tuple_index_byte_range().end;
-        start..start + self.data_byte_len
-    }
-}
-
-impl MinByteRange for AatSubtableMarker {
+impl<'a> MinByteRange<'a> for AatSubtable<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.data_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for AatSubtable<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<u32>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        let data_byte_len = cursor.remaining_bytes() / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
-        cursor.advance_by(data_byte_len);
-        cursor.finish(AatSubtableMarker { data_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// A subtable in an AAT `kern` table.
-pub type AatSubtable<'a> = TableRef<'a, AatSubtableMarker>;
+#[derive(Clone)]
+pub struct AatSubtable<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> AatSubtable<'a> {
+    pub const MIN_SIZE: usize = (u32::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// The length of this subtable in bytes, including this header.
     pub fn length(&self) -> u32 {
-        let range = self.shape.length_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.length_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Circumstances under which this table is used.
     pub fn coverage(&self) -> u16 {
-        let range = self.shape.coverage_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.coverage_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The tuple index (used for variations fonts). This value specifies which tuple this subtable covers.
     pub fn tuple_index(&self) -> u16 {
-        let range = self.shape.tuple_index_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.tuple_index_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Subtable specific data.
     pub fn data(&self) -> &'a [u8] {
-        let range = self.shape.data_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.data_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn length_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn coverage_byte_range(&self) -> Range<usize> {
+        let start = self.length_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn tuple_index_byte_range(&self) -> Range<usize> {
+        let start = self.coverage_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn data_byte_range(&self) -> Range<usize> {
+        let start = self.tuple_index_byte_range().end;
+        let end =
+            start + self.data.len().saturating_sub(start) / u8::RAW_BYTE_LEN * u8::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(AatSubtable::MIN_SIZE));
+
+impl Default for AatSubtable<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -387,94 +439,108 @@ impl<'a> std::fmt::Debug for AatSubtable<'a> {
     }
 }
 
-/// The type 0 `kern` subtable.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct Subtable0Marker {
-    pairs_byte_len: usize,
-}
-
-impl Subtable0Marker {
-    pub fn n_pairs_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn search_range_byte_range(&self) -> Range<usize> {
-        let start = self.n_pairs_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn entry_selector_byte_range(&self) -> Range<usize> {
-        let start = self.search_range_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn range_shift_byte_range(&self) -> Range<usize> {
-        let start = self.entry_selector_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn pairs_byte_range(&self) -> Range<usize> {
-        let start = self.range_shift_byte_range().end;
-        start..start + self.pairs_byte_len
-    }
-}
-
-impl MinByteRange for Subtable0Marker {
+impl<'a> MinByteRange<'a> for Subtable0<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.pairs_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for Subtable0<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let n_pairs: u16 = cursor.read()?;
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        cursor.advance::<u16>();
-        let pairs_byte_len = (n_pairs as usize)
-            .checked_mul(Subtable0Pair::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(pairs_byte_len);
-        cursor.finish(Subtable0Marker { pairs_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The type 0 `kern` subtable.
-pub type Subtable0<'a> = TableRef<'a, Subtable0Marker>;
+#[derive(Clone)]
+pub struct Subtable0<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Subtable0<'a> {
+    pub const MIN_SIZE: usize =
+        (u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// The number of kerning pairs in this subtable.
     pub fn n_pairs(&self) -> u16 {
-        let range = self.shape.n_pairs_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.n_pairs_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The largest power of two less than or equal to the value of nPairs, multiplied by the size in bytes of an entry in the subtable.
     pub fn search_range(&self) -> u16 {
-        let range = self.shape.search_range_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.search_range_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// This is calculated as log2 of the largest power of two less than or equal to the value of nPairs. This value indicates how many iterations of the search loop have to be made. For example, in a list of eight items, there would be three iterations of the loop.
     pub fn entry_selector(&self) -> u16 {
-        let range = self.shape.entry_selector_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.entry_selector_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The value of nPairs minus the largest power of two less than or equal to nPairs. This is multiplied by the size in bytes of an entry in the table.
     pub fn range_shift(&self) -> u16 {
-        let range = self.shape.range_shift_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.range_shift_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Kerning records.
     pub fn pairs(&self) -> &'a [Subtable0Pair] {
-        let range = self.shape.pairs_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.pairs_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn n_pairs_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn search_range_byte_range(&self) -> Range<usize> {
+        let start = self.n_pairs_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn entry_selector_byte_range(&self) -> Range<usize> {
+        let start = self.search_range_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn range_shift_byte_range(&self) -> Range<usize> {
+        let start = self.entry_selector_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn pairs_byte_range(&self) -> Range<usize> {
+        let n_pairs = self.n_pairs();
+        let start = self.range_shift_byte_range().end;
+        let end =
+            start + (transforms::to_usize(n_pairs)).saturating_mul(Subtable0Pair::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Subtable0::MIN_SIZE));
+
+impl Default for Subtable0<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -510,70 +576,84 @@ impl<'a> std::fmt::Debug for Subtable0<'a> {
     }
 }
 
-/// Class table for the type 2 `kern` subtable.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct Subtable2ClassTableMarker {
-    offsets_byte_len: usize,
-}
-
-impl Subtable2ClassTableMarker {
-    pub fn first_glyph_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + GlyphId16::RAW_BYTE_LEN
-    }
-
-    pub fn n_glyphs_byte_range(&self) -> Range<usize> {
-        let start = self.first_glyph_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn offsets_byte_range(&self) -> Range<usize> {
-        let start = self.n_glyphs_byte_range().end;
-        start..start + self.offsets_byte_len
-    }
-}
-
-impl MinByteRange for Subtable2ClassTableMarker {
+impl<'a> MinByteRange<'a> for Subtable2ClassTable<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.offsets_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for Subtable2ClassTable<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<GlyphId16>();
-        let n_glyphs: u16 = cursor.read()?;
-        let offsets_byte_len = (n_glyphs as usize)
-            .checked_mul(u16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(offsets_byte_len);
-        cursor.finish(Subtable2ClassTableMarker { offsets_byte_len })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// Class table for the type 2 `kern` subtable.
-pub type Subtable2ClassTable<'a> = TableRef<'a, Subtable2ClassTableMarker>;
+#[derive(Clone)]
+pub struct Subtable2ClassTable<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Subtable2ClassTable<'a> {
+    pub const MIN_SIZE: usize = (GlyphId16::RAW_BYTE_LEN + u16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// First glyph in class range.
     pub fn first_glyph(&self) -> GlyphId16 {
-        let range = self.shape.first_glyph_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.first_glyph_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of glyph in class range.
     pub fn n_glyphs(&self) -> u16 {
-        let range = self.shape.n_glyphs_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.n_glyphs_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The offsets array for all of the glyphs in the range.
     pub fn offsets(&self) -> &'a [BigEndian<u16>] {
-        let range = self.shape.offsets_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.offsets_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn first_glyph_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + GlyphId16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn n_glyphs_byte_range(&self) -> Range<usize> {
+        let start = self.first_glyph_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn offsets_byte_range(&self) -> Range<usize> {
+        let n_glyphs = self.n_glyphs();
+        let start = self.n_glyphs_byte_range().end;
+        let end = start + (transforms::to_usize(n_glyphs)).saturating_mul(u16::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(
+    Subtable2ClassTable::MIN_SIZE
+));
+
+impl Default for Subtable2ClassTable<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 
@@ -600,160 +680,165 @@ impl<'a> std::fmt::Debug for Subtable2ClassTable<'a> {
     }
 }
 
-/// The type 3 'kern' subtable.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct Subtable3Marker {
-    kern_value_byte_len: usize,
-    left_class_byte_len: usize,
-    right_class_byte_len: usize,
-    kern_index_byte_len: usize,
-}
-
-impl Subtable3Marker {
-    pub fn glyph_count_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn kern_value_count_byte_range(&self) -> Range<usize> {
-        let start = self.glyph_count_byte_range().end;
-        start..start + u8::RAW_BYTE_LEN
-    }
-
-    pub fn left_class_count_byte_range(&self) -> Range<usize> {
-        let start = self.kern_value_count_byte_range().end;
-        start..start + u8::RAW_BYTE_LEN
-    }
-
-    pub fn right_class_count_byte_range(&self) -> Range<usize> {
-        let start = self.left_class_count_byte_range().end;
-        start..start + u8::RAW_BYTE_LEN
-    }
-
-    pub fn flags_byte_range(&self) -> Range<usize> {
-        let start = self.right_class_count_byte_range().end;
-        start..start + u8::RAW_BYTE_LEN
-    }
-
-    pub fn kern_value_byte_range(&self) -> Range<usize> {
-        let start = self.flags_byte_range().end;
-        start..start + self.kern_value_byte_len
-    }
-
-    pub fn left_class_byte_range(&self) -> Range<usize> {
-        let start = self.kern_value_byte_range().end;
-        start..start + self.left_class_byte_len
-    }
-
-    pub fn right_class_byte_range(&self) -> Range<usize> {
-        let start = self.left_class_byte_range().end;
-        start..start + self.right_class_byte_len
-    }
-
-    pub fn kern_index_byte_range(&self) -> Range<usize> {
-        let start = self.right_class_byte_range().end;
-        start..start + self.kern_index_byte_len
-    }
-}
-
-impl MinByteRange for Subtable3Marker {
+impl<'a> MinByteRange<'a> for Subtable3<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.kern_index_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
 impl<'a> FontRead<'a> for Subtable3<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        let glyph_count: u16 = cursor.read()?;
-        let kern_value_count: u8 = cursor.read()?;
-        let left_class_count: u8 = cursor.read()?;
-        let right_class_count: u8 = cursor.read()?;
-        cursor.advance::<u8>();
-        let kern_value_byte_len = (kern_value_count as usize)
-            .checked_mul(i16::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(kern_value_byte_len);
-        let left_class_byte_len = (glyph_count as usize)
-            .checked_mul(u8::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(left_class_byte_len);
-        let right_class_byte_len = (glyph_count as usize)
-            .checked_mul(u8::RAW_BYTE_LEN)
-            .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(right_class_byte_len);
-        let kern_index_byte_len =
-            (transforms::add_multiply(left_class_count, 0_usize, right_class_count))
-                .checked_mul(u8::RAW_BYTE_LEN)
-                .ok_or(ReadError::OutOfBounds)?;
-        cursor.advance_by(kern_index_byte_len);
-        cursor.finish(Subtable3Marker {
-            kern_value_byte_len,
-            left_class_byte_len,
-            right_class_byte_len,
-            kern_index_byte_len,
-        })
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The type 3 'kern' subtable.
-pub type Subtable3<'a> = TableRef<'a, Subtable3Marker>;
+#[derive(Clone)]
+pub struct Subtable3<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Subtable3<'a> {
+    pub const MIN_SIZE: usize = (u16::RAW_BYTE_LEN
+        + u8::RAW_BYTE_LEN
+        + u8::RAW_BYTE_LEN
+        + u8::RAW_BYTE_LEN
+        + u8::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// The number of glyphs in this font.
     pub fn glyph_count(&self) -> u16 {
-        let range = self.shape.glyph_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.glyph_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of kerning values.
     pub fn kern_value_count(&self) -> u8 {
-        let range = self.shape.kern_value_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.kern_value_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of left-hand classes.
     pub fn left_class_count(&self) -> u8 {
-        let range = self.shape.left_class_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.left_class_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The number of right-hand classes.
     pub fn right_class_count(&self) -> u8 {
-        let range = self.shape.right_class_count_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.right_class_count_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Set to zero (reserved for future use).
     pub fn flags(&self) -> u8 {
-        let range = self.shape.flags_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.flags_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// The kerning values.
     pub fn kern_value(&self) -> &'a [BigEndian<i16>] {
-        let range = self.shape.kern_value_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.kern_value_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// The left-hand classes.
     pub fn left_class(&self) -> &'a [u8] {
-        let range = self.shape.left_class_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.left_class_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// The right-hand classes.
     pub fn right_class(&self) -> &'a [u8] {
-        let range = self.shape.right_class_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.right_class_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
     }
 
     /// The indices into the kernValue array.
     pub fn kern_index(&self) -> &'a [u8] {
-        let range = self.shape.kern_index_byte_range();
-        self.data.read_array(range).unwrap()
+        let range = self.kern_index_byte_range();
+        self.data.read_array(range).ok().unwrap_or_default()
+    }
+
+    pub fn glyph_count_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn kern_value_count_byte_range(&self) -> Range<usize> {
+        let start = self.glyph_count_byte_range().end;
+        let end = start + u8::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn left_class_count_byte_range(&self) -> Range<usize> {
+        let start = self.kern_value_count_byte_range().end;
+        let end = start + u8::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn right_class_count_byte_range(&self) -> Range<usize> {
+        let start = self.left_class_count_byte_range().end;
+        let end = start + u8::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn flags_byte_range(&self) -> Range<usize> {
+        let start = self.right_class_count_byte_range().end;
+        let end = start + u8::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn kern_value_byte_range(&self) -> Range<usize> {
+        let kern_value_count = self.kern_value_count();
+        let start = self.flags_byte_range().end;
+        let end =
+            start + (transforms::to_usize(kern_value_count)).saturating_mul(i16::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn left_class_byte_range(&self) -> Range<usize> {
+        let glyph_count = self.glyph_count();
+        let start = self.kern_value_byte_range().end;
+        let end = start + (transforms::to_usize(glyph_count)).saturating_mul(u8::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn right_class_byte_range(&self) -> Range<usize> {
+        let glyph_count = self.glyph_count();
+        let start = self.left_class_byte_range().end;
+        let end = start + (transforms::to_usize(glyph_count)).saturating_mul(u8::RAW_BYTE_LEN);
+        start..end
+    }
+
+    pub fn kern_index_byte_range(&self) -> Range<usize> {
+        let left_class_count = self.left_class_count();
+        let right_class_count = self.right_class_count();
+        let start = self.right_class_byte_range().end;
+        let end = start
+            + (transforms::add_multiply(left_class_count, 0_usize, right_class_count))
+                .saturating_mul(u8::RAW_BYTE_LEN);
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Subtable3::MIN_SIZE));
+
+impl Default for Subtable3<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 

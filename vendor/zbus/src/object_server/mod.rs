@@ -17,7 +17,9 @@ use crate::{
 
 mod interface;
 pub(crate) use interface::ArcInterface;
-pub use interface::{DispatchResult, Interface, InterfaceDeref, InterfaceDerefMut, InterfaceRef};
+#[allow(deprecated)]
+pub use interface::DispatchResult;
+pub use interface::{DispatchResult2, Interface, InterfaceDeref, InterfaceDerefMut, InterfaceRef};
 
 mod signal_emitter;
 pub use signal_emitter::SignalEmitter;
@@ -116,6 +118,19 @@ impl ObjectServer {
     /// where this method becomes useful.
     ///
     /// If the interface already exists at this path, returns false.
+    ///
+    /// # Deadlocks
+    ///
+    /// It is fine to call this method from within an interface method (e.g. to register a child or
+    /// sibling object on demand), including from a `&mut self` method. There is however one
+    /// exception: registering an [`ObjectManager`] at an ancestor of the currently-executing
+    /// interface from within one of its `&mut self` methods will **deadlock**.
+    ///
+    /// This is because adding an `ObjectManager` reads the properties of every object under it (to
+    /// emit the initial `InterfacesAdded` signals), which requires a shared lock on each of those
+    /// interfaces — including the calling one, whose exclusive lock is held for the duration of the
+    /// `&mut self` method. Registering the `ObjectManager` up front (typically at connection
+    /// set-up), or from a `&self` method, avoids this.
     pub async fn at<'p, P, I>(&self, path: P, iface: I) -> Result<bool>
     where
         I: Interface,
@@ -160,7 +175,7 @@ impl ObjectServer {
                     ObjectManager::interfaces_added(&emitter, path.into(), interfaces).await?;
                 }
             } else if let Some(manager_path) = manager_path {
-                let emitter = SignalEmitter::new(&self.connection(), manager_path.clone())?;
+                let emitter = SignalEmitter::new(&self.connection(), manager_path)?;
                 let mut interfaces = HashMap::new();
                 let owned_props = node
                     .get_properties(self, &self.connection(), name.clone())
@@ -188,16 +203,33 @@ impl ObjectServer {
         P: TryInto<ObjectPath<'p>>,
         P::Error: Into<Error>,
     {
+        self.remove_named(path, I::name()).await
+    }
+
+    /// Unregister a D-Bus [`Interface`] at a given path, using its name.
+    ///
+    /// If there are no more interfaces left at that path, destroys the object as well.
+    /// Returns whether the object was destroyed.
+    pub async fn remove_named<'p, P>(
+        &self,
+        path: P,
+        interface_name: InterfaceName<'static>,
+    ) -> Result<bool>
+    where
+        P: TryInto<ObjectPath<'p>>,
+        P::Error: Into<Error>,
+    {
         let path = path.try_into().map_err(Into::into)?;
         let mut root = self.root.write().await;
         let (node, manager_path) = root.get_child_mut(&path, false);
         let node = node.ok_or(Error::InterfaceNotFound)?;
-        if !node.remove_interface(I::name()) {
+        if !node.remove_interface(&interface_name) {
             return Err(Error::InterfaceNotFound);
         }
         if let Some(manager_path) = manager_path {
-            let ctxt = SignalEmitter::new(&self.connection(), manager_path.clone())?;
-            ObjectManager::interfaces_removed(&ctxt, path.clone(), (&[I::name()]).into()).await?;
+            let ctxt = SignalEmitter::new(&self.connection(), manager_path)?;
+            ObjectManager::interfaces_removed(&ctxt, path.clone(), (&[interface_name]).into())
+                .await?;
         }
         if node.is_empty() {
             let mut path_parts = path.rsplit('/').filter(|i| !i.is_empty());
@@ -269,8 +301,7 @@ impl ObjectServer {
         let lock = node
             .interface_lock(I::name())
             .ok_or(Error::InterfaceNotFound)?
-            .instance
-            .clone();
+            .instance;
 
         // Ensure what we return can later be dowcasted safely.
         lock.read()
@@ -307,31 +338,25 @@ impl ObjectServer {
         let read_lock = iface.read().await;
         trace!("acquired read lock on interface `{}`", iface_name);
         match read_lock.call(self, connection, msg, member.as_ref()) {
-            DispatchResult::NotFound => {
+            DispatchResult2::NotFound => {
                 return Err(fdo::Error::UnknownMethod(format!(
                     "Unknown method '{member}'"
                 )));
             }
-            DispatchResult::Async(f) => {
-                return f.await.map_err(|e| match e {
-                    Error::FDO(e) => *e,
-                    e => fdo::Error::Failed(format!("{e}")),
-                });
+            DispatchResult2::Async(f) => {
+                return f.await;
             }
-            DispatchResult::RequiresMut => {}
+            DispatchResult2::RequiresMut => {}
         }
         drop(read_lock);
         trace!("acquiring write lock on interface `{}`", iface_name);
         let mut write_lock = iface.write().await;
         trace!("acquired write lock on interface `{}`", iface_name);
         match write_lock.call_mut(self, connection, msg, member.as_ref()) {
-            DispatchResult::NotFound => {}
-            DispatchResult::RequiresMut => {}
-            DispatchResult::Async(f) => {
-                return f.await.map_err(|e| match e {
-                    Error::FDO(e) => *e,
-                    e => fdo::Error::Failed(format!("{e}")),
-                });
+            DispatchResult2::NotFound => {}
+            DispatchResult2::RequiresMut => {}
+            DispatchResult2::Async(f) => {
+                return f.await;
             }
         }
         drop(write_lock);

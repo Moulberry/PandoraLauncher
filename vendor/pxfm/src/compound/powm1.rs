@@ -165,7 +165,7 @@ pub(crate) fn powm1_expm1_1(r: DoubleDouble) -> DoubleDouble {
 
     let z = DoubleDouble::mul_f64_add(DoubleDouble::new(LOG2L, LOG2H), -k, r);
 
-    let bk = unsafe { k.to_int_unchecked::<i64>() }; /* Note: k is an integer, this is just a conversion. */
+    let bk = k as i64;
     let mk = (bk >> 12) + 0x3ff;
     let i2 = (bk >> 6) & 0x3f;
     let i1 = bk & 0x3f;
@@ -183,18 +183,17 @@ pub(crate) fn powm1_expm1_1(r: DoubleDouble) -> DoubleDouble {
 
     let off: f64 = f64::from_bits((2048i64 + 1023i64).wrapping_sub(ie).wrapping_shl(52) as u64);
 
-    let e: f64;
-    if ie < 53 {
+    let e: f64 = if ie < 53 {
         let fhz = DoubleDouble::from_exact_add(off, de.hi);
         de.hi = fhz.hi;
-        e = fhz.lo;
+        fhz.lo
     } else if ie < 104 {
         let fhz = DoubleDouble::from_exact_add(de.hi, off);
         de.hi = fhz.hi;
-        e = fhz.lo;
+        fhz.lo
     } else {
-        e = 0.;
-    }
+        0.
+    };
     de.lo += e;
     de.hi = ldexp(de.to_f64(), ie as i32);
     de.lo = 0.;

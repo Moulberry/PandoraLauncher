@@ -1,6 +1,6 @@
 [package]
 name    = "inotify-sys"
-version = "0.1.5"
+version = "0.1.8"
 authors = ["Hanno Braun <hb@hannobraun.de>"]
 
 description   = "inotify bindings for the Rust programming language"
@@ -8,13 +8,17 @@ documentation = "https://docs.rs/inotify-sys"
 repository    = "https://github.com/hannobraun/inotify-sys"
 license       = "ISC"
 readme        = "README.md"
+build         = "build.rs"
 
-keywords   = ["inotify", "linux"]
+keywords   = ["inotify", "linux", "freebsd", "bsd"]
 categories = ["external-ffi-bindings", "filesystem"]
 exclude    = ["/.travis.yml", "/inotify-sys.sublime-project"]
 
-[badges]
-travis-ci = { repository = "inotify-rs/inotify-sys" }
+[features]
+# This feature no longer changes behavior and should not be used. It is kept
+# only for backwards compatibility with users that enabled it before FreeBSD
+# native inotify became the default.
+freebsd-native = []
 
 [dependencies]
 libc = "0.2"

@@ -4,7 +4,12 @@ use crate::{
     atomic::{AtomicU8, Ordering},
     RelaxStrategy, Spin,
 };
-use core::{cell::UnsafeCell, fmt, marker::PhantomData, mem::MaybeUninit};
+use core::{
+    cell::UnsafeCell,
+    fmt,
+    marker::PhantomData,
+    mem::{ManuallyDrop, MaybeUninit},
+};
 
 /// A primitive that provides lazy one-time initialization.
 ///
@@ -390,10 +395,12 @@ impl<T, R> Once<T, R> {
 
     /// Get a reference to the initialized instance. Must only be called once COMPLETE.
     unsafe fn force_into_inner(self) -> T {
+        let mut this = ManuallyDrop::new(self);
         // SAFETY:
         // * `UnsafeCell`/inner deref: data never changes again
         // * `MaybeUninit`/outer deref: data was initialized
-        (*self.data.get()).as_ptr().read()
+        // * We never call `self`'s destructor, ensuring a double-drop cannot occur.
+        this.data.get_mut().assume_init_read()
     }
 
     /// Returns a reference to the inner value if the [`Once`] has been initialized.
@@ -786,5 +793,13 @@ mod tests {
             }
             assert_eq!(1, share.load(Ordering::SeqCst));
         }
+    }
+
+    #[test]
+    fn drop_boxed() {
+        let boxed = Box::new(5);
+        let once = Once::<_, Spin>::initialized(boxed);
+        let boxed = once.try_into_inner().unwrap();
+        println!("{}", boxed);
     }
 }

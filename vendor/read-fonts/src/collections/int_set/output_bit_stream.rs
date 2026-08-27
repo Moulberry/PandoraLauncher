@@ -1,6 +1,7 @@
 //! Writes individual bits to a vector of bytes.
 
 use super::sparse_bit_set::BranchFactor;
+use alloc::vec::Vec;
 
 pub(crate) struct OutputBitStream {
     data: Vec<u8>,
@@ -13,7 +14,7 @@ impl OutputBitStream {
 
     pub(crate) fn new(branch_factor: BranchFactor, height: u8) -> OutputBitStream {
         let mut out = OutputBitStream {
-            data: vec![],
+            data: Vec::new(),
             sub_index: 0,
             branch_factor,
         };

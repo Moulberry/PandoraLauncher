@@ -554,6 +554,11 @@ impl CodeGen {
                 out,
                 "pub fn prefetch_extension_data(conn: &base::Connection) {{"
             )?;
+            writeln!(out, "    #[cfg(feature = \"dl\")]")?;
+            writeln!(
+                out,
+                "    base::xcb_get_conn_funcs!(conn, xcb_prefetch_extension_data);"
+            )?;
             writeln!(out, "    unsafe {{")?;
             writeln!(
                 out,
@@ -581,6 +586,11 @@ impl CodeGen {
             writeln!(
                 out,
                 "pub fn get_extension_data(conn: &base::Connection) -> std::option::Option<ext::ExtensionData> {{"
+            )?;
+            writeln!(out, "    #[cfg(feature = \"dl\")]")?;
+            writeln!(
+                out,
+                "    base::xcb_get_conn_funcs!(conn, xcb_get_extension_data);"
             )?;
             writeln!(out, "    unsafe {{")?;
             writeln!(

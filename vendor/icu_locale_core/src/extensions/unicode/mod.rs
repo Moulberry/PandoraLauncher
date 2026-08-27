@@ -11,8 +11,8 @@
 //! # Examples
 //!
 //! ```
-//! use icu::locale::extensions::unicode::{attribute, key, value, Unicode};
 //! use icu::locale::Locale;
+//! use icu::locale::extensions::unicode::{Unicode, attribute, key, value};
 //!
 //! let loc: Locale = "en-US-u-foobar-hc-h12".parse().expect("Parsing failed.");
 //!
@@ -20,11 +20,12 @@
 //!     loc.extensions.unicode.keywords.get(&key!("hc")),
 //!     Some(&value!("h12"))
 //! );
-//! assert!(loc
-//!     .extensions
-//!     .unicode
-//!     .attributes
-//!     .contains(&attribute!("foobar")));
+//! assert!(
+//!     loc.extensions
+//!         .unicode
+//!         .attributes
+//!         .contains(&attribute!("foobar"))
+//! );
 //! ```
 mod attribute;
 mod attributes;
@@ -38,15 +39,15 @@ use core::cmp::Ordering;
 use core::str::FromStr;
 
 #[doc(inline)]
-pub use attribute::{attribute, Attribute};
+pub use attribute::{Attribute, attribute};
 pub use attributes::Attributes;
 #[doc(inline)]
-pub use key::{key, Key};
+pub use key::{Key, key};
 pub use keywords::Keywords;
 #[doc(inline)]
-pub use subdivision::{subdivision_suffix, SubdivisionId, SubdivisionSuffix};
+pub use subdivision::{SubdivisionId, SubdivisionSuffix, subdivision_suffix};
 #[doc(inline)]
-pub use value::{value, Value};
+pub use value::{Value, value};
 
 #[cfg(feature = "alloc")]
 use super::ExtensionType;
@@ -74,8 +75,8 @@ pub(crate) const UNICODE_EXT_STR: &str = "u";
 /// # Examples
 ///
 /// ```
-/// use icu::locale::extensions::unicode::{key, value};
 /// use icu::locale::Locale;
+/// use icu::locale::extensions::unicode::{key, value};
 ///
 /// let loc: Locale =
 ///     "de-u-hc-h12-ca-buddhist".parse().expect("Parsing failed.");
@@ -115,6 +116,8 @@ impl Unicode {
 
     /// A constructor which takes a str slice, parses it and
     /// produces a well-formed [`Unicode`].
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     #[inline]
     #[cfg(feature = "alloc")]
     pub fn try_from_str(s: &str) -> Result<Self, ParseError> {
@@ -122,6 +125,8 @@ impl Unicode {
     }
 
     /// See [`Self::try_from_str`]
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     #[cfg(feature = "alloc")]
     pub fn try_from_utf8(code_units: &[u8]) -> Result<Self, ParseError> {
         let mut iter = SubtagIterator::new(code_units);
@@ -183,7 +188,7 @@ impl Unicode {
 
     #[cfg(feature = "alloc")]
     pub(crate) fn try_from_iter(iter: &mut SubtagIterator) -> Result<Self, ParseError> {
-        let attributes = Attributes::try_from_iter(iter)?;
+        let attributes = Attributes::from_iter(iter);
         let keywords = Keywords::try_from_iter(iter)?;
 
         // Ensure we've defined at least one attribute or keyword
@@ -210,8 +215,29 @@ impl Unicode {
         }
         Ok(())
     }
+
+    /// Extends the `Unicode` with values from  another `Unicode`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use icu::locale::extensions::unicode::Unicode;
+    ///
+    /// let mut ue: Unicode = "u-foobar-ca-buddhist".parse().unwrap();
+    /// let ue2: Unicode = "u-ca-gregory-hc-h12".parse().unwrap();
+    ///
+    /// ue.extend(ue2);
+    ///
+    /// assert_eq!(ue, "u-foobar-ca-gregory-hc-h12".parse().unwrap());
+    /// ```
+    #[cfg(feature = "alloc")]
+    pub fn extend(&mut self, other: Unicode) {
+        self.keywords.extend_from_keywords(other.keywords);
+        self.attributes.extend_from_attributes(other.attributes);
+    }
 }
 
+/// ✨ *Enabled with the `alloc` Cargo feature.*
 #[cfg(feature = "alloc")]
 impl FromStr for Unicode {
     type Err = ParseError;
@@ -222,7 +248,7 @@ impl FromStr for Unicode {
     }
 }
 
-writeable::impl_display_with_writeable!(Unicode);
+writeable::impl_display_with_writeable!(Unicode, #[cfg(feature = "alloc")]);
 
 impl writeable::Writeable for Unicode {
     fn write_to<W: core::fmt::Write + ?Sized>(&self, sink: &mut W) -> core::fmt::Result {

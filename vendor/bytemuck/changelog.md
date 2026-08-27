@@ -1,5 +1,19 @@
 # `bytemuck` changelog
 
+## 1.25.2
+
+* implement NoUninit for char, bool, NonZero* arrays
+
+## 1.25.1
+
+* [Don't impl core::error::Error on spirv](https://github.com/Lokathor/bytemuck/pull/348), which was causing a build error on that target.
+* Added a reminder on `try_cast_slice` that empty slices must still be aligned.
+
+## 1.25
+
+* [Remove extern "stdcall" fn ptr impls on non-x86-32 windows.](https://github.com/Lokathor/bytemuck/pull/333)
+* [Fix nightly_portable_simd after LaneCount removal.](https://github.com/Lokathor/bytemuck/pull/344)
+
 ## 1.24
 
 * [use new stable avx512 types from rust 1.89](https://github.com/Lokathor/bytemuck/pull/322)

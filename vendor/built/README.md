@@ -21,7 +21,7 @@ See [the example](https://github.com/lukaslueg/built/tree/master/example_project
 
 ### MSRV
 
-`built-0.8` itself currently requires Rust 1.81 with all features enabled.
+`built-0.8` itself currently requires Rust 1.87 with all features enabled.
 
 ---
 

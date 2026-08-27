@@ -28,6 +28,7 @@ unused_macro_rules = "warn"
 [workspace.lints.clippy]
 bool_assert_comparison = "allow"
 branches_sharing_code = "allow"
+byte_char_slices = "allow"  # want explicit arrays
 checked_conversions = "warn"
 collapsible_else_if = "allow"
 create_dir = "warn"
@@ -96,7 +97,7 @@ lto = true
 
 [package]
 name = "winnow"
-version = "1.0.2"
+version = "1.0.4"
 description = "A byte-oriented, zero-copy, parser combinators library"
 categories = ["parsing"]
 keywords = ["parser", "parser-combinators", "parsing", "streaming", "bit"]

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.81"
+rust-version = "1.82"
 name = "tinystr"
-version = "0.8.1"
+version = "0.8.4"
 authors = ["The ICU4X Project Developers"]
 build = false
 include = [
@@ -25,6 +25,7 @@ include = [
     "Cargo.toml",
     "LICENSE",
     "README.md",
+    "build.rs",
 ]
 autolib = false
 autobins = false
@@ -34,27 +35,32 @@ autobenches = false
 description = "A small ASCII-only bounded length string representation."
 readme = "README.md"
 keywords = [
+    "small-string",
+    "ascii",
     "string",
     "str",
-    "small",
-    "tiny",
-    "no_std",
 ]
 categories = ["data-structures"]
 license = "Unicode-3.0"
 repository = "https://github.com/unicode-org/icu4x"
 
-[package.metadata.docs.rs]
-all-features = true
-
 [package.metadata.workspaces]
 independent = true
 
+[package.metadata.docs.rs]
+all-features = true
+
+[package.metadata.cargo-all-features]
+max_combination_size = 3
+
 [features]
-alloc = ["zerovec?/alloc"]
+alloc = [
+    "serde_core?/alloc",
+    "zerovec?/alloc",
+]
 databake = ["dep:databake"]
 default = ["alloc"]
-serde = ["dep:serde"]
+serde = ["dep:serde_core"]
 std = []
 zerovec = ["dep:zerovec"]
 
@@ -98,14 +104,13 @@ default-features = false
 version = "0.2.3"
 default-features = false
 
-[dependencies.serde]
-version = "1.0.110"
-features = ["alloc"]
+[dependencies.serde_core]
+version = "1.0.220"
 optional = true
 default-features = false
 
 [dependencies.zerovec]
-version = "0.11.1"
+version = "0.11.7"
 optional = true
 default-features = false
 
@@ -118,7 +123,7 @@ features = ["use-std"]
 default-features = false
 
 [dev-dependencies.rand]
-version = "0.8"
+version = "0.9"
 features = ["small_rng"]
 
 [dev-dependencies.serde_json]
@@ -127,3 +132,54 @@ features = ["alloc"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.criterion]
 version = "0.5.0"
+
+[lints.clippy]
+alloc_instead_of_core = "warn"
+bool_assert_comparison = "allow"
+branches_sharing_code = "warn"
+collection_is_never_read = "warn"
+crosspointer_transmute = "warn"
+dbg_macro = "warn"
+debug_assert_with_mut_call = "warn"
+doc_markdown = "warn"
+exhaustive_enums = "deny"
+exhaustive_structs = "deny"
+fn_to_numeric_cast_any = "warn"
+infinite_loop = "warn"
+large_stack_arrays = "warn"
+mismatching_type_param_order = "warn"
+missing_fields_in_debug = "warn"
+missing_transmute_annotations = "warn"
+negative_feature_names = "warn"
+or_fun_call = "warn"
+same_functions_in_if_condition = "warn"
+todo = "warn"
+transmute_bytes_to_str = "warn"
+transmute_int_to_bool = "warn"
+transmute_int_to_non_zero = "warn"
+transmute_ptr_to_ptr = "warn"
+transmute_ptr_to_ref = "warn"
+transmute_undefined_repr = "warn"
+transmutes_expressible_as_ptr_casts = "warn"
+trivially_copy_pass_by_ref = "deny"
+unnecessary_wraps = "warn"
+useless_transmute = "warn"
+wildcard_dependencies = "warn"
+
+[lints.rust]
+missing_debug_implementations = "deny"
+trivial_numeric_casts = "deny"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
+unused_qualifications = "warn"
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = [
+    "cfg(icu4c_enable_renaming)",
+    "cfg(needs_alloc_error_handler)",
+    "cfg(icu4x_nightly_tests)",
+    "cfg(icu4x_run_size_tests)",
+    "cfg(icu4x_unstable_fast_trie_only)",
+]

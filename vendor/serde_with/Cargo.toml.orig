@@ -37,11 +37,11 @@ default = ["std", "macros"]
 #! Some features require `alloc` or `std` support and might not work in a `no_std` environment.
 
 ## Enable support for types from the `alloc` crate when running in a `no_std` environment.
-alloc = ["serde_core/alloc", "base64?/alloc", "bs58?/alloc", "chrono_0_4?/alloc", "hex?/alloc", "serde_json?/alloc", "time_0_3?/alloc"]
+alloc = ["serde_core/alloc", "base64?/alloc", "bs58?/alloc", "chrono_0_4?/alloc", "hex?/alloc", "jiff_0_2?/alloc", "serde_json?/alloc", "time_0_3?/alloc"]
 ## Enables support for various types from the std library.
 ## This will enable `std` support in all dependencies too.
 ## The feature enabled by default and also enables `alloc`.
-std = ["alloc", "bs58?/std", "serde_core/std", "chrono_0_4?/clock", "chrono_0_4?/std", "indexmap_1?/std", "indexmap_2?/std", "time_0_3?/serde-well-known", "time_0_3?/std", "schemars_0_9?/std", "schemars_1?/std"]
+std = ["alloc", "bs58?/std", "serde_core/std", "chrono_0_4?/clock", "chrono_0_4?/std", "indexmap_1?/std", "indexmap_2?/std", "jiff_0_2?/std", "jiff_0_2?/tz-system", "jiff_0_2?/tzdb-bundle-platform", "jiff_0_2?/tzdb-concatenated", "jiff_0_2?/tzdb-zoneinfo", "time_0_3?/serde-well-known", "time_0_3?/std", "schemars_0_9?/std", "schemars_1?/std"]
 
 #! # Documentation
 #!
@@ -119,6 +119,12 @@ indexmap_1 = ["dep:indexmap_1", "alloc"]
 ## It enables the `alloc` feature.
 ## Some functionality is only available when `std` is enabled too.
 indexmap_2 = ["dep:indexmap_2", "alloc"]
+## The feature enables integration of `jiff` v0.2 specific conversions.
+## This includes support for the timestamp, duration, zoned and civil datetime types.
+##
+## This pulls in [`jiff` v0.2](::jiff_0_2) as a dependency.
+## Some functionality is only available when `alloc` or `std` is enabled too.
+jiff_0_2 = ["dep:jiff_0_2"]
 ## The feature enables JSON conversions from the `json` module.
 ##
 ## This pulls in [`serde_json`] as a dependency.
@@ -174,12 +180,13 @@ hashbrown_0_17 = { package = "hashbrown", version = "0.17.0", optional = true, d
 hex = { version = "0.4.3", optional = true, default-features = false }
 indexmap_1 = { package = "indexmap", version = "1.8", optional = true, default-features = false, features = ["serde-1"] }
 indexmap_2 = { package = "indexmap", version = "2.0", optional = true, default-features = false, features = ["serde"] }
+jiff_0_2 = { package = "jiff", version = "0.2.0", optional = true, default-features = false }
 schemars_0_8 = { package = "schemars", version = "0.8.16", optional = true, default-features = false }
 schemars_0_9 = { package = "schemars", version = "0.9.0", optional = true, default-features = false }
 schemars_1 = { package = "schemars", version = "1.0.2", optional = true, default-features = false }
 serde_core = { version = "1.0.225", default-features = false, features = ["result"] }
 serde_json = { version = "1.0.145", optional = true, default-features = false }
-serde_with_macros = { path = "../serde_with_macros", version = "=3.20.0", optional = true }
+serde_with_macros = { path = "../serde_with_macros", version = "=3.22.0", optional = true }
 smallvec_1 = { package = "smallvec", version = "1", optional = true, default-features = false }
 time_0_3 = { package = "time", version = "~0.3.47", optional = true, default-features = false }
 
@@ -254,6 +261,11 @@ path = "tests/indexmap_2.rs"
 required-features = ["indexmap_2", "macros"]
 
 [[test]]
+name = "jiff_0_2"
+path = "tests/jiff_0_2.rs"
+required-features = ["jiff_0_2", "macros"]
+
+[[test]]
 name = "json"
 path = "tests/json.rs"
 required-features = ["json", "macros"]
@@ -311,8 +323,7 @@ rustdoc-args = [
     "-Zunstable-options",
     # Generate links to definition in rustdoc source code pages
     # https://github.com/rust-lang/rust/pull/84176
-    # Disable until https://github.com/rust-lang/rust/issues/147882 is resolved.
-    # "--generate-link-to-definition",
+    "--generate-link-to-definition",
     # Generate buttons to show macro expansions in the rustdoc output.
     # https://github.com/rust-lang/rust/pull/137229
     "--generate-macro-expansion",

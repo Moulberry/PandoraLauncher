@@ -3,10 +3,10 @@ name = "async-executor"
 # When publishing a new version:
 # - Update CHANGELOG.md
 # - Create "v1.x.y" git tag
-version = "1.13.3"
+version = "1.14.0"
 authors = ["Stjepan Glavina <stjepang@gmail.com>", "John Nunley <dev@notgull.net>"]
 edition = "2021"
-rust-version = "1.63"
+rust-version = "1.65"
 description = "Async executor"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/smol-rs/async-executor"
@@ -33,7 +33,7 @@ futures-lite = { version = "2.0.0", default-features = false, features = ["std"]
 async-channel = "2.0.0"
 async-io = "2.1.0"
 async-lock = "3.0.0"
-criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 easy-parallel = "3.1.0"
 fastrand = "2.0.0"
 futures-lite = "2.0.0"

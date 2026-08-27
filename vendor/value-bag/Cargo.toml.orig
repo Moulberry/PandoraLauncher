@@ -1,6 +1,6 @@
 [package]
 name = "value-bag"
-version = "1.12.0"
+version = "1.13.2"
 authors = ["Ashley Mannix <ashleymannix@live.com.au>"]
 edition = "2021"
 license = "Apache-2.0 OR MIT"
@@ -27,9 +27,12 @@ members = [
 # Store 128bit numbers inline instead of as references
 # This may increase the size of `ValueBag` on some platforms
 inline-i128 = []
-# Store small strings inline instead of as references
+# Store up to 22 byte strings inline instead of boxing in `OwnedValueBag`
 # This requires a more recent Rust toolchain
 inline-str = []
+# Store up to 46 byte strings inline instead of boxing in `OwnedValueBag`
+# This requires a more recent Rust toolchain
+inline-str-l = ["inline-str"]
 
 # Use the standard library
 std = [
@@ -76,12 +79,12 @@ error = [
 test = ["std"]
 
 [dependencies.value-bag-sval2]
-version = "1.12.0"
+version = "1.13.2"
 path = "meta/sval2"
 optional = true
 
 [dependencies.value-bag-serde1]
-version = "1.12.0"
+version = "1.13.2"
 path = "meta/serde1"
 optional = true
 
@@ -98,3 +101,22 @@ version = "0.2"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies.wasm-bindgen-test]
 version = "0.3"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.criterion]
+version = "0.8"
+
+[[bench]]
+name = "by_ref"
+harness = false
+
+[[bench]]
+name = "capture"
+harness = false
+
+[[bench]]
+name = "owned"
+harness = false
+
+[[bench]]
+name = "seq"
+harness = false

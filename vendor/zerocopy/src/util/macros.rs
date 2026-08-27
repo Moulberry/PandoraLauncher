@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0 OR MIT
+//
 // Copyright 2023 The Fuchsia Authors
 //
 // Licensed under a BSD-style license <LICENSE-BSD>, Apache License, Version 2.0
@@ -135,7 +137,10 @@ macro_rules! unsafe_impl {
         fn only_derive_is_allowed_to_implement_this_trait() {}
 
         #[inline]
-        fn is_bit_valid<AA: crate::pointer::invariant::Reference>($candidate: Maybe<'_, Self, AA>) -> bool {
+        fn is_bit_valid<Alignment>($candidate: Maybe<'_, Self, Alignment>) -> bool
+        where
+            Alignment: crate::invariant::Alignment,
+        {
             $is_bit_valid
         }
     };
@@ -143,7 +148,13 @@ macro_rules! unsafe_impl {
         #[allow(clippy::missing_inline_in_public_items)]
         #[cfg_attr(all(coverage_nightly, __ZEROCOPY_INTERNAL_USE_ONLY_NIGHTLY_FEATURES_IN_TESTS), coverage(off))]
         fn only_derive_is_allowed_to_implement_this_trait() {}
-        #[inline(always)] fn is_bit_valid<AA: crate::pointer::invariant::Reference>(_: Maybe<'_, Self, AA>) -> bool { true }
+        #[inline(always)]
+        fn is_bit_valid<Alignment>(_candidate: Maybe<'_, Self, Alignment>) -> bool
+        where
+            Alignment: crate::invariant::Alignment,
+        {
+            true
+        }
     };
     (@method $trait:ident) => {
         #[allow(clippy::missing_inline_in_public_items, dead_code)]
@@ -164,7 +175,7 @@ macro_rules! impl_for_transmute_from {
     (
         $(#[$attr:meta])*
         $($tyvar:ident $(: $(? $optbound:ident $(+)?)* $($bound:ident $(+)?)* )?)?
-        => $trait:ident for $ty:ty [$($unsafe_cell:ident)? <$repr:ty>]
+        => $trait:ident for $ty:ty [$repr:ty]
     ) => {
         const _: () = {
             $(#[$attr])*
@@ -203,7 +214,7 @@ macro_rules! impl_for_transmute_from {
                 impl_for_transmute_from!(
                     @is_bit_valid
                     $(<$tyvar $(: $(? $optbound +)* $($bound +)*)?>)?
-                    $trait for $ty [$($unsafe_cell)? <$repr>]
+                    $trait for $ty [$repr]
                 );
             }
         };
@@ -215,35 +226,23 @@ macro_rules! impl_for_transmute_from {
     (
         @is_bit_valid
         $(<$tyvar:ident $(: $(? $optbound:ident $(+)?)* $($bound:ident $(+)?)* )?>)?
-        TryFromBytes for $ty:ty [UnsafeCell<$repr:ty>]
+        TryFromBytes for $ty:ty [$repr:ty]
     ) => {
-        #[inline]
-        fn is_bit_valid<A: crate::pointer::invariant::Reference>(candidate: Maybe<'_, Self, A>) -> bool {
-            let c: Maybe<'_, Self, crate::pointer::invariant::Exclusive> = candidate.into_exclusive_or_pme();
-            let c: Maybe<'_, $repr, _> = c.transmute::<_, _, (_, (_, (BecauseExclusive, BecauseExclusive)))>();
+        #[inline(always)]
+        fn is_bit_valid<Alignment>(candidate: $crate::Maybe<'_, Self, Alignment>) -> bool
+        where
+            Alignment: $crate::invariant::Alignment,
+        {
             // SAFETY: This macro ensures that `$repr` and `Self` have the same
             // size and bit validity. Thus, a bit-valid instance of `$repr` is
             // also a bit-valid instance of `Self`.
-            <$repr as TryFromBytes>::is_bit_valid(c)
+            <$repr as TryFromBytes>::is_bit_valid(candidate.transmute::<_, _, BecauseImmutable>())
         }
     };
     (
         @is_bit_valid
         $(<$tyvar:ident $(: $(? $optbound:ident $(+)?)* $($bound:ident $(+)?)* )?>)?
-        TryFromBytes for $ty:ty [<$repr:ty>]
-    ) => {
-        #[inline]
-        fn is_bit_valid<A: crate::pointer::invariant::Reference>(candidate: $crate::Maybe<'_, Self, A>) -> bool {
-            // SAFETY: This macro ensures that `$repr` and `Self` have the same
-            // size and bit validity. Thus, a bit-valid instance of `$repr` is
-            // also a bit-valid instance of `Self`.
-            <$repr as TryFromBytes>::is_bit_valid(candidate.transmute())
-        }
-    };
-    (
-        @is_bit_valid
-        $(<$tyvar:ident $(: $(? $optbound:ident $(+)?)* $($bound:ident $(+)?)* )?>)?
-        $trait:ident for $ty:ty [$($unsafe_cell:ident)? <$repr:ty>]
+        $trait:ident for $ty:ty [$repr:ty]
     ) => {
         // Trait other than `TryFromBytes`; no `is_bit_valid` impl.
     };
@@ -325,6 +324,9 @@ macro_rules! opt_unsafe_fn {
     ($($args:ident),* -> $ret:ident) => { Option<unsafe fn($($args),*) -> $ret> };
 }
 
+// This `allow` is needed because, when testing, we export this macro so it can
+// be used in `doctests`.
+#[allow(rustdoc::private_intra_doc_links)]
 /// Implements trait(s) for a type or verifies the given implementation by
 /// referencing an existing (derived) implementation.
 ///
@@ -342,10 +344,10 @@ macro_rules! opt_unsafe_fn {
 /// assumption that the impl emitted by the custom derive is sound).
 ///
 /// The caller is still required to provide a safety comment (e.g. using the
-/// `const _: () = unsafe` macro) . The reason for this restriction is that, while
-/// `impl_or_verify!` can guarantee that the provided impl is sound when it is
-/// compiled with the appropriate cfgs, there is no way to guarantee that it is
-/// ever compiled with those cfgs. In particular, it would be possible to
+/// `const _: () = unsafe` macro). The reason for this restriction is that,
+/// while `impl_or_verify!` can guarantee that the provided impl is sound when
+/// it is compiled with the appropriate cfgs, there is no way to guarantee that
+/// it is ever compiled with those cfgs. In particular, it would be possible to
 /// accidentally place an `impl_or_verify!` call in a context that is only ever
 /// compiled when the `derive` feature is disabled. If that were to happen,
 /// there would be nothing to prevent an unsound trait impl from being emitted.
@@ -374,6 +376,8 @@ macro_rules! opt_unsafe_fn {
 ///     impl_or_verify!(T: Unaligned => Unaligned for Wrapper<T>);
 /// }
 /// ```
+#[cfg_attr(__ZEROCOPY_INTERNAL_USE_ONLY_DEV_MODE, macro_export)] // Used in `doctests.rs`
+#[doc(hidden)]
 macro_rules! impl_or_verify {
     // The following two match arms follow the same pattern as their
     // counterparts in `unsafe_impl!`; see the documentation on those arms for
@@ -547,10 +551,10 @@ macro_rules! maybe_const_trait_bounded_fn {
     // non-method functions. Each `$args` may optionally be followed by `:
     // $arg_tys:ty`, which can be omitted for `self`.
     ($(#[$attr:meta])* $vis:vis const fn $name:ident($($args:ident $(: $arg_tys:ty)?),* $(,)?) $(-> $ret_ty:ty)? $body:block) => {
-        #[cfg(zerocopy_generic_bounds_in_const_fn_1_61_0)]
+        #[cfg(not(no_zerocopy_generic_bounds_in_const_fn_1_61_0))]
         $(#[$attr])* $vis const fn $name($($args $(: $arg_tys)?),*) $(-> $ret_ty)? $body
 
-        #[cfg(not(zerocopy_generic_bounds_in_const_fn_1_61_0))]
+        #[cfg(no_zerocopy_generic_bounds_in_const_fn_1_61_0)]
         $(#[$attr])* $vis fn $name($($args $(: $arg_tys)?),*) $(-> $ret_ty)? $body
     };
 }
@@ -571,9 +575,9 @@ macro_rules! const_panic {
         panic[0]
     }};
     ($($arg:tt)+) => {{
-        #[cfg(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
+        #[cfg(not(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
         panic!($($arg)+);
-        #[cfg(not(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
+        #[cfg(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
         const_panic!(@non_panic $($arg)+)
     }};
 }
@@ -584,9 +588,9 @@ macro_rules! const_panic {
 /// accommodate old toolchains.
 macro_rules! const_assert {
     ($e:expr) => {{
-        #[cfg(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
+        #[cfg(not(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
         assert!($e);
-        #[cfg(not(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
+        #[cfg(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
         {
             let e = $e;
             if !e {
@@ -595,9 +599,9 @@ macro_rules! const_assert {
         }
     }};
     ($e:expr, $($args:tt)+) => {{
-        #[cfg(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
+        #[cfg(not(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
         assert!($e, $($args)+);
-        #[cfg(not(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
+        #[cfg(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
         {
             let e = $e;
             if !e {
@@ -610,9 +614,9 @@ macro_rules! const_assert {
 /// Like `const_assert!`, but relative to `debug_assert!`.
 macro_rules! const_debug_assert {
     ($e:expr $(, $msg:expr)?) => {{
-        #[cfg(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
+        #[cfg(not(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
         debug_assert!($e $(, $msg)?);
-        #[cfg(not(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
+        #[cfg(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
         {
             // Use this (rather than `#[cfg(debug_assertions)]`) to ensure that
             // `$e` is always compiled even if it will never be evaluated at
@@ -631,10 +635,10 @@ macro_rules! const_debug_assert {
 /// toolchain supports panicking in `const fn`.
 macro_rules! const_unreachable {
     () => {{
-        #[cfg(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
+        #[cfg(not(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
         unreachable!();
 
-        #[cfg(not(zerocopy_panic_in_const_and_vec_try_reserve_1_57_0))]
+        #[cfg(no_zerocopy_panic_in_const_and_vec_try_reserve_1_57_0)]
         loop {}
     }};
 }
@@ -692,29 +696,38 @@ macro_rules! static_assert_dst_is_not_zst {
     }}
 }
 
+/// Defines a named [`Cast`] implementation.
+///
 /// # Safety
 ///
-/// The caller must ensure that the cast does not grow the size of the referent.
-/// Preserving or shrinking the size of the referent are both acceptable.
-macro_rules! cast {
-    ($p:expr) => {{
-        let ptr: crate::pointer::PtrInner<'_, _> = $p;
-        let ptr = ptr.as_non_null();
-        let ptr = ptr.as_ptr();
-        #[allow(clippy::as_conversions)]
-        let ptr = ptr as *mut _;
-        #[allow(unused_unsafe)]
-        // SAFETY: `NonNull::as_ptr` returns a non-null pointer, so the argument
-        // to `NonNull::new_unchecked` is also non-null.
-        let ptr = unsafe { core::ptr::NonNull::new_unchecked(ptr) };
-        // SAFETY: The caller promises that the cast preserves or shrinks
-        // referent size. By invariant on `$p: PtrInner` (guaranteed by type
-        // annotation above), `$p` refers to a byte range entirely contained
-        // inside of a single allocation, has provenance for that whole byte
-        // range, and will not outlive the allocation. All of these conditions
-        // are preserved when preserving or shrinking referent size.
-        crate::pointer::PtrInner::new(ptr)
-    }};
+/// The caller must ensure that, given `src: *mut $src`, `src as *mut $dst` is a
+/// size-preserving or size-shrinking cast.
+///
+/// [`Cast`]: crate::pointer::cast::Cast
+#[macro_export]
+#[doc(hidden)]
+macro_rules! define_cast {
+    // We require the caller to provide an `unsafe` block as part of the input
+    // syntax since a call to `define_cast!` is useless inside of an `unsafe`
+    // block (since it would introduce a type which can't be named outside of
+    // the context of that block).
+    (unsafe { $vis:vis $name:ident $(<$tyvar:ident $(: ?$optbound:ident)?>)? = $src:ty => $dst:ty }) => {
+        #[allow(missing_debug_implementations, missing_copy_implementations, unreachable_pub)]
+        $vis enum $name {}
+
+        // SAFETY: The caller promises that `src as *mut $src` is a size-
+        // preserving or size-shrinking cast. All operations preserve
+        // provenance.
+        unsafe impl $(<$tyvar $(: ?$optbound)?>)? $crate::pointer::cast::Project<$src, $dst> for $name {
+            fn project(src: $crate::pointer::PtrInner<'_, $src>) -> *mut $dst {
+                #[allow(clippy::as_conversions)]
+                return src.as_ptr() as *mut $dst;
+            }
+        }
+
+        // SAFETY: The impl of `Project::project` preserves referent address.
+        unsafe impl $(<$tyvar $(: ?$optbound)?>)? $crate::pointer::cast::Cast<$src, $dst> for $name {}
+    };
 }
 
 /// Implements `TransmuteFrom` and `SizeEq` for `T` and `$wrapper<T>`.
@@ -722,34 +735,69 @@ macro_rules! cast {
 /// # Safety
 ///
 /// `T` and `$wrapper<T>` must have the same bit validity, and must have the
-/// same size in the sense of `SizeEq`.
+/// same size in the sense of `CastExact` (specifically, both a
+/// `T`-to-`$wrapper<T>` cast and a `$wrapper<T>`-to-`T` cast must be
+/// size-preserving).
 macro_rules! unsafe_impl_for_transparent_wrapper {
-    (T $(: ?$optbound:ident)? => $wrapper:ident<T>) => {{
+    ($vis:vis T $(: ?$optbound:ident)? => $wrapper:ident<T>) => {{
         crate::util::macros::__unsafe();
 
-        use crate::pointer::{TransmuteFrom, PtrInner, SizeEq, invariant::Valid};
+        use crate::pointer::{TransmuteFrom, cast::{CastExact, TransitiveProject}, SizeEq, invariant::Valid};
+        use crate::wrappers::ReadOnly;
 
         // SAFETY: The caller promises that `T` and `$wrapper<T>` have the same
         // bit validity.
         unsafe impl<T $(: ?$optbound)?> TransmuteFrom<T, Valid, Valid> for $wrapper<T> {}
         // SAFETY: See previous safety comment.
         unsafe impl<T $(: ?$optbound)?> TransmuteFrom<$wrapper<T>, Valid, Valid> for T {}
-        // SAFETY: The caller promises that `T` and `$wrapper<T>` satisfy
-        // `SizeEq`.
-        unsafe impl<T $(: ?$optbound)?> SizeEq<T> for $wrapper<T> {
-            #[inline(always)]
-            fn cast_from_raw(t: PtrInner<'_, T>) -> PtrInner<'_, $wrapper<T>> {
-                // SAFETY: See previous safety comment.
-                unsafe { cast!(t) }
-            }
+        // SAFETY: The caller promises that a `T` to `$wrapper<T>` cast is
+        // size-preserving.
+        define_cast!(unsafe { $vis CastToWrapper<T $(: ?$optbound)? > = T => $wrapper<T> });
+        // SAFETY: The caller promises that a `T` to `$wrapper<T>` cast is
+        // size-preserving.
+        unsafe impl<T $(: ?$optbound)?> CastExact<T, $wrapper<T>> for CastToWrapper {}
+        // SAFETY: The caller promises that a `$wrapper<T>` to `T` cast is
+        // size-preserving.
+        define_cast!(unsafe { $vis CastFromWrapper<T $(: ?$optbound)? > = $wrapper<T> => T });
+        // SAFETY: The caller promises that a `$wrapper<T>` to `T` cast is
+        // size-preserving.
+        unsafe impl<T $(: ?$optbound)?> CastExact<$wrapper<T>, T> for CastFromWrapper {}
+
+        impl<T $(: ?$optbound)?> SizeEq<T> for $wrapper<T> {
+            type CastFrom = CastToWrapper;
         }
-        // SAFETY: See previous safety comment.
-        unsafe impl<T $(: ?$optbound)?> SizeEq<$wrapper<T>> for T {
-            #[inline(always)]
-            fn cast_from_raw(t: PtrInner<'_, $wrapper<T>>) -> PtrInner<'_, T> {
-                // SAFETY: See previous safety comment.
-                unsafe { cast!(t) }
-            }
+        impl<T $(: ?$optbound)?> SizeEq<$wrapper<T>> for T {
+            type CastFrom = CastFromWrapper;
+        }
+
+        impl<T $(: ?$optbound)?> SizeEq<ReadOnly<T>> for $wrapper<T> {
+            type CastFrom = TransitiveProject<
+                T,
+                <T as SizeEq<ReadOnly<T>>>::CastFrom,
+                CastToWrapper,
+            >;
+        }
+        impl<T $(: ?$optbound)?> SizeEq<$wrapper<T>> for ReadOnly<T> {
+            type CastFrom = TransitiveProject<
+                T,
+                CastFromWrapper,
+                <ReadOnly<T> as SizeEq<T>>::CastFrom,
+            >;
+        }
+
+        impl<T $(: ?$optbound)?> SizeEq<ReadOnly<T>> for ReadOnly<$wrapper<T>> {
+            type CastFrom = TransitiveProject<
+                $wrapper<T>,
+                <$wrapper<T> as SizeEq<ReadOnly<T>>>::CastFrom,
+                <ReadOnly<$wrapper<T>> as SizeEq<$wrapper<T>>>::CastFrom,
+            >;
+        }
+        impl<T $(: ?$optbound)?> SizeEq<ReadOnly<$wrapper<T>>> for ReadOnly<T> {
+            type CastFrom = TransitiveProject<
+                $wrapper<T>,
+                <$wrapper<T> as SizeEq<ReadOnly<$wrapper<T>>>>::CastFrom,
+                <ReadOnly<T> as SizeEq<$wrapper<T>>>::CastFrom,
+            >;
         }
     }};
 }
@@ -757,20 +805,18 @@ macro_rules! unsafe_impl_for_transparent_wrapper {
 macro_rules! impl_transitive_transmute_from {
     ($($tyvar:ident $(: ?$optbound:ident)?)? => $t:ty => $u:ty => $v:ty) => {
         const _: () = {
-            use crate::pointer::{TransmuteFrom, PtrInner, SizeEq, invariant::Valid};
+            use crate::pointer::{TransmuteFrom, SizeEq, invariant::Valid};
 
-            // SAFETY: Since `$u: SizeEq<$t>` and `$v: SizeEq<U>`, this impl is
-            // transitively sound.
-            unsafe impl<$($tyvar $(: ?$optbound)?)?> SizeEq<$t> for $v
+            impl<$($tyvar $(: ?$optbound)?)?> SizeEq<$t> for $v
             where
                 $u: SizeEq<$t>,
                 $v: SizeEq<$u>,
             {
-                #[inline(always)]
-                fn cast_from_raw(t: PtrInner<'_, $t>) -> PtrInner<'_, $v> {
-                    let u = <$u as SizeEq<_>>::cast_from_raw(t);
-                    <$v as SizeEq<_>>::cast_from_raw(u)
-                }
+                type CastFrom = cast::TransitiveProject<
+                    $u,
+                    <$u as SizeEq<$t>>::CastFrom,
+                    <$v as SizeEq<$u>>::CastFrom
+                >;
             }
 
             // SAFETY: Since `$u: TransmuteFrom<$t, Valid, Valid>`, it is sound
@@ -786,156 +832,236 @@ macro_rules! impl_transitive_transmute_from {
     };
 }
 
-#[rustfmt::skip]
-macro_rules! impl_size_eq {
-    ($t:ty, $u:ty) => {
-        const _: () = {
-            use crate::{KnownLayout, pointer::{PtrInner, SizeEq}};
-
-            static_assert!(=> {
-                let t = <$t as KnownLayout>::LAYOUT;
-                let u = <$u as KnownLayout>::LAYOUT;
-                t.align.get() >= u.align.get() && match (t.size_info, u.size_info) {
-                    (SizeInfo::Sized { size: t }, SizeInfo::Sized { size: u }) => t == u,
-                    (
-                        SizeInfo::SliceDst(TrailingSliceLayout { offset: t_offset, elem_size: t_elem_size }),
-                        SizeInfo::SliceDst(TrailingSliceLayout { offset: u_offset, elem_size: u_elem_size })
-                    ) => t_offset == u_offset && t_elem_size == u_elem_size,
-                    _ => false,
-                }
-            });
-
-            // SAFETY: See inline.
-            unsafe impl SizeEq<$t> for $u {
-                #[inline(always)]
-                fn cast_from_raw(t: PtrInner<'_, $t>) -> PtrInner<'_, $u> {
-                    // SAFETY: We've asserted that their
-                    // `KnownLayout::LAYOUT.size_info`s are equal, and so this
-                    // cast is guaranteed to preserve address and referent size.
-                    // It trivially preserves provenance.
-                    unsafe { cast!(t) }
-                }
-            }
-            // SAFETY: See previous safety comment.
-            unsafe impl SizeEq<$u> for $t {
-                #[inline(always)]
-                fn cast_from_raw(u: PtrInner<'_, $u>) -> PtrInner<'_, $t> {
-                    // SAFETY: See previous safety comment.
-                    unsafe { cast!(u) }
-                }
-            }
-        };
-    };
-}
-
-/// Invokes `$blk` in a context in which `$src<$t>` and `$dst<$u>` implement
-/// `SizeEq`.
-///
-/// This macro emits code which implements `SizeEq`, and ensures that the impl
-/// is sound via PME.
-///
-/// # Safety
-///
-/// Inside of `$blk`, the caller must only use `$src` and `$dst` as `$src<$t>`
-/// and `$dst<$u>`. The caller must not use `$src` or `$dst` to wrap any other
-/// types.
-macro_rules! unsafe_with_size_eq {
-    (<$src:ident<$t:ident>, $dst:ident<$u:ident>> $blk:expr) => {{
-        crate::util::macros::__unsafe();
-
-        use crate::{KnownLayout, pointer::PtrInner};
-
-        #[repr(transparent)]
-        struct $src<T: ?Sized>(T);
-
-        #[repr(transparent)]
-        struct $dst<U: ?Sized>(U);
-
-        // SAFETY: Since `$src<T>` is a `#[repr(transparent)]` wrapper around
-        // `T`, it has the same bit validity and size as `T`.
-        unsafe_impl_for_transparent_wrapper!(T: ?Sized => $src<T>);
-
-        // SAFETY: Since `$dst<T>` is a `#[repr(transparent)]` wrapper around
-        // `T`, it has the same bit validity and size as `T`.
-        unsafe_impl_for_transparent_wrapper!(T: ?Sized => $dst<T>);
-
-        // SAFETY: `$src<T>` is a `#[repr(transparent)]` wrapper around `T` with
-        // no added semantics.
-        unsafe impl<T: ?Sized> InvariantsEq<$src<T>> for T {}
-
-        // SAFETY: `$dst<T>` is a `#[repr(transparent)]` wrapper around `T` with
-        // no added semantics.
-        unsafe impl<T: ?Sized> InvariantsEq<$dst<T>> for T {}
-
-        // SAFETY: See inline for the soundness of this impl when
-        // `cast_from_raw` is actually instantiated (otherwise, PMEs may not be
-        // triggered).
-        //
-        // We manually instantiate `cast_from_raw` below to ensure that this PME
-        // can be triggered, and the caller promises not to use `$src` and
-        // `$dst` with any wrapped types other than `$t` and `$u` respectively.
-        unsafe impl<T: ?Sized, U: ?Sized> SizeEq<$src<T>> for $dst<U>
-        where
-            T: KnownLayout<PointerMetadata = usize>,
-            U: KnownLayout<PointerMetadata = usize>,
-        {
-            fn cast_from_raw(src: PtrInner<'_, $src<T>>) -> PtrInner<'_, Self> {
-                // SAFETY: `crate::layout::cast_from_raw` promises to satisfy
-                // the safety invariants of `SizeEq::cast_from_raw`, or to
-                // generate a PME. Since `$src<T>` and `$dst<U>` are
-                // `#[repr(transparent)]` wrappers around `T` and `U`
-                // respectively, a `cast_from_raw` impl which satisfies the
-                // conditions for casting from `NonNull<T>` to `NonNull<U>` also
-                // satisfies the conditions for casting from `NonNull<$src<T>>`
-                // to `NonNull<$dst<U>>`.
-
-                // SAFETY: By the preceding safety comment, this cast preserves
-                // referent size.
-                let src: PtrInner<'_, T> = unsafe { cast!(src) };
-                let dst: PtrInner<'_, U> = crate::layout::cast_from_raw(src);
-                // SAFETY: By the preceding safety comment, this cast preserves
-                // referent size.
-                unsafe { cast!(dst) }
-            }
-        }
-
-        // See safety comment on the preceding `unsafe impl` block for an
-        // explanation of why we need this block.
-        if 1 == 0 {
-            let ptr = <$t as KnownLayout>::raw_dangling();
-            #[allow(unused_unsafe)]
-            // SAFETY: This call is never executed.
-            let ptr = unsafe { crate::pointer::PtrInner::new(ptr) };
-            #[allow(unused_unsafe)]
-            // SAFETY: This call is never executed.
-            let ptr = unsafe { cast!(ptr) };
-            let _ = <$dst<$u> as SizeEq<$src<$t>>>::cast_from_raw(ptr);
-        }
-
-        impl_for_transmute_from!(T: ?Sized + TryFromBytes => TryFromBytes for $src<T>[<T>]);
-        impl_for_transmute_from!(T: ?Sized + FromBytes => FromBytes for $src<T>[<T>]);
-        impl_for_transmute_from!(T: ?Sized + FromZeros => FromZeros for $src<T>[<T>]);
-        impl_for_transmute_from!(T: ?Sized + IntoBytes => IntoBytes for $src<T>[<T>]);
-
-        impl_for_transmute_from!(U: ?Sized + TryFromBytes => TryFromBytes for $dst<U>[<U>]);
-        impl_for_transmute_from!(U: ?Sized + FromBytes => FromBytes for $dst<U>[<U>]);
-        impl_for_transmute_from!(U: ?Sized + FromZeros => FromZeros for $dst<U>[<U>]);
-        impl_for_transmute_from!(U: ?Sized + IntoBytes => IntoBytes for $dst<U>[<U>]);
-
-        // SAFETY: `$src<T>` is a `#[repr(transparent)]` wrapper around `T`, and
-        // so permits interior mutation exactly when `T` does.
-        unsafe_impl!(T: ?Sized + Immutable => Immutable for $src<T>);
-
-        // SAFETY: `$dst<T>` is a `#[repr(transparent)]` wrapper around `T`, and
-        // so permits interior mutation exactly when `T` does.
-        unsafe_impl!(T: ?Sized + Immutable => Immutable for $dst<T>);
-
-        $blk
-    }};
-}
-
 /// A no-op `unsafe fn` for use in macro expansions.
 ///
 /// Calling this function in a macro expansion ensures that the macro's caller
 /// must wrap the call in `unsafe { ... }`.
+#[inline(always)]
 pub(crate) const unsafe fn __unsafe() {}
+
+/// Extracts the contents of doc comments.
+#[allow(unused)]
+macro_rules! docstring {
+    ($(#[doc = $content:expr])*) => {
+        concat!($($content, "\n",)*)
+    }
+}
+
+/// Generate a rustdoc-style header with `$name` as the HTML ID for the 'Code
+/// Generation' section of documentation.
+#[allow(unused)]
+macro_rules! codegen_header {
+    ($level:expr, $name:expr) => {
+        concat!(
+            "
+<",
+            $level,
+            " id='method.",
+            $name,
+            ".codegen'>
+    <a class='doc-anchor' href='#method.",
+            $name,
+            ".codegen'>§</a>
+    Code Generation
+</",
+            $level,
+            ">
+"
+        )
+    };
+}
+
+/// Generates HTML tabs.
+#[rustfmt::skip]
+#[allow(unused)]
+macro_rules! tabs {
+    (
+        name = $name:expr,
+        arity = $arity:literal,
+        $([
+            $($open:ident)?
+            @index $n:literal
+            @title $title:literal
+            $(#[doc = $content:expr])*
+        ]),*
+    ) => {
+        concat!("
+<div class='codegen-tabs' style='--arity: ", $arity ,"'>", $(concat!("
+    <details name='tab-", $name,"' style='--n: ", $n ,"'", $(stringify!($open),)*">
+        <summary><h6>", $title, "</h6></summary>
+        <div>
+
+", $($content, "\n",)* "
+\
+        </div>
+    </details>"),)*
+"</div>")
+    }
+}
+
+/// Generates the HTML for a single benchmark example.
+#[allow(unused)]
+macro_rules! codegen_example {
+    (format = $format:expr, bench = $bench:expr) => {
+        tabs!(
+            name = $bench,
+            arity = 4,
+            [
+                @index 1
+                @title "Format"
+                /// ```ignore
+                #[doc = include_str!(concat!("../benches/formats/", $format, ".rs"))]
+                /// ```
+            ],
+            [
+                @index 2
+                @title "Benchmark"
+                /// ```ignore
+                #[doc = include_str!(concat!("../benches/", $bench, ".rs"))]
+                /// ```
+            ],
+            [
+                open
+                @index 3
+                @title "Assembly"
+                /// ```plain
+                #[doc = include_str!(concat!("../benches/", $bench, ".x86-64"))]
+                /// ```
+            ],
+            [
+                @index 4
+                @title "Machine Code Analysis"
+                /// ```plain
+                #[doc = include_str!(concat!("../benches/", $bench, ".x86-64.mca"))]
+                /// ```
+            ]
+        )
+    }
+}
+
+/// Generate the HTML for a suite of benchmark examples.
+#[allow(unused)]
+macro_rules! codegen_example_suite {
+    (
+        bench = $bench:expr,
+        format = $format:expr,
+        arity = $arity:literal,
+        $([
+            $($open:ident)?
+            @index $index:literal
+            @title $title:literal
+            @variant $variant:literal
+        ]),*
+    ) => {
+        tabs!(
+            name = $bench,
+            arity = $arity,
+            $([
+                $($open)*
+                @index $index
+                @title $title
+                #[doc = codegen_example!(
+                    format = concat!($format, "_", $variant),
+                    bench = concat!($bench, "_", $variant)
+                )]
+            ]),*
+        )
+    }
+}
+
+/// Generates the string for code generation preamble.
+#[allow(unused)]
+macro_rules! codegen_preamble {
+    () => {
+        docstring!(
+            ///
+            /// This abstraction is safe and cheap, but does not necessarily
+            /// have zero runtime cost. The codegen you experience in practice
+            /// will depend on optimization level, the layout of the destination
+            /// type, and what the compiler can prove about the source.
+            ///
+        )
+    }
+}
+
+/// Stub for rendering codegen documentation; used to break build dependency
+/// between benches and zerocopy when re-blessing codegen tests.
+#[allow(unused)]
+#[cfg(not(doc))]
+macro_rules! codegen_section {
+    (
+        header = $level:expr,
+        bench = $bench:expr,
+        format = $format:expr,
+        arity = $arity:literal,
+        $([
+            $($open:ident)?
+            @index $index:literal
+            @title $title:literal
+            @variant $variant:literal
+        ]),*
+    ) => {
+        ""
+    };
+    (
+        header = $level:expr,
+        bench = $bench:expr,
+        format = $format:expr,
+    ) => {
+        ""
+    };
+}
+
+/// Generates the HTML for code generation documentation.
+#[allow(unused)]
+#[cfg(doc)]
+macro_rules! codegen_section {
+    (
+        header = $level:expr,
+        bench = $bench:expr,
+        format = $format:expr,
+        arity = $arity:literal,
+        $([
+            $($open:ident)?
+            @index $index:literal
+            @title $title:literal
+            @variant $variant:literal
+        ]),*
+    ) => {
+        concat!(
+            codegen_header!($level, $bench),
+            codegen_preamble!(),
+            docstring!(
+                ///
+                /// The below examples illustrate typical codegen for
+                /// increasingly complex types:
+                ///
+            ),
+            codegen_example_suite!(
+                bench = $bench,
+                format = $format,
+                arity = $arity,
+                $([
+                    $($open)*
+                    @index $index
+                    @title $title
+                    @variant $variant
+                ]),*
+            )
+        )
+    };
+    (
+        header = $level:expr,
+        bench = $bench:expr,
+        format = $format:expr,
+    ) => {
+        concat!(
+            codegen_header!($level, $bench),
+            codegen_preamble!(),
+            codegen_example!(
+                format = $format,
+                bench = $bench
+            )
+        )
+    }
+}

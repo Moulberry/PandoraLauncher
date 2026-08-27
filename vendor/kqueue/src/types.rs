@@ -18,7 +18,7 @@ pub enum Ident {
 ///
 /// These are OS-specific, and may not all be supported on your platform. Check
 /// `kqueue(2)` for more information.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Vnode {
     /// The file was deleted

@@ -95,25 +95,51 @@ pub enum UpdateStatus {
 /// A response of the update progress signal.
 #[zvariant(signature = "dict")]
 pub struct UpdateProgress {
-    /// The number of operations that the update consists of.
     #[serde(default, with = "optional")]
-    pub n_ops: Option<u32>,
-    /// The position of the currently active operation.
+    n_ops: Option<u32>,
     #[serde(default, with = "optional")]
-    pub op: Option<u32>,
+    op: Option<u32>,
+    #[serde(default, with = "optional")]
+    progress: Option<u32>,
+    #[serde(default, with = "optional")]
+    status: Option<UpdateStatus>,
+    #[serde(default, with = "optional")]
+    error: Option<String>,
+    #[serde(default, with = "optional")]
+    error_message: Option<String>,
+}
+
+impl UpdateProgress {
+    /// The error message, sent when status is [`UpdateStatus::Failed`].
+    pub fn error_message(&self) -> Option<&str> {
+        self.error_message.as_deref()
+    }
+
+    /// The error name, sent when status is [`UpdateStatus::Failed`].
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    /// The overall status of the update.
+    pub fn status(&self) -> Option<UpdateStatus> {
+        self.status
+    }
+
     /// The progress of the currently active operation, as a number between 0
     /// and 100.
-    #[serde(default, with = "optional")]
-    pub progress: Option<u32>,
-    /// The overall status of the update.
-    #[serde(default, with = "optional")]
-    pub status: Option<UpdateStatus>,
-    /// The error name, sent when status is `UpdateStatus::Failed`.
-    #[serde(default, with = "optional")]
-    pub error: Option<String>,
-    /// The error message, sent when status is `UpdateStatus::Failed`.
-    #[serde(default, with = "optional")]
-    pub error_message: Option<String>,
+    pub fn progress(&self) -> Option<u32> {
+        self.progress
+    }
+
+    /// The position of the currently active operation.
+    pub fn op(&self) -> Option<u32> {
+        self.op
+    }
+
+    /// The number of operations that the update consists of.
+    pub fn n_ops(&self) -> Option<u32> {
+        self.n_ops
+    }
 }
 
 /// The interface exposes some interactions with Flatpak on the host to the

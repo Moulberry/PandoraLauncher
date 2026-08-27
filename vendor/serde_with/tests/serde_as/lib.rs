@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::{
     formats::{CommaSeparator, Flexible, Strict},
     serde_as, BoolFromInt, BytesOrString, DisplayFromStr, IfIsHumanReadable, Map,
-    NoneAsEmptyString, OneOrMany, Same, Seq, StringWithSeparator,
+    NoneAsEmptyString, NoneAsZero, OneOrMany, Same, Seq, StringWithSeparator,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -1641,4 +1641,49 @@ fn test_boolfromint() {
         r#""""#,
         expect![[r#"invalid type: string "", expected an integer at line 1 column 2"#]],
     );
+}
+
+#[test]
+fn test_none_as_zero() {
+    use core::num::{NonZeroI16, NonZeroI64, NonZeroU32, NonZeroU8, NonZeroUsize};
+
+    #[serde_as]
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct SU8(#[serde_as(as = "NoneAsZero")] Option<NonZeroU8>);
+
+    is_equal(SU8(None), expect![[r#"0"#]]);
+    is_equal(SU8(NonZeroU8::new(1)), expect![[r#"1"#]]);
+    is_equal(SU8(NonZeroU8::new(255)), expect![[r#"255"#]]);
+
+    #[serde_as]
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct SU32(#[serde_as(as = "NoneAsZero")] Option<NonZeroU32>);
+
+    is_equal(SU32(None), expect![[r#"0"#]]);
+    is_equal(SU32(NonZeroU32::new(42)), expect![[r#"42"#]]);
+
+    #[serde_as]
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct SI16(#[serde_as(as = "NoneAsZero")] Option<NonZeroI16>);
+
+    is_equal(SI16(None), expect![[r#"0"#]]);
+    is_equal(SI16(NonZeroI16::new(-7)), expect![[r#"-7"#]]);
+    is_equal(SI16(NonZeroI16::new(7)), expect![[r#"7"#]]);
+
+    #[serde_as]
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct SI64(#[serde_as(as = "NoneAsZero")] Option<NonZeroI64>);
+
+    is_equal(SI64(None), expect![[r#"0"#]]);
+    is_equal(
+        SI64(NonZeroI64::new(-9_000_000_000)),
+        expect![[r#"-9000000000"#]],
+    );
+
+    #[serde_as]
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
+    struct SUsize(#[serde_as(as = "NoneAsZero")] Option<NonZeroUsize>);
+
+    is_equal(SUsize(None), expect![[r#"0"#]]);
+    is_equal(SUsize(NonZeroUsize::new(3)), expect![[r#"3"#]]);
 }

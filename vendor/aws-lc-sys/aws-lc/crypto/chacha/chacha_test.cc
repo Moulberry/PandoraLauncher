@@ -345,7 +345,7 @@ static void check_abi(uint8_t *out, const uint8_t *in, size_t in_len,
     CHECK_ABI(ChaCha20_ctr32_neon, out, in, in_len, key, counter);
   }
 #endif
-#if defined(CHACHA20_ASM_AVX2) && !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
+#if defined(CHACHA20_ASM_AVX2) && !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_AVX)
   if (ChaCha20_ctr32_avx2_capable(in_len)) {
     CHECK_ABI(ChaCha20_ctr32_avx2, out, in, in_len, key, counter);
   }

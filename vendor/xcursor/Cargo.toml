@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "xcursor"
-version = "0.3.10"
+version = "0.3.11"
 authors = ["Samuele Esposito"]
 build = false
 include = [

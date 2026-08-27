@@ -434,17 +434,28 @@ BSSL_NAMESPACE_END
 
 using namespace bssl;
 
-X509 *SSL_get_peer_certificate(const SSL *ssl) {
+X509 *SSL_get0_peer_certificate(const SSL *ssl) {
   check_ssl_x509_method(ssl);
   if (ssl == NULL) {
     return NULL;
   }
   SSL_SESSION *session = SSL_get_session(ssl);
-  if (session == NULL || session->x509_peer == NULL) {
+  if (session == NULL) {
     return NULL;
   }
-  X509_up_ref(session->x509_peer);
   return session->x509_peer;
+}
+
+X509 *SSL_get1_peer_certificate(const SSL *ssl) {
+  X509 *cert = SSL_get0_peer_certificate(ssl);
+  if (cert != NULL) {
+    X509_up_ref(cert);
+  }
+  return cert;
+}
+
+X509 *SSL_get_peer_certificate(const SSL *ssl) {
+  return SSL_get1_peer_certificate(ssl);
 }
 
 STACK_OF(X509) *SSL_get_peer_cert_chain(const SSL *ssl) {

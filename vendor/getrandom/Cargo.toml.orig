@@ -1,6 +1,6 @@
 [package]
 name = "getrandom"
-version = "0.4.1"
+version = "0.4.3"
 edition = "2024"
 rust-version = "1.85" # Sync tests.yml and README.md.
 authors = ["The Rand Project Developers"]
@@ -50,7 +50,7 @@ libc = { version = "0.2.154", default-features = false }
 
 # efi_rng
 [target.'cfg(all(target_os = "uefi", getrandom_backend = "efi_rng"))'.dependencies]
-r-efi = { version = "5.1", default-features = false }
+r-efi = { version = "6", default-features = false }
 
 # getentropy
 [target.'cfg(any(target_os = "macos", target_os = "openbsd", target_os = "vita", target_os = "emscripten"))'.dependencies]
@@ -76,20 +76,12 @@ libc = { version = "0.2.154", default-features = false }
 [target.'cfg(target_os = "vxworks")'.dependencies]
 libc = { version = "0.2.154", default-features = false }
 
-# wasi_p2_3
-[target.'cfg(all(target_arch = "wasm32", target_os = "wasi", target_env = "p2"))'.dependencies]
-wasip2 = { version = "1", default-features = false }
-
-# wasi_p2_3
-[target.'cfg(all(target_arch = "wasm32", target_os = "wasi", target_env = "p3"))'.dependencies]
-wasip3 = "0.4"
-
 # wasm_js
-[target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dependencies]
+[target.'cfg(all(target_family = "wasm", any(target_os = "unknown", target_os = "none")))'.dependencies]
 wasm-bindgen = { version = "0.2.98", default-features = false, optional = true }
-[target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none"), target_feature = "atomics"))'.dependencies]
+[target.'cfg(all(target_family = "wasm", any(target_os = "unknown", target_os = "none"), target_feature = "atomics"))'.dependencies]
 js-sys = { version = "0.3.77", default-features = false, optional = true }
-[target.'cfg(all(target_arch = "wasm32", any(target_os = "unknown", target_os = "none")))'.dev-dependencies]
+[target.'cfg(all(target_family = "wasm", any(target_os = "unknown", target_os = "none")))'.dev-dependencies]
 wasm-bindgen-test = "0.3"
 
 [lints.rust.unexpected_cfgs]

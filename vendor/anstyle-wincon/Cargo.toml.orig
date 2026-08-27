@@ -1,6 +1,6 @@
 [package]
 name = "anstyle-wincon"
-version = "3.0.10"
+version = "3.0.11"
 description = "Styling legacy Windows terminals"
 categories = ["command-line-interface"]
 keywords = ["ansi", "terminal", "color", "windows"]
@@ -28,11 +28,11 @@ pre-release-replacements = [
 anstyle = { version = "1.0.0", path = "../anstyle" }
 
 [dev-dependencies]
-lexopt = "0.3.0"
+lexopt = "0.3.1"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.60.0", features = ["Win32_System_Console", "Win32_Foundation"] }
-once_cell_polyfill = "1.56.0"
+windows-sys = { version = ">=0.60.2, <0.62", features = ["Win32_System_Console", "Win32_Foundation"] }
+once_cell_polyfill = "1.56.1"
 
 [lints]
 workspace = true

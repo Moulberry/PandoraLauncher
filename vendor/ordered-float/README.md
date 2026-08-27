@@ -12,7 +12,7 @@ the default `std` feature:
 
 ```toml
 [dependencies]
-ordered-float = { version = "4.0", default-features = false }
+ordered-float = { version = "5.0", default-features = false }
 ```
 
 If you still want to have access to the `Pow` and `Float` traits, enable the `libm` feature.

@@ -132,7 +132,7 @@ async fn drop_client_closes_idle_connections() {
     res.unwrap();
 
     // not closed yet, just idle
-    future::poll_fn(|ctx| {
+    std::future::poll_fn(|ctx| {
         assert!(Pin::new(&mut closes).poll_next(ctx).is_pending());
         Poll::Ready(())
     })
@@ -561,7 +561,7 @@ async fn client_keep_alive_when_response_before_request_body_ends() {
     });
 
     future::join(res, rx2).await.0.unwrap();
-    future::poll_fn(|ctx| {
+    std::future::poll_fn(|ctx| {
         assert!(Pin::new(&mut closes).poll_next(ctx).is_pending());
         Poll::Ready(())
     })
@@ -1255,7 +1255,7 @@ impl tower_service::Service<hyper::Uri> for MockConnector {
     type Error = std::io::Error;
     type Future = std::pin::Pin<
         Box<
-            dyn futures_util::Future<Output = std::result::Result<Self::Response, Self::Error>>
+            dyn std::future::Future<Output = std::result::Result<Self::Response, Self::Error>>
                 + Send,
         >,
     >;

@@ -1,8 +1,19 @@
 [package]
 name = "rangemap"
-version = "1.7.1"
+version = "1.8.0"
 authors = ["Jeff Parsons <jeff@parsons.io>"]
 edition = "2018"
+# The version 1 resolver unifies dev-dependency features into the library
+# build, so our unconditional `ordered-float` dev-dependency would enable
+# that crate's `std` feature here even though our users don't get it. Our
+# own builds would then see a different feature set from theirs, which is
+# exactly how `no_std` breakage goes unnoticed.
+#
+# Note that this only affects builds where this crate is the workspace
+# root, i.e. our own local and CI builds. It doesn't change anything for
+# crates that depend on us: they resolve features using whichever resolver
+# their own workspace selects.
+resolver = "2"
 license = "MIT/Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/jeffparsons/rangemap"
@@ -24,7 +35,8 @@ exclude = [
 
 [dependencies]
 quickcheck = { version = "1.0.3", optional = true }
-serde = { version = "1", optional = true }
+serde = { version = "1", optional = true, default-features = false }
+ordered-float = { version = "5.3.0", optional = true, default-features = false }
 
 [dev-dependencies]
 permutator = "0.4"
@@ -39,9 +51,10 @@ rustc_version = "0.4"
 serde_json = "1"
 proptest = "1.4"
 test-strategy = "0.4"
+ordered-float = { version = "5.3.0", features = ["proptest"] }
 
 [features]
-serde1 = ["serde"]
+serde1 = ["serde", "ordered-float?/serde"]
 # So we can run doc tests from "README.md".
 nightly = []
 # Enables `RangeMap::new()`, `RangeInclusiveMap::new()`, `RangeSet::new()`,
@@ -50,6 +63,7 @@ nightly = []
 # but is soon to be stabilized: <https://github.com/rust-lang/rust/issues/71835>
 const_fn = []
 quickcheck = ["dep:quickcheck"]
+ordered-float5 = ["dep:ordered-float"]
 
 [[bench]]
 name = "benches"

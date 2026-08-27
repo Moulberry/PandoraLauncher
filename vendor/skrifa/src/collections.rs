@@ -104,6 +104,28 @@ where
             Storage::Heap(vec) => vec.truncate(len),
         }
     }
+
+    /// Resizes the vector to `len` elements, filling with `value`.
+    /// Reuses existing heap allocation when possible.
+    pub fn resize_and_fill(&mut self, len: usize, value: T) {
+        match &mut self.0 {
+            Storage::Inline(buf, inline_len) => {
+                if len <= N {
+                    buf[..len].fill(value);
+                    *inline_len = len;
+                } else {
+                    // Need to spill to heap
+                    let mut vec = Vec::with_capacity(len);
+                    vec.resize(len, value);
+                    self.0 = Storage::Heap(vec);
+                }
+            }
+            Storage::Heap(vec) => {
+                vec.clear();
+                vec.resize(len, value);
+            }
+        }
+    }
 }
 
 impl<T, const N: usize> SmallVec<T, N> {

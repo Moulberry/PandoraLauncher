@@ -1,10 +1,19 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use event_listener::Event;
 use tracing::{debug, instrument, trace};
 
 use crate::{
-    Executor, Message, OwnedMatchRule, Task, async_lock::Mutex, connection::MsgBroadcaster,
+    Executor, Message, OwnedMatchRule, Task,
+    async_lock::Mutex,
+    connection::{MsgBroadcaster, PendingMethodCalls},
+    message::Type,
 };
 
 use super::socket::ReadHalf;
@@ -13,29 +22,32 @@ use super::socket::ReadHalf;
 pub(crate) struct SocketReader {
     socket: Box<dyn ReadHalf>,
     senders: Arc<Mutex<HashMap<Option<OwnedMatchRule>, MsgBroadcaster>>>,
+    pending_method_calls: PendingMethodCalls,
     already_received_bytes: Vec<u8>,
     #[cfg(unix)]
     already_received_fds: Vec<std::os::fd::OwnedFd>,
     prev_seq: u64,
-    activity_event: Arc<Event>,
+    socket_status: Arc<SocketStatus>,
 }
 
 impl SocketReader {
     pub fn new(
         socket: Box<dyn ReadHalf>,
         senders: Arc<Mutex<HashMap<Option<OwnedMatchRule>, MsgBroadcaster>>>,
+        pending_method_calls: PendingMethodCalls,
         already_received_bytes: Vec<u8>,
         #[cfg(unix)] already_received_fds: Vec<std::os::fd::OwnedFd>,
-        activity_event: Arc<Event>,
+        socket_status: Arc<SocketStatus>,
     ) -> Self {
         Self {
             socket,
             senders,
+            pending_method_calls,
             already_received_bytes,
             #[cfg(unix)]
             already_received_fds,
             prev_seq: 0,
-            activity_event,
+            socket_status,
         }
     }
 
@@ -50,8 +62,16 @@ impl SocketReader {
             trace!("Waiting for message on the socket..");
             let msg = self.read_socket().await;
             match &msg {
-                Ok(msg) => trace!("Message received on the socket: {:?}", msg),
-                Err(e) => trace!("Error reading from the socket: {:?}", e),
+                Ok(msg) => {
+                    trace!("Message received on the socket: {:?}", msg);
+                    if matches!(msg.message_type(), Type::MethodReturn | Type::Error) {
+                        self.dispatch_pending_reply(msg);
+                    }
+                }
+                Err(e) => {
+                    trace!("Error reading from the socket: {:?}", e);
+                    self.fail_pending_method_calls(e.clone());
+                }
             };
 
             let mut senders = self.senders.lock().await;
@@ -90,6 +110,8 @@ impl SocketReader {
 
             if msg.is_err() {
                 senders.clear();
+                self.socket_status.closed.store(true, Ordering::Release);
+                self.socket_status.closed_event.notify(usize::MAX);
                 trace!("Socket reading task stopped");
 
                 return;
@@ -97,9 +119,33 @@ impl SocketReader {
         }
     }
 
+    fn dispatch_pending_reply(&self, msg: &Message) {
+        debug_assert!(matches!(
+            msg.message_type(),
+            Type::MethodReturn | Type::Error
+        ));
+
+        let reply_serial = match msg.header().reply_serial() {
+            Some(serial) => serial,
+            None => return,
+        };
+
+        let result = match msg.message_type() {
+            Type::MethodReturn => Ok(msg.clone()),
+            Type::Error => Err(msg.clone().into()),
+            Type::MethodCall | Type::Signal => return,
+        };
+        self.pending_method_calls
+            .complete_call(reply_serial, msg.recv_position(), result);
+    }
+
+    fn fail_pending_method_calls(&self, error: crate::Error) {
+        self.pending_method_calls.fail_all(error);
+    }
+
     #[instrument(skip(self), level = "trace")]
     async fn read_socket(&mut self) -> crate::Result<Message> {
-        self.activity_event.notify(usize::MAX);
+        self.socket_status.activity_event.notify(usize::MAX);
         let seq = self.prev_seq + 1;
         let msg = self
             .socket
@@ -114,4 +160,12 @@ impl SocketReader {
 
         Ok(msg)
     }
+}
+
+/// Socket-related state shared between [`super::ConnectionInner`] and the socket reader task.
+#[derive(Debug)]
+pub(super) struct SocketStatus {
+    pub activity_event: Event,
+    pub closed: AtomicBool,
+    pub closed_event: Event,
 }

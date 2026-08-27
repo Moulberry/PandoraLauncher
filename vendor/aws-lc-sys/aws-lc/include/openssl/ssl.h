@@ -1810,9 +1810,20 @@ OPENSSL_EXPORT int SSL_in_init(const SSL *ssl);
 // See also |SSL_MODE_ENABLE_FALSE_START|.
 OPENSSL_EXPORT int SSL_in_false_start(const SSL *ssl);
 
-// SSL_get_peer_certificate returns the peer's leaf certificate or NULL if the
+// SSL_get0_peer_certificate returns the peer's leaf certificate or NULL if the
+// peer did not use certificates. The caller does not own the result and must
+// not call |X509_free| on it. The returned certificate is valid for as long as
+// the associated |SSL_SESSION| is.
+OPENSSL_EXPORT X509 *SSL_get0_peer_certificate(const SSL *ssl);
+
+// SSL_get1_peer_certificate returns the peer's leaf certificate or NULL if the
 // peer did not use certificates. The caller must call |X509_free| on the
 // result to release it.
+OPENSSL_EXPORT X509 *SSL_get1_peer_certificate(const SSL *ssl);
+
+// SSL_get_peer_certificate returns the peer's leaf certificate or NULL if the
+// peer did not use certificates. The caller must call |X509_free| on the
+// result to release it. This is an alias for |SSL_get1_peer_certificate|.
 OPENSSL_EXPORT X509 *SSL_get_peer_certificate(const SSL *ssl);
 
 // SSL_get_peer_cert_chain returns the peer's certificate chain or NULL if

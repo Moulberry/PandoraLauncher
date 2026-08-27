@@ -3,34 +3,59 @@
 # When uploading crates to the registry Cargo will automatically
 # "normalize" Cargo.toml files for maximal compatibility
 # with all versions of Cargo and also rewrite `path` dependencies
-# to registry (e.g., crates.io) dependencies
+# to registry (e.g., crates.io) dependencies.
 #
-# If you believe there's an error in this file please file an
-# issue against the rust-lang/cargo repository. If you're
-# editing this file be aware that the upstream Cargo.toml
-# will likely look very different (and much more reasonable)
+# If you are reading this file be aware that the original Cargo.toml
+# will likely look very different (and much more reasonable).
+# See Cargo.toml.orig for the original contents.
 
 [package]
 name = "encoding_rs_io"
-version = "0.1.7"
+version = "0.1.8"
 authors = ["Andrew Gallant <jamslam@gmail.com>"]
-exclude = ["/ci/*", "/.travis.yml", "/appveyor.yml"]
+build = false
+exclude = [
+    "/ci/*",
+    "/.travis.yml",
+    "/appveyor.yml",
+]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Streaming transcoding for encoding_rs"
 documentation = "https://docs.rs/encoding_rs_io"
 readme = "README.md"
-keywords = ["encoding", "transcoding", "stream", "io", "read"]
-categories = ["text-processing", "encoding", "web-programming", "email"]
+keywords = [
+    "encoding",
+    "transcoding",
+    "stream",
+    "io",
+    "read",
+]
+categories = [
+    "text-processing",
+    "encoding",
+    "web-programming",
+    "email",
+]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/BurntSushi/encoding_rs_io"
-[profile.release]
-debug = true
 
-[lib]
-bench = false
-[dependencies.encoding_rs]
-version = "0.8"
 [badges.appveyor]
 repository = "BurntSushi/encoding_rs_io"
 
 [badges.travis-ci]
 repository = "BurntSushi/encoding_rs_io"
+
+[lib]
+name = "encoding_rs_io"
+path = "src/lib.rs"
+bench = false
+
+[dependencies.encoding_rs]
+version = "0.8"
+
+[profile.release]
+debug = 2

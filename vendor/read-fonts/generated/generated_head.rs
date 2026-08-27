@@ -692,102 +692,13 @@ impl<'a> From<Flags> for FieldType<'a> {
     }
 }
 
-/// The [head](https://docs.microsoft.com/en-us/typography/opentype/spec/head)
-/// (font header) table.
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct HeadMarker {}
-
-impl HeadMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + MajorMinor::RAW_BYTE_LEN
-    }
-
-    pub fn font_revision_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + Fixed::RAW_BYTE_LEN
-    }
-
-    pub fn checksum_adjustment_byte_range(&self) -> Range<usize> {
-        let start = self.font_revision_byte_range().end;
-        start..start + u32::RAW_BYTE_LEN
-    }
-
-    pub fn magic_number_byte_range(&self) -> Range<usize> {
-        let start = self.checksum_adjustment_byte_range().end;
-        start..start + u32::RAW_BYTE_LEN
-    }
-
-    pub fn flags_byte_range(&self) -> Range<usize> {
-        let start = self.magic_number_byte_range().end;
-        start..start + Flags::RAW_BYTE_LEN
-    }
-
-    pub fn units_per_em_byte_range(&self) -> Range<usize> {
-        let start = self.flags_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn created_byte_range(&self) -> Range<usize> {
-        let start = self.units_per_em_byte_range().end;
-        start..start + LongDateTime::RAW_BYTE_LEN
-    }
-
-    pub fn modified_byte_range(&self) -> Range<usize> {
-        let start = self.created_byte_range().end;
-        start..start + LongDateTime::RAW_BYTE_LEN
-    }
-
-    pub fn x_min_byte_range(&self) -> Range<usize> {
-        let start = self.modified_byte_range().end;
-        start..start + i16::RAW_BYTE_LEN
-    }
-
-    pub fn y_min_byte_range(&self) -> Range<usize> {
-        let start = self.x_min_byte_range().end;
-        start..start + i16::RAW_BYTE_LEN
-    }
-
-    pub fn x_max_byte_range(&self) -> Range<usize> {
-        let start = self.y_min_byte_range().end;
-        start..start + i16::RAW_BYTE_LEN
-    }
-
-    pub fn y_max_byte_range(&self) -> Range<usize> {
-        let start = self.x_max_byte_range().end;
-        start..start + i16::RAW_BYTE_LEN
-    }
-
-    pub fn mac_style_byte_range(&self) -> Range<usize> {
-        let start = self.y_max_byte_range().end;
-        start..start + MacStyle::RAW_BYTE_LEN
-    }
-
-    pub fn lowest_rec_ppem_byte_range(&self) -> Range<usize> {
-        let start = self.mac_style_byte_range().end;
-        start..start + u16::RAW_BYTE_LEN
-    }
-
-    pub fn font_direction_hint_byte_range(&self) -> Range<usize> {
-        let start = self.lowest_rec_ppem_byte_range().end;
-        start..start + i16::RAW_BYTE_LEN
-    }
-
-    pub fn index_to_loc_format_byte_range(&self) -> Range<usize> {
-        let start = self.font_direction_hint_byte_range().end;
-        start..start + i16::RAW_BYTE_LEN
-    }
-
-    pub fn glyph_data_format_byte_range(&self) -> Range<usize> {
-        let start = self.index_to_loc_format_byte_range().end;
-        start..start + i16::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for HeadMarker {
+impl<'a> MinByteRange<'a> for Head<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.glyph_data_format_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
@@ -798,44 +709,52 @@ impl TopLevelTable for Head<'_> {
 
 impl<'a> FontRead<'a> for Head<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<MajorMinor>();
-        cursor.advance::<Fixed>();
-        cursor.advance::<u32>();
-        cursor.advance::<u32>();
-        cursor.advance::<Flags>();
-        cursor.advance::<u16>();
-        cursor.advance::<LongDateTime>();
-        cursor.advance::<LongDateTime>();
-        cursor.advance::<i16>();
-        cursor.advance::<i16>();
-        cursor.advance::<i16>();
-        cursor.advance::<i16>();
-        cursor.advance::<MacStyle>();
-        cursor.advance::<u16>();
-        cursor.advance::<i16>();
-        cursor.advance::<i16>();
-        cursor.advance::<i16>();
-        cursor.finish(HeadMarker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [head](https://docs.microsoft.com/en-us/typography/opentype/spec/head)
 /// (font header) table.
-pub type Head<'a> = TableRef<'a, HeadMarker>;
+#[derive(Clone)]
+pub struct Head<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Head<'a> {
+    pub const MIN_SIZE: usize = (MajorMinor::RAW_BYTE_LEN
+        + Fixed::RAW_BYTE_LEN
+        + u32::RAW_BYTE_LEN
+        + u32::RAW_BYTE_LEN
+        + Flags::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + LongDateTime::RAW_BYTE_LEN
+        + LongDateTime::RAW_BYTE_LEN
+        + i16::RAW_BYTE_LEN
+        + i16::RAW_BYTE_LEN
+        + i16::RAW_BYTE_LEN
+        + i16::RAW_BYTE_LEN
+        + MacStyle::RAW_BYTE_LEN
+        + u16::RAW_BYTE_LEN
+        + i16::RAW_BYTE_LEN
+        + i16::RAW_BYTE_LEN
+        + i16::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Version number of the font header table, set to (1, 0)
     pub fn version(&self) -> MajorMinor {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Set by font manufacturer.
     pub fn font_revision(&self) -> Fixed {
-        let range = self.shape.font_revision_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.font_revision_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// To compute: set it to 0, sum the entire font as uint32, then
@@ -844,20 +763,20 @@ impl<'a> Head<'a> {
     /// invalidated by changes to the file structure and font table
     /// directory, and must be ignored.
     pub fn checksum_adjustment(&self) -> u32 {
-        let range = self.shape.checksum_adjustment_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.checksum_adjustment_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Set to 0x5F0F3CF5.
     pub fn magic_number(&self) -> u32 {
-        let range = self.shape.magic_number_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.magic_number_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// See the flags enum.
     pub fn flags(&self) -> Flags {
-        let range = self.shape.flags_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.flags_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Set to a value from 16 to 16384. Any value in this range is
@@ -865,76 +784,188 @@ impl<'a> Head<'a> {
     /// recommended as this allows performance optimizations in some
     /// rasterizers.
     pub fn units_per_em(&self) -> u16 {
-        let range = self.shape.units_per_em_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.units_per_em_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of seconds since 12:00 midnight that started January 1st
     /// 1904 in GMT/UTC time zone.
     pub fn created(&self) -> LongDateTime {
-        let range = self.shape.created_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.created_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Number of seconds since 12:00 midnight that started January 1st
     /// 1904 in GMT/UTC time zone.
     pub fn modified(&self) -> LongDateTime {
-        let range = self.shape.modified_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.modified_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Minimum x coordinate across all glyph bounding boxes.
     pub fn x_min(&self) -> i16 {
-        let range = self.shape.x_min_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.x_min_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Minimum y coordinate across all glyph bounding boxes.
     pub fn y_min(&self) -> i16 {
-        let range = self.shape.y_min_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.y_min_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Maximum x coordinate across all glyph bounding boxes.
     pub fn x_max(&self) -> i16 {
-        let range = self.shape.x_max_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.x_max_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Maximum y coordinate across all glyph bounding boxes.
     pub fn y_max(&self) -> i16 {
-        let range = self.shape.y_max_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.y_max_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Bits identifying the font's style; see [MacStyle]
     pub fn mac_style(&self) -> MacStyle {
-        let range = self.shape.mac_style_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.mac_style_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Smallest readable size in pixels.
     pub fn lowest_rec_ppem(&self) -> u16 {
-        let range = self.shape.lowest_rec_ppem_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lowest_rec_ppem_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Deprecated (Set to 2).
     pub fn font_direction_hint(&self) -> i16 {
-        let range = self.shape.font_direction_hint_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.font_direction_hint_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// 0 for short offsets (Offset16), 1 for long (Offset32).
     pub fn index_to_loc_format(&self) -> i16 {
-        let range = self.shape.index_to_loc_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.index_to_loc_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// 0 for current format.
     pub fn glyph_data_format(&self) -> i16 {
-        let range = self.shape.glyph_data_format_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.glyph_data_format_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + MajorMinor::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn font_revision_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + Fixed::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn checksum_adjustment_byte_range(&self) -> Range<usize> {
+        let start = self.font_revision_byte_range().end;
+        let end = start + u32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn magic_number_byte_range(&self) -> Range<usize> {
+        let start = self.checksum_adjustment_byte_range().end;
+        let end = start + u32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn flags_byte_range(&self) -> Range<usize> {
+        let start = self.magic_number_byte_range().end;
+        let end = start + Flags::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn units_per_em_byte_range(&self) -> Range<usize> {
+        let start = self.flags_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn created_byte_range(&self) -> Range<usize> {
+        let start = self.units_per_em_byte_range().end;
+        let end = start + LongDateTime::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn modified_byte_range(&self) -> Range<usize> {
+        let start = self.created_byte_range().end;
+        let end = start + LongDateTime::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn x_min_byte_range(&self) -> Range<usize> {
+        let start = self.modified_byte_range().end;
+        let end = start + i16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn y_min_byte_range(&self) -> Range<usize> {
+        let start = self.x_min_byte_range().end;
+        let end = start + i16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn x_max_byte_range(&self) -> Range<usize> {
+        let start = self.y_min_byte_range().end;
+        let end = start + i16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn y_max_byte_range(&self) -> Range<usize> {
+        let start = self.x_max_byte_range().end;
+        let end = start + i16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn mac_style_byte_range(&self) -> Range<usize> {
+        let start = self.y_max_byte_range().end;
+        let end = start + MacStyle::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lowest_rec_ppem_byte_range(&self) -> Range<usize> {
+        let start = self.mac_style_byte_range().end;
+        let end = start + u16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn font_direction_hint_byte_range(&self) -> Range<usize> {
+        let start = self.lowest_rec_ppem_byte_range().end;
+        let end = start + i16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn index_to_loc_format_byte_range(&self) -> Range<usize> {
+        let start = self.font_direction_hint_byte_range().end;
+        let end = start + i16::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn glyph_data_format_byte_range(&self) -> Range<usize> {
+        let start = self.index_to_loc_format_byte_range().end;
+        let end = start + i16::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Head::MIN_SIZE));
+
+impl Default for Head<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 

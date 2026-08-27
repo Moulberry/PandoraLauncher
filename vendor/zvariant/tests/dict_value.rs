@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "gvariant", allow(deprecated))]
+
 use std::collections::{BTreeMap, HashMap};
 
 use endi::NATIVE_ENDIAN;
@@ -113,6 +115,32 @@ fn dict_value() {
         assert_eq!(map.len(), 0);
     }
     let ctxt = Context::new_dbus(NATIVE_ENDIAN, 0);
+
+    // Dict<u32, u8>
+    let mut map: HashMap<u32, u8> = HashMap::new();
+    map.insert(1, 2);
+    let encoded = to_bytes(ctxt, &map).unwrap();
+    assert_eq!(
+        encoded.bytes(),
+        [
+            0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02
+        ]
+    );
+    let decoded: HashMap<u32, u8> = encoded.deserialize().unwrap().0;
+    assert_eq!(decoded, map);
+
+    // GVariant format now
+    #[cfg(feature = "gvariant")]
+    {
+        let ctxt = Context::new_gvariant(NATIVE_ENDIAN, 0);
+        let encoded = to_bytes(ctxt, &map).unwrap();
+        assert_eq!(
+            encoded.bytes(),
+            [0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00]
+        );
+        let map: HashMap<u32, u8> = encoded.deserialize().unwrap().0;
+        assert_eq!(decoded, map);
+    }
 
     // Now a hand-crafted Dict Value but with a Value as value
     let mut dict = Dict::new(<&str>::SIGNATURE, Value::SIGNATURE);
@@ -341,6 +369,83 @@ fn nested_dict_value() {
             media,
         }
     );
+
+    // A different shape of nesting (https://github.com/z-galaxy/zbus/issues/1819): an outer
+    // `a{sv}` (so the value type is `v`) where one variant value is itself an `a{sv}`. Unlike
+    // `Interfaces` above, the outer value type here is `v`, so each field is wrapped in a
+    // variant on the wire.
+    use zvariant::OwnedValue;
+
+    #[derive(DeserializeDict, SerializeDict, Type, PartialEq, Debug, Default)]
+    #[zvariant(signature = "a{sv}", rename_all = "kebab-case")]
+    struct InspectBundleUpdateInfo {
+        compatible: Option<bool>,
+        version: Option<String>,
+    }
+
+    // The reporter's case: the nested `a{sv}` is modelled as a typed `*Dict` struct field.
+    #[derive(DeserializeDict, SerializeDict, Type, PartialEq, Debug, Default)]
+    #[zvariant(signature = "a{sv}", rename_all = "kebab-case")]
+    struct InspectBundleInfo {
+        manifest_hash: Option<String>,
+        update: Option<InspectBundleUpdateInfo>,
+    }
+
+    // The same, but capturing the nested variant verbatim as an `OwnedValue` field.
+    #[derive(DeserializeDict, SerializeDict, Type, PartialEq, Debug, Default)]
+    #[zvariant(signature = "a{sv}", rename_all = "kebab-case")]
+    struct InspectBundleInfoRaw {
+        manifest_hash: Option<String>,
+        update: Option<OwnedValue>,
+    }
+
+    let info = InspectBundleInfo {
+        manifest_hash: Some("abc".to_string()),
+        update: Some(InspectBundleUpdateInfo {
+            compatible: Some(true),
+            version: Some("1.0".to_string()),
+        }),
+    };
+
+    // Typed-struct field: round-trips through the derives.
+    let encoded = to_bytes(ctxt, &info).unwrap();
+    let decoded: InspectBundleInfo = encoded.deserialize().unwrap().0;
+    assert_eq!(decoded, info);
+
+    // And it decodes from data produced the way a real D-Bus peer would send it: an `a{sv}`
+    // whose `update` key holds a variant containing another `a{sv}`.
+    let mut update_props: HashMap<&str, Value<'_>> = HashMap::new();
+    update_props.insert("compatible", Value::new(true));
+    update_props.insert("version", Value::new("1.0"));
+    let mut info_props: HashMap<&str, Value<'_>> = HashMap::new();
+    info_props.insert("manifest-hash", Value::new("abc"));
+    info_props.insert("update", Value::Dict(Dict::from(update_props)));
+    let map_encoded = to_bytes(ctxt, &info_props).unwrap();
+    let from_map: InspectBundleInfo = map_encoded.deserialize().unwrap().0;
+    assert_eq!(from_map, info);
+
+    // `OwnedValue` field: must capture the nested `a{sv}` variant verbatim, without an extra
+    // variant-of-variant layer (the bug fixed in #1819).
+    let raw: InspectBundleInfoRaw = map_encoded.deserialize().unwrap().0;
+    assert_eq!(raw.manifest_hash.as_deref(), Some("abc"));
+    let update = raw.update.as_ref().unwrap();
+    assert_eq!(update.value_signature(), "a{sv}");
+    let update_dict = update.downcast_ref::<&Dict<'_, '_>>().unwrap();
+    assert_eq!(
+        update_dict
+            .get::<&str, bool>(&"compatible")
+            .unwrap()
+            .unwrap(),
+        true
+    );
+
+    // Re-serializing the `OwnedValue` field must not double-wrap it: the bytes still read back
+    // both as the same raw struct and as the typed-struct view.
+    let reencoded = to_bytes(ctxt, &raw).unwrap();
+    let raw_again: InspectBundleInfoRaw = reencoded.deserialize().unwrap().0;
+    assert_eq!(raw_again, raw);
+    let typed_again: InspectBundleInfo = reencoded.deserialize().unwrap().0;
+    assert_eq!(typed_again, info);
 }
 
 #[test]

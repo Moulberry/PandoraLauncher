@@ -31,7 +31,9 @@
 //! )?;
 //! ```
 
-use std::{collections::HashMap, os::fd::OwnedFd};
+#[cfg(feature = "pipewire")]
+use std::collections::HashMap;
+use std::os::fd::OwnedFd;
 
 use serde::Serialize;
 use zbus::zvariant::{self, Type, as_value};

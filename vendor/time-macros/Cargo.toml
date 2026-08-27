@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.88.0"
 name = "time-macros"
-version = "0.2.27"
+version = "0.2.32"
 authors = [
     "Jacob Pratt <open-source@jhpratt.dev>",
     "Time contributors",
@@ -56,10 +56,10 @@ path = "src/lib.rs"
 proc-macro = true
 
 [dependencies.num-conv]
-version = "0.2.0"
+version = "0.2.2"
 
 [dependencies.time-core]
-version = "=0.1.8"
+version = "=0.1.9"
 
 [lints.clippy]
 alloc-instead-of-core = "deny"
@@ -71,6 +71,7 @@ get-unwrap = "warn"
 manual-let-else = "warn"
 missing-docs-in-private-items = "warn"
 missing-enforced-import-renames = "warn"
+missing-panics-doc = "warn"
 obfuscated-if-else = "warn"
 print-stdout = "warn"
 semicolon-outside-block = "warn"

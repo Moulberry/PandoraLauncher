@@ -156,8 +156,8 @@
         not assume that the name is a reflection of an underlying DRM
         connector, X11 connection, etc.
 
-        If the compositor implements the xdg-output protocol and this head is
-        enabled, the xdg_output.name event must report the same name.
+        If this head matches a wl_output, the wl_output.name event must report
+        the same name.
 
         The name event is sent after a wlr_output_head object is created. This
         event is only sent once per object, and the name does not change over
@@ -176,8 +176,8 @@
         the make, model, serial of the underlying DRM connector or the display
         name of the underlying X11 connection, etc.
 
-        If the compositor implements xdg-output and this head is enabled,
-        the xdg_output.description must report the same description.
+        If this head matches a wl_output, the wl_output.description event must
+        report the same name.
 
         The description event is sent after a wlr_output_head object is created.
         This event is only sent once per object, and the description does not
@@ -191,6 +191,10 @@
         This event describes the physical size of the head. This event is only
         sent if the head has a physical size (e.g. is not a projector or a
         virtual device).
+
+        The physical size event is sent after a wlr_output_head object is created. This
+        event is only sent once per object, and the physical size does not change over
+        the lifetime of the wlr_output_head object.
       </description>
       <arg name="width" type="int" summary="width in millimeters of the output"/>
       <arg name="height" type="int" summary="height in millimeters of the output"/>
@@ -264,9 +268,6 @@
       <description summary="head manufacturer">
         This event describes the manufacturer of the head.
 
-        This must report the same make as the wl_output interface does in its
-        geometry event.
-
         Together with the model and serial_number events the purpose is to
         allow clients to recognize heads from previous sessions and for example
         load head-specific configurations back.
@@ -278,6 +279,10 @@
         identify the head by available information from other events but should
         be aware that there is an increased risk of false positives.
 
+        If sent, the make event is sent after a wlr_output_head object is
+        created and only sent once per object. The make does not change over
+        the lifetime of the wlr_output_head object.
+
         It is not recommended to display the make string in UI to users. For
         that the string provided by the description event should be preferred.
       </description>
@@ -287,9 +292,6 @@
     <event name="model" since="2">
       <description summary="head model">
         This event describes the model of the head.
-
-        This must report the same model as the wl_output interface does in its
-        geometry event.
 
         Together with the make and serial_number events the purpose is to
         allow clients to recognize heads from previous sessions and for example
@@ -301,6 +303,10 @@
         setup, for example in a virtual session. Clients can still try to
         identify the head by available information from other events but should
         be aware that there is an increased risk of false positives.
+
+        If sent, the model event is sent after a wlr_output_head object is
+        created and only sent once per object. The model does not change over
+        the lifetime of the wlr_output_head object.
 
         It is not recommended to display the model string in UI to users. For
         that the string provided by the description event should be preferred.
@@ -322,6 +328,10 @@
         in the current setup. Clients can still try to identify the head by
         available information from other events but should be aware that there
         is an increased risk of false positives.
+
+        If sent, the serial number event is sent after a wlr_output_head object
+        is created and only sent once per object. The serial number does not
+        change over the lifetime of the wlr_output_head object.
 
         It is not recommended to display the serial_number string in UI to
         users. For that the string provided by the description event should be

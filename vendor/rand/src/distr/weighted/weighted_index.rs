@@ -7,9 +7,9 @@
 // except according to those terms.
 
 use super::{Error, Weight};
-use crate::distr::uniform::{SampleBorrow, SampleUniform, UniformSampler};
-use crate::distr::Distribution;
 use crate::Rng;
+use crate::distr::Distribution;
+use crate::distr::uniform::{SampleBorrow, SampleUniform, UniformSampler};
 
 // Note that this whole module is only imported if feature="alloc" is enabled.
 use alloc::vec::Vec;
@@ -47,7 +47,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Sampling from `WeightedIndex` will result in a single call to
 /// `Uniform<X>::sample` (method of the [`Distribution`] trait), which typically
-/// will request a single value from the underlying [`RngCore`], though the
+/// will request a single value from the underlying [`Rng`], though the
 /// exact number depends on the implementation of `Uniform<X>::sample`.
 ///
 /// # Example
@@ -74,7 +74,7 @@ use serde::{Deserialize, Serialize};
 /// ```
 ///
 /// [`Uniform<X>`]: crate::distr::Uniform
-/// [`RngCore`]: crate::RngCore
+/// [`Rng`]: crate::Rng
 /// [`rand_distr::weighted`]: https://docs.rs/rand_distr/latest/rand_distr/weighted/index.html
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -370,15 +370,16 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::RngExt;
 
     #[cfg(feature = "serde")]
     #[test]
     fn test_weightedindex_serde() {
         let weighted_index = WeightedIndex::new([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).unwrap();
 
-        let ser_weighted_index = bincode::serialize(&weighted_index).unwrap();
+        let ser_weighted_index = postcard::to_allocvec(&weighted_index).unwrap();
         let de_weighted_index: WeightedIndex<i32> =
-            bincode::deserialize(&ser_weighted_index).unwrap();
+            postcard::from_bytes(&ser_weighted_index).unwrap();
 
         assert_eq!(
             de_weighted_index.cumulative_weights,

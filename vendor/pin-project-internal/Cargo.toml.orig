@@ -1,8 +1,9 @@
 [package]
 name = "pin-project-internal"
-version = "1.1.10" #publish:version
+version = "1.1.13" #publish:version
 edition = "2021"
-rust-version = "1.56" # For syn
+# NB: Sync with rust-version field in other Cargo.toml files, msrv badge in README.md, and test job in .github/workflows/ci.yml
+rust-version = "1.71" # For syn
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/taiki-e/pin-project"
 keywords = ["pin", "macros", "attribute"]

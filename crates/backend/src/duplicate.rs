@@ -98,6 +98,15 @@ fn duplicate_with_content_library(
             let Ok(relative) = path.strip_prefix(&from) else {
                 return Err(Error::new(ErrorKind::Other, format!("{path:?} is not a child of {from:?}")));
             };
+            #[cfg(windows)]
+            if let Ok(target) = junction::get_target(&path) {
+                if let Ok(internal) = target.strip_prefix(&from) {
+                    internal_junctions.push((relative.to_path_buf(), internal.to_path_buf()));
+                } else {
+                    external_junctions.push((relative.to_path_buf(), target));
+                }
+                continue;
+            }
             if file_type.is_symlink() {
                 let target = fs::read_link(&path)?;
                 if let Ok(internal) = target.strip_prefix(&from) {
@@ -108,16 +117,6 @@ fn duplicate_with_content_library(
             } else if file_type.is_file() {
                 files.push((relative.to_path_buf(), path));
             } else if file_type.is_dir() {
-                #[cfg(windows)]
-                if let Ok(target) = junction::get_target(&path) {
-                    if let Ok(internal) = target.strip_prefix(&from) {
-                        internal_junctions.push((relative.to_path_buf(), internal.to_path_buf()));
-                    } else {
-                        external_junctions.push((relative.to_path_buf(), target));
-                    }
-                    continue;
-                }
-
                 if depth >= 256 {
                     return Err(ErrorKind::QuotaExceeded.into());
                 }

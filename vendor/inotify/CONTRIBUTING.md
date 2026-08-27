@@ -9,8 +9,8 @@ You probably found this document in the repository of either the [inotify] or [i
 If you found a problem with inotify-rs, please open an issue to let us know. If you're not sure whether you found a problem or not, just open an issue anyway. We'd rather close a few invalid issues than miss real problems.
 
 Issues are tracked on GitHub, in the repository for the respective crate:
-- [Open an inotify issue](https://github.com/inotify-rs/inotify/issues/new)
-- [Open an inotify-sys issue](https://github.com/inotify-rs/inotify-sys/issues/new)
+- [Open an inotify issue](https://github.com/hannobraun/inotify-rs/issues/new)
+- [Open an inotify-sys issue](https://github.com/hannobraun/inotify-sys/issues/new)
 
 If you're unsure where to open your issue, just open it in the [inotify] repository.
 
@@ -21,5 +21,5 @@ If you want to make a change to the inotify-rs code, please open a pull request 
 If you're having any problems with completing your change, feel free to open a pull request anyway and ask any questions there. We're happy to help with getting changes across the finish line.
 
 
-[inotify]: https://github.com/hannobraun/inotify
+[inotify]: https://github.com/hannobraun/inotify-rs
 [inotify-sys]: https://github.com/hannobraun/inotify-sys

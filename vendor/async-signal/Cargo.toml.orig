@@ -1,9 +1,9 @@
 [package]
 name = "async-signal"
-version = "0.2.13"
+version = "0.2.14"
 edition = "2021"
 authors = ["John Nunley <dev@notgull.net>"]
-rust-version = "1.71"
+rust-version = "1.85"
 description = "Async signal handling"
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/smol-rs/async-signal"
@@ -38,7 +38,7 @@ features = [
 async-io = "2.0.0"
 fastrand = "2.0.1"
 futures-lite = "2.3.0"
-signal-hook = "0.3.14"
+signal-hook = "0.4.1"
 
 [target.'cfg(unix)'.dev-dependencies]
 libc = "0.2.139"

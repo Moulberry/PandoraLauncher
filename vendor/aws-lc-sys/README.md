@@ -12,6 +12,29 @@ See our [User Guide](https://aws.github.io/aws-lc-rs/) for guidance on installin
 
 [Documentation](https://github.com/aws/aws-lc).
 
+## Native build metadata
+
+Downstream Cargo build scripts that compile additional C code against this
+AWS-LC build can use the exported `include`, `libdir`, `libcrypto_path`,
+`link_kind`, and `system_libs` metadata. When the `ssl` feature is enabled,
+`libssl_path` is also exported. Cargo exposes these values to direct dependents
+as versioned `DEP_AWS_LC_*` environment variables.
+
+`link_kind` is `static` or `dylib`, usable directly as the `<kind>` in a
+`cargo:rustc-link-lib=<kind>=<name>` directive.
+
+`system_libs` is a comma-separated (possibly empty) list of additional system
+libraries AWS-LC requires; a build script linking the static `libcrypto_path`
+artifact must link these too. On `*-windows-gnu` it is `bcrypt`, which MinGW/GCC
+does not pick up from AWS-LC's `#pragma comment(lib, "bcrypt.lib")`.
+
+On Windows, `libcrypto_path` and `libssl_path` refer to the link-time artifact
+-- for dynamic builds this is the import library (`*.lib` for MSVC,
+`lib*.dll.a` for MinGW), not the runtime DLL. For builds from source the DLL is
+placed alongside the import library in `libdir`; when linking against a
+pre-installed AWS-LC (`AWS_LC_SYS_SYSTEM_DIR`) the DLL follows the CMake
+install layout and lives in `bin/` instead.
+
 ## Build Support
 
 This crate pulls in the source code of AWS-LC to build with it. Bindings for popular platforms are pre-generated.
@@ -191,6 +214,44 @@ cover both `libcrypto` and `libssl`. AWS-LC's `-DGENERATE_RUST_BINDINGS=ON`
 produces such a combined file by default; if you supply your own bindings
 via `AWS_LC_SYS_SYSTEM_BINDINGS`, ensure they include the `ssl` symbols
 or you may get link errors when the `ssl` feature is on.
+
+## Optimizing for binary size
+
+When you build with `opt-level = "s"` or `opt-level = "z"` (Cargo's
+size-optimizing profiles), `aws-lc-sys` automatically applies compile-time
+defines that replace high-performance implementations with smaller generic
+equivalents. No configuration is needed -- set the opt-level in your
+`Cargo.toml` profile:
+
+```toml
+[profile.release]
+opt-level = "z"
+```
+
+On x86_64 Linux, this typically reduces the aws-lc footprint by ~60-70%.
+aarch64 sees a ~40% reduction. The effect is platform-dependent -- x86_64
+benefits most because disabling AVX-512 assembly removes large vectorized
+routines.
+
+Key properties:
+
+* **Automatic.** Triggered by `opt-level = "s"` or `"z"`.
+* **Overridable.** Set `AWS_LC_SYS_SMALL=1` to force the size-optimized
+  build regardless of opt-level, or `AWS_LC_SYS_SMALL=0` to prevent it
+  even when the opt-level would otherwise trigger it.
+* **Behavior-preserving.** All algorithms remain available; outputs are
+  identical.
+* **Performance trade-off.** Elliptic curve operations (ECDSA, ECDH) are
+  significantly slower due to the removal of precomputed tables -- expect
+  P-256 operations to be roughly 2-3x slower and P-384 roughly 3-6x
+  slower. Symmetric operations (AES-GCM, SHA) and RSA are largely
+  unaffected on aarch64; on x86_64 bulk throughput may decrease due to
+  the removal of AVX-512 code paths.
+* **Windows NASM.** Source-built NASM assembly honors the size-optimization
+  definitions. Prebuilt NASM objects cannot be reconfigured; install NASM
+  to obtain the full assembly size reduction on Windows.
+* **FIPS.** `aws-lc-fips-sys` never enables this automatically; it requires
+  an explicit `AWS_LC_FIPS_SYS_SMALL=1`. See its README for details.
 
 ## Build Prerequisites
 

@@ -13,8 +13,8 @@
 //! # Examples
 //!
 //! ```
-//! use icu::locale::extensions::other::Other;
 //! use icu::locale::Locale;
+//! use icu::locale::extensions::other::Other;
 //!
 //! let mut loc: Locale = "en-US-a-foo-faa".parse().expect("Parsing failed.");
 //! ```
@@ -64,6 +64,8 @@ pub struct Other {
 impl Other {
     /// A constructor which takes a str slice, parses it and
     /// produces a well-formed [`Other`].
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     #[inline]
     #[cfg(feature = "alloc")]
     pub fn try_from_str(s: &str) -> Result<Self, ParseError> {
@@ -71,6 +73,8 @@ impl Other {
     }
 
     /// See [`Self::try_from_str`]
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     #[cfg(feature = "alloc")]
     pub fn try_from_utf8(code_units: &[u8]) -> Result<Self, ParseError> {
         let mut iter = SubtagIterator::new(code_units);
@@ -85,9 +89,11 @@ impl Other {
 
     /// A constructor which takes a pre-sorted list of [`Subtag`].
     ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
+    ///
     /// # Panics
     ///
-    /// Panics if `ext` is not ASCII alphabetic.
+    /// Panics if `ext` is not ASCII alphanumeric.
     ///
     /// # Examples
     ///
@@ -108,7 +114,7 @@ impl Other {
 
     #[allow(dead_code)]
     pub(crate) fn from_short_slice_unchecked(ext: u8, keys: ShortBoxSlice<Subtag>) -> Self {
-        assert!(ext.is_ascii_alphabetic());
+        assert!(ext.is_ascii_alphanumeric());
         // Safety invariant upheld here: ext checked as ASCII above
         Self { ext, keys }
     }
@@ -150,9 +156,9 @@ impl Other {
     /// assert_eq!(other_ext.get_ext_str(), "a");
     /// ```
     pub fn get_ext_str(&self) -> &str {
-        debug_assert!(self.ext.is_ascii_alphabetic());
+        debug_assert!(self.ext.is_ascii_alphanumeric());
         // Safety: from safety invariant on self.ext (that it is ASCII)
-        unsafe { core::str::from_utf8_unchecked(core::slice::from_ref(&self.ext)) }
+        unsafe { str::from_utf8_unchecked(core::slice::from_ref(&self.ext)) }
     }
 
     /// Gets the tag character for this extension as a char.
@@ -200,6 +206,7 @@ impl Other {
     }
 }
 
+/// ✨ *Enabled with the `alloc` Cargo feature.*
 #[cfg(feature = "alloc")]
 impl FromStr for Other {
     type Err = ParseError;
@@ -210,7 +217,7 @@ impl FromStr for Other {
     }
 }
 
-writeable::impl_display_with_writeable!(Other);
+writeable::impl_display_with_writeable!(Other, #[cfg(feature = "alloc")]);
 
 impl writeable::Writeable for Other {
     fn write_to<W: core::fmt::Write + ?Sized>(&self, sink: &mut W) -> core::fmt::Result {
@@ -236,17 +243,6 @@ impl writeable::Writeable for Other {
         }
         result
     }
-
-    #[cfg(feature = "alloc")]
-    fn write_to_string(&self) -> alloc::borrow::Cow<str> {
-        if self.keys.is_empty() {
-            return alloc::borrow::Cow::Borrowed("");
-        }
-        let mut string =
-            alloc::string::String::with_capacity(self.writeable_length_hint().capacity());
-        let _ = self.write_to(&mut string);
-        alloc::borrow::Cow::Owned(string)
-    }
 }
 
 #[cfg(test)]
@@ -257,6 +253,9 @@ mod tests {
     fn test_other_extension_fromstr() {
         let oe: Other = "o-foo-bar".parse().expect("Failed to parse Other");
         assert_eq!(oe.to_string(), "o-foo-bar");
+
+        let oe: Other = "1-foo-bar".parse().expect("Failed to parse Other");
+        assert_eq!(oe.to_string(), "1-foo-bar");
 
         let oe: Result<Other, _> = "o".parse();
         assert!(oe.is_err());

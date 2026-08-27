@@ -42,9 +42,6 @@ version = "0.10"
 version = "0.5.2"
 features = ["metal"]
 
-[target.'cfg(target_os = "macos")'.dependencies.ctor]
-version = "1.0.6"
-
 [target.'cfg(target_os = "macos")'.dependencies.foreign-types]
 version = "0.5"
 

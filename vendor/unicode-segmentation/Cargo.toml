@@ -11,19 +11,25 @@
 
 [package]
 edition = "2018"
+rust-version = "1.85.0"
 name = "unicode-segmentation"
-version = "1.12.0"
+version = "1.13.3"
 authors = [
     "kwantam <kwantam@gmail.com>",
     "Manish Goregaokar <manishsmail@gmail.com>",
 ]
 build = false
-exclude = [
-    "/.github",
-    "/benches/texts",
-    "/scripts/**.rs",
-    "*.txt",
+include = [
+    "COPYRIGHT",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "Cargo.toml",
+    "src/**/*.rs",
+    "README.md",
+    "tests/**/*.rs",
+    "benches/**/*.rs",
 ]
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -44,6 +50,9 @@ keywords = [
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/unicode-rs/unicode-segmentation"
 
+[features]
+no_std = []
+
 [lib]
 name = "unicode_segmentation"
 path = "src/lib.rs"
@@ -55,6 +64,11 @@ path = "tests/test.rs"
 [[bench]]
 name = "chars"
 path = "benches/chars.rs"
+harness = false
+
+[[bench]]
+name = "unicode_word_indices"
+path = "benches/unicode_word_indices.rs"
 harness = false
 
 [[bench]]
@@ -70,8 +84,8 @@ harness = false
 [dev-dependencies.criterion]
 version = "0.5"
 
-[dev-dependencies.quickcheck]
-version = "0.7"
+[dev-dependencies.proptest]
+version = "1.7.0"
 
-[features]
-no_std = []
+[dev-dependencies.quickcheck]
+version = "1.0"

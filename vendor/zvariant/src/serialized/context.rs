@@ -55,6 +55,11 @@ impl Context {
     ///
     /// [`new`]: #method.new
     #[cfg(feature = "gvariant")]
+    #[deprecated(
+        since = "5.15.0",
+        note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+                `zgvariant` crate instead."
+    )]
     pub fn new_gvariant(endian: Endian, position: usize) -> Self {
         Self::new(Format::GVariant, endian, position)
     }

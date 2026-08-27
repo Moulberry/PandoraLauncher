@@ -1,0 +1,21 @@
+[package]
+name = "no_std_io2"
+version = "0.9.4"
+description = "The bare essentials of std::io for use in no_std. Alloc support is optional."
+license = "Apache-2.0 OR MIT"
+edition = "2021"
+repository = "https://github.com/wcampbell0x2a/no-std-io2"
+categories = ["no-std"]
+rust-version = "1.81"
+
+[dependencies]
+memchr = { version = "2", default-features = false }
+
+[features]
+default = []
+std = ["alloc"]
+alloc = []
+nightly = []
+
+[package.metadata.docs.rs]
+features = ["nightly"]

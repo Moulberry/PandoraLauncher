@@ -1,3 +1,11 @@
+# Release 0.1.46 (2026-07-07)
+
+- [Drop unused `autocfg` build dependency][30]
+
+**Contributors**: @cuviper, @paolobarbolini
+
+[30]: https://github.com/rust-num/num-iter/pull/30
+
 # Release 0.1.45 (2024-05-03)
 
 - [Use `Integer::dec` in `DoubleEndedIterator`][29]

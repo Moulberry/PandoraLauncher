@@ -3,7 +3,7 @@
 [![crate](https://img.shields.io/crates/v/num-iter.svg)](https://crates.io/crates/num-iter)
 [![documentation](https://docs.rs/num-iter/badge.svg)](https://docs.rs/num-iter)
 [![minimum rustc 1.31](https://img.shields.io/badge/rustc-1.31+-red.svg)](https://rust-lang.github.io/rfcs/2495-min-rust-version.html)
-[![build status](https://github.com/rust-num/num-iter/workflows/master/badge.svg)](https://github.com/rust-num/num-iter/actions)
+[![build status](https://github.com/rust-num/num-iter/actions/workflows/main.yaml/badge.svg)](https://github.com/rust-num/num-iter/actions/workflows/main.yaml)
 
 Generic `Range` iterators for Rust.
 

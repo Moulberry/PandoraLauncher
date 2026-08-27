@@ -1,6 +1,7 @@
 use quick_xml::events::attributes::{Attribute, Attributes};
-use quick_xml::events::{BytesStart, Event as XmlEv};
+use quick_xml::events::{BytesStart, BytesText, Event as XmlEv};
 use quick_xml::Reader as XmlReader;
+use quick_xml::{escape, XmlVersion};
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::path::Path;
@@ -43,7 +44,9 @@ impl From<quick_xml::Error> for Error {
     fn from(err: quick_xml::Error) -> Self {
         match err {
             quick_xml::Error::Io(e) => Error::IO(e),
-            quick_xml::Error::NonDecodable(Some(e)) => Error::Utf8(e),
+            quick_xml::Error::Encoding(quick_xml::encoding::EncodingError::Utf8(e)) => {
+                Error::Utf8(e)
+            }
             e => Error::Xml(e),
         }
     }
@@ -196,7 +199,7 @@ impl<B: BufRead> Iterator for &mut Parser<B> {
                             })
                         }
                         (None, None, None, None) => None,
-                        _ => panic!("incomplete extension info for {}", &mod_name),
+                        _ => panic!("incomplete extension info for {}", mod_name),
                     };
 
                     Some(Ok(Event::ModuleInfo {
@@ -305,7 +308,7 @@ impl<B: BufRead> Iterator for &mut Parser<B> {
 impl Parser<BufReader<File>> {
     pub fn from_file(xml_file: &Path) -> Self {
         let mut xml = XmlReader::from_file(xml_file).unwrap();
-        xml.trim_text(true);
+        xml.config_mut().trim_text(true);
 
         Parser {
             xml,
@@ -317,7 +320,7 @@ impl Parser<BufReader<File>> {
 impl<B: BufRead> Parser<B> {
     fn expect_text(&mut self) -> Result<String> {
         match self.xml.read_event_into(&mut self.buf)? {
-            XmlEv::Text(e) => Ok(str::from_utf8(e.unescape()?.as_bytes())?.into()),
+            XmlEv::Text(e) => text_content(e),
             XmlEv::CData(e) => Ok(str::from_utf8(&e)?.into()),
             ev => Err(Error::Parse(format!("expected text, found {:?}", ev))),
         }
@@ -325,7 +328,7 @@ impl<B: BufRead> Parser<B> {
 
     fn expect_text_trim(&mut self, close_tag: &[u8]) -> Result<String> {
         let txt = match self.xml.read_event_into(&mut self.buf)? {
-            XmlEv::Text(e) => Vec::from(e.unescape()?.as_bytes()),
+            XmlEv::Text(e) => text_content(e).map(String::into_bytes)?,
             XmlEv::CData(e) => Vec::from(e.into_inner()),
             XmlEv::End(e) => {
                 if e.name().0 == close_tag {
@@ -389,7 +392,7 @@ impl<B: BufRead> Parser<B> {
                         "expected </{}>, found {:?}",
                         str::from_utf8(tag).unwrap(),
                         ev
-                    )))
+                    )));
                 }
             }
         }
@@ -451,10 +454,8 @@ impl<B: BufRead> Parser<B> {
                 XmlEv::Text(_) | XmlEv::CData(_) => {
                     return Err(Error::Parse("Unexpected doc text out of element".into()));
                 }
-                XmlEv::End(ref e) => {
-                    if e.name().0 == b"doc" {
-                        break;
-                    }
+                XmlEv::End(ref e) if e.name().0 == b"doc" => {
+                    break;
                 }
                 _ => {}
             }
@@ -656,7 +657,7 @@ impl<B: BufRead> Parser<B> {
                         return Err(Error::Parse(format!(
                             "Unexpected </{}> in enum",
                             str::from_utf8(tag)?,
-                        )))
+                        )));
                     }
                 },
                 XmlEv::Comment(_) => {}
@@ -933,7 +934,7 @@ impl<B: BufRead> Parser<B> {
                             "Unexpected <{} /> in struct: {:?}",
                             str::from_utf8(tag)?,
                             e
-                        )))
+                        )));
                     }
                 },
                 XmlEv::End(ref e) => {
@@ -1047,7 +1048,7 @@ impl<B: BufRead> Parser<B> {
         let name = name.unwrap();
         let opcode = opcode.unwrap();
         let opcode: u32 = str::parse(&opcode)
-            .map_err(|_| Error::Parse(format!("cannot parse {} as int", &opcode)))?;
+            .map_err(|_| Error::Parse(format!("cannot parse {} as int", opcode)))?;
         if is_empty {
             Ok(Request {
                 name,
@@ -1110,7 +1111,7 @@ impl<B: BufRead> Parser<B> {
                     return Err(Error::Parse(format!(
                         "unexpected XML in switch case: {:?}",
                         ev
-                    )))
+                    )));
                 }
             }
         }
@@ -1150,10 +1151,8 @@ impl<B: BufRead> Parser<B> {
                         }
                     }
                 }
-                XmlEv::End(ref e) => {
-                    if e.name().0 == b"switch" {
-                        break;
-                    }
+                XmlEv::End(ref e) if e.name().0 == b"switch" => {
+                    break;
                 }
                 _ => {}
             }
@@ -1201,8 +1200,15 @@ fn is_expr_tag(tag: &[u8]) -> bool {
 }
 
 fn attr_value(attr: &Attribute) -> Result<String> {
-    let val = attr.unescape_value()?;
+    let val = attr.normalized_value(XmlVersion::Implicit1_0)?;
     Ok(str::from_utf8(val.as_bytes())?.into())
+}
+
+fn text_content(text: BytesText<'_>) -> Result<String> {
+    let decoded = text.xml10_content().map_err(quick_xml::Error::from)?;
+    Ok(escape::unescape(&decoded)
+        .map_err(quick_xml::Error::from)?
+        .into_owned())
 }
 
 fn expect_attribute(attrs: Attributes, name: &[u8]) -> Result<String> {

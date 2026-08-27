@@ -1,5 +1,8 @@
-use crate::{lz4::params::EncoderParams, Encode};
-use compression_core::{unshared::Unshared, util::PartialBuffer};
+use crate::{lz4::params::EncoderParams, EncodeV2};
+use compression_core::{
+    unshared::Unshared,
+    util::{PartialBuffer, WriteBuffer},
+};
 use lz4::liblz4::{
     check_error, LZ4FCompressionContext, LZ4FPreferences, LZ4F_compressBegin, LZ4F_compressBound,
     LZ4F_compressEnd, LZ4F_compressUpdate, LZ4F_createCompressionContext, LZ4F_flush,
@@ -23,12 +26,11 @@ enum State {
     Done,
 }
 
-enum Lz4Fn<'a, T>
-where
-    T: AsRef<[u8]>,
-{
+enum Lz4Fn<'a, 'b> {
     Begin,
-    Update { input: &'a mut PartialBuffer<T> },
+    Update {
+        input: &'a mut PartialBuffer<&'b [u8]>,
+    },
     Flush,
     End,
 }
@@ -88,10 +90,7 @@ impl Lz4Encoder {
         self.block_buffer_size
     }
 
-    fn drain_buffer(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> (usize, usize) {
+    fn drain_buffer(&mut self, output: &mut WriteBuffer<'_>) -> (usize, usize) {
         match self.maybe_buffer.as_mut() {
             Some(buffer) => {
                 let drained_bytes = output.copy_unwritten_from(buffer);
@@ -101,16 +100,9 @@ impl Lz4Encoder {
         }
     }
 
-    fn write<'a, T>(
-        &'a mut self,
-        lz4_fn: Lz4Fn<'a, T>,
-        output: &'a mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> Result<usize>
-    where
-        T: AsRef<[u8]>,
-    {
+    fn write(&mut self, lz4_fn: Lz4Fn<'_, '_>, output: &mut WriteBuffer<'_>) -> Result<usize> {
         let (drained_before, undrained) = self.drain_buffer(output);
-        if undrained > 0 {
+        if undrained > 0 || output.has_no_spare_space() {
             return Ok(drained_before);
         }
 
@@ -125,7 +117,9 @@ impl Lz4Encoder {
             Lz4Fn::Flush | Lz4Fn::End => self.flush_buffer_size,
         };
 
-        let output_len = output.unwritten().len();
+        // Safety: We **trust** lz4 to not write uninitialized bytes
+        let out_buf = unsafe { output.unwritten_mut() };
+        let output_len = out_buf.len();
 
         let (dst_buffer, dst_size, maybe_internal_buffer) = if min_dst_size > output_len {
             let buffer_size = self.block_buffer_size;
@@ -133,14 +127,16 @@ impl Lz4Encoder {
                 .maybe_buffer
                 .get_or_insert_with(|| PartialBuffer::new(Vec::with_capacity(buffer_size)));
             buffer.reset();
+            buffer.get_mut().clear();
             (
-                buffer.unwritten_mut().as_mut_ptr(),
+                buffer.get_mut().spare_capacity_mut().as_mut_ptr(),
                 buffer_size,
                 Some(buffer),
             )
         } else {
-            (output.unwritten_mut().as_mut_ptr(), output_len, None)
+            (out_buf.as_mut_ptr(), output_len, None)
         };
+        let dst_buffer = dst_buffer as *mut u8;
 
         let len = match lz4_fn {
             Lz4Fn::Begin => {
@@ -192,13 +188,15 @@ impl Lz4Encoder {
         };
 
         let drained_after = if let Some(internal_buffer) = maybe_internal_buffer {
+            // Safety: We **trust** lz4 to properly write data into the buffer
             unsafe {
                 internal_buffer.get_mut().set_len(len);
             }
             let (d, _) = self.drain_buffer(output);
             d
         } else {
-            output.advance(len);
+            // Safety: We **trust** lz4 to properly write data into the buffer
+            unsafe { output.assume_init_and_advance(len) };
             len
         };
 
@@ -206,16 +204,16 @@ impl Lz4Encoder {
     }
 }
 
-impl Encode for Lz4Encoder {
+impl EncodeV2 for Lz4Encoder {
     fn encode(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
+        input: &mut PartialBuffer<&[u8]>,
+        output: &mut WriteBuffer<'_>,
     ) -> Result<()> {
         loop {
             match self.state {
                 State::Header => {
-                    self.write(Lz4Fn::Begin::<&[u8]>, output)?;
+                    self.write(Lz4Fn::Begin, output)?;
                 }
 
                 State::Encoding => {
@@ -227,25 +225,22 @@ impl Encode for Lz4Encoder {
                 }
             }
 
-            if input.unwritten().is_empty() || output.unwritten().is_empty() {
+            if input.unwritten().is_empty() || output.has_no_spare_space() {
                 return Ok(());
             }
         }
     }
 
-    fn flush(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> Result<bool> {
+    fn flush(&mut self, output: &mut WriteBuffer<'_>) -> Result<bool> {
         loop {
             let done = match self.state {
                 State::Header => {
-                    self.write(Lz4Fn::Begin::<&[u8]>, output)?;
+                    self.write(Lz4Fn::Begin, output)?;
                     false
                 }
 
                 State::Encoding => {
-                    let len = self.write(Lz4Fn::Flush::<&[u8]>, output)?;
+                    let len = self.write(Lz4Fn::Flush, output)?;
                     len == 0
                 }
 
@@ -266,24 +261,21 @@ impl Encode for Lz4Encoder {
                 return Ok(true);
             }
 
-            if output.unwritten().is_empty() {
+            if output.has_no_spare_space() {
                 return Ok(false);
             }
         }
     }
 
-    fn finish(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> Result<bool> {
+    fn finish(&mut self, output: &mut WriteBuffer<'_>) -> Result<bool> {
         loop {
             match self.state {
                 State::Header => {
-                    self.write(Lz4Fn::Begin::<&[u8]>, output)?;
+                    self.write(Lz4Fn::Begin, output)?;
                 }
 
                 State::Encoding => {
-                    self.write(Lz4Fn::End::<&[u8]>, output)?;
+                    self.write(Lz4Fn::End, output)?;
                 }
 
                 State::Footer => {
@@ -300,7 +292,7 @@ impl Encode for Lz4Encoder {
                 return Ok(true);
             }
 
-            if output.unwritten().is_empty() {
+            if output.has_no_spare_space() {
                 return Ok(false);
             }
         }

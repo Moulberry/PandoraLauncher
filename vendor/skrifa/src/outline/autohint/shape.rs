@@ -175,7 +175,7 @@ impl<'a> Shaper<'a> {
             *a = Some(*b);
         }
         // <https://gitlab.freedesktop.org/freetype/freetype/-/blob/57617782464411201ce7bbc93b086c1b4d7d84a5/src/autofit/afshaper.c#L153>
-        const DEFAULT_SCRIPT: Tag = Tag::new(b"Dflt");
+        const DEFAULT_SCRIPT: Tag = Tag::new(b"DFLT");
         if coverage_kind == ShaperCoverageKind::Default {
             if script_tags[0].is_none() {
                 script_tags[0] = Some(DEFAULT_SCRIPT);
@@ -365,6 +365,7 @@ impl ClusterShaper<'_> {
             SubstitutionSubtables::Contextual(_tables) => {}
             SubstitutionSubtables::ChainContextual(_tables) => {}
             SubstitutionSubtables::Reverse(_tables) => {}
+            SubstitutionSubtables::EmptyExtension => {}
         }
         false
     }
@@ -613,6 +614,7 @@ impl<'a, 'b> GsubHandler<'a, 'b> {
                     }
                 }
             }
+            SubstitutionSubtables::EmptyExtension => (),
         }
         Ok(())
     }

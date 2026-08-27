@@ -342,9 +342,10 @@ where
         seed: K,
     ) -> Result<K::Value, Self::Error> {
         match std::mem::replace(&mut self.source, ValueSource::Unknown) {
-            ValueSource::Attribute(value) => seed.deserialize(SimpleTypeDeserializer::from_part(
+            ValueSource::Attribute(value) => seed.deserialize(SimpleTypeDeserializer::from_attr(
                 &self.start.buf,
                 value,
+                self.de.reader.reader.xml_version(),
                 self.start.decoder(),
             )),
             // This arm processes the following XML shape:

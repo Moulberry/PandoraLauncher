@@ -1,6 +1,6 @@
 [package]
 name = "zbus"
-version = "5.13.2"
+version = "5.19.0"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
 edition = { workspace = true }
 rust-version = { workspace = true }
@@ -38,7 +38,7 @@ async-io = [
     "blocking",
 ]
 tokio = ["dep:tokio"]
-vsock = ["dep:vsock", "dep:async-io"]
+vsock = ["dep:vsock", "async-io"]
 tokio-vsock = ["dep:tokio-vsock", "tokio"]
 # Enable blocking API (default).
 blocking-api = ["zbus_macros/blocking-api"]
@@ -48,11 +48,11 @@ serde_bytes = ["zvariant/serde_bytes"]
 async-fs = []
 
 [dependencies]
-zbus_macros = { path = "../zbus_macros", version = "5.13.2" }
+zbus_macros = { path = "../zbus_macros", version = "5.19.0" }
 zvariant = { path = "../zvariant", features = [
     "enumflags2",
-], version = "5.9.2" }
-zbus_names = { path = "../zbus_names", version = "4.3.1" }
+], version = "5.14.0" }
+zbus_names = { path = "../zbus_names", version = "4.3.4" }
 
 serde.workspace = true
 serde_repr.workspace = true
@@ -88,6 +88,8 @@ tokio = { workspace = true, optional = true, features = [
     "sync",
     "tracing",
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
 vsock = { workspace = true, optional = true }
 tokio-vsock = { workspace = true, optional = true }
 
@@ -98,9 +100,10 @@ uds_windows.workspace = true
 [target.'cfg(unix)'.dependencies]
 rustix.workspace = true
 libc.workspace = true
-
-[target.'cfg(any(target_os = "macos", windows))'.dependencies]
 async-recursion.workspace = true
+
+[target.'cfg(windows)'.dependencies.async-recursion]
+workspace = true
 
 [dev-dependencies]
 zbus_xml.workspace = true
@@ -128,8 +131,32 @@ tempfile.workspace = true
 criterion.workspace = true
 
 [package.metadata.docs.rs]
-all-features = true
-targets = ["x86_64-unknown-linux-gnu"]
+# we can't use:
+# all-features = true
+# because some features (such as vsock) are target-specific
+features = [
+    "async-io",
+    "blocking-api",
+    "uuid",
+    "url",
+    "time",
+    "chrono",
+    "heapless",
+    "option-as-array",
+    "camino",
+    "bus-impl",
+    "p2p",
+    "tokio",
+    "serde_bytes",
+]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-gnu",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-freebsd",
+    "x86_64-unknown-netbsd",
+    "aarch64-linux-android",
+]
 
 [lints]
 workspace = true
@@ -140,6 +167,11 @@ bench = false
 [[bench]]
 name = "benchmarks"
 harness = false
+
+[[bench]]
+name = "concurrent_method_calls"
+harness = false
+required-features = ["p2p"]
 
 [[example]]
 name = "screen-brightness"

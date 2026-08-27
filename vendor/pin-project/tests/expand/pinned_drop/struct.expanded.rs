@@ -104,6 +104,7 @@ const _: () = {
             __Struct<'pin, T, U>,
         >: _pin_project::__private::Unpin,
     {}
+    #[allow(clippy::missing_trait_methods)]
     impl<T, U> _pin_project::__private::Drop for Struct<T, U> {
         #[allow(clippy::missing_inline_in_public_items)]
         fn drop(&mut self) {

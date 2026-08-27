@@ -2,9 +2,8 @@
 // called LICENSE at the top level of the ICU4X source tree
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use icu_collections::codepointinvlist::CodePointInversionList;
-use std::char;
 
 fn uniset_bench(c: &mut Criterion) {
     let best_ex = [0x41, 0x46];
@@ -14,7 +13,7 @@ fn uniset_bench(c: &mut Criterion) {
         CodePointInversionList::try_from_u32_inversion_list_slice(&worst_ex).unwrap();
 
     c.bench_function("uniset/overview", |b| {
-        #[allow(clippy::suspicious_map)]
+        #[expect(clippy::suspicious_map)]
         b.iter(|| {
             best_sample
                 .iter_chars()

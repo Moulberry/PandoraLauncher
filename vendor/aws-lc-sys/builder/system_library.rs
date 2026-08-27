@@ -12,8 +12,9 @@
 
 use crate::fips_probe::verify_fips_install;
 use crate::{
-    crate_env_var_name, emit_rustc_cfg, emit_warning, is_fips_build, is_static_library,
-    link_fips_runtime_check, out_dir, target_env, target_os, Builder, OutputLibType,
+    copy_writable, crate_env_var_name, emit_rustc_cfg, emit_warning, is_fips_build, is_fips_crate,
+    is_static_library, link_fips_runtime_check, out_dir, target_env, target_os, Builder,
+    OutputLibType,
 };
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -100,6 +101,10 @@ pub(crate) struct SystemLib {
     /// bindings lookup, and — most importantly — re-compiling and re-running
     /// the FIPS probe binary.
     validated_bindings: RefCell<Option<PathBuf>>,
+    /// Memoizes the FIPS module version resolved by `validate`, so `link`
+    /// need not re-parse `base.h`. `None` until resolved (or when
+    /// `skip_version_check` bypassed resolution).
+    fips_version: RefCell<Option<u32>>,
 }
 
 impl SystemLib {
@@ -136,6 +141,7 @@ impl SystemLib {
             crypto_lib: RefCell::new(None),
             ssl_lib: RefCell::new(None),
             validated_bindings: RefCell::new(None),
+            fips_version: RefCell::new(None),
         }
     }
 
@@ -274,6 +280,7 @@ impl SystemLib {
             // FIPS gates on the FIPS module version (see MINIMUM_FIPS_VERSION),
             // not the library version string.
             let fips_version = validate_and_resolve_fips_version(include_dir)?;
+            self.fips_version.replace(Some(fips_version));
             if fips_version < MINIMUM_FIPS_VERSION {
                 return Err(format!(
                     "AWS-LC FIPS module version too old: installed FIPS version {fips_version} < \
@@ -342,8 +349,7 @@ impl SystemLib {
             .ok_or("libcrypto parent directory not found")?;
         let include_dir = &self.layout.include_dir;
 
-        std::fs::copy(&bindings, out_dir().join("bindings.rs"))
-            .map_err(|e| format!("Failed to copy bindings from {}: {}", bindings.display(), e))?;
+        copy_writable(&bindings, &out_dir().join("bindings.rs"))?;
         emit_warning(format!(
             "Using pre-generated bindings from: {}",
             bindings.display()
@@ -355,6 +361,19 @@ impl SystemLib {
             self.layout.marker_dir.display()
         ));
 
+        if is_fips_crate() {
+            // Only aws-lc-fips-sys consumes the generated constant; a
+            // FIPS aws-lc-sys build reports 0.
+            let fips_version = if let Some(version) = *self.fips_version.borrow() {
+                version
+            } else {
+                emit_warning(
+                    "AWS-LC version check skipped; aws_lc_rs::fips_version() will report None.",
+                );
+                0
+            };
+            write_fips_version(fips_version)?;
+        }
         if is_fips_build() {
             // The FIPS module itself was already verified in `validate`; here
             // we only add the startup self-check.
@@ -369,13 +388,32 @@ impl SystemLib {
         let optional_ssl_lib = self.ssl_lib.borrow();
         let kind = crypto_lib.lib_type.rust_lib_type();
         println!("cargo:rustc-link-search=native={}", lib_dir.display());
+        println!("cargo:libdir={}", lib_dir.display());
         println!("cargo:libcrypto={}", crypto_lib.name);
+        println!("cargo:libcrypto_path={}", crypto_lib.path.display());
+        println!("cargo:link_kind={kind}");
         println!("cargo:rustc-link-lib={kind}={}", crypto_lib.name);
         if let Some(ssl_lib) = optional_ssl_lib.as_ref() {
+            // `link_kind` (above) describes libcrypto. Without a requested lib
+            // type the two libraries could in principle resolve to different
+            // types; warn rather than export misleading metadata.
+            if ssl_lib.lib_type != crypto_lib.lib_type {
+                emit_warning(format!(
+                    "libcrypto ({}) and libssl ({}) resolved to different library types; \
+                     the exported link_kind describes libcrypto only",
+                    crypto_lib.lib_type.description(),
+                    ssl_lib.lib_type.description(),
+                ));
+            }
             println!("cargo:rustc-link-lib={kind}={}", ssl_lib.name);
             println!("cargo:libssl={}", ssl_lib.name);
+            println!("cargo:libssl_path={}", ssl_lib.path.display());
             println!("cargo:rerun-if-changed={}", ssl_lib.path.display());
         }
+
+        // After the libcrypto/libssl directives: GNU ld needs the providers to
+        // follow the archive that references them.
+        crate::emit_system_libs_metadata();
 
         println!("cargo:include={}", include_dir.display());
 
@@ -401,8 +439,10 @@ const MINIMUM_AWS_LC_VERSION: &str = "1.68.0";
 /// the library version and increases monotonically across FIPS branches, so it
 /// is a stable basis for comparison.
 ///
-/// TODO: bump to `4` when switching to the `fips-2025-09-12-lts` branch.
-const MINIMUM_FIPS_VERSION: u32 = 3;
+/// FIPS 4.x (`fips-2025-09-12-lts`) is the floor: aws-lc-rs unconditionally
+/// references symbols (e.g. ML-DSA/PQDSA) that older FIPS modules do not
+/// provide.
+const MINIMUM_FIPS_VERSION: u32 = 4;
 
 /// Finds the first `#define <name> ...` line in `base.h` content and returns
 /// the value token following the macro name (or `""` for a bare `#define
@@ -454,6 +494,23 @@ fn validate_and_extract_version(include_dir: &Path) -> Result<String, String> {
 fn validate_and_resolve_fips_version(include_dir: &Path) -> Result<u32, String> {
     let (base_h, content) = read_and_validate_base_h(include_dir)?;
     resolve_fips_version(&base_h, &content)
+}
+
+/// Resolves the FIPS module version from `base.h` and generates the constant
+/// consumed by `aws-lc-fips-sys::fips_version()`. Used by the source-build
+/// path; the system-library path reuses the version resolved by `validate`.
+pub(crate) fn emit_fips_version(include_dir: &Path) -> Result<(), String> {
+    let (base_h, content) = read_and_validate_base_h(include_dir)?;
+    let fips_version = resolve_fips_version(&base_h, &content)?;
+    write_fips_version(fips_version)
+}
+
+/// Writes `OUT_DIR/fips_version.rs`: a bare `u32` literal that `include!`
+/// expands in const context, keeping `fips_version()` a `const fn`.
+pub(crate) fn write_fips_version(fips_version: u32) -> Result<(), String> {
+    let dest = out_dir().join("fips_version.rs");
+    std::fs::write(&dest, format!("{fips_version}\n"))
+        .map_err(|e| format!("Failed to write {}: {e}", dest.display()))
 }
 
 /// Extracts `AWSLC_VERSION_NUMBER_STRING` from already-loaded `base.h`
@@ -657,9 +714,12 @@ fn is_msvc() -> bool {
 /// `{name}.lib`. The two are disambiguated by `msvc_has_sibling_dll`: if
 /// `../bin/{name}.dll` exists, the `.lib` is an import library (dynamic);
 /// otherwise it is a real static archive.
+///
+/// On MinGW, the runtime DLL is installed to `bin/` rather than `lib_dir`, so
+/// the import library `lib{name}.dll.a` is the only artifact to look for here.
 fn probe_lib(lib_dir: &Path, name: &str, lib_type: OutputLibType) -> Option<PathBuf> {
     let want_dynamic = matches!(lib_type, OutputLibType::Dynamic);
-    let path = lib_dir.join(lib_filename(name, lib_type));
+    let path = lib_dir.join(lib_type.library_filename(name));
     if !path.exists() {
         return None;
     }
@@ -671,34 +731,10 @@ fn probe_lib(lib_dir: &Path, name: &str, lib_type: OutputLibType) -> Option<Path
     Some(path)
 }
 
-/// Returns the platform-specific filename for a library named `base` of the
-/// given linkage type.
-///
-/// On MSVC, both real static archives and DLL import libraries are named
-/// `{base}.lib`, so this function returns that name for either linkage. The
-/// two are disambiguated at probe time inside `probe_lib` via the sibling
-/// `../bin/{base}.dll` check.
-fn lib_filename(base: &str, lib_type: OutputLibType) -> String {
-    if is_msvc() {
-        return format!("{base}.lib");
-    }
-
-    match lib_type {
-        OutputLibType::Static => format!("lib{base}.a"),
-        OutputLibType::Dynamic => match target_os().as_str() {
-            // MinGW: the runtime DLL lives in bin/, not lib_dir. The import
-            // library lib{base}.dll.a is the only artifact in lib_dir.
-            "windows" => format!("lib{base}.dll.a"),
-            "macos" | "ios" | "tvos" => format!("lib{base}.dylib"),
-            _ => format!("lib{base}.so"),
-        },
-    }
-}
-
 /// Comma-separated list of platform-appropriate filenames the resolver looks
-/// for. Used purely for error messages. Note that on MSVC `lib_filename`
-/// produces the same `{base}.lib` for either linkage, so the `filter`
-/// argument doesn't change the resulting list there (deduplicated below).
+/// for. Used purely for error messages. On MSVC `library_filename` returns the
+/// same `{base}.lib` for either linkage, so `filter` doesn't change the
+/// resulting list there (deduplicated below).
 fn expected_lib_filenames(candidates: &[&str], filter: Option<OutputLibType>) -> String {
     let lib_types: &[OutputLibType] = match filter {
         Some(OutputLibType::Static) => &[OutputLibType::Static],
@@ -708,7 +744,7 @@ fn expected_lib_filenames(candidates: &[&str], filter: Option<OutputLibType>) ->
     let mut names: Vec<String> = Vec::new();
     for &lt in lib_types {
         for base in candidates {
-            let name = lib_filename(base, lt);
+            let name = lt.library_filename(base);
             if !names.contains(&name) {
                 names.push(name);
             }

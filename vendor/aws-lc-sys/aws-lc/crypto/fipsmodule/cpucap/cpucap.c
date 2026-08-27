@@ -77,6 +77,9 @@ HIDDEN uint32_t OPENSSL_armcap_P =
 #if defined(OPENSSL_STATIC_ARMCAP_NEOVERSE_V2) || defined(__ARM_FEATURE_NEOVERSE_V2)
     ARMV8_NEOVERSE_V2 |
 #endif
+#if defined(OPENSSL_STATIC_ARMCAP_NEOVERSE_V3) || defined(__ARM_FEATURE_NEOVERSE_V3)
+    ARMV8_NEOVERSE_V3 |
+#endif
     0;
 
 #else

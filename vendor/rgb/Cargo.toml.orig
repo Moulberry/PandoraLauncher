@@ -1,6 +1,6 @@
 [package]
 name = "rgb"
-version = "0.8.52"
+version = "0.8.53"
 authors = ["Kornel Lesiński <kornel@geekhood.net>", "James Forster <james.forsterer@gmail.com>"]
 include = ["src/**/*", "Cargo.toml", "README.md", "examples/*.rs", "LICENSE"]
 description = "`struct RGB/RGBA/etc.` for sharing pixels between crates + convenience methods for color manipulation.\nAllows no-copy high-level interoperability. Also adds common convenience methods and implements standard Rust traits to make `RGB`/`RGBA` pixels and slices first-class Rust objects."

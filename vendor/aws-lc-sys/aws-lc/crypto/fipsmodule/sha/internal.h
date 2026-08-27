@@ -339,7 +339,10 @@ void sha512_block_data_order_nohw(uint64_t state[8], const uint8_t *data,
 #include "../../../third_party/s2n-bignum/s2n-bignum_aws-lc.h"
 #endif
 #endif
-#if defined(OPENSSL_X86_64) && !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX)
+// sha3_keccak4_f1600_alt (the x4-batched Keccak variant) needs AVX2, not
+// AVX-512, so this is gated on MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2 rather
+// than MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX.
+#if defined(OPENSSL_X86_64) && !defined(MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2)
 #if defined(OPENSSL_LINUX) || defined(OPENSSL_APPLE)
 #define KECCAK1600_ASM
 #define KECCAK1600_S2N_BIGNUM_ASM

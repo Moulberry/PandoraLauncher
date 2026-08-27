@@ -1,4 +1,5 @@
-#[cfg(not(feature = "tokio"))]
+use async_broadcast::Receiver as ActiveReceiver;
+#[cfg(feature = "async-io")]
 use async_io::Async;
 use enumflags2::BitFlags;
 use event_listener::Event;
@@ -18,15 +19,27 @@ use tokio::net::UnixStream;
 use tokio_vsock::VsockStream;
 #[cfg(all(windows, not(feature = "tokio")))]
 use uds_windows::UnixStream;
-#[cfg(all(feature = "vsock", not(feature = "tokio")))]
+#[cfg(all(feature = "vsock", not(feature = "tokio-vsock")))]
 use vsock::VsockStream;
+
+// Feature-independent stream types for the `async_io_*_stream` builders: these always take the
+// blocking/`async-io` stream, so enabling `tokio` elsewhere can't change what they accept.
+#[cfg(feature = "async-io")]
+use std::net::TcpStream as AsyncIoTcpStream;
+#[cfg(all(unix, feature = "async-io"))]
+use std::os::unix::net::UnixStream as AsyncIoUnixStream;
+#[cfg(all(windows, feature = "async-io"))]
+use uds_windows::UnixStream as AsyncIoUnixStream;
 
 use zvariant::ObjectPath;
 
+#[cfg(feature = "bus-impl")]
+use crate::MessageStream;
 use crate::{
     Connection, Error, Executor, Guid, OwnedGuid, Result,
     address::{self, Address},
     fdo::RequestNameFlags,
+    message::Message,
     names::{InterfaceName, WellKnownName},
     object_server::{ArcInterface, Interface},
 };
@@ -40,13 +53,15 @@ const DEFAULT_MAX_QUEUED: usize = 64;
 
 #[derive(Debug)]
 enum Target {
-    #[cfg(any(unix, not(feature = "tokio")))]
-    UnixStream(UnixStream),
-    TcpStream(TcpStream),
-    #[cfg(any(
-        all(feature = "vsock", not(feature = "tokio")),
-        feature = "tokio-vsock"
-    ))]
+    #[cfg(all(unix, feature = "tokio"))]
+    TokioUnixStream(tokio::net::UnixStream),
+    #[cfg(all(any(unix, windows), feature = "async-io"))]
+    AsyncIoUnixStream(AsyncIoUnixStream),
+    #[cfg(feature = "tokio")]
+    TokioTcpStream(tokio::net::TcpStream),
+    #[cfg(feature = "async-io")]
+    AsyncIoTcpStream(AsyncIoTcpStream),
+    #[cfg(any(feature = "vsock", feature = "tokio-vsock"))]
     VsockStream(VsockStream),
     Address(Address),
     Socket(Split<Box<dyn ReadHalf>, Box<dyn WriteHalf>>),
@@ -98,6 +113,49 @@ impl<'a> Builder<'a> {
         Ok(Self::new(Target::Address(Address::system()?)))
     }
 
+    /// Create a builder for an IBus connection.
+    ///
+    /// IBus (Intelligent Input Bus) is an input method framework. This method creates a builder
+    /// that will query the IBus daemon for its D-Bus address using the `ibus address` command.
+    ///
+    /// # Platform Support
+    ///
+    /// This method is available on Unix-like systems where IBus is installed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The `ibus` command is not found or fails to execute
+    /// - The IBus daemon is not running
+    /// - The command output cannot be parsed as a valid D-Bus address
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use std::error::Error;
+    /// # use zbus::connection::Builder;
+    /// # use zbus::block_on;
+    /// #
+    /// # block_on(async {
+    /// let conn = Builder::ibus()?
+    ///     .build()
+    ///     .await?;
+    ///
+    /// // Use the connection to interact with IBus services
+    /// # drop(conn);
+    /// # Ok::<(), zbus::Error>(())
+    /// # }).unwrap();
+    /// #
+    /// # Ok::<_, Box<dyn Error + Send + Sync>>(())
+    /// ```
+    #[cfg(unix)]
+    pub fn ibus() -> Result<Self> {
+        use crate::address::transport::{Ibus, Transport};
+        Ok(Self::new(Target::Address(Address::from(Transport::Ibus(
+            Ibus::new(),
+        )))))
+    }
+
     /// Create a builder for a connection that will use the given [D-Bus bus address].
     ///
     /// # Example
@@ -126,7 +184,8 @@ impl<'a> Builder<'a> {
     /// ```
     ///
     /// **Note:** The IBus address is different for each session. You can find the address for your
-    /// current session using `ibus address` command.
+    /// current session using `ibus address` command. For a more convenient way to connect to IBus,
+    /// see [`Builder::ibus`].
     ///
     /// [D-Bus bus address]: https://dbus.freedesktop.org/doc/dbus-specification.html#addresses
     pub fn address<A>(address: A) -> Result<Self>
@@ -141,26 +200,76 @@ impl<'a> Builder<'a> {
 
     /// Create a builder for a connection that will use the given unix stream.
     ///
-    /// If the default `async-io` feature is disabled, this method will expect a
-    /// [`tokio::net::UnixStream`](https://docs.rs/tokio/latest/tokio/net/struct.UnixStream.html)
-    /// argument.
+    /// The stream is a [`std::os::unix::net::UnixStream`] (or [`uds_windows::UnixStream`] on
+    /// Windows).
+    ///
+    /// [`uds_windows::UnixStream`]: https://docs.rs/uds_windows/latest/uds_windows/struct.UnixStream.html
+    #[cfg(all(any(unix, windows), feature = "async-io"))]
+    pub fn async_io_unix_stream(stream: AsyncIoUnixStream) -> Self {
+        Self::new(Target::AsyncIoUnixStream(stream))
+    }
+
+    /// Create a builder for a connection that will use the given unix stream.
+    ///
+    /// This method expects a
+    /// [`tokio::net::UnixStream`](https://docs.rs/tokio/latest/tokio/net/struct.UnixStream.html).
+    /// Without the `tokio` feature it accepts a [`std::os::unix::net::UnixStream`] instead, but
+    /// that form is deprecated in favor of
+    /// [`async_io_unix_stream`](Self::async_io_unix_stream).
     ///
     /// Since tokio currently [does not support Unix domain sockets][tuds] on Windows, this method
     /// is not available when the `tokio` feature is enabled and building for Windows target.
     ///
     /// [tuds]: https://github.com/tokio-rs/tokio/issues/2201
+    #[cfg_attr(
+        not(feature = "tokio"),
+        deprecated(
+            since = "5.19.0",
+            note = "Use `async_io_unix_stream` to avoid a build failure if the `tokio` feature gets enabled"
+        )
+    )]
     #[cfg(any(unix, not(feature = "tokio")))]
     pub fn unix_stream(stream: UnixStream) -> Self {
-        Self::new(Target::UnixStream(stream))
+        #[cfg(not(feature = "tokio"))]
+        {
+            Self::new(Target::AsyncIoUnixStream(stream))
+        }
+        #[cfg(feature = "tokio")]
+        {
+            Self::new(Target::TokioUnixStream(stream))
+        }
     }
 
     /// Create a builder for a connection that will use the given TCP stream.
     ///
-    /// If the default `async-io` feature is disabled, this method will expect a
-    /// [`tokio::net::TcpStream`](https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html)
-    /// argument.
+    /// The stream is a [`std::net::TcpStream`].
+    #[cfg(feature = "async-io")]
+    pub fn async_io_tcp_stream(stream: AsyncIoTcpStream) -> Self {
+        Self::new(Target::AsyncIoTcpStream(stream))
+    }
+
+    /// Create a builder for a connection that will use the given TCP stream.
+    ///
+    /// This method expects a
+    /// [`tokio::net::TcpStream`](https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html).
+    /// Without the `tokio` feature it accepts a [`std::net::TcpStream`] instead, but that form is
+    /// deprecated in favor of [`async_io_tcp_stream`](Self::async_io_tcp_stream).
+    #[cfg_attr(
+        not(feature = "tokio"),
+        deprecated(
+            since = "5.19.0",
+            note = "Use `async_io_tcp_stream` to avoid a build failure if the `tokio` feature gets enabled"
+        )
+    )]
     pub fn tcp_stream(stream: TcpStream) -> Self {
-        Self::new(Target::TcpStream(stream))
+        #[cfg(not(feature = "tokio"))]
+        {
+            Self::new(Target::AsyncIoTcpStream(stream))
+        }
+        #[cfg(feature = "tokio")]
+        {
+            Self::new(Target::TokioTcpStream(stream))
+        }
     }
 
     /// Create a builder for a connection that will use the given VSOCK stream.
@@ -168,10 +277,7 @@ impl<'a> Builder<'a> {
     /// This method is only available when either `vsock` or `tokio-vsock` feature is enabled. The
     /// type of `stream` is `vsock::VsockStream` with `vsock` feature and `tokio_vsock::VsockStream`
     /// with `tokio-vsock` feature.
-    #[cfg(any(
-        all(feature = "vsock", not(feature = "tokio")),
-        feature = "tokio-vsock"
-    ))]
+    #[cfg(any(feature = "vsock", feature = "tokio-vsock"))]
     pub fn vsock_stream(stream: VsockStream) -> Self {
         Self::new(Target::VsockStream(stream))
     }
@@ -388,19 +494,99 @@ impl<'a> Builder<'a> {
     /// Until server-side bus connection is supported, attempting to build such a connection will
     /// result in a [`Error::Unsupported`] error.
     pub async fn build(self) -> Result<Connection> {
+        let (conn, _) = self.build_inner(false).await?;
+        Ok(conn)
+    }
+
+    /// Build the connection and return a [`MessageStream`] to receive messages from it.
+    ///
+    /// This is equivalent to [`Self::build`] followed by `MessageStream::from(&conn)`, except
+    /// that the stream is set up **before** the socket-reader task is started. No messages can
+    /// therefore be lost in the window between `build()` returning and `MessageStream::from`
+    /// being called. Use this when the peer may pipeline traffic right after authentication —
+    /// e.g. a bus implementation reading a `Hello` method call from a just-connected client.
+    ///
+    /// To get the [`Connection`] out of the returned stream, use `Connection::from(&stream)` —
+    /// this is cheap (an `Arc` clone).
+    ///
+    /// This method is only available when the `bus-impl` feature is enabled.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use futures_util::StreamExt;
+    /// # use zbus::{
+    /// #     Connection, Guid, block_on,
+    /// #     connection::{Builder, socket::Channel},
+    /// #     message::Message,
+    /// # };
+    /// #
+    /// # block_on(async {
+    /// let guid = Guid::generate();
+    /// let (c1, c2) = Channel::pair();
+    ///
+    /// // Bus client sends a method call right away (simulates pipelining after auth).
+    /// let client = Builder::authenticated_socket(c1, guid.clone())
+    ///     .unwrap()
+    ///     .build()
+    ///     .await
+    ///     .unwrap();
+    /// let hello = Message::method_call("/org/freedesktop/DBus", "Hello")
+    ///     .unwrap()
+    ///     .destination("org.freedesktop.DBus")
+    ///     .unwrap()
+    ///     .build(&())
+    ///     .unwrap();
+    /// client.send(&hello).await.unwrap();
+    ///
+    /// // Server builds *after* the client has already sent.
+    /// let mut stream = Builder::authenticated_socket(c2, guid)
+    ///     .unwrap()
+    ///     .p2p()
+    ///     .build_message_stream()
+    ///     .await
+    ///     .unwrap();
+    ///
+    /// let msg = stream.next().await.unwrap().unwrap();
+    /// assert_eq!(msg.header().member().unwrap().as_str(), "Hello");
+    ///
+    /// let _conn: Connection = (&stream).into();
+    /// # });
+    /// ```
+    #[cfg(feature = "bus-impl")]
+    pub async fn build_message_stream(self) -> Result<MessageStream> {
+        let (conn, msg_receiver) = self.build_inner(true).await?;
+        let msg_receiver = msg_receiver.expect("build_inner(true) always returns Some");
+
+        Ok(MessageStream::for_subscription_channel(
+            msg_receiver,
+            None,
+            &conn,
+        ))
+    }
+
+    async fn build_inner(
+        self,
+        activate_msg_stream: bool,
+    ) -> Result<(Connection, Option<ActiveReceiver<Result<Message>>>)> {
         let executor = Executor::new();
-        #[cfg(not(feature = "tokio"))]
+        #[cfg(feature = "async-io")]
         let internal_executor = self.internal_executor;
         // Box the future as it's large and can cause stack overflow.
-        let conn = Box::pin(executor.run(self.build_(executor.clone()))).await?;
+        let conn =
+            Box::pin(executor.run(self.build_(executor.clone(), activate_msg_stream))).await?;
 
-        #[cfg(not(feature = "tokio"))]
+        #[cfg(feature = "async-io")]
         start_internal_executor(&executor, internal_executor)?;
 
         Ok(conn)
     }
 
-    async fn build_(mut self, executor: Executor<'static>) -> Result<Connection> {
+    async fn build_(
+        mut self,
+        executor: Executor<'static>,
+        activate_msg_stream: bool,
+    ) -> Result<(Connection, Option<ActiveReceiver<Result<Message>>>)> {
         #[cfg(feature = "p2p")]
         let is_bus_conn = !self.p2p;
         #[cfg(not(feature = "p2p"))]
@@ -437,6 +623,10 @@ impl<'a> Builder<'a> {
             listener.await;
         }
 
+        // Set up a message receiver before the socket-reader task is spawned so that the
+        // caller cannot miss early messages due to a race with the reader task.
+        let msg_receiver = activate_msg_stream.then(|| conn.inner.msg_receiver.activate_cloned());
+
         // Start the socket reader task.
         conn.init_socket_reader(
             socket_read,
@@ -450,7 +640,7 @@ impl<'a> Builder<'a> {
                 .await?;
         }
 
-        Ok(conn)
+        Ok((conn, msg_receiver))
     }
 
     fn new(target: Target) -> Self {
@@ -551,31 +741,28 @@ impl<'a> Builder<'a> {
         // SAFETY: `self.target` is always `Some` from the beginning and this method is only called
         // once.
         let split = match self.target.take().unwrap() {
-            #[cfg(not(feature = "tokio"))]
-            Target::UnixStream(stream) => Async::new(stream)?.into(),
             #[cfg(all(unix, feature = "tokio"))]
-            Target::UnixStream(stream) => stream.into(),
-            #[cfg(not(feature = "tokio"))]
-            Target::TcpStream(stream) => Async::new(stream)?.into(),
+            Target::TokioUnixStream(stream) => stream.into(),
+            #[cfg(all(any(unix, windows), feature = "async-io"))]
+            Target::AsyncIoUnixStream(stream) => Async::new(stream)?.into(),
             #[cfg(feature = "tokio")]
-            Target::TcpStream(stream) => stream.into(),
-            #[cfg(all(feature = "vsock", not(feature = "tokio")))]
+            Target::TokioTcpStream(stream) => stream.into(),
+            #[cfg(feature = "async-io")]
+            Target::AsyncIoTcpStream(stream) => Async::new(stream)?.into(),
+            #[cfg(all(feature = "vsock", not(feature = "tokio-vsock")))]
             Target::VsockStream(stream) => Async::new(stream)?.into(),
             #[cfg(feature = "tokio-vsock")]
             Target::VsockStream(stream) => stream.into(),
             Target::Address(address) => {
                 guid = address.guid().map(|g| g.to_owned().into());
                 match address.connect().await? {
-                    #[cfg(any(unix, not(feature = "tokio")))]
-                    address::transport::Stream::Unix(stream) => stream.into(),
+                    #[cfg(any(unix, feature = "async-io"))]
+                    address::transport::Stream::Unix(split) => split,
                     #[cfg(unix)]
-                    address::transport::Stream::Unixexec(stream) => stream.into(),
-                    address::transport::Stream::Tcp(stream) => stream.into(),
-                    #[cfg(any(
-                        all(feature = "vsock", not(feature = "tokio")),
-                        feature = "tokio-vsock"
-                    ))]
-                    address::transport::Stream::Vsock(stream) => stream.into(),
+                    address::transport::Stream::Unixexec(split) => split,
+                    address::transport::Stream::Tcp(split) => split,
+                    #[cfg(any(feature = "vsock", feature = "tokio-vsock"))]
+                    address::transport::Stream::Vsock(split) => split,
                 }
             }
             Target::Socket(stream) => stream,
@@ -594,9 +781,10 @@ impl<'a> Builder<'a> {
 ///
 /// Returns a dummy task that keep the executor ticking thread from exiting due to absence of any
 /// tasks until socket reader task kicks in.
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 fn start_internal_executor(executor: &Executor<'static>, internal_executor: bool) -> Result<()> {
-    if internal_executor {
+    // tokio drives its own tasks; only the `async-io` backend needs this driver thread.
+    if internal_executor && executor.needs_internal_driver() {
         let executor = executor.clone();
         std::thread::Builder::new()
             .name("zbus::Connection executor".into())

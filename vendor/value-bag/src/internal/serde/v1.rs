@@ -32,7 +32,7 @@ impl<'v> ValueBag<'v> {
         T: value_bag_serde1::lib::Serialize,
     {
         ValueBag {
-            inner: Internal::AnonSerde1(value),
+            inner: Internal::SizedSerde1(value),
         }
     }
 
@@ -44,9 +44,14 @@ impl<'v> ValueBag<'v> {
     }
 }
 
+/**
+A value that can be downcast and buffered.
+*/
 pub(crate) trait DowncastSerialize {
     fn as_any(&self) -> &dyn Any;
     fn as_super(&self) -> &dyn Serialize;
+    #[cfg(feature = "owned")]
+    fn as_buffer(&self) -> &dyn BufferSerialize;
 }
 
 impl<T: value_bag_serde1::lib::Serialize + 'static> DowncastSerialize for T {
@@ -56,6 +61,46 @@ impl<T: value_bag_serde1::lib::Serialize + 'static> DowncastSerialize for T {
 
     fn as_super(&self) -> &dyn Serialize {
         self
+    }
+
+    #[cfg(feature = "owned")]
+    fn as_buffer(&self) -> &dyn BufferSerialize {
+        self
+    }
+}
+
+/**
+A value that can be buffered.
+*/
+pub(crate) trait SizedSerialize {
+    fn as_super(&self) -> &dyn Serialize;
+    #[cfg(feature = "owned")]
+    fn as_buffer(&self) -> &dyn BufferSerialize;
+}
+
+impl<T: value_bag_serde1::lib::Serialize> SizedSerialize for T {
+    fn as_super(&self) -> &dyn Serialize {
+        self
+    }
+
+    #[cfg(feature = "owned")]
+    fn as_buffer(&self) -> &dyn BufferSerialize {
+        self
+    }
+}
+
+/**
+A specialization of `Serialize` that is object safe, but buffers generically to avoid more dynamic dispatch.
+*/
+#[cfg(feature = "owned")]
+pub(crate) trait BufferSerialize {
+    fn buffer(&self) -> Result<value_bag_serde1::buf::Owned, value_bag_serde1::buf::Error>;
+}
+
+#[cfg(feature = "owned")]
+impl<V: value_bag_serde1::lib::Serialize + ?Sized> BufferSerialize for V {
+    fn buffer(&self) -> Result<value_bag_serde1::buf::Owned, value_bag_serde1::buf::Error> {
+        value_bag_serde1::buf::Owned::buffer(self)
     }
 }
 
@@ -719,8 +764,6 @@ pub(crate) mod seq {
 
 #[cfg(feature = "owned")]
 pub(crate) mod owned {
-    use crate::std::boxed::Box;
-
     impl value_bag_serde1::lib::Serialize for crate::OwnedValueBag {
         fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
         where
@@ -730,12 +773,12 @@ pub(crate) mod owned {
         }
     }
 
-    pub(crate) type OwnedSerialize = Box<value_bag_serde1::buf::Owned>;
+    pub(crate) type OwnedSerialize = value_bag_serde1::buf::Owned;
 
     pub(crate) fn buffer(
         v: impl value_bag_serde1::lib::Serialize,
     ) -> Result<OwnedSerialize, value_bag_serde1::buf::Error> {
-        value_bag_serde1::buf::Owned::buffer(v).map(Box::new)
+        value_bag_serde1::buf::Owned::buffer(v)
     }
 }
 

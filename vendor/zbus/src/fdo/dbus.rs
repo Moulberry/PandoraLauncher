@@ -67,6 +67,17 @@ pub enum RequestNameReply {
     AlreadyOwner = 0x04,
 }
 
+impl std::fmt::Display for RequestNameReply {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PrimaryOwner => write!(f, "PrimaryOwner"),
+            Self::InQueue => write!(f, "InQueue"),
+            Self::Exists => write!(f, "Exists"),
+            Self::AlreadyOwner => write!(f, "AlreadyOwner"),
+        }
+    }
+}
+
 /// The return code of the [`DBusProxy::release_name`] method.
 #[repr(u32)]
 #[derive(Deserialize_repr, Serialize_repr, Type, Debug, PartialEq, Eq)]
@@ -83,6 +94,16 @@ pub enum ReleaseNameReply {
     NotOwner = 0x03,
 }
 
+impl std::fmt::Display for ReleaseNameReply {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Released => write!(f, "Released"),
+            Self::NonExistent => write!(f, "NonExistent"),
+            Self::NotOwner => write!(f, "NotOwner"),
+        }
+    }
+}
+
 /// The return code of the [`DBusProxy::start_service_by_name`] method.
 ///
 /// In zbus 6.0, this will become the return type of `start_service_by_name`.
@@ -95,6 +116,15 @@ pub enum StartServiceReply {
     Success = 0x01,
     /// The service was already running.
     AlreadyRunning = 0x02,
+}
+
+impl std::fmt::Display for StartServiceReply {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Success => write!(f, "Success"),
+            Self::AlreadyRunning => write!(f, "AlreadyRunning"),
+        }
+    }
 }
 
 // FIXME: When releasing 6.0, use StartServiceReply directly in start_service_by_name instead

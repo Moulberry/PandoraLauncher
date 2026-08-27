@@ -101,7 +101,7 @@ dependencies = [
 
 [[package]]
 name = "shellexpand"
-version = "3.1.1"
+version = "3.1.2"
 dependencies = [
  "bstr 1.0.0-pre.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "dirs 4.0.0 (registry+https://github.com/rust-lang/crates.io-index)",

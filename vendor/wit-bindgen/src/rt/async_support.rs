@@ -1,16 +1,16 @@
 #![deny(missing_docs)]
 
-extern crate std;
+use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
+use alloc::sync::Arc;
+use alloc::task::Wake;
+use core::ffi::c_void;
+use core::future::Future;
+use core::mem;
+use core::pin::Pin;
+use core::ptr;
 use core::sync::atomic::{AtomicU32, Ordering};
-use std::boxed::Box;
-use std::collections::BTreeMap;
-use std::ffi::c_void;
-use std::future::Future;
-use std::mem;
-use std::pin::Pin;
-use std::ptr;
-use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
+use core::task::{Context, Poll, Waker};
 
 macro_rules! rtdebug {
     ($($f:tt)*) => {
@@ -18,6 +18,7 @@ macro_rules! rtdebug {
         // crate like `log` or such to reduce runtime deps. Intended to be used
         // during development for now.
         if false {
+            #[cfg(feature = "std")]
             std::eprintln!($($f)*);
         }
     }
@@ -61,10 +62,13 @@ mod abi_buffer;
 mod cabi;
 mod error_context;
 mod future_support;
+#[cfg(feature = "futures-stream")]
+mod futures_stream;
 #[cfg(feature = "inter-task-wakeup")]
 mod inter_task_wakeup;
 mod stream_support;
 mod subtask;
+mod try_lock;
 #[cfg(feature = "inter-task-wakeup")]
 mod unit_stream;
 mod waitable;
@@ -79,6 +83,8 @@ use self::waitable_set::WaitableSet;
 pub use abi_buffer::*;
 pub use error_context::*;
 pub use future_support::*;
+#[cfg(feature = "futures-stream")]
+pub use futures_stream::*;
 pub use stream_support::*;
 #[doc(hidden)]
 pub use subtask::Subtask;

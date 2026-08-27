@@ -6,9 +6,9 @@ use core::cmp::Ordering;
 #[cfg(feature = "alloc")]
 use core::str::FromStr;
 
+use crate::ParseError;
 use crate::parser;
 use crate::subtags;
-use crate::ParseError;
 #[cfg(feature = "alloc")]
 use alloc::borrow::Cow;
 
@@ -20,7 +20,7 @@ use alloc::borrow::Cow;
 /// multiple possible orderings. Depending on your use case, two orderings are available:
 ///
 /// 1. A string ordering, suitable for stable serialization: [`LanguageIdentifier::strict_cmp`]
-/// 2. A struct ordering, suitable for use with a BTreeSet: [`LanguageIdentifier::total_cmp`]
+/// 2. A struct ordering, suitable for use with a `BTreeSet`: [`LanguageIdentifier::total_cmp`]
 ///
 /// See issue: <https://github.com/unicode-org/icu4x/issues/1215>
 ///
@@ -39,6 +39,14 @@ use alloc::borrow::Cow;
 ///
 /// This operation normalizes syntax to be well-formed. No legacy subtag replacements is performed.
 /// For validation and canonicalization, see `LocaleCanonicalizer`.
+///
+/// # Serde
+///
+/// This type implements `serde::Serialize` and `serde::Deserialize` if the
+/// `"serde"` Cargo feature is enabled on the crate.
+///
+/// The value will be serialized as a string and parsed when deserialized.
+/// For tips on efficient storage and retrieval of locales, see [`crate::zerovec`].
 ///
 /// # Examples
 ///
@@ -71,7 +79,7 @@ use alloc::borrow::Cow;
 /// assert_eq!(li.language, language!("en"));
 /// assert_eq!(li.script, Some(script!("Latn")));
 /// assert_eq!(li.region, Some(region!("US")));
-/// assert_eq!(li.variants.get(0), Some(&variant!("valencia")));
+/// assert_eq!(li.variants.first(), Some(&variant!("valencia")));
 /// ```
 ///
 /// [`Unicode BCP47 Language Identifier`]: https://unicode.org/reports/tr35/tr35.html#Unicode_language_identifier
@@ -95,6 +103,12 @@ impl LanguageIdentifier {
     /// A constructor which takes a utf8 slice, parses it and
     /// produces a well-formed [`LanguageIdentifier`].
     ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
+    ///
+    /// Note: Support for the legacy `_` separator has been dropped since 2.0.0.
+    /// Users of ICU4X need to convert the `_` to `-` before calling the
+    /// function.
+    ///
     /// # Examples
     ///
     /// ```
@@ -109,13 +123,15 @@ impl LanguageIdentifier {
     }
 
     /// See [`Self::try_from_str`]
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     #[cfg(feature = "alloc")]
     pub fn try_from_utf8(code_units: &[u8]) -> Result<Self, ParseError> {
-        crate::parser::parse_language_identifier(code_units, parser::ParserMode::LanguageIdentifier)
+        parser::parse_language_identifier(code_units, parser::ParserMode::LanguageIdentifier)
     }
 
     #[doc(hidden)] // macro use
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     // The return type should be `Result<Self, ParseError>` once the `const_precise_live_drops`
     // is stabilized ([rust-lang#73255](https://github.com/rust-lang/rust/issues/73255)).
     pub const fn try_from_utf8_with_single_variant(
@@ -129,7 +145,7 @@ impl LanguageIdentifier {
         ),
         ParseError,
     > {
-        crate::parser::parse_language_identifier_with_single_variant(
+        parser::parse_language_identifier_with_single_variant(
             code_units,
             parser::ParserMode::LanguageIdentifier,
         )
@@ -138,10 +154,12 @@ impl LanguageIdentifier {
     /// A constructor which takes a utf8 slice which may contain extension keys,
     /// parses it and produces a well-formed [`LanguageIdentifier`].
     ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
+    ///
     /// # Examples
     ///
     /// ```
-    /// use icu::locale::{langid, LanguageIdentifier};
+    /// use icu::locale::{LanguageIdentifier, langid};
     ///
     /// let li = LanguageIdentifier::try_from_locale_bytes(b"en-US-x-posix")
     ///     .expect("Parsing failed.");
@@ -166,7 +184,9 @@ impl LanguageIdentifier {
 
     /// Normalize the language identifier (operating on UTF-8 formatted byte slices)
     ///
-    /// This operation will normalize casing and the separator.
+    /// This operation will normalize casing.
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     ///
     /// # Examples
     ///
@@ -174,19 +194,21 @@ impl LanguageIdentifier {
     /// use icu::locale::LanguageIdentifier;
     ///
     /// assert_eq!(
-    ///     LanguageIdentifier::normalize("pL-latn-pl").as_deref(),
+    ///     LanguageIdentifier::normalize_utf8(b"pL-latn-pl").as_deref(),
     ///     Ok("pl-Latn-PL")
     /// );
     /// ```
     #[cfg(feature = "alloc")]
-    pub fn normalize_utf8(input: &[u8]) -> Result<Cow<str>, ParseError> {
+    pub fn normalize_utf8(input: &[u8]) -> Result<Cow<'_, str>, ParseError> {
         let lang_id = Self::try_from_utf8(input)?;
         Ok(writeable::to_string_or_borrow(&lang_id, input))
     }
 
     /// Normalize the language identifier (operating on strings)
     ///
-    /// This operation will normalize casing and the separator.
+    /// This operation will normalize casing.
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     ///
     /// # Examples
     ///
@@ -199,7 +221,7 @@ impl LanguageIdentifier {
     /// );
     /// ```
     #[cfg(feature = "alloc")]
-    pub fn normalize(input: &str) -> Result<Cow<str>, ParseError> {
+    pub fn normalize(input: &str) -> Result<Cow<'_, str>, ParseError> {
         Self::normalize_utf8(input.as_bytes())
     }
 
@@ -385,15 +407,15 @@ impl LanguageIdentifier {
         if !subtag_matches!(subtags::Language, iter, self.language) {
             return false;
         }
-        if let Some(ref script) = self.script {
-            if !subtag_matches!(subtags::Script, iter, *script) {
-                return false;
-            }
+        if let Some(ref script) = self.script
+            && !subtag_matches!(subtags::Script, iter, *script)
+        {
+            return false;
         }
-        if let Some(ref region) = self.region {
-            if !subtag_matches!(subtags::Region, iter, *region) {
-                return false;
-            }
+        if let Some(ref region) = self.region
+            && !subtag_matches!(subtags::Region, iter, *region)
+        {
+            return false;
         }
         for variant in self.variants.iter() {
             if !subtag_matches!(subtags::Variant, iter, *variant) {
@@ -489,12 +511,19 @@ impl LanguageIdentifier {
     }
 }
 
+impl AsRef<LanguageIdentifier> for LanguageIdentifier {
+    fn as_ref(&self) -> &LanguageIdentifier {
+        self
+    }
+}
+
 impl core::fmt::Debug for LanguageIdentifier {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         core::fmt::Display::fmt(&self, f)
     }
 }
 
+/// ✨ *Enabled with the `alloc` Cargo feature.*
 #[cfg(feature = "alloc")]
 impl FromStr for LanguageIdentifier {
     type Err = ParseError;
@@ -505,7 +534,7 @@ impl FromStr for LanguageIdentifier {
     }
 }
 
-impl_writeable_for_each_subtag_str_no_test!(LanguageIdentifier, selff, selff.script.is_none() && selff.region.is_none() && selff.variants.is_empty() => selff.language.write_to_string());
+impl_writeable_for_each_subtag_str_no_test!(LanguageIdentifier, selff, selff.script.is_none() && selff.region.is_none() && selff.variants.is_empty() => Some(selff.language.as_str()));
 
 #[test]
 fn test_writeable() {
@@ -533,7 +562,7 @@ fn test_writeable() {
 /// # Examples
 ///
 /// ```
-/// use icu::locale::{langid, subtags::language, LanguageIdentifier};
+/// use icu::locale::{LanguageIdentifier, langid, subtags::language};
 ///
 /// assert_eq!(LanguageIdentifier::from(language!("en")), langid!("en"));
 /// ```
@@ -551,7 +580,7 @@ impl From<subtags::Language> for LanguageIdentifier {
 /// # Examples
 ///
 /// ```
-/// use icu::locale::{langid, subtags::script, LanguageIdentifier};
+/// use icu::locale::{LanguageIdentifier, langid, subtags::script};
 ///
 /// assert_eq!(
 ///     LanguageIdentifier::from(Some(script!("latn"))),
@@ -572,7 +601,7 @@ impl From<Option<subtags::Script>> for LanguageIdentifier {
 /// # Examples
 ///
 /// ```
-/// use icu::locale::{langid, subtags::region, LanguageIdentifier};
+/// use icu::locale::{LanguageIdentifier, langid, subtags::region};
 ///
 /// assert_eq!(
 ///     LanguageIdentifier::from(Some(region!("US"))),
@@ -596,9 +625,8 @@ impl From<Option<subtags::Region>> for LanguageIdentifier {
 ///
 /// ```
 /// use icu::locale::{
-///     langid,
+///     LanguageIdentifier, langid,
 ///     subtags::{language, region, script},
-///     LanguageIdentifier,
 /// };
 ///
 /// let lang = language!("en");

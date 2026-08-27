@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.85"
 name = "harfrust"
-version = "0.5.0"
+version = "0.5.2"
 build = false
 exclude = [
     "benches/",
@@ -45,10 +45,6 @@ name = "harfrust"
 path = "src/lib.rs"
 bench = false
 
-[[example]]
-name = "shape"
-path = "examples/shape.rs"
-
 [dependencies.bitflags]
 version = "2.9"
 
@@ -69,13 +65,6 @@ version = "1.14"
 
 [dev-dependencies.criterion]
 version = "0.8.0"
-
-[dev-dependencies.libc]
-version = "0.2"
-
-[dev-dependencies.pico-args]
-version = "0.5"
-features = ["eq-separator"]
 
 [lints.clippy]
 cast_lossless = "allow"
@@ -124,12 +113,3 @@ priority = -1
 
 [lints.rust]
 unused_qualifications = "warn"
-
-[profile.bench]
-inherits = "release"
-
-[profile.release]
-lto = "fat"
-codegen-units = 1
-overflow-checks = false
-strip = true

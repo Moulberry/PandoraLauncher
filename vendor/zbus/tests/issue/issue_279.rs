@@ -1,6 +1,7 @@
 use test_log::test;
 use tracing::instrument;
 
+#[allow(deprecated)] // exercises the deprecated `unix_stream`, which must keep working
 #[test(tokio::test(flavor = "multi_thread", worker_threads = 2))]
 #[instrument]
 async fn issue_279() {

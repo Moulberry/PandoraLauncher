@@ -1,8 +1,10 @@
 /// Casting the struct to slices of its components
+#[deprecated(note = "use `bytemuck::cast_slice()` instead")]
 pub trait ComponentSlice<T> {
     /// The components interpreted as an array, e.g. one `RGB` expands to 3 elements.
     ///
     /// It's implemented for individual pixels as well as slices of pixels.
+    #[deprecated(note = "use `bytemuck::cast_slice()` instead; or at least call it like ComponentSlice::as_slice(px)")]
     fn as_slice(&self) -> &[T];
 
     /// The components interpreted as a mutable array, e.g. one `RGB` expands to 3 elements.
@@ -16,6 +18,7 @@ pub trait ComponentSlice<T> {
     /// ```rust,ignore
     /// arr[..].as_mut_slice()
     /// ```
+    #[deprecated(note = "use `bytemuck::cast_slice_mut()` instead; or at least call it like ComponentSlice::as_mut_slice(px)")]
     fn as_mut_slice(&mut self) -> &mut [T];
 }
 
@@ -35,12 +38,14 @@ pub trait ComponentSlice<T> {
 ///
 /// Plain types are not allowed to contain struct padding, booleans, chars, enums, references or pointers.
 #[cfg(feature = "as-bytes")]
+#[allow(deprecated)]
 pub trait ComponentBytes<T: crate::Pod> where Self: ComponentSlice<T> {
     /// The components interpreted as raw bytes, in machine's native endian. In `RGB` bytes of the red component are first.
     #[inline]
     fn as_bytes(&self) -> &[u8] {
         assert_ne!(0, core::mem::size_of::<T>());
-        let slice = self.as_slice();
+        #[allow(deprecated)]
+        let slice = ComponentSlice::as_slice(self);
         unsafe {
             core::slice::from_raw_parts(slice.as_ptr().cast(), core::mem::size_of_val(slice))
         }
@@ -50,7 +55,8 @@ pub trait ComponentBytes<T: crate::Pod> where Self: ComponentSlice<T> {
     #[inline]
     fn as_bytes_mut(&mut self) -> &mut [u8] {
         assert_ne!(0, core::mem::size_of::<T>());
-        let slice = self.as_mut_slice();
+        #[allow(deprecated)]
+        let slice = ComponentSlice::as_mut_slice(self);
         unsafe {
             core::slice::from_raw_parts_mut(slice.as_mut_ptr().cast(), core::mem::size_of_val(slice))
         }

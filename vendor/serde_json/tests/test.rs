@@ -148,8 +148,8 @@ fn test_write_f64() {
         (3.1, "3.1"),
         (-1.5, "-1.5"),
         (0.5, "0.5"),
-        (f64::MIN, "-1.7976931348623157e308"),
-        (f64::MAX, "1.7976931348623157e308"),
+        (f64::MIN, "-1.7976931348623157e+308"),
+        (f64::MAX, "1.7976931348623157e+308"),
         (f64::EPSILON, "2.220446049250313e-16"),
     ];
     test_encode_ok(tests);
@@ -1037,22 +1037,28 @@ fn test_parse_number() {
 
     #[cfg(feature = "arbitrary_precision")]
     test_parse_ok(vec![
-        ("1e999", Number::from_string_unchecked("1e999".to_owned())),
+        ("1e999", Number::from_string_unchecked("1e+999".to_owned())),
         ("1e+999", Number::from_string_unchecked("1e+999".to_owned())),
-        ("-1e999", Number::from_string_unchecked("-1e999".to_owned())),
+        (
+            "-1e999",
+            Number::from_string_unchecked("-1e+999".to_owned()),
+        ),
         ("1e-999", Number::from_string_unchecked("1e-999".to_owned())),
-        ("1E999", Number::from_string_unchecked("1E999".to_owned())),
-        ("1E+999", Number::from_string_unchecked("1E+999".to_owned())),
-        ("-1E999", Number::from_string_unchecked("-1E999".to_owned())),
-        ("1E-999", Number::from_string_unchecked("1E-999".to_owned())),
-        ("1E+000", Number::from_string_unchecked("1E+000".to_owned())),
+        ("1E999", Number::from_string_unchecked("1e+999".to_owned())),
+        ("1E+999", Number::from_string_unchecked("1e+999".to_owned())),
+        (
+            "-1E999",
+            Number::from_string_unchecked("-1e+999".to_owned()),
+        ),
+        ("1E-999", Number::from_string_unchecked("1e-999".to_owned())),
+        ("1E+000", Number::from_string_unchecked("1e+000".to_owned())),
         (
             "2.3e999",
-            Number::from_string_unchecked("2.3e999".to_owned()),
+            Number::from_string_unchecked("2.3e+999".to_owned()),
         ),
         (
             "-2.3e999",
-            Number::from_string_unchecked("-2.3e999".to_owned()),
+            Number::from_string_unchecked("-2.3e+999".to_owned()),
         ),
     ]);
 }
@@ -2447,6 +2453,56 @@ fn test_boxed_raw_value() {
 
     let array_to_string = serde_json::to_string(&array_from_str).unwrap();
     assert_eq!(r#"["a",42,{"foo": "bar"},null]"#, array_to_string);
+}
+
+#[cfg(feature = "raw_value")]
+#[test]
+fn test_raw_value_from_string_unchecked() {
+    #[derive(Serialize)]
+    struct Wrapper {
+        a: i8,
+        b: Box<RawValue>,
+        c: i8,
+    }
+
+    let json = r#"{"foo":[1,2,3],"bar":"\"escaped\""}"#.to_owned();
+    let checked = RawValue::from_string(json.clone()).unwrap();
+    let unchecked = unsafe { RawValue::from_string_unchecked(json) };
+    assert_eq!(checked.get(), unchecked.get());
+
+    let wrapper = Wrapper {
+        a: 1,
+        b: unchecked,
+        c: 3,
+    };
+    let wrapper_to_string = serde_json::to_string(&wrapper).unwrap();
+    assert_eq!(
+        r#"{"a":1,"b":{"foo":[1,2,3],"bar":"\"escaped\""},"c":3}"#,
+        wrapper_to_string,
+    );
+
+    // A string with excess capacity is preserved as-is.
+    let mut spare = String::with_capacity(64);
+    spare.push_str("[1,2,3]");
+    let raw = unsafe { RawValue::from_string_unchecked(spare) };
+    assert_eq!("[1,2,3]", raw.get());
+}
+
+// The debug_assert! inside from_string_unchecked is compiled out of release
+// builds, so #[should_panic] can only be exercised under debug (which is the
+// default `cargo test` profile).
+#[cfg(all(feature = "raw_value", debug_assertions))]
+#[test]
+#[should_panic = "from_string_unchecked"]
+fn test_raw_value_from_string_unchecked_debug_asserts_whitespace() {
+    let _ = unsafe { RawValue::from_string_unchecked(" 42".to_owned()) };
+}
+
+#[cfg(all(feature = "raw_value", debug_assertions))]
+#[test]
+#[should_panic = "from_string_unchecked"]
+fn test_raw_value_from_string_unchecked_debug_asserts_well_formed() {
+    let _ = unsafe { RawValue::from_string_unchecked("[1,".to_owned()) };
 }
 
 #[cfg(feature = "raw_value")]

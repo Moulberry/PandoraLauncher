@@ -1,4 +1,4 @@
-use annotate_snippets::{renderer::DecorStyle, AnnotationKind, Level, Renderer, Snippet};
+use annotate_snippets::{AnnotationKind, Level, Renderer, Snippet, renderer::DecorStyle};
 
 fn main() {
     let source = r#"                annotations: vec![SourceAnnotation {

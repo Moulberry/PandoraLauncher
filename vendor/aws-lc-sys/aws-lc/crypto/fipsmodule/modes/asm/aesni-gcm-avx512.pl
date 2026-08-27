@@ -4176,9 +4176,13 @@ ___
 # ;;; Functions definitions
 # ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+  # The .text directive is deliberately emitted outside the #ifndef guard:
+  # when MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX elides the body, some NASM
+  # versions reject an object with no sections (nasm.us bug 3392738), which
+  # would otherwise break win64 builds that assemble this file (#3355).
   $code .= <<___;
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
 .text
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
 ___
 {
   # ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

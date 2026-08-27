@@ -49,40 +49,47 @@ ast_struct! {
     /// ```text
     /// File {
     ///     shebang: None,
+    ///     frontmatter: None,
     ///     attrs: [],
     ///     items: [
-    ///         Use(
-    ///             ItemUse {
-    ///                 attrs: [],
-    ///                 vis: Inherited,
-    ///                 use_token: Use,
-    ///                 leading_colon: None,
-    ///                 tree: Path(
-    ///                     UsePath {
-    ///                         ident: Ident(
-    ///                             std,
-    ///                         ),
-    ///                         colon2_token: Colon2,
-    ///                         tree: Name(
-    ///                             UseName {
-    ///                                 ident: Ident(
-    ///                                     env,
-    ///                                 ),
-    ///                             },
-    ///                         ),
-    ///                     },
-    ///                 ),
-    ///                 semi_token: Semi,
-    ///             },
-    ///         ),
+    ///         Item::Use {
+    ///             attrs: [],
+    ///             vis: Visibility::Inherited,
+    ///             use_token: Token![use],
+    ///             leading_colon: None,
+    ///             tree: UseTree::Path(
+    ///                 UsePath {
+    ///                     ident: Ident(
+    ///                         std,
+    ///                     ),
+    ///                     colon2_token: Token![::],
+    ///                     tree: UseTree::Name(
+    ///                         UseName {
+    ///                             ident: Ident(
+    ///                                 env,
+    ///                             ),
+    ///                         },
+    ///                     ),
+    ///                 },
+    ///             ),
+    ///             semi_token: Token![;],
+    ///         },
     /// ...
     /// ```
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     pub struct File {
         pub shebang: Option<String>,
+        pub frontmatter: Option<Frontmatter>,
         pub attrs: Vec<Attribute>,
         pub items: Vec<Item>,
     }
+}
+
+ast_struct! {
+    /// A frontmatter section fenced by `---`.
+    #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
+    #[non_exhaustive]
+    pub struct Frontmatter {}
 }
 
 #[cfg(feature = "parsing")]
@@ -98,6 +105,7 @@ pub(crate) mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(File {
                 shebang: None,
+                frontmatter: None,
                 attrs: input.call(Attribute::parse_inner)?,
                 items: {
                     let mut items = Vec::new();

@@ -4,7 +4,9 @@ Barebones wrapper around LLVM's libFuzzer runtime library.
 
 The CPP parts are extracted from compiler-rt git repository with `git filter-branch`.
 
-libFuzzer relies on LLVM sanitizer support. The Rust compiler has built-in support for LLVM sanitizer support, for now, it's limited to Linux. As a result, `libfuzzer-sys` only works on Linux.
+libFuzzer relies on LLVM sanitizer support. The Rust compiler has built-in
+support for LLVM sanitizer support, for now, it's limited to Linux. As a result,
+`libfuzzer-sys` only works on Linux.
 
 ## Usage
 
@@ -65,9 +67,11 @@ $ ./target/debug/fuzzed
 
 When using `libfuzzer-sys`, you can provide your own `libfuzzer` runtime in two ways.
 
-If you are developing a fuzzer, you can set the `CUSTOM_LIBFUZZER_PATH` environment variable to the path of your local
-`libfuzzer` runtime, which will then be linked instead of building libfuzzer as part of the build stage of `libfuzzer-sys`.
-For an example, to link to a prebuilt LLVM 16 `libfuzzer`, you could use:
+If you are developing a fuzzer, you can set the `CUSTOM_LIBFUZZER_PATH`
+environment variable to the path of your local `libfuzzer` runtime, which will
+then be linked instead of building libfuzzer as part of the build stage of
+`libfuzzer-sys`.  For an example, to link to a prebuilt LLVM 16 `libfuzzer`, you
+could use:
 
 ```bash
 $ export CUSTOM_LIBFUZZER_PATH=/usr/lib64/clang/16/lib/libclang_rt.fuzzer-x86_64.a
@@ -79,7 +83,7 @@ Alternatively, you may also disable the default `link_libfuzzer` feature:
 In `Cargo.toml`:
 ```toml
 [dependencies]
-libfuzzer-sys = { path = "../../libfuzzer", default-features = false }
+libfuzzer-sys = { default-features = false }
 ```
 
 Then link to your own runtime in your `build.rs`.
@@ -87,13 +91,13 @@ Then link to your own runtime in your `build.rs`.
 ## Updating libfuzzer from upstream
 
 * Update the `COMMIT=...` variable in `./update-libfuzzer.sh` with the new
-  commit hash from [llvm-mirror/llvm-project](github.com/llvm-mirror/llvm-project)
+  commit hash from [llvm/llvm-project](https://github.com/llvm/llvm-project)
   that you are vendoring.
 
 * Re-run the script:
 
   ```
-  $ ./update-libfuzzer.sh <github.com/llvm-mirror/llvm-project SHA1>
+  $ ./update-libfuzzer.sh
   ```
 
 ## License

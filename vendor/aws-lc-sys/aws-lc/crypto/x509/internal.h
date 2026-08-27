@@ -199,6 +199,16 @@ DECLARE_ASN1_ITEM(GENERAL_NAME)
 // and C type is |GENERAL_NAMES*|, aka |STACK_OF(GENERAL_NAME)*|.
 DECLARE_ASN1_ITEM(GENERAL_NAMES)
 
+// Certificate policy |ASN1_ITEM|s (RFC 5280 certificatePolicies). These are
+// declared here rather than in the defining translation unit (v3_cpols.c) so
+// the symbol-registry tooling, which scans headers, records their exported
+// |name_it| symbols. The corresponding public |_new|/|_free| functions live in
+// <openssl/x509.h>.
+DECLARE_ASN1_ITEM(POLICYINFO)
+DECLARE_ASN1_ITEM(POLICYQUALINFO)
+DECLARE_ASN1_ITEM(USERNOTICE)
+DECLARE_ASN1_ITEM(NOTICEREF)
+
 struct X509_VERIFY_PARAM_st {
   int64_t check_time;               // POSIX time to use
   unsigned long flags;              // Various verify flags

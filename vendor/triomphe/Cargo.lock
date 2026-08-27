@@ -80,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "triomphe"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "arc-swap",
  "serde",

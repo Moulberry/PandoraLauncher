@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.11.5 (2026-08-14)
+
+- Show in API docs where `stream` feature is required ([#266])
+
+[#266]: https://github.com/hannobraun/inotify-rs/pull/266
+
+## v0.11.4 (2026-07-08)
+
+- Add support for FreeBSD ([#258])
+
+[#258]: https://github.com/hannobraun/inotify-rs/pull/258
+
+## v0.11.3 (2026-07-06)
+
+- Add `WatchMask::MASK_CREATE` ([#263])
+
+[#263]: https://github.com/hannobraun/inotify-rs/pull/263
+
+## v0.11.2 (2026-06-01)
+
+- Make improvements to documentation ([#254], [#256])
+- Re-export `Stream` and `StreamExt` ([#257])
+- Consider file descriptors backed by one inotify instance as equal ([#260])
+
+[#254]: https://github.com/hannobraun/inotify-rs/pull/254
+[#256]: https://github.com/hannobraun/inotify-rs/pull/256
+[#257]: https://github.com/hannobraun/inotify-rs/pull/257
+[#260]: https://github.com/hannobraun/inotify-rs/pull/260
+
+## v0.11.1 (2026-03-06)
+
+- Make improvements to documentation ([#224], [#226], [#228], [#239], [#240], [#244])
+- Add `EventMask::parse` and `ParsedEventMask` ([#236], [#238])
+
+[#224]: https://github.com/hannobraun/inotify-rs/pull/224
+[#226]: https://github.com/hannobraun/inotify-rs/pull/226
+[#228]: https://github.com/hannobraun/inotify-rs/pull/228
+[#236]: https://github.com/hannobraun/inotify-rs/pull/236
+[#238]: https://github.com/hannobraun/inotify-rs/pull/238
+[#239]: https://github.com/hannobraun/inotify-rs/pull/239
+[#240]: https://github.com/hannobraun/inotify-rs/pull/240
+[#244]: https://github.com/hannobraun/inotify-rs/pull/244
+
 ## v0.11.0 (2024-08-19)
 
 - Fix link in README ([#209])
@@ -13,13 +56,11 @@
 [#218]: https://github.com/hannobraun/inotify-rs/pull/218
 [#219]: https://github.com/hannobraun/inotify-rs/pull/219
 
-
 ## v0.10.2 (2023-07-27)
 
 - Fix broken links to `Watches` in documentation ([#205])
 
 [#205]: https://github.com/hannobraun/inotify-rs/pull/205
-
 
 ## v0.10.1 (2023-06-07)
 
@@ -39,13 +80,11 @@
 [#199]: https://github.com/hannobraun/inotify-rs/pull/199
 [#202]: https://github.com/hannobraun/inotify-rs/pull/202
 
-
 ## v0.10.0 (2021-12-07)
 
 - **Breaking change:** Remove special handling of `WouldBlock` error ([#190])
 
 [#190]: https://github.com/hannobraun/inotify-rs/pull/190
-
 
 ## v0.9.6 (2021-11-03)
 
@@ -55,13 +94,11 @@
 [#185]: https://github.com/hannobraun/inotify-rs/pull/185
 [#187]: https://github.com/hannobraun/inotify-rs/pull/187
 
-
 ## v0.9.5 (2021-10-07)
 
 - Implement `Ord`/`PartialOrd` for `WatchDescriptor` ([#183])
 
 [#183]: https://github.com/hannobraun/inotify-rs/pull/183
-
 
 ## v0.9.4 (2021-09-22)
 
@@ -70,7 +107,6 @@
 
 [#179]: https://github.com/hannobraun/inotify-rs/pull/179
 [#180]: https://github.com/hannobraun/inotify-rs/pull/180
-
 
 ## v0.9.3 (2021-05-12)
 
@@ -85,20 +121,17 @@
 [#171]: https://github.com/hannobraun/inotify-rs/pull/171
 [#173]: https://github.com/hannobraun/inotify-rs/pull/173
 
-
 ## v0.9.2 (2020-12-30)
 
 - Upgrade to Tokio 1.0 ([#165])
 
-[#165]: https://github.com/hannobraun/inotify/pull/165
-
+[#165]: https://github.com/hannobraun/inotify-rs/pull/165
 
 ## v0.9.1 (2020-11-09)
 
 - Fix take wake-up ([#161])
 
-[#161]: https://github.com/hannobraun/inotify/pull/161
-
+[#161]: https://github.com/hannobraun/inotify-rs/pull/161
 
 ## v0.9.0 (2020-11-06)
 
@@ -106,59 +139,50 @@
 - Fix documentation: `Inotify::read_events` doesn't handle all events ([#157])
 - Update to tokio 0.3 ([#158])
 
-[#154]: https://github.com/hannobraun/inotify/pull/154
-[#157]: https://github.com/hannobraun/inotify/pull/157
-[#158]: https://github.com/hannobraun/inotify/pull/158
-
+[#154]: https://github.com/hannobraun/inotify-rs/pull/154
+[#157]: https://github.com/hannobraun/inotify-rs/pull/157
+[#158]: https://github.com/hannobraun/inotify-rs/pull/158
 
 ## v0.8.3 (2020-06-05)
 
 - Avoid using `inotify_init1` ([#146])
 
-[#146]: https://github.com/hannobraun/inotify/pull/146
-
+[#146]: https://github.com/hannobraun/inotify-rs/pull/146
 
 ## v0.8.2 (2020-01-25)
 
 - Ensure file descriptor is closed on drop ([#140])
 
-[#140]: https://github.com/inotify-rs/inotify/pull/140
-
+[#140]: https://github.com/hannobraun/inotify-rs/pull/140
 
 ## v0.8.1 (2020-01-23)
 
 No changes, due to a mistake made while releasing this version.
 
-
 ## v0.8.0 (2019-12-04)
 
 - Update to tokio 0.2 and futures 0.3 ([#134])
 
-[#134]: https://github.com/inotify-rs/inotify/pull/134
-
+[#134]: https://github.com/hannobraun/inotify-rs/pull/134
 
 ## v0.7.1 (2020-06-05)
 
 - backport: Avoid using `inotify_init1` ([#146])
 
-[#146]: https://github.com/hannobraun/inotify/pull/146
-
+[#146]: https://github.com/hannobraun/inotify-rs/pull/146
 
 ## v0.7.0 (2019-02-09)
 
 - Make stream API more flexible in regards to buffers ([ea3e7a394bf34a6ccce4f2136c0991fe7e8f1f42](ea3e7a394bf34a6ccce4f2136c0991fe7e8f1f42)) (breaking change)
 
-
 ## v0.6.1 (2018-08-28)
 
 - Don't return spurious filenames ([2f37560f](2f37560f))
-
 
 ## v0.6.0 (2018-08-16)
 
 - Handle closing of inotify instance better ([824160fe](824160fe))
 - Implement `EventStream` using `mio` ([ba4cb8c7](ba4cb8c7))
-
 
 ## v0.5.1 (2018-02-27)
 

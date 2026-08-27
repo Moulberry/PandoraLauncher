@@ -11,8 +11,9 @@
 
 [package]
 edition = "2018"
+rust-version = "1.83"
 name = "compression-codecs"
-version = "0.4.31"
+version = "0.4.38"
 authors = [
     "Wim Looman <wim@nemo157.com>",
     "Allen Bui <fairingrey@gmail.com>",
@@ -85,22 +86,22 @@ version = "8"
 optional = true
 
 [dependencies.bzip2]
-version = "0.6"
+version = "0.6.1"
 optional = true
 
 [dependencies.compression-core]
-version = "0.4.29"
+version = "0.4.32"
 
 [dependencies.deflate64]
-version = "0.1.5"
+version = "0.1.10"
 optional = true
 
 [dependencies.flate2]
-version = "1.0.13"
+version = "1.1.4"
 optional = true
 
 [dependencies.liblzma]
-version = "0.4.4"
+version = "0.4.5"
 optional = true
 
 [dependencies.libzstd]

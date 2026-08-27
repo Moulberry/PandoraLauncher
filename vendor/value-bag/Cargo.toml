@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "value-bag"
-version = "1.12.0"
+version = "1.13.2"
 authors = ["Ashley Mannix <ashleymannix@live.com.au>"]
 build = false
 exclude = [".github/*"]
@@ -54,6 +54,7 @@ alloc = [
 error = ["std"]
 inline-i128 = []
 inline-str = []
+inline-str-l = ["inline-str"]
 owned = [
     "alloc",
     "value-bag-serde1?/owned",
@@ -81,28 +82,35 @@ path = "src/lib.rs"
 [[bench]]
 name = "by_ref"
 path = "benches/by_ref.rs"
+harness = false
 
 [[bench]]
 name = "capture"
 path = "benches/capture.rs"
+harness = false
 
 [[bench]]
 name = "owned"
 path = "benches/owned.rs"
+harness = false
 
 [[bench]]
 name = "seq"
 path = "benches/seq.rs"
+harness = false
 
 [dependencies.value-bag-serde1]
-version = "1.12.0"
+version = "1.13.2"
 optional = true
 
 [dependencies.value-bag-sval2]
-version = "1.12.0"
+version = "1.13.2"
 optional = true
 
 [dev-dependencies]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies.criterion]
+version = "0.8"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies.wasm-bindgen]
 version = "0.2"

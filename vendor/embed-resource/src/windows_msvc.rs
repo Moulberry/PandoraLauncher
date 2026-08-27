@@ -1,4 +1,4 @@
-use self::super::{ParameterBundle, apply_parameters};
+use self::super::{ParameterBundle, env_target_and_rc, apply_parameters};
 use std::path::{PathBuf, Path, MAIN_SEPARATOR};
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::AtomicBool;
@@ -27,18 +27,19 @@ impl ResourceCompiler {
     }
 
     pub fn compile_resource<Ms: AsRef<OsStr>, Mi: IntoIterator<Item = Ms>, Is: AsRef<OsStr>, Ii: IntoIterator<Item = Is>>(
-        &self, out_dir: &str, prefix: &str, resource: &str, parameters: ParameterBundle<Ms, Mi, Is, Ii>)
+        self, out_dir: &str, prefix: &str, resource: &str, parameters: ParameterBundle<Ms, Mi, Is, Ii>)
         -> Result<String, Cow<'static, str>> {
         let out_file = format!("{}{}{}.lib", out_dir, MAIN_SEPARATOR, prefix);
+        let (_, rc) = env_target_and_rc()?;
+        let rc = rc.map(PathBuf::from).or_else(|| find_windows_sdk_tool_impl("rc.exe"));
         // `.res`es are linkable under MSVC as well as normal libraries.
-        if !apply_parameters(Command::new(find_windows_sdk_tool_impl("rc.exe").as_ref().map_or(Path::new("rc.exe"), Path::new))
-                                 .args(&["/fo", &out_file, "/I", out_dir]),
+        if !apply_parameters(Command::new(rc.as_deref().unwrap_or(Path::new("rc.exe"))).args(&["/fo", &out_file, "/I", out_dir]),
                              "/D",
                              "/I",
                              parameters)
             .arg(resource)
             .status()
-            .map_err(|_| Cow::from("Are you sure you have RC.EXE in your $PATH?"))?
+            .map_err(|_| Cow::from("Are you sure you have RC.EXE in your $PATH or ${RC_$TARGET} or $RC is set?"))?
             .success() {
             return Err("RC.EXE failed to compile specified resource file".into());
         }
@@ -55,7 +56,7 @@ enum Arch {
 }
 
 pub fn find_windows_sdk_tool_impl(tool: &str) -> Option<PathBuf> {
-    let arch = match env::var("HOST").expect("No HOST env var").as_bytes() {
+    let arch = match env::var_os("HOST").expect("No HOST env var").as_encoded_bytes() {
         [b'x', b'8', b'6', b'_', b'6', b'4', ..] => Arch::X64, // "x86_64"
         [b'a', b'a', b'r', b'c', b'h', b'6', b'4', ..] => Arch::AArch64, // "aarch64"
         _ => Arch::X86,
@@ -71,6 +72,10 @@ pub fn find_windows_sdk_tool_impl(tool: &str) -> Option<PathBuf> {
 
 
 fn find_with_vswhom(arch: Arch, tool: &str) -> Option<PathBuf> {
+    if !matches!(arch, Arch::X86 | Arch::X64) {
+        return None;
+    }
+
     let res = VsFindResult::search();
     res.as_ref()
         .and_then(|res| res.windows_sdk_root.as_ref())

@@ -1,11 +1,11 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
 repository = "https://github.com/rust-lang/annotate-snippets-rs"
 license = "MIT OR Apache-2.0"
-edition = "2021"
-rust-version = "1.66.0"  # MSRV
+edition = "2024"
+rust-version = "1.85.0"  # MSRV
 include = [
   "build.rs",
   "src/**/*",
@@ -34,7 +34,7 @@ create_dir = "warn"
 dbg_macro = "warn"
 debug_assert_with_mut_call = "warn"
 doc_markdown = "warn"
-empty_enum = "warn"
+empty_enums = "warn"
 enum_glob_use = "warn"
 expl_impl_clone_on_copy = "warn"
 explicit_deref_methods = "warn"
@@ -96,7 +96,7 @@ lto = true
 
 [package]
 name = "annotate-snippets"
-version = "0.12.12"
+version = "0.12.16"
 description = "Format diagnostic reports, including highlighting snippets of text"
 categories = []
 keywords = ["code", "analysis", "ascii", "errors", "debug"]
@@ -124,15 +124,15 @@ pre-release-replacements = [
 maintenance = { status = "actively-developed" }
 
 [dependencies]
-anstyle = { version = "1.0.4", default-features = false }
-memchr = { version = "2.7.4", default-features = false, optional = true }
+anstyle = { version = "1.0.13", default-features = false }
+memchr = { version = "2.8.0", default-features = false, optional = true }
 unicode-width = "0.2.2"
 
 [dev-dependencies]
 annotate-snippets = { path = ".", features = ["testing-colors"] }
-anstream = "0.6.13"
-divan = "0.1.14"
-snapbox = { version = "0.6.0", features = ["diff", "term-svg", "cmd", "examples"] }
+anstream = "1.0.0"
+divan = "0.1.16"
+snapbox = { version = "1.0.0", features = ["diff", "term-svg", "cmd", "examples"] }
 
 [[bench]]
 name = "bench"

@@ -262,7 +262,7 @@ pub(crate) enum DoctypeSubstate {
     /// name definition
     PEReferenceDefinitionStart,
     PEReferenceDefinition,
-    IgnorePI,
+    PI(ProcessingInstructionSubstate),
     SkipDeclaration,
     Comment,
 }
@@ -288,8 +288,8 @@ pub(crate) enum ClosingTagSubstate {
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub(crate) enum ProcessingInstructionSubstate {
-    PIInsideName,
-    PIInsideData,
+    PIReadingName,
+    PIReadingData,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -662,7 +662,10 @@ impl PullParser {
                 if self.buf.len() > self.config.max_attribute_length {
                     return Some(self.error(SyntaxError::ExceededConfiguredLimit));
                 }
-                t.push_to_string(&mut self.buf);
+                match t {
+                    Token::Character(c) if is_whitespace_char(c) => self.buf.push(' '),
+                    _ => t.push_to_string(&mut self.buf),
+                }
                 None
             },
 

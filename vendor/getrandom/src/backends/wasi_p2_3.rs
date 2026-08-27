@@ -2,20 +2,31 @@
 use crate::Error;
 use core::{mem::MaybeUninit, ptr::copy_nonoverlapping};
 
-#[cfg(target_env = "p2")]
-use wasip2 as wasi;
-
-// Workaround to silence `unexpected_cfgs` warning
-// on Rust version between 1.85 and 1.91
-#[cfg(not(target_env = "p2"))]
-#[cfg(target_env = "p3")]
-use wasip3 as wasi;
-
 #[cfg(not(target_env = "p2"))]
 #[cfg(not(target_env = "p3"))]
 compile_error!("Unknown version of WASI (only previews 1, 2 and 3 are supported)");
 
-use wasi::random::random::get_random_u64;
+// Use manual bindings instead of `wasip2/3` crates to prevent Cargo.lock bloat.
+//
+// Technically, such manual bindings may not work since we also have to provide
+// type information which is expected by `wasm-component-ld`, but we assume that
+// in practice the relevant type information will be provided by linking to `std`
+// and/or `wasip2/3` crate.
+//
+// See https://github.com/rust-random/getrandom/pull/828 for more information.
+#[cfg_attr(
+    target_env = "p2",
+    link(wasm_import_module = "wasi:random/random@0.2.0")
+)]
+// TODO(MSRV-1.92): Use `target_env = "p3"`
+#[cfg_attr(
+    not(target_env = "p2"),
+    link(wasm_import_module = "wasi:random/random@0.3.0")
+)]
+unsafe extern "C" {
+    #[link_name = "get-random-u64"]
+    safe fn get_random_u64() -> u64;
+}
 
 #[inline]
 pub fn inner_u32() -> Result<u32, Error> {

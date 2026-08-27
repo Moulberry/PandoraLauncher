@@ -35,9 +35,13 @@
 use crate::ffi::xcb_connection_t;
 use libc::c_uint;
 
+#[cfg(all(feature = "xlib_xcb", not(feature = "xlib_xcb_dl")))]
 use x11::xlib;
 
-/// Type for [XSetEventQueueOwner] owner parameter
+#[cfg(feature = "xlib_xcb_dl")]
+use x11_dl::xlib;
+
+/// Type for [XlibXcbLib::XSetEventQueueOwner] owner parameter
 ///
 /// This item is behind the `xlib_xcb` cargo feature.
 pub type XEventQueueOwner = c_uint;
@@ -52,14 +56,26 @@ pub const XlibOwnsEventQueue: XEventQueueOwner = 0;
 /// This item is behind the `xlib_xcb` cargo feature.
 pub const XCBOwnsEventQueue: XEventQueueOwner = 1;
 
-#[link(name = "X11-xcb")]
-extern "C" {
+#[cfg(feature = "xlib_xcb_dl")]
+use super::dl::define_api_dynamic as define_api;
+
+#[cfg(not(feature = "xlib_xcb_dl"))]
+use super::dl::define_api_link as define_api;
+
+define_api! {
+    /// Dynamically loaded X11-xcb library.
+    pub XlibXcbLib XLIBXCBLIB_CACHE
+    libs: ["libX11-xcb.so.1", "libX11-xcb.so"]
+    link: "X11-xcb"
+
+    functions:
+
     /// Get an XCB connection from the `xlib::Display`.
     ///
-    /// This function is behind the `xlib_xcb` cargo feature.
+    /// This function is behind the `xlib_xcb`/`xlib_xcb_dl` cargo features.
     pub fn XGetXCBConnection(dpy: *mut xlib::Display) -> *mut xcb_connection_t;
     /// Set the owner of the X client event queue.
     ///
-    /// This function is behind the `xlib_xcb` cargo feature.
+    /// This function is behind the `xlib_xcb`/`xlib_xcb_dl` cargo features.
     pub fn XSetEventQueueOwner(dpy: *mut xlib::Display, owner: XEventQueueOwner);
 }

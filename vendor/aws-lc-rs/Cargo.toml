@@ -13,10 +13,10 @@
 edition = "2021"
 rust-version = "1.71.0"
 name = "aws-lc-rs"
-version = "1.17.1"
+version = "1.18.0"
 authors = ["AWS-LibCrypto"]
 build = "build.rs"
-links = "aws_lc_rs_1_17_1_sys"
+links = "aws_lc_rs_1_18_0_sys"
 exclude = [
     "third_party/NIST/*",
     "tests/**/*",
@@ -104,11 +104,11 @@ name = "digest"
 path = "examples/digest.rs"
 
 [dependencies.aws-lc-fips-sys]
-version = "0.13.1"
+version = "0.14.0"
 optional = true
 
 [dependencies.aws-lc-sys]
-version = "0.42.0"
+version = "0.44.0"
 optional = true
 default-features = false
 

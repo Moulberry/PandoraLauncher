@@ -5,7 +5,7 @@ use crate::escape::EscapeError;
 use crate::events::attributes::AttrError;
 use crate::name::{NamespaceError, QName};
 use std::fmt;
-use std::io::Error as IoError;
+use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::sync::Arc;
 
 /// An error returned if parsed document does not correspond to the XML grammar,
@@ -103,6 +103,8 @@ pub enum IllFormedError {
     ///
     /// [specification]: https://www.w3.org/TR/xml11/#sec-prolog-dtd
     MissingDeclVersion(Option<String>),
+    /// XML version specified in the declaration neither 1.0 or 1.1.
+    UnknownVersion,
     /// A document type definition (DTD) does not contain a name of a root element.
     ///
     /// According to the [specification], document type definition (`<!DOCTYPE foo>`)
@@ -151,6 +153,9 @@ impl fmt::Display for IllFormedError {
             }
             Self::MissingDeclVersion(Some(attr)) => {
                 write!(f, "an XML declaration must start with `version` attribute, but in starts with `{}`", attr)
+            }
+            Self::UnknownVersion => {
+                f.write_str("unknown XML version: either 1.0 or 1.1 is expected")
             }
             Self::MissingDoctypeName => {
                 f.write_str("`<!DOCTYPE>` declaration does not contain a name of a document type")
@@ -216,7 +221,13 @@ impl From<IoError> for Error {
     /// Creates a new `Error::Io` from the given error
     #[inline]
     fn from(error: IoError) -> Error {
-        Self::Io(Arc::new(error))
+        match error.kind() {
+            IoErrorKind::InvalidData => match error.downcast::<EncodingError>() {
+                Ok(err) => Self::Encoding(err),
+                Err(err) => Self::Io(Arc::new(err)),
+            },
+            _ => Self::Io(Arc::new(error)),
+        }
     }
 }
 

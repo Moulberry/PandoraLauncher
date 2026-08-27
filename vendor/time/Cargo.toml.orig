@@ -2,7 +2,7 @@ lints.workspace = true
 
 [package]
 name = "time"
-version = "0.3.47"
+version = "0.3.55"
 categories = [
     "date-and-time",
     "no-std",
@@ -32,15 +32,16 @@ bench = false
 [features]
 default = ["std"]
 alloc = ["serde_core?/alloc"]
-formatting = ["dep:itoa", "std", "time-macros?/formatting"]
+formatting = ["std", "time-macros?/formatting"]
 large-dates = ["time-core/large-dates", "time-macros?/large-dates"]
 local-offset = ["std", "dep:libc", "dep:num_threads"]
 macros = ["dep:time-macros"]
 parsing = ["time-macros?/parsing"]
 quickcheck = ["dep:quickcheck", "alloc", "deranged/quickcheck"]
-rand = ["rand08", "rand09"]
+rand = ["rand08", "rand09", "rand010"]
 rand08 = ["dep:rand08", "deranged/rand08"]
 rand09 = ["dep:rand09", "deranged/rand09"]
+rand010 = ["dep:rand010", "deranged/rand010"]
 serde = ["dep:serde_core", "time-macros?/serde", "deranged/serde"]
 serde-human-readable = ["serde", "formatting", "parsing"]
 # Deprecated in favor of using the relevant flags directly.
@@ -52,12 +53,12 @@ wasm-bindgen = ["dep:js-sys"]
 # feature gate.
 [dependencies]
 deranged.workspace = true
-itoa = { workspace = true, optional = true }
 num-conv.workspace = true
 powerfmt.workspace = true
 quickcheck = { workspace = true, optional = true }
 rand08 = { workspace = true, optional = true }
 rand09 = { workspace = true, optional = true }
+rand010 = { workspace = true, optional = true }
 serde_core = { workspace = true, optional = true }
 time-core.workspace = true
 time-macros = { workspace = true, optional = true }
@@ -73,9 +74,9 @@ js-sys = { workspace = true, optional = true }
 num-conv.workspace = true
 rand08.workspace = true
 rand09 = { workspace = true, features = ["small_rng"] }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive", "alloc"] }
 serde_json.workspace = true
-serde_test.workspace = true
+serde_test2.workspace = true
 quickcheck_macros.workspace = true
 time-macros.workspace = true
 rstest.workspace = true

@@ -10,9 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2018"
+edition = "2021"
+rust-version = "1.70"
 name = "webpki-root-certs"
-version = "0.26.8"
+version = "1.0.9"
 build = false
 autolib = false
 autobins = false
@@ -22,7 +23,7 @@ autobenches = false
 description = "Mozilla trusted certificate authorities in self-signed X.509 format for use with crates other than webpki"
 homepage = "https://github.com/rustls/webpki-roots"
 readme = "README.md"
-license = "MPL-2.0"
+license = "CDLA-Permissive-2.0"
 repository = "https://github.com/rustls/webpki-roots"
 
 [lib]
@@ -42,14 +43,14 @@ version = "1.8"
 default-features = false
 package = "rustls-pki-types"
 
+[dev-dependencies.aws-lc-rs]
+version = "1.15.2"
+
 [dev-dependencies.hex]
 version = "0.4.3"
 
 [dev-dependencies.percent-encoding]
 version = "2.3"
-
-[dev-dependencies.ring]
-version = "0.17.0"
 
 [dev-dependencies.tokio]
 version = "1"
@@ -59,9 +60,9 @@ features = [
 ]
 
 [dev-dependencies.webpki]
-version = "0.102"
+version = "0.103"
 features = ["alloc"]
 package = "rustls-webpki"
 
 [dev-dependencies.x509-parser]
-version = "0.17.0"
+version = "0.18"

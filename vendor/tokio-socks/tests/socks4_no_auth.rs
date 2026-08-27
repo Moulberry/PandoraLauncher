@@ -18,6 +18,17 @@ fn connect_no_auth() -> Result<()> {
 
 #[cfg(feature = "tokio")]
 #[test]
+fn connect_no_auth_falls_back_to_next_proxy_addr() -> Result<()> {
+    let runtime = runtime().lock().unwrap();
+    let conn = runtime.block_on(Socks4Stream::connect(
+        ProxyAddrsWithUnreachableFirst(SOCKS4_PROXY_ADDR),
+        ECHO_SERVER_ADDR,
+    ))?;
+    runtime.block_on(test_connect(conn))
+}
+
+#[cfg(feature = "tokio")]
+#[test]
 fn bind_no_auth() -> Result<()> {
     let bind = {
         let runtime = runtime().lock().unwrap();

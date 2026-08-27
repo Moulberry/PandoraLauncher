@@ -1,16 +1,16 @@
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 use async_io::Async;
 use std::io;
 #[cfg(unix)]
 use std::os::fd::BorrowedFd;
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 use std::{net::TcpStream, sync::Arc};
 
 use super::{ReadHalf, RecvmsgResult, WriteHalf};
 #[cfg(feature = "tokio")]
 use super::{Socket, Split};
 
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 #[async_trait::async_trait]
 impl ReadHalf for Arc<Async<TcpStream>> {
     async fn recvmsg(&mut self, buf: &mut [u8]) -> RecvmsgResult {
@@ -53,7 +53,7 @@ impl ReadHalf for Arc<Async<TcpStream>> {
     }
 }
 
-#[cfg(not(feature = "tokio"))]
+#[cfg(feature = "async-io")]
 #[async_trait::async_trait]
 impl WriteHalf for Arc<Async<TcpStream>> {
     async fn sendmsg(

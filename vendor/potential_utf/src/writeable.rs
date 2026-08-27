@@ -3,7 +3,6 @@
 // (online at: https://github.com/unicode-org/icu4x/blob/main/LICENSE ).
 
 use crate::{PotentialUtf16, PotentialUtf8};
-use alloc::borrow::Cow;
 use core::fmt::Write;
 use writeable::{LengthHint, Part, PartsWrite, TryWriteable};
 
@@ -49,36 +48,6 @@ impl TryWriteable for &'_ PotentialUtf8 {
         // Lower bound is all valid UTF-8, upper bound is all bytes with the high bit, which become replacement characters.
         LengthHint::between(self.0.len(), self.0.len() * 3)
     }
-
-    fn try_write_to_string(&self) -> Result<Cow<'_, str>, (Self::Error, Cow<'_, str>)> {
-        match core::str::from_utf8(&self.0) {
-            Ok(valid) => Ok(Cow::Borrowed(valid)),
-            Err(e) => {
-                // SAFETY: By Utf8Error invariants
-                let valid = unsafe {
-                    core::str::from_utf8_unchecked(self.0.get_unchecked(..e.valid_up_to()))
-                };
-
-                // Let's assume this is the only error
-                let mut out = alloc::string::String::with_capacity(
-                    self.0.len() + char::REPLACEMENT_CHARACTER.len_utf8()
-                        - e.error_len().unwrap_or(0),
-                );
-
-                out.push_str(valid);
-                out.push(char::REPLACEMENT_CHARACTER);
-
-                // If there's more, we can use `try_write_to`
-                if let Some(error_len) = e.error_len() {
-                    // SAFETY: By Utf8Error invariants
-                    let remaining = unsafe { self.0.get_unchecked(e.valid_up_to() + error_len..) };
-                    let _discard = PotentialUtf8::from_bytes(remaining).try_write_to(&mut out);
-                }
-
-                Err((e, Cow::Owned(out)))
-            }
-        }
-    }
 }
 
 /// This impl requires enabling the optional `writeable` Cargo feature
@@ -90,7 +59,7 @@ impl TryWriteable for &'_ PotentialUtf16 {
         sink: &mut S,
     ) -> Result<Result<(), Self::Error>, fmt::Error> {
         let mut r = Ok(());
-        for c in core::char::decode_utf16(self.0.iter().copied()) {
+        for c in char::decode_utf16(self.0.iter().copied()) {
             match c {
                 Ok(c) => sink.write_char(c)?,
                 Err(e) => {
@@ -149,7 +118,7 @@ mod test {
         assert_try_writeable_parts_eq!(
             PotentialUtf16::from_slice(&[0xD83E, 0x20, 0xDD73]),
             "� �",
-            Err(core::char::decode_utf16([0xD83E].into_iter())
+            Err(char::decode_utf16([0xD83E].into_iter())
                 .next()
                 .unwrap()
                 .unwrap_err()),

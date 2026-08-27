@@ -1,6 +1,6 @@
 [package]
 name = "zvariant"
-version = "5.11.0"
+version = "5.15.0"
 authors = ["Zeeshan Ali Khan <zeeshanak@gnome.org>"]
 edition = { workspace = true }
 rust-version = { workspace = true }
@@ -14,16 +14,19 @@ readme = "README.md"
 
 [features]
 default = []
-# FIXME: Also allow disabling D-Bus support
+# Deprecated: GVariant support has moved to the `zgvariant` crate and will be removed in 6.0.
 gvariant = ["zvariant_derive/gvariant", "zvariant_utils/gvariant"]
+# Legacy compatibility alias that still enables `gvariant`; its own tests moved to the
+# zgvariant repo.
 ostree-tests = ["gvariant"]
 # Enables ser/de of `Option<T>` as an array of 0 or 1 elements.
 option-as-array = []
 camino = ["dep:camino"]
 
 [dependencies]
-zvariant_derive = { path = "../zvariant_derive", version = "5.11.0" }
-zvariant_utils = { path = "../zvariant_utils", version = "3.3.1" }
+zvariant_derive = { path = "../zvariant_derive", version = "5.15.0" }
+zvariant_utils = { path = "../zvariant_utils", version = "4.2.0" }
+zcheapstr.workspace = true
 endi.workspace = true
 serde.workspace = true
 winnow.workspace = true

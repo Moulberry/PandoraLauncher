@@ -16,6 +16,10 @@ pub mod formats {
     include!("../generated/generated_test_formats.rs");
 }
 
+pub mod read_args {
+    include!("../generated/generated_test_read_args.rs");
+}
+
 pub mod offsets_arrays {
 
     include!("../generated/generated_test_offsets_arrays.rs");
@@ -125,6 +129,18 @@ pub mod offsets_arrays {
             0xb01d
         );
     }
+
+    #[test]
+    fn versioned_array_bad_data() {
+        let buf = BeBuffer::new()
+            .push(1u16) // version
+            .push(1u16) // count
+            .push(2u16) // scalar array
+            .push(3u16)
+            .push(4u32); // shmecord array
+        let table = KindsOfArrays::read(buf.data().into()).unwrap();
+        assert!(table.versioned_scalars().is_none()); // should be there but isn't
+    }
 }
 
 pub mod flags {
@@ -204,8 +220,10 @@ pub mod conditions {
     #[test]
     fn majorminor_1_1() {
         let bytes = BeBuffer::new().push(MajorMinor::VERSION_1_1).push(0u16);
-        // shouldn't parse, we're missing a field
-        assert!(MajorMinorVersion::read(bytes.data().into()).is_err());
+        let too_small = MajorMinorVersion::read(bytes.data().into()).unwrap();
+        // this is expected to be present but the data is malformed; we will
+        // still parse the table but checked read of the field will fail
+        assert!(too_small.if_11().is_none());
 
         let bytes = BeBuffer::new()
             .push(MajorMinor::VERSION_1_1)
@@ -218,8 +236,9 @@ pub mod conditions {
     #[test]
     fn major_minor_2() {
         let bytes = BeBuffer::new().push(MajorMinor::VERSION_2_0).push(0u16);
-        // shouldn't parse, we're missing a field
-        assert!(MajorMinorVersion::read(bytes.data().into()).is_err());
+        let too_small = MajorMinorVersion::read(bytes.data().into()).unwrap();
+        assert!(too_small.if_11().is_none());
+        assert!(too_small.if_20().is_none());
 
         let bytes = BeBuffer::new()
             .push(MajorMinor::VERSION_2_0)
@@ -259,7 +278,6 @@ pub mod conditions {
         let table = FlagDay::read(data.data().into()).unwrap();
         assert_eq!(table.foo(), Some(0xf00));
         assert!(table.bar().is_none());
-        assert_eq!(table.baz(), Some(0xba2));
     }
 
     #[test]
@@ -268,16 +286,6 @@ pub mod conditions {
         let table = FlagDay::read(data.data().into()).unwrap();
         assert!(table.foo().is_none());
         assert_eq!(table.bar(), Some(0xba4));
-        assert!(table.baz().is_none());
-    }
-
-    #[test]
-    fn flags_baz() {
-        let data = make_flag_data(GotFlags::BAZ);
-        let table = FlagDay::read(data.data().into()).unwrap();
-        assert!(table.foo().is_none());
-        assert!(table.bar().is_none());
-        assert_eq!(table.baz(), Some(0xba2));
     }
 
     #[test]
@@ -286,53 +294,72 @@ pub mod conditions {
         let table = FlagDay::read(data.data().into()).unwrap();
         assert_eq!(table.foo(), Some(0xf00));
         assert_eq!(table.bar(), Some(0xba4));
-        assert_eq!(table.baz(), Some(0xba2));
+    }
+}
+
+pub mod generic_group {
+    include!("../generated/generated_test_generic_group.rs");
+
+    #[cfg(test)]
+    use font_test_data::bebuffer::BeBuffer;
+
+    /// Build bytes for a MyLookup with one subtable offset pointing at data
+    /// immediately after the header.
+    /// Layout: [lookup_type: u16, sub_table_count: u16, offset0: Offset16, ...subtable data]
+    #[cfg(test)]
+    fn make_lookup_with_format1(lookup_type: u16) -> BeBuffer {
+        BeBuffer::new()
+            .push(lookup_type) // lookup_type
+            .push(1u16) // sub_table_count
+            .push(6u16) // offset to subtable (6 bytes from start)
+            // subtable data (MySubtableFormat1): format=1, value=42
+            .push(1u16)
+            .push(42u16)
     }
 
     #[test]
-    fn fields_after_conditions_all_none() {
-        let data = BeBuffer::new().push(GotFlags::empty()).extend([1u16, 2, 3]);
-
-        let table = FieldsAfterConditionals::read(data.data().into()).unwrap();
-        assert_eq!(table.always_here(), 1);
-        assert_eq!(table.also_always_here(), 2);
-        assert_eq!(table.and_me_too(), 3);
+    fn parse_lookup_group_type_one() {
+        let buf = make_lookup_with_format1(1);
+        let group = MyLookupGroup::read(buf.data().into()).unwrap();
+        assert!(matches!(group, MyLookupGroup::TypeOne(_)));
+        let lookup = group.of_unit_type();
+        assert_eq!(lookup.lookup_type(), 1);
+        assert_eq!(lookup.sub_table_count(), 1);
     }
 
     #[test]
-    #[should_panic(expected = "OutOfBounds")]
-    fn fields_after_conditions_wrong_len() {
-        let data = BeBuffer::new().push(GotFlags::FOO).extend([1u16, 2, 3]);
-
-        let _table = FieldsAfterConditionals::read(data.data().into()).unwrap();
+    fn parse_lookup_group_type_two() {
+        let buf = make_lookup_with_format1(2);
+        let group = MyLookupGroup::read(buf.data().into()).unwrap();
+        assert!(matches!(group, MyLookupGroup::TypeTwo(_)));
     }
 
     #[test]
-    fn fields_after_conditionals_one_present() {
-        let data = BeBuffer::new()
-            .push(GotFlags::BAR)
-            .extend([1u16, 0xba4, 2, 3]);
-
-        let table = FieldsAfterConditionals::read(data.data().into()).unwrap();
-        assert_eq!(table.always_here(), 1);
-        assert_eq!(table.bar(), Some(0xba4));
-        assert_eq!(table.also_always_here(), 2);
-        assert!(table.foo().is_none() && table.baz().is_none());
-        assert_eq!(table.and_me_too(), 3);
+    fn parse_lookup_group_invalid_type() {
+        let buf = make_lookup_with_format1(99);
+        let result = MyLookupGroup::read(buf.data().into());
+        assert!(matches!(result, Err(ReadError::InvalidFormat(99))))
     }
 
     #[test]
-    fn fields_after_conditions_all_present() {
-        let data = BeBuffer::new()
-            .push(GotFlags::FOO | GotFlags::BAR | GotFlags::BAZ)
-            .extend([0xf00u16, 1, 0xba4, 0xba2, 2, 3]);
+    fn parse_subtable_format_dispatch() {
+        // Format 1
+        let buf = BeBuffer::new().push(1u16).push(42u16);
+        let sub = MySubtable::read(buf.data().into()).unwrap();
+        assert!(matches!(sub, MySubtable::Format1(_)));
+        if let MySubtable::Format1(f1) = sub {
+            assert_eq!(f1.value(), 42);
+        }
 
-        let table = FieldsAfterConditionals::read(data.data().into()).unwrap();
-        assert_eq!(table.foo(), Some(0xf00));
-        assert_eq!(table.always_here(), 1);
-        assert_eq!(table.bar(), Some(0xba4));
-        assert_eq!(table.baz(), Some(0xba2));
-        assert_eq!(table.also_always_here(), 2);
-        assert_eq!(table.and_me_too(), 3);
+        // Format 2
+        let buf = BeBuffer::new()
+            .push(2u16) // format
+            .push(2u16) // count
+            .extend([10u16, 20]);
+        let sub = MySubtable::read(buf.data().into()).unwrap();
+        assert!(matches!(sub, MySubtable::Format2(_)));
+        if let MySubtable::Format2(f2) = sub {
+            assert_eq!(f2.count(), 2);
+        }
     }
 }

@@ -9,8 +9,12 @@ $ open <path-or-url>
 # Windows
 $ start <path-or-url>
 # Linux
-$ xdg-open <path-or-url> || gio open <path-or-url> || gnome-open <path-or-url> || kde-open <path-or-url> || wslview <path-or-url>
+$ xdg-open <path-or-url> || gio open <path-or-url> || gnome-open <path-or-url> || kde-open <path-or-url>
+# WSL
+$ powershell.exe -NoProfile -Command "Start-Process -FilePath '<path-or-url>'" || xdg-open <path-or-url> || gio open <path-or-url> || gnome-open <path-or-url> || kde-open <path-or-url>
 ```
+
+To open a web browser, see the [webbrowser](https://docs.rs/webbrowser) crate, which offers functionality for that specific case.
 
 # Library Usage
 

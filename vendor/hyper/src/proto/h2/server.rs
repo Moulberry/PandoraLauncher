@@ -19,9 +19,8 @@ use crate::common::time::Time;
 use crate::ext::Protocol;
 use crate::headers;
 use crate::proto::h2::ping::Recorder;
-use crate::proto::h2::{H2Upgraded, UpgradedSendStream};
 use crate::proto::Dispatched;
-use crate::rt::bounds::Http2ServerConnExec;
+use crate::rt::bounds::{Http2ServerConnExec, Http2UpgradedExec};
 use crate::rt::{Read, Write};
 use crate::service::HttpService;
 
@@ -54,6 +53,7 @@ pub(crate) struct Config {
     pub(crate) keep_alive_interval: Option<Duration>,
     pub(crate) keep_alive_timeout: Duration,
     pub(crate) max_send_buffer_size: usize,
+    pub(crate) header_table_size: Option<u32>,
     pub(crate) max_header_list_size: u32,
     pub(crate) date_header: bool,
 }
@@ -69,6 +69,7 @@ impl Default for Config {
             max_concurrent_streams: Some(200),
             max_pending_accept_reset_streams: None,
             max_local_error_reset_streams: Some(DEFAULT_MAX_LOCAL_ERROR_RESET_STREAMS),
+            header_table_size: None,
             keep_alive_interval: None,
             keep_alive_timeout: Duration::from_secs(20),
             max_send_buffer_size: DEFAULT_MAX_SEND_BUF_SIZE,
@@ -93,6 +94,8 @@ pin_project! {
     }
 }
 
+//#[expect(clippy::large_enum_variant, reason = "the whole future is boxed")]
+#[allow(clippy::large_enum_variant)]
 enum State<T, B>
 where
     B: Body,
@@ -142,6 +145,9 @@ where
         }
         if let Some(max) = config.max_pending_accept_reset_streams {
             builder.max_pending_accept_reset_streams(max);
+        }
+        if let Some(size) = config.header_table_size {
+            builder.header_table_size(size);
         }
         if config.enable_connect_protocol {
             builder.enable_connect_protocol();
@@ -308,6 +314,7 @@ where
                             connect_parts,
                             respond,
                             self.date_header,
+                            exec.clone(),
                         );
 
                         exec.execute_h2stream(fut);
@@ -357,7 +364,7 @@ where
 
 pin_project! {
     #[allow(missing_debug_implementations)]
-    pub struct H2Stream<F, B>
+    pub struct H2Stream<F, B, E>
     where
         B: Body,
     {
@@ -365,6 +372,7 @@ pin_project! {
         #[pin]
         state: H2StreamState<F, B>,
         date_header: bool,
+        exec: E,
     }
 }
 
@@ -392,7 +400,7 @@ struct ConnectParts {
     recv_stream: RecvStream,
 }
 
-impl<F, B> H2Stream<F, B>
+impl<F, B, E> H2Stream<F, B, E>
 where
     B: Body,
 {
@@ -401,11 +409,13 @@ where
         connect_parts: Option<ConnectParts>,
         respond: SendResponse<SendBuf<B::Data>>,
         date_header: bool,
-    ) -> H2Stream<F, B> {
+        exec: E,
+    ) -> H2Stream<F, B, E> {
         H2Stream {
             reply: respond,
             state: H2StreamState::Service { fut, connect_parts },
             date_header,
+            exec,
         }
     }
 }
@@ -423,16 +433,17 @@ macro_rules! reply {
     }};
 }
 
-impl<F, B, E> H2Stream<F, B>
+impl<F, B, Ex, E> H2Stream<F, B, Ex>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
     B::Data: 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    Ex: Http2UpgradedExec<B::Data>,
     E: Into<Box<dyn StdError + Send + Sync>>,
 {
-    fn poll2(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
-        let mut me = self.project();
+    fn poll2(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+        let mut me = self.as_mut().project();
         loop {
             let next = match me.state.as_mut().project() {
                 H2StreamStateProj::Service {
@@ -462,7 +473,10 @@ where
 
                     let (head, body) = res.into_parts();
                     let mut res = ::http::Response::from_parts(head, ());
-                    super::strip_connection_headers(res.headers_mut(), false);
+                    super::strip_connection_headers(
+                        res.headers_mut(),
+                        super::MessageKind::Response,
+                    );
 
                     // set Date header if it isn't already set if instructed
                     if *me.date_header {
@@ -488,15 +502,15 @@ where
                                 warn!("successful response to CONNECT request disallows content-length header");
                             }
                             let send_stream = reply!(me, res, false);
-                            connect_parts.pending.fulfill(Upgraded::new(
-                                H2Upgraded {
-                                    ping: connect_parts.ping,
-                                    recv_stream: connect_parts.recv_stream,
-                                    send_stream: unsafe { UpgradedSendStream::new(send_stream) },
-                                    buf: Bytes::new(),
-                                },
-                                Bytes::new(),
-                            ));
+                            let (h2_up, up_task) = super::upgrade::pair(
+                                send_stream,
+                                connect_parts.recv_stream,
+                                connect_parts.ping,
+                            );
+                            connect_parts
+                                .pending
+                                .fulfill(Upgraded::new(h2_up, Bytes::new()));
+                            self.exec.execute_upgrade(up_task);
                             return Poll::Ready(Ok(()));
                         }
                     }
@@ -525,12 +539,13 @@ where
     }
 }
 
-impl<F, B, E> Future for H2Stream<F, B>
+impl<F, B, Ex, E> Future for H2Stream<F, B, Ex>
 where
     F: Future<Output = Result<Response<B>, E>>,
     B: Body,
     B::Data: 'static,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+    Ex: Http2UpgradedExec<B::Data>,
     E: Into<Box<dyn StdError + Send + Sync>>,
 {
     type Output = ();

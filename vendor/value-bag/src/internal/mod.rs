@@ -53,8 +53,12 @@ pub(crate) enum Internal<'v> {
     Error(&'v dyn error::DowncastError),
     #[cfg(feature = "sval2")]
     Sval2(&'v dyn sval::v2::DowncastValue),
+    #[cfg(feature = "sval2")]
+    SizedSval2(&'v dyn sval::v2::SizedValue),
     #[cfg(feature = "serde1")]
     Serde1(&'v dyn serde::v1::DowncastSerialize),
+    #[cfg(feature = "serde1")]
+    SizedSerde1(&'v dyn serde::v1::SizedSerialize),
 
     // Anonymous values
     AnonDebug(&'v dyn fmt::Debug),
@@ -169,6 +173,14 @@ pub(crate) trait InternalVisitor<'v> {
     fn borrowed_sval2(&mut self, v: &'v dyn sval::v2::Value) -> Result<(), Error> {
         self.sval2(v)
     }
+    #[cfg(feature = "sval2")]
+    fn borrowed_downcast_sval2(&mut self, v: &'v dyn sval::v2::DowncastValue) -> Result<(), Error> {
+        self.borrowed_sval2(v.as_super())
+    }
+    #[cfg(feature = "sval2")]
+    fn borrowed_sized_sval2(&mut self, v: &'v dyn sval::v2::SizedValue) -> Result<(), Error> {
+        self.borrowed_sval2(v.as_super())
+    }
     #[cfg(all(feature = "sval2", feature = "owned"))]
     fn shared_sval2(
         &mut self,
@@ -182,6 +194,17 @@ pub(crate) trait InternalVisitor<'v> {
     #[cfg(feature = "serde1")]
     fn borrowed_serde1(&mut self, v: &'v dyn serde::v1::Serialize) -> Result<(), Error> {
         self.serde1(v)
+    }
+    #[cfg(feature = "serde1")]
+    fn borrowed_downcast_serde1(
+        &mut self,
+        v: &'v dyn serde::v1::DowncastSerialize,
+    ) -> Result<(), Error> {
+        self.borrowed_serde1(v.as_super())
+    }
+    #[cfg(feature = "serde1")]
+    fn borrowed_sized_serde1(&mut self, v: &'v dyn serde::v1::SizedSerialize) -> Result<(), Error> {
+        self.borrowed_serde1(v.as_super())
     }
     #[cfg(all(feature = "serde1", feature = "owned"))]
     fn shared_serde1(
@@ -319,6 +342,16 @@ impl<'a, 'v, V: InternalVisitor<'v> + ?Sized> InternalVisitor<'v> for &'a mut V 
         (**self).borrowed_sval2(v)
     }
 
+    #[cfg(feature = "sval2")]
+    fn borrowed_downcast_sval2(&mut self, v: &'v dyn sval::v2::DowncastValue) -> Result<(), Error> {
+        (**self).borrowed_downcast_sval2(v)
+    }
+
+    #[cfg(feature = "sval2")]
+    fn borrowed_sized_sval2(&mut self, v: &'v dyn sval::v2::SizedValue) -> Result<(), Error> {
+        (**self).borrowed_sized_sval2(v)
+    }
+
     #[cfg(all(feature = "sval2", feature = "owned"))]
     fn shared_sval2(
         &mut self,
@@ -335,6 +368,19 @@ impl<'a, 'v, V: InternalVisitor<'v> + ?Sized> InternalVisitor<'v> for &'a mut V 
     #[cfg(feature = "serde1")]
     fn borrowed_serde1(&mut self, v: &'v dyn serde::v1::Serialize) -> Result<(), Error> {
         (**self).borrowed_serde1(v)
+    }
+
+    #[cfg(feature = "serde1")]
+    fn borrowed_downcast_serde1(
+        &mut self,
+        v: &'v dyn serde::v1::DowncastSerialize,
+    ) -> Result<(), Error> {
+        (**self).borrowed_downcast_serde1(v)
+    }
+
+    #[cfg(feature = "serde1")]
+    fn borrowed_sized_serde1(&mut self, v: &'v dyn serde::v1::SizedSerialize) -> Result<(), Error> {
+        (**self).borrowed_sized_serde1(v)
     }
 
     #[cfg(all(feature = "serde1", feature = "owned"))]
@@ -403,10 +449,14 @@ impl<'v> Internal<'v> {
             #[cfg(feature = "sval2")]
             Internal::AnonSval2(value) => Internal::AnonSval2(*value),
             #[cfg(feature = "sval2")]
+            Internal::SizedSval2(value) => Internal::SizedSval2(*value),
+            #[cfg(feature = "sval2")]
             Internal::Sval2(value) => Internal::Sval2(*value),
 
             #[cfg(feature = "serde1")]
             Internal::AnonSerde1(value) => Internal::AnonSerde1(*value),
+            #[cfg(feature = "serde1")]
+            Internal::SizedSerde1(value) => Internal::SizedSerde1(*value),
             #[cfg(feature = "serde1")]
             Internal::Serde1(value) => Internal::Serde1(*value),
 
@@ -481,12 +531,16 @@ impl<'v> Internal<'v> {
             #[cfg(feature = "sval2")]
             Internal::AnonSval2(value) => visitor.borrowed_sval2(*value),
             #[cfg(feature = "sval2")]
-            Internal::Sval2(value) => visitor.borrowed_sval2(value.as_super()),
+            Internal::SizedSval2(value) => visitor.borrowed_sized_sval2(*value),
+            #[cfg(feature = "sval2")]
+            Internal::Sval2(value) => visitor.borrowed_downcast_sval2(*value),
 
             #[cfg(feature = "serde1")]
             Internal::AnonSerde1(value) => visitor.borrowed_serde1(*value),
             #[cfg(feature = "serde1")]
-            Internal::Serde1(value) => visitor.borrowed_serde1(value.as_super()),
+            Internal::SizedSerde1(value) => visitor.borrowed_sized_serde1(*value),
+            #[cfg(feature = "serde1")]
+            Internal::Serde1(value) => visitor.borrowed_downcast_serde1(*value),
 
             #[cfg(feature = "seq")]
             Internal::AnonSeq(value) => visitor.borrowed_seq(*value),

@@ -8,7 +8,7 @@ license.workspace = true
 name = "ashpd"
 repository.workspace = true
 version.workspace = true
-rust-version.workspace = true
+rust-version = "1.87"
 
 [features]
 async-io = ["zbus/async-io", "futures-util/io"]
@@ -48,7 +48,7 @@ proxy_resolver = []
 realtime = []
 remote_desktop = ["dep:serde_repr"]
 screencast = ["dep:serde_repr"]
-screenshot = []
+screenshot = ["dep:serde_repr"]
 secret = []
 settings = []
 trash = ["dep:serde_repr"]

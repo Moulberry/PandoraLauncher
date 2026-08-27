@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.1
+
+Adds:
+
+* Decoalesces events that are collapsed by `kevent(2)`. Sometimes events like
+  `NOTE_EXEC` and `NOTE_FORK` will arrive in one event, and we'd only surface
+  one of them. Now, we surface both. This comes with the side effect that we
+  will sometimes surface events the user didn't necessarily ask for, since
+  bundled events will be bundled if only one of the filter flags was passed in.
+* Reduced code size in `add_filename`/`remove_filename`
+* `Vnode` is now comparable
+* Added `Truncate` support on OpenBSD
+* Added `Trackerr` support on all platforms
+
 ## 1.2.0
 
 Adds:

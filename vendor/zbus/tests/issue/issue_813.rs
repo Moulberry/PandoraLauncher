@@ -5,6 +5,7 @@ use zbus::block_on;
 
 use zbus::Result;
 
+#[allow(deprecated)] // exercises the deprecated `unix_stream`, which must keep working
 #[instrument]
 #[test]
 #[timeout(15000)]

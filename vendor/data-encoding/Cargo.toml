@@ -13,8 +13,7 @@
 edition = "2018"
 rust-version = "1.48"
 name = "data-encoding"
-version = "2.9.0"
-authors = ["Julien Cretin <git@ia0.eu>"]
+version = "2.11.1"
 build = false
 include = [
     "Cargo.toml",

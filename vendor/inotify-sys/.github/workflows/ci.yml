@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+
+jobs:
+  test-linux:
+    name: Test (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test
+
+  test-freebsd:
+    name: Test (FreeBSD)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+          shell: cpa.sh {0}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test on FreeBSD
+        uses: cross-platform-actions/action@v1.3.0
+        with:
+          operating_system: freebsd
+          version: "15.1"
+      - run: |
+          sudo pkg install -y libinotify rust
+          cargo test

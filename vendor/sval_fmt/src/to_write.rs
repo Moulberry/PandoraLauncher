@@ -1,5 +1,5 @@
 use crate::{
-    writer::{GenericWriter, Writer},
+    writer::{PlainWrite, Writer},
     TokenWrite,
 };
 use core::fmt::{self, Write};
@@ -10,7 +10,7 @@ Format a value into an underlying formatter.
 This method will use a default format that's like Rust's `Debug`.
 */
 pub fn stream_to_write(fmt: impl Write, v: impl sval::Value) -> fmt::Result {
-    v.stream(&mut Writer::new(GenericWriter(fmt)))
+    v.stream(&mut Writer::new(PlainWrite::new(fmt)))
         .map_err(|_| fmt::Error)
 }
 

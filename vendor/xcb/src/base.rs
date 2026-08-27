@@ -1,6 +1,14 @@
 use crate::error::{self, ProtocolError};
 use crate::event::{self, Event};
 use crate::ext::{Extension, ExtensionData};
+#[cfg(feature = "dl")]
+use crate::ffi::dl::xcb_get_funcs;
+#[cfg(feature = "dl")]
+use crate::ffi::dl::OpenError;
+#[cfg(feature = "dl")]
+use crate::ffi::XcbLib;
+#[cfg(feature = "xlib_xcb_dl")]
+use crate::ffi::XlibXcbLib;
 #[cfg(feature = "present")]
 use crate::present;
 use crate::x::{Atom, Keysym, Setup, Timestamp};
@@ -8,8 +16,11 @@ use crate::x::{Atom, Keysym, Setup, Timestamp};
 use crate::xinput;
 use crate::{cache_extensions_data, ffi::*};
 
-#[cfg(feature = "xlib_xcb")]
+#[cfg(all(feature = "xlib_xcb", not(feature = "xlib_xcb_dl")))]
 use x11::xlib;
+
+#[cfg(feature = "xlib_xcb_dl")]
+use x11_dl::xlib;
 
 use bitflags::bitflags;
 
@@ -23,6 +34,9 @@ use std::mem;
 use std::os::fd::{IntoRawFd, OwnedFd};
 use std::os::unix::prelude::{AsRawFd, RawFd};
 use std::ptr;
+#[cfg(feature = "dl")]
+#[cfg(feature = "dl")]
+use std::rc::Rc;
 use std::result;
 use std::slice;
 
@@ -47,11 +61,10 @@ pub trait Xid {
 pub trait XidNew: Xid {
     /// Build a new X resource
     ///
-    /// # Safety
-    /// res_id must be obtained from `xcb_generate_id`. `0` is also a valid value to create a null resource.
+    /// `res_id` must be obtained from `xcb_generate_id`. `0` is also a valid value to create a null resource.
     /// Users should not use this function directly but rather use
-    /// `Connection::generate_id`
-    unsafe fn new(res_id: u32) -> Self;
+    /// [`Connection::generate_id()`]
+    fn new(res_id: u32) -> Self;
 }
 
 /// Trait for types that own a C allocated pointer and are represented by the data pointed to.
@@ -435,7 +448,7 @@ pub trait RequestWithReply: Request {
 /// This item is behind the `xlib_xcb` cargo feature.
 ///
 /// See [`Connection::set_event_queue_owner`].
-#[cfg(feature = "xlib_xcb")]
+#[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
 #[derive(Debug)]
 pub enum EventQueueOwner {
     /// XCB owns the event queue
@@ -500,6 +513,15 @@ pub fn parse_display(name: &str) -> Option<DisplayInfo> {
     let mut screen = 0i32;
 
     let success = unsafe {
+        #[cfg(feature = "dl")]
+        let lib = crate::ffi::XcbLib::open();
+        #[cfg(feature = "dl")]
+        let xcb_parse_display = match lib {
+            Ok(lib) => lib.xcb_parse_display,
+            Err(_) => {
+                return None;
+            }
+        };
         xcb_parse_display(
             name.as_ptr(),
             &mut hostp as *mut _,
@@ -526,6 +548,18 @@ pub fn parse_display(name: &str) -> Option<DisplayInfo> {
     } else {
         None
     }
+}
+
+/// Unloads any cached dynamic libraries loaded by this crate.
+/// Doesn't prevent another open of the libraries, so should be used
+/// after no more calls into this crate occurs, if needed.
+#[cfg(feature = "dl")]
+pub fn unload_libraries() -> result::Result<(), OpenError> {
+    #[cfg(feature = "dl")]
+    crate::ffi::XcbLib::unload()?;
+    #[cfg(feature = "xlib_xcb_dl")]
+    crate::ffi::XlibXcbLib::unload()?;
+    Ok(())
 }
 
 /// A struct that serve as an identifier for internal special queue in XCB
@@ -583,8 +617,11 @@ pub enum ConnError {
     /// Connection closed because some file descriptor passing operation failed.
     ClosedFdPassingFailed,
     /// XOpenDisplay returned NULL
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     XOpenDisplay,
+    /// Libraries not loaded.
+    #[cfg(feature = "dl")]
+    LibrariesNotLoaded,
 }
 
 impl ConnError {
@@ -603,10 +640,12 @@ impl ConnError {
             ConnError::ClosedFdPassingFailed => {
                 "Connection closed, some file descriptor passing operation failed"
             }
-            #[cfg(feature = "xlib_xcb")]
+            #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
             ConnError::XOpenDisplay => {
                 "XOpenDisplay failed to open a display. Check the $DISPLAY env var"
             }
+            #[cfg(feature = "dl")]
+            ConnError::LibrariesNotLoaded => "Libraries are not loaded",
         }
     }
 }
@@ -620,6 +659,13 @@ impl Display for ConnError {
 impl std::error::Error for ConnError {
     fn description(&self) -> &str {
         self.to_str()
+    }
+}
+
+#[cfg(feature = "dl")]
+impl From<OpenError> for ConnError {
+    fn from(_: OpenError) -> Self {
+        ConnError::LibrariesNotLoaded
     }
 }
 
@@ -680,11 +726,12 @@ pub type Result<T> = result::Result<T, Error>;
 /// `Connection` is thread safe.
 ///
 /// It internally wraps an `xcb_connection_t` object and
-/// will call `xcb_disconnect` when the `Connection` goes out of scope.
+/// will call `xcb_disconnect` when the `Connection` goes out of scope,
+/// unless the `Connection` was explicitly created using `from_raw_conn_and_extensions_no_drop`.
 pub struct Connection {
     c: *mut xcb_connection_t,
 
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     dpy: *mut xlib::Display,
 
     ext_data: Vec<ExtensionData>,
@@ -696,10 +743,28 @@ pub struct Connection {
     // to print the name of atoms during Debug
     #[cfg(feature = "debug_atom_names")]
     dbg_atom_names: bool,
+
+    #[cfg(feature = "dl")]
+    pub(crate) lib: XcbLib,
+
+    // Whether to call xcb_disconnect() on drop.
+    should_drop: bool,
 }
 
 unsafe impl Send for Connection {}
 unsafe impl Sync for Connection {}
+
+#[cfg(feature = "dl")]
+macro_rules! xcb_get_conn_funcs {
+    ($self:expr, $($name:ident),*) => {
+        $(
+            let $name = $self.lib.$name;
+        )*
+    };
+}
+
+#[cfg(feature = "dl")]
+pub(crate) use xcb_get_conn_funcs;
 
 impl Connection {
     /// Connects to the X server.
@@ -749,6 +814,8 @@ impl Connection {
         mandatory: &[Extension],
         optional: &[Extension],
     ) -> ConnResult<(Connection, i32)> {
+        #[cfg(feature = "dl")]
+        xcb_get_funcs!(xcb_connect);
         let mut screen_num: c_int = 0;
         let displayname = display_name.map(|s| CString::new(s).unwrap());
         unsafe {
@@ -772,20 +839,35 @@ impl Connection {
     /// OpenGL.
     ///
     /// This function is behind the `xlib_xcb` cargo feature.
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     pub fn connect_with_xlib_display() -> ConnResult<(Connection, i32)> {
+        #[cfg(all(feature = "xlib_xcb", not(feature = "xlib_xcb_dl")))]
+        let (xopen_display, xdefault_screen, xget_xcbconnection) =
+            (xlib::XOpenDisplay, xlib::XDefaultScreen, XGetXCBConnection);
+        #[cfg(feature = "xlib_xcb_dl")]
+        let (xopen_display, xdefault_screen, _xlib_lib, xget_xcbconnection, _xlib_xcb_lib) = {
+            let xlib_lib = xlib::Xlib::open().map_err(|_| ConnError::LibrariesNotLoaded)?;
+            let xlib_xcb_lib = XlibXcbLib::open().map_err(|_| ConnError::LibrariesNotLoaded)?;
+            (
+                xlib_lib.XOpenDisplay,
+                xlib_lib.XDefaultScreen,
+                xlib_lib,
+                xlib_xcb_lib.XGetXCBConnection,
+                xlib_xcb_lib,
+            )
+        };
         unsafe {
-            let dpy = xlib::XOpenDisplay(ptr::null());
+            let dpy = xopen_display(ptr::null());
             if dpy.is_null() {
                 return Err(ConnError::XOpenDisplay);
             }
 
-            check_connection_error(XGetXCBConnection(dpy))?;
+            check_connection_error(xget_xcbconnection(dpy))?;
 
             let conn = Self::from_xlib_display(dpy);
 
             conn.has_error()
-                .map(|_| (conn, xlib::XDefaultScreen(dpy) as i32))
+                .map(|_| (conn, xdefault_screen(dpy) as i32))
         }
     }
 
@@ -802,23 +884,38 @@ impl Connection {
     ///
     /// # Panics
     /// Panics if one of the mandatory extension is not present.
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     pub fn connect_with_xlib_display_and_extensions(
         mandatory: &[Extension],
         optional: &[Extension],
     ) -> ConnResult<(Connection, i32)> {
+        #[cfg(all(feature = "xlib_xcb", not(feature = "xlib_xcb_dl")))]
+        let (xopen_display, xdefault_screen, xget_xcbconnection) =
+            (xlib::XOpenDisplay, xlib::XDefaultScreen, XGetXCBConnection);
+        #[cfg(feature = "xlib_xcb_dl")]
+        let (xopen_display, xdefault_screen, _xlib_lib, xget_xcbconnection, _xlib_xcb_lib) = {
+            let xlib_lib = xlib::Xlib::open().map_err(|_| ConnError::LibrariesNotLoaded)?;
+            let xlib_xcb_lib = XlibXcbLib::open().map_err(|_| ConnError::LibrariesNotLoaded)?;
+            (
+                xlib_lib.XOpenDisplay,
+                xlib_lib.XDefaultScreen,
+                xlib_lib,
+                xlib_xcb_lib.XGetXCBConnection,
+                xlib_xcb_lib,
+            )
+        };
         unsafe {
-            let dpy = xlib::XOpenDisplay(ptr::null());
+            let dpy = xopen_display(ptr::null());
             if dpy.is_null() {
                 return Err(ConnError::XOpenDisplay);
             }
 
-            check_connection_error(XGetXCBConnection(dpy))?;
+            check_connection_error(xget_xcbconnection(dpy))?;
 
             let conn = Self::from_xlib_display_and_extensions(dpy, mandatory, optional);
 
             conn.has_error()
-                .map(|_| (conn, xlib::XDefaultScreen(dpy) as i32))
+                .map(|_| (conn, xdefault_screen(dpy) as i32))
         }
     }
 
@@ -853,6 +950,8 @@ impl Connection {
         mandatory: &[Extension],
         optional: &[Extension],
     ) -> ConnResult<Self> {
+        #[cfg(feature = "dl")]
+        xcb_get_funcs!(xcb_connect_to_fd);
         let mut auth_info = auth_info.map(|auth_info| {
             let auth_name = CString::new(auth_info.name).unwrap();
             let auth_data = CString::new(auth_info.data).unwrap();
@@ -909,6 +1008,8 @@ impl Connection {
         mandatory: &[Extension],
         optional: &[Extension],
     ) -> ConnResult<Self> {
+        #[cfg(feature = "dl")]
+        xcb_get_funcs!(xcb_connect_to_fd);
         let mut auth_info = auth_info.map(|auth_info| {
             let auth_name = CString::new(auth_info.name).unwrap();
             let auth_data = CString::new(auth_info.data).unwrap();
@@ -970,6 +1071,8 @@ impl Connection {
         mandatory: &[Extension],
         optional: &[Extension],
     ) -> ConnResult<(Connection, i32)> {
+        #[cfg(feature = "dl")]
+        xcb_get_funcs!(xcb_connect_to_display_with_auth_info);
         let mut screen_num: c_int = 0;
         let display_name = display_name.map(|s| CString::new(s).unwrap());
 
@@ -1017,6 +1120,7 @@ impl Connection {
     /// the resolution of events and errors in these extensions.
     ///
     /// # Panics
+    /// Panics if feature dl is active and libraries were not loaded.
     /// Panics if the connection is null or in error state.
     /// Panics if one of the mandatory extension is not present.
     ///
@@ -1042,33 +1146,67 @@ impl Connection {
 
         let ext_data = cache_extensions_data(conn, mandatory, optional);
 
-        #[cfg(not(feature = "xlib_xcb"))]
-        #[cfg(not(feature = "debug_atom_names"))]
-        return Connection { c: conn, ext_data };
-
-        #[cfg(not(feature = "xlib_xcb"))]
-        #[cfg(feature = "debug_atom_names")]
         return Connection {
             c: conn,
-            ext_data,
-            dbg_atom_names,
-        };
-
-        #[cfg(feature = "xlib_xcb")]
-        #[cfg(not(feature = "debug_atom_names"))]
-        return Connection {
-            c: conn,
+            #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
             dpy: ptr::null_mut(),
             ext_data,
+            #[cfg(feature = "debug_atom_names")]
+            dbg_atom_names,
+            #[cfg(feature = "dl")]
+            lib: XcbLib::open().expect("xcb library not loaded"),
+            should_drop: true,
+        };
+    }
+
+    /// Builds a new `Connection` object from an available connection and cache the extension data
+    /// Similar to `from_raw_conn_and_extensions` except that `xcb_disconnect` will not be called
+    /// when this `Connection` object goes out of scope.
+    ///
+    /// Mainly useful for using this Connection in conjunction with other xlib libraries
+    /// other than x11/x11-dl, like tiny-xlib.
+    ///
+    /// Extension data specified by `mandatory` and `optional` is cached to allow
+    /// the resolution of events and errors in these extensions.
+    ///
+    /// # Panics
+    /// Panics if feature dl is active and libraries were not loaded.
+    /// Panics if the connection is null or in error state.
+    /// Panics if one of the mandatory extension is not present.
+    ///
+    /// # Safety
+    /// The `conn` pointer must point to a valid `xcb_connection_t`
+    /// The `conn` pointer must outlive this connection.
+    pub unsafe fn from_raw_conn_and_extensions_no_drop(
+        conn: *mut xcb_connection_t,
+        mandatory: &[Extension],
+        optional: &[Extension],
+    ) -> Connection {
+        assert!(!conn.is_null());
+        assert!(check_connection_error(conn).is_ok());
+
+        #[cfg(feature = "debug_atom_names")]
+        let dbg_atom_names = {
+            if dan::DAN_CONN.is_null() {
+                dan::DAN_CONN = conn;
+                true
+            } else {
+                false
+            }
         };
 
-        #[cfg(feature = "xlib_xcb")]
-        #[cfg(feature = "debug_atom_names")]
+        let ext_data = cache_extensions_data(conn, mandatory, optional);
+
         return Connection {
             c: conn,
+            #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
             dpy: ptr::null_mut(),
             ext_data,
+            #[cfg(feature = "debug_atom_names")]
             dbg_atom_names,
+            #[cfg(feature = "dl")]
+            lib: XcbLib::open().expect("xcb library not loaded"),
+            should_drop: false,
         };
     }
 
@@ -1081,7 +1219,7 @@ impl Connection {
     ///
     /// # Safety
     /// The `dpy` pointer must be a pointer to a valid `xlib::Display`
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     pub unsafe fn from_xlib_display(dpy: *mut xlib::Display) -> Connection {
         Self::from_xlib_display_and_extensions(dpy, &[], &[])
     }
@@ -1097,18 +1235,26 @@ impl Connection {
     /// This function is behind the `xlib_xcb` cargo feature.
     ///
     /// # Panics
+    /// Panics if features dl or xlib_xcb_dl are active and libraries were not loaded.
     /// Panics if the connection is null or in error state.
     ///
     /// # Safety
     /// The `dpy` pointer must be a pointer to a valid `xlib::Display`.
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     pub unsafe fn from_xlib_display_and_extensions(
         dpy: *mut xlib::Display,
         mandatory: &[Extension],
         optional: &[Extension],
     ) -> Connection {
         assert!(!dpy.is_null(), "attempt connect with null display");
-        let c = XGetXCBConnection(dpy);
+        #[cfg(all(feature = "xlib_xcb", not(feature = "xlib_xcb_dl")))]
+        let xget_xcbconnection = XGetXCBConnection;
+        #[cfg(feature = "xlib_xcb_dl")]
+        let (xget_xcbconnection, _lib) = {
+            let lib = XlibXcbLib::open().expect("X11-xcb library not loaded");
+            (lib.XGetXCBConnection, lib)
+        };
+        let c = xget_xcbconnection(dpy);
 
         assert!(check_connection_error(c).is_ok());
 
@@ -1124,16 +1270,16 @@ impl Connection {
 
         let ext_data = cache_extensions_data(c, mandatory, optional);
 
-        #[cfg(feature = "debug_atom_names")]
         return Connection {
             c,
             dpy,
             ext_data,
+            #[cfg(feature = "debug_atom_names")]
             dbg_atom_names,
+            #[cfg(feature = "dl")]
+            lib: XcbLib::open().expect("xcb library not loaded"),
+            should_drop: true,
         };
-
-        #[cfg(not(feature = "debug_atom_names"))]
-        return Connection { c, dpy, ext_data };
     }
 
     /// Get the extensions activated for this connection.
@@ -1179,7 +1325,7 @@ impl Connection {
     /// Returns the inner ffi `xlib::Display` pointer.
     ///
     /// This function is behind the `xlib_xcb` cargo feature.
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     pub fn get_raw_dpy(&self) -> *mut xlib::Display {
         self.dpy
     }
@@ -1188,11 +1334,17 @@ impl Connection {
     /// with the Xlib interface. In that case, the default owner is Xlib.
     ///
     /// This function is behind the `xlib_xcb` cargo feature.
-    #[cfg(feature = "xlib_xcb")]
+    #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
     pub fn set_event_queue_owner(&self, owner: EventQueueOwner) {
         debug_assert!(!self.dpy.is_null());
         unsafe {
-            XSetEventQueueOwner(
+            #[cfg(all(feature = "xlib_xcb", not(feature = "xlib_xcb_dl")))]
+            let xset_eventqueueowner = XSetEventQueueOwner;
+            #[cfg(feature = "xlib_xcb_dl")]
+            let xset_eventqueueowner = XlibXcbLib::open()
+                .expect("X11-xcb library not loaded")
+                .XSetEventQueueOwner;
+            xset_eventqueueowner(
                 self.dpy,
                 match owner {
                     EventQueueOwner::Xcb => XCBOwnsEventQueue,
@@ -1214,6 +1366,8 @@ impl Connection {
     /// theoretical maximum lengths roughly 256kB without BIG-REQUESTS and
     /// 16GB with.
     pub fn get_maximum_request_length(&self) -> u32 {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_get_maximum_request_length);
         unsafe { xcb_get_maximum_request_length(self.c) }
     }
 
@@ -1230,6 +1384,8 @@ impl Connection {
     /// Note that in order for this function to be fully non-blocking, the
     /// application must previously have called [crate::bigreq::prefetch_extension_data].
     pub fn prefetch_maximum_request_length(&self) {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_prefetch_maximum_request_length);
         unsafe {
             xcb_prefetch_maximum_request_length(self.c);
         }
@@ -1249,7 +1405,9 @@ impl Connection {
     /// # }
     /// ```
     pub fn generate_id<T: XidNew>(&self) -> T {
-        unsafe { XidNew::new(xcb_generate_id(self.c)) }
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_generate_id);
+        XidNew::new(unsafe { xcb_generate_id(self.c) })
     }
 
     /// Forces any buffered output to be written to the server.
@@ -1266,6 +1424,8 @@ impl Connection {
     /// See also: [wait_for_event](Connection::wait_for_event), [check_request](Connection::check_request),
     /// [send_and_check_request](Connection::send_and_check_request).
     pub fn flush(&self) -> ConnResult<()> {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_flush);
         unsafe {
             let ret = xcb_flush(self.c);
             if ret > 0 {
@@ -1332,6 +1492,8 @@ impl Connection {
     ///  }
     /// ```
     pub fn wait_for_event(&self) -> Result<Event> {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_wait_for_event);
         unsafe {
             let ev = xcb_wait_for_event(self.c);
             self.handle_wait_for_event(ev)
@@ -1346,6 +1508,8 @@ impl Connection {
     /// attempting to read the next event, in which case the connection is
     /// shut down when this function returns.
     pub fn poll_for_event(&self) -> Result<Option<Event>> {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_poll_for_event);
         unsafe {
             let ev = xcb_poll_for_event(self.c);
             self.handle_poll_for_event(ev)
@@ -1363,6 +1527,8 @@ impl Connection {
     /// example, callers might use [Connection::wait_for_reply] and be interested
     /// only of events that preceded a specific reply.
     pub fn poll_for_queued_event(&self) -> ProtocolResult<Option<Event>> {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_poll_for_queued_event);
         unsafe {
             let ev = xcb_poll_for_queued_event(self.c);
             if ev.is_null() {
@@ -1385,6 +1551,8 @@ impl Connection {
     #[cfg(any(feature = "xinput", feature = "present"))]
     #[allow(deprecated)]
     pub fn register_for_special_xge<XGE: GeEvent>(&self) -> SpecialEventId {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_register_for_special_xge);
         unsafe {
             let ext: *mut xcb_extension_t = match XGE::EXTENSION {
                 #[cfg(feature = "xinput")]
@@ -1407,6 +1575,8 @@ impl Connection {
     #[cfg(any(feature = "xinput", feature = "present"))]
     #[allow(deprecated)]
     pub fn unregister_for_special_xge(&self, se: SpecialEventId) {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_unregister_for_special_event);
         unsafe {
             xcb_unregister_for_special_event(self.c, se.raw);
         }
@@ -1417,6 +1587,8 @@ impl Connection {
     #[cfg(any(feature = "xinput", feature = "present"))]
     #[allow(deprecated)]
     pub fn wait_for_special_event(&self, se: SpecialEventId) -> Result<Event> {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_wait_for_special_event);
         unsafe {
             let ev = xcb_wait_for_special_event(self.c, se.raw);
             self.handle_wait_for_event(ev)
@@ -1428,6 +1600,8 @@ impl Connection {
     #[cfg(any(feature = "xinput", feature = "present"))]
     #[allow(deprecated)]
     pub fn poll_for_special_event(&self, se: SpecialEventId) -> Result<Option<Event>> {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_poll_for_special_event);
         unsafe {
             let ev = xcb_poll_for_special_event(self.c, se.raw);
             self.handle_poll_for_event(ev)
@@ -1446,6 +1620,8 @@ impl Connection {
         extension: Extension,
         eid: EID,
     ) -> SpecialEvent {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_register_for_special_xge);
         unsafe {
             let ext: *mut xcb_extension_t = match extension {
                 #[cfg(feature = "xinput")]
@@ -1464,6 +1640,8 @@ impl Connection {
     /// Stop listening to a special event
     #[cfg(any(feature = "xinput", feature = "present"))]
     pub fn unregister_for_special_event(&self, se: SpecialEvent) {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_unregister_for_special_event);
         unsafe {
             xcb_unregister_for_special_event(self.c, se.raw);
         }
@@ -1472,6 +1650,8 @@ impl Connection {
     /// Returns the next event from a special queue, blocking until one arrives
     #[cfg(any(feature = "xinput", feature = "present"))]
     pub fn wait_for_special_event2(&self, se: &SpecialEvent) -> Result<Event> {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_wait_for_special_event);
         unsafe {
             let ev = xcb_wait_for_special_event(self.c, se.raw);
             self.handle_wait_for_event(ev)
@@ -1481,6 +1661,8 @@ impl Connection {
     /// Returns the next event from a special queue
     #[cfg(any(feature = "xinput", feature = "present"))]
     pub fn poll_for_special_event2(&self, se: &SpecialEvent) -> Result<Option<Event>> {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_poll_for_special_event);
         unsafe {
             let ev = xcb_poll_for_special_event(self.c, se.raw);
             self.handle_poll_for_event(ev)
@@ -1495,6 +1677,8 @@ impl Connection {
     ///
     /// This function will not block even if the reply is not yet available.
     fn discard_reply<C: Cookie>(&self, cookie: C) {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_discard_reply64);
         unsafe {
             xcb_discard_reply64(self.c, cookie.sequence());
         }
@@ -1513,6 +1697,8 @@ impl Connection {
     ///
     /// See the X protocol specification for more details.
     pub fn get_setup(&self) -> &Setup {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_get_setup);
         unsafe {
             let ptr = xcb_get_setup(self.c);
             // let len = <&Setup as WiredIn>::compute_wire_len(ptr, ());
@@ -1660,6 +1846,8 @@ impl Connection {
         let cookie = xcb_void_cookie_t {
             seq: cookie.sequence() as u32,
         };
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_request_check);
         let error = unsafe { xcb_request_check(self.c, cookie) };
         if error.is_null() {
             Ok(())
@@ -1723,6 +1911,8 @@ impl Connection {
     where
         C: CookieWithReplyChecked,
     {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_wait_for_reply64);
         unsafe {
             let mut error: *mut xcb_generic_error_t = ptr::null_mut();
             let reply = xcb_wait_for_reply64(self.c, cookie.sequence(), &mut error as *mut _);
@@ -1758,6 +1948,8 @@ impl Connection {
     where
         C: CookieWithReplyUnchecked,
     {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_wait_for_reply64);
         unsafe {
             let reply = xcb_wait_for_reply64(self.c, cookie.sequence(), ptr::null_mut());
             self.handle_reply_unchecked::<C>(reply)
@@ -1825,6 +2017,9 @@ impl Connection {
     where
         C: CookieWithReplyChecked,
     {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_poll_for_reply64);
+
         unsafe {
             let mut error: *mut xcb_generic_error_t = ptr::null_mut();
             let mut reply: *mut c_void = ptr::null_mut();
@@ -1916,6 +2111,9 @@ impl Connection {
     where
         C: CookieWithReplyUnchecked,
     {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_poll_for_reply64);
+
         unsafe {
             let mut reply: *mut c_void = ptr::null_mut();
 
@@ -1944,6 +2142,8 @@ impl Connection {
     /// Since: libxcb 1.14
     #[cfg(feature = "libxcb_v1_14")]
     pub fn total_read(&self) -> usize {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_total_read);
         unsafe { xcb_total_read(self.c) as usize }
     }
 
@@ -1957,6 +2157,8 @@ impl Connection {
     /// Since: libxcb 1.14
     #[cfg(feature = "libxcb_v1_14")]
     pub fn total_written(&self) -> usize {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_total_written);
         unsafe { xcb_total_written(self.c) as usize }
     }
 }
@@ -2027,6 +2229,8 @@ impl AsRef<Connection> for Connection {
 
 impl AsRawFd for Connection {
     fn as_raw_fd(&self) -> RawFd {
+        #[cfg(feature = "dl")]
+        xcb_get_conn_funcs!(self, xcb_get_file_descriptor);
         unsafe { xcb_get_file_descriptor(self.c) }
     }
 }
@@ -2048,17 +2252,30 @@ impl Drop for Connection {
             }
         }
 
-        #[cfg(not(feature = "xlib_xcb"))]
-        unsafe {
-            xcb_disconnect(self.c);
-        }
-
-        #[cfg(feature = "xlib_xcb")]
-        unsafe {
-            if self.dpy.is_null() {
+        if self.should_drop {
+            #[cfg(not(any(feature = "xlib_xcb", feature = "xlib_xcb_dl")))]
+            unsafe {
+                #[cfg(feature = "dl")]
+                xcb_get_conn_funcs!(self, xcb_disconnect);
                 xcb_disconnect(self.c);
-            } else {
-                xlib::XCloseDisplay(self.dpy);
+            }
+
+            #[cfg(any(feature = "xlib_xcb", feature = "xlib_xcb_dl"))]
+            unsafe {
+                if self.dpy.is_null() {
+                    #[cfg(feature = "dl")]
+                    xcb_get_conn_funcs!(self, xcb_disconnect);
+                    xcb_disconnect(self.c);
+                } else {
+                    #[cfg(all(feature = "xlib_xcb", not(feature = "xlib_xcb_dl")))]
+                    let xclose_display = xlib::XCloseDisplay;
+                    #[cfg(feature = "xlib_xcb_dl")]
+                    let (xclose_display, _lib) = {
+                        let lib = xlib::Xlib::open().expect("X11-xcb library not loaded");
+                        (lib.XCloseDisplay, lib)
+                    };
+                    xclose_display(self.dpy);
+                }
             }
         }
     }
@@ -2105,6 +2322,8 @@ mod dan {
 }
 
 unsafe fn check_connection_error(conn: *mut xcb_connection_t) -> ConnResult<()> {
+    #[cfg(feature = "dl")]
+    xcb_get_funcs!(xcb_connection_has_error);
     match xcb_connection_has_error(conn) {
         0 => Ok(()),
         XCB_CONN_ERROR => Err(ConnError::Connection),
@@ -2124,6 +2343,7 @@ unsafe fn is_error(ev: *mut xcb_generic_event_t) -> bool {
 }
 
 bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub(crate) struct RequestFlags: u32 {
         const NONE = 0;
         const CHECKED = 1;

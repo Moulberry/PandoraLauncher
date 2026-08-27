@@ -1,3 +1,29 @@
+# 1.5.0 (July 29, 2026)
+
+- Add `Method::QUERY` constant for the new QUERY method defined in RFC 10008.
+- Fix `uri::Builder::path_and_query()` to allow empty strings to mean no path.
+- Fix `uri::PathAndQuery` parsing to enforce URI max length.
+
+# 1.4.2 (June 8, 2026)
+
+- Fix `uri::Builder` to allow `"*"` as the path when scheme and authority are also set, used in HTTP/2 requests.
+- Fix `Uri` to properly reject `DEL` characters.
+
+# 1.4.1 (May 25, 2026)
+
+- Fix `PathAndQuery::from_static()` and `from_shared()` to reject inputs that do not start with `/`.
+- Fix `Extend` for `HeaderMap` to clamp max size hint and not overflow.
+- Fix `header::IntoIter` that could use-after-free if the generic value type could panic on drop.
+- Fix `header::{IterMut, ValuesIterMut}` to not violate stacked borrows.
+
+# 1.4.0 (November 24, 2025)
+
+- Add `StatusCode::EARLY_HINTS` constant for 103 Early Hints.
+- Make `StatusCode::from_u16` now a `const fn`.
+- Make `Authority::from_static` now a `const fn`.
+- Make `PathAndQuery::from_static` now a `const fn`.
+- MSRV increased to 1.57 (allows legible const fn panic messages).
+
 # 1.3.1 (March 11, 2025)
 
 * Fix validation that all characters are UTF-8 in URI path and query.

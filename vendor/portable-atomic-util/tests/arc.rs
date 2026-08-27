@@ -81,6 +81,45 @@ fn make_mut_clone_panic() {
     drop(v1);
 }
 
+/// Test that a panic from a destructor does not leak the allocation.
+#[test]
+fn panic_no_leak() {
+    // use std::alloc::{AllocError, Allocator, Global, Layout};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    // use std::ptr::NonNull;
+
+    // TODO: no custom allocator support
+    // struct AllocCount(Cell<i32>);
+    // unsafe impl Allocator for AllocCount {
+    //     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
+    //         self.0.set(self.0.get() + 1);
+    //         Global.allocate(layout)
+    //     }
+    //     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
+    //         self.0.set(self.0.get() - 1);
+    //         unsafe { Global.deallocate(ptr, layout) }
+    //     }
+    // }
+
+    struct PanicOnDrop;
+    impl Drop for PanicOnDrop {
+        fn drop(&mut self) {
+            panic!("PanicOnDrop");
+        }
+    }
+
+    if !is_panic_abort() {
+        // let alloc = AllocCount(Cell::new(0));
+        // let rc = Arc::new_in(PanicOnDrop, &alloc);
+        let rc = Arc::new(PanicOnDrop);
+        // assert_eq!(alloc.0.get(), 1);
+
+        let panic_message = catch_unwind(AssertUnwindSafe(|| drop(rc))).unwrap_err();
+        assert_eq!(*panic_message.downcast_ref::<&'static str>().unwrap(), "PanicOnDrop");
+        // assert_eq!(alloc.0.get(), 0);
+    }
+}
+
 #[test]
 fn weak_dangling() {
     let w = Weak::<Aligned>::new();
@@ -93,15 +132,15 @@ fn weak_dangling() {
 
 // For -C panic=abort -Z panic_abort_tests: https://github.com/rust-lang/rust/issues/67650
 fn is_panic_abort() -> bool {
-    build_context::PANIC.contains("abort")
+    !matches!(build_context::PANIC, "unwind" | "") // cfg(panic) requires Rust 1.60
 }
 
-// https://github.com/rust-lang/rust/blob/1.80.0/library/alloc/src/sync/tests.rs
+// https://github.com/rust-lang/rust/blob/1.84.0/library/alloc/src/sync/tests.rs
 #[allow(clippy::many_single_char_names)]
 mod alloc_tests {
     use std::{
-        convert::TryInto,
-        sync::{mpsc::channel, Mutex},
+        convert::TryInto as _,
+        sync::{Mutex, mpsc::channel},
         thread,
     };
 
@@ -126,7 +165,7 @@ mod alloc_tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore)]
+    #[cfg_attr(target_os = "emscripten", ignore = "thread::spawn doesn't work on emscripten")]
     fn manually_share_arc() {
         let v = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let arc_v = Arc::new(v);
@@ -472,9 +511,8 @@ mod alloc_tests {
     }
 
     // Make sure deriving works with Arc<T>
-    #[allow(dead_code)]
     #[derive(Eq, Ord, PartialEq, PartialOrd, Clone, Debug, Default)]
-    struct Foo {
+    struct _Foo {
         inner: Arc<i32>,
     }
 
@@ -532,7 +570,7 @@ mod alloc_tests {
     }
 
     #[test]
-    #[cfg_attr(target_os = "emscripten", ignore)]
+    #[cfg_attr(target_os = "emscripten", ignore = "thread::spawn doesn't work on emscripten")]
     fn test_weak_count_locked() {
         let mut a = Arc::new(AtomicBool::new(false));
         let a2 = a.clone();

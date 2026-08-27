@@ -345,7 +345,7 @@ impl HintingInstance {
                         _ => Box::<glyf::HintInstance>::default(),
                     };
                     let ppem = size.ppem();
-                    let scale = glyf.compute_hinted_scale(ppem).1.to_bits();
+                    let scale = glyf.compute_hinted_scale(ppem).to_bits();
                     // Use fixed point rounding for ppem to match what FreeType does:
                     // <https://gitlab.freedesktop.org/freetype/freetype/-/blob/57617782464411201ce7bbc93b086c1b4d7d84a5/src/base/ftobjs.c#L3349>
                     // issue: <https://github.com/googlefonts/fontations/issues/1544>
@@ -375,6 +375,9 @@ impl HintingInstance {
                     }
                     self.kind = HinterKind::Cff(subfonts);
                 }
+                OutlineCollectionKind::Varc(..) => {
+                    self.kind = HinterKind::Varc;
+                }
                 OutlineCollectionKind::None => {}
             },
             Engine::Auto(styles) => {
@@ -403,7 +406,7 @@ impl HintingInstance {
     pub fn is_enabled(&self) -> bool {
         match &self.kind {
             HinterKind::Glyf(instance) => instance.is_enabled(),
-            HinterKind::Cff(_) | HinterKind::Auto(_) => true,
+            HinterKind::Cff(_) | HinterKind::Auto(_) | HinterKind::Varc => true,
             _ => false,
         }
     }
@@ -426,7 +429,7 @@ impl HintingInstance {
                 if matches!(path_style, PathStyle::HarfBuzz) {
                     return Err(DrawError::HarfBuzzHintingUnsupported);
                 }
-                super::with_glyf_memory(outline, Hinting::Embedded, memory, |buf| {
+                super::with_temporary_memory(glyph, Hinting::Embedded, memory, |buf| {
                     let scaled_outline = FreeTypeScaler::hinted(
                         glyf,
                         outline,
@@ -453,8 +456,18 @@ impl HintingInstance {
                 let Some(subfont) = subfonts.get(*subfont_ix as usize) else {
                     return Err(DrawError::NoSources);
                 };
-                cff.draw(subfont, *glyph_id, &self.coords, true, pen)?;
-                Ok(AdjustedMetrics::default())
+                let advance_width = cff.draw(subfont, *glyph_id, &self.coords, true, pen)?;
+                Ok(AdjustedMetrics {
+                    has_overlaps: false,
+                    lsb: None,
+                    advance_width,
+                })
+            }
+            (HinterKind::Varc, OutlineKind::Varc(varc, outline)) => {
+                super::with_temporary_memory(glyph, Hinting::None, memory, |buf| {
+                    varc.draw(outline, buf, self.size, &self.coords, path_style, pen)?;
+                    Ok(AdjustedMetrics::default())
+                })
             }
             _ => Err(DrawError::NoSources),
         }
@@ -468,6 +481,7 @@ enum HinterKind {
     None,
     Glyf(Box<glyf::HintInstance>),
     Cff(Vec<cff::Subfont>),
+    Varc,
     Auto(autohint::Instance),
 }
 

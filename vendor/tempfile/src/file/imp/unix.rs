@@ -5,7 +5,6 @@ use std::io;
 use crate::util;
 use std::path::Path;
 
-#[cfg(not(target_os = "redox"))]
 use {
     rustix::fs::{rename, unlink},
     std::fs::hard_link,
@@ -79,17 +78,11 @@ fn create_unix(dir: &Path) -> io::Result<File> {
     )
 }
 
-#[cfg(any(not(target_os = "wasi"), feature = "nightly"))]
 pub fn reopen(file: &File, path: &Path) -> io::Result<File> {
-    #[cfg(not(target_os = "wasi"))]
-    use std::os::unix::fs::MetadataExt;
-    #[cfg(target_os = "wasi")]
-    use std::os::wasi::fs::MetadataExt;
-
     let new_file = OpenOptions::new().read(true).write(true).open(path)?;
-    let old_meta = file.metadata()?;
-    let new_meta = new_file.metadata()?;
-    if old_meta.dev() != new_meta.dev() || old_meta.ino() != new_meta.ino() {
+    let old_meta = rustix::fs::fstat(file)?;
+    let new_meta = rustix::fs::fstat(&new_file)?;
+    if old_meta.st_dev != new_meta.st_dev || old_meta.st_ino != new_meta.st_ino {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
             "original tempfile has been replaced",
@@ -98,20 +91,11 @@ pub fn reopen(file: &File, path: &Path) -> io::Result<File> {
     Ok(new_file)
 }
 
-#[cfg(all(target_os = "wasi", not(feature = "nightly")))]
-pub fn reopen(_file: &File, _path: &Path) -> io::Result<File> {
-    return Err(io::Error::new(
-        io::ErrorKind::Other,
-        "this operation is supported on WASI only on nightly Rust (with `nightly` feature enabled)",
-    ));
-}
-
-#[cfg(not(target_os = "redox"))]
 pub fn persist(old_path: &Path, new_path: &Path, overwrite: bool) -> io::Result<()> {
     if overwrite {
         rename(old_path, new_path)?;
     } else {
-        // On Linux and apple operating systems, use `renameat_with` to avoid overwriting an
+        // On Linux, apple and redox operating systems, use `renameat_with` to avoid overwriting an
         // existing name, if the kernel and the filesystem support it.
         #[cfg(any(
             target_os = "android",
@@ -121,6 +105,7 @@ pub fn persist(old_path: &Path, new_path: &Path, overwrite: bool) -> io::Result<
             target_os = "tvos",
             target_os = "visionos",
             target_os = "watchos",
+            target_os = "redox",
         ))]
         {
             use rustix::fs::{renameat_with, RenameFlags, CWD};
@@ -147,13 +132,6 @@ pub fn persist(old_path: &Path, new_path: &Path, overwrite: bool) -> io::Result<
         let _ = unlink(old_path);
     }
     Ok(())
-}
-
-#[cfg(target_os = "redox")]
-pub fn persist(_old_path: &Path, _new_path: &Path, _overwrite: bool) -> io::Result<()> {
-    // XXX implement when possible
-    use rustix::io::Errno;
-    Err(Errno::NOSYS.into())
 }
 
 pub fn keep(_: &Path) -> io::Result<()> {

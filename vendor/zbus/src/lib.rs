@@ -40,6 +40,12 @@ mod error_message {
     compile_error!("Either \"async-io\" (default) or \"tokio\" must be enabled.");
 }
 
+#[cfg(all(
+    any(feature = "vsock", feature = "tokio-vsock"),
+    not(target_os = "linux")
+))]
+compile_error!("The \"vsock\" and \"tokio-vsock\" features are only supported on Linux.");
+
 #[cfg(windows)]
 mod win32;
 

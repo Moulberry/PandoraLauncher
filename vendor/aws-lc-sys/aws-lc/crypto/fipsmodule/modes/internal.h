@@ -7,6 +7,7 @@
 #include <openssl/base.h>
 
 #include <openssl/aes.h>
+#include <openssl/modes.h>
 
 #include <assert.h>
 #include <stdlib.h>
@@ -350,10 +351,9 @@ void gcm_ghash_p8(uint8_t Xi[16], const u128 Htable[16],
 
 
 // CBC.
-
-// cbc128_f is the type of a function that performs CBC-mode encryption.
-typedef void (*cbc128_f)(const uint8_t *in, uint8_t *out, size_t len,
-                         const AES_KEY *key, uint8_t ivec[16], int enc);
+//
+// Note: |cbc128_f| is defined in the public <openssl/modes.h> header, which
+// this file includes.
 
 // CRYPTO_cbc128_encrypt encrypts |len| bytes from |in| to |out| using the
 // given IV and block cipher in CBC mode. The input need not be a multiple of
@@ -407,10 +407,6 @@ void CRYPTO_cfb128_8_encrypt(const uint8_t *in, uint8_t *out, size_t len,
 void CRYPTO_cfb128_1_encrypt(const uint8_t *in, uint8_t *out, size_t bits,
                              const AES_KEY *key, uint8_t ivec[16],
                              unsigned *num, int enc, block128_f block);
-
-size_t CRYPTO_cts128_encrypt_block(const uint8_t *in, uint8_t *out, size_t len,
-                                   const AES_KEY *key, uint8_t ivec[16],
-                                   block128_f block);
 
 // XTS.
 

@@ -295,9 +295,11 @@ impl CoverageFormat2<'_> {
                 }
             })
             .ok()
-            .map(|idx| {
+            .and_then(|idx| {
                 let rec = &self.range_records()[idx];
-                rec.start_coverage_index() + gid.to_u16() - rec.start_glyph_id().to_u16()
+                // subtract first to avoid u16 overflow (https://github.com/googlefonts/fontations/issues/1887)
+                rec.start_coverage_index()
+                    .checked_add(gid.to_u16() - rec.start_glyph_id().to_u16())
             })
     }
 
@@ -649,6 +651,10 @@ impl<'a> ClassDefFormat2<'a> {
                 }
                 start = range_end + 1;
             }
+
+            if start <= last {
+                out.extend(glyphs.range(GlyphId::from(start)..=GlyphId::from(last)));
+            }
             return out;
         }
 
@@ -664,10 +670,10 @@ impl<'a> ClassDefFormat2<'a> {
             for range in self.class_range_records() {
                 let range_start = range.start_glyph_id().to_u32();
                 let range_end = range.end_glyph_id().to_u32();
-                if range_start > last || range.end_glyph_id().to_u32() < first {
+                if range_start > last {
                     break;
                 }
-                if range.class() != class {
+                if range.class() != class || range.end_glyph_id().to_u32() < first {
                     continue;
                 }
                 out.extend(glyphs.range(GlyphId::from(range_start)..=GlyphId::from(range_end)));
@@ -863,6 +869,30 @@ mod tests {
         assert_eq!(coverage.get(GlyphId::new(40)), None);
     }
 
+    // <https://github.com/googlefonts/fontations/issues/1887>
+    #[test]
+    fn coverage_get_format2_no_u16_overflow() {
+        // A single range covering glyphs 40000..=40010 with a high
+        // start_coverage_index, as occurs in large CJK fonts, and which
+        // was causing an overflow.
+        const COV2_DATA: FontData =
+            FontData::new(&[0, 2, 0, 1, 0x9c, 0x40, 0x9c, 0x4a, 0x9c, 0x40]);
+        let coverage = CoverageFormat2::read(COV2_DATA).unwrap();
+        assert_eq!(coverage.get(GlyphId::new(40000)), Some(40000));
+        assert_eq!(coverage.get(GlyphId::new(40005)), Some(40005));
+        assert_eq!(coverage.get(GlyphId::new(40010)), Some(40010));
+        assert_eq!(coverage.get(GlyphId::new(40011)), None);
+    }
+
+    #[test]
+    fn coverage_get_format2_rejects_overflowing_coverage_index() {
+        // The start_coverage_index plus offset to glyph 2 would overflow u16.
+        const COV2_DATA: FontData = FontData::new(&[0, 2, 0, 1, 0, 1, 0, 2, 0xff, 0xff]);
+        let coverage = CoverageFormat2::read(COV2_DATA).unwrap();
+        assert_eq!(coverage.get(GlyphId::new(1)), Some(u16::MAX));
+        assert_eq!(coverage.get(GlyphId::new(2)), None);
+    }
+
     #[test]
     fn classdef_get_format2() {
         let classdef = ClassDef::read(FontData::new(
@@ -927,5 +957,18 @@ mod tests {
         assert_eq!(bit_storage(0x1234), 13);
         assert_eq!(bit_storage(0xffff), 16);
         assert_eq!(bit_storage(0xffff_ffff), 32);
+    }
+
+    #[test]
+    fn default_coverage() {
+        let coverage = CoverageTable::default();
+        assert_eq!(coverage.iter().count(), 0)
+    }
+
+    #[test]
+    fn default_classdef() {
+        let classdef = ClassDef::default();
+        assert_eq!(classdef.population(), 0);
+        assert_eq!(classdef.iter().count(), 0);
     }
 }

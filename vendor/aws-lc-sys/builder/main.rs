@@ -97,7 +97,6 @@ impl EnvGuard {
         }
     }
 
-    #[cfg(test)]
     fn remove(key: &str) -> Self {
         let original_value = env::var(key).ok();
         env::remove_var(key);
@@ -128,7 +127,7 @@ pub(crate) fn is_fips_build() -> bool {
     is_fips_crate() || cfg!(feature = "fips")
 }
 
-fn is_fips_crate() -> bool {
+pub(crate) fn is_fips_crate() -> bool {
     crate_name().contains("fips")
 }
 
@@ -341,6 +340,23 @@ impl OutputLibType {
         match self {
             Self::Static => "static",
             Self::Dynamic => "dynamic",
+        }
+    }
+
+    /// Returns the platform-specific filename for a library named `name`.
+    ///
+    /// On MSVC a static archive and a DLL import library are both `{name}.lib`,
+    /// so both linkages return the same name; `system_library::probe_lib`
+    /// disambiguates them via a sibling `../bin/{name}.dll`.
+    fn library_filename(self, name: &str) -> String {
+        match (target_os().as_str(), target_env().as_str(), self) {
+            ("windows", "msvc", _) => format!("{name}.lib"),
+            ("windows", _, Self::Dynamic) => format!("lib{name}.dll.a"),
+            ("macos" | "ios" | "tvos" | "watchos" | "visionos", _, Self::Dynamic) => {
+                format!("lib{name}.dylib")
+            }
+            (_, _, Self::Dynamic) => format!("lib{name}.so"),
+            (_, _, Self::Static) => format!("lib{name}.a"),
         }
     }
 }
@@ -561,6 +577,10 @@ fn target() -> String {
     cargo_env("TARGET")
 }
 
+pub(crate) fn is_cross_compiling() -> bool {
+    cargo_env("HOST") != target()
+}
+
 fn crate_name() -> String {
     cargo_env("CARGO_PKG_NAME")
 }
@@ -600,7 +620,63 @@ pub(crate) fn out_dir() -> PathBuf {
     out
 }
 
-/// On Windows, convert a path to its 8.3 short form to avoid MAX_PATH (260 char) limits
+/// Copies `src` over `dest`, leaving the copy writable.
+///
+/// `fs::copy` propagates the source's permission bits, so copying out of a
+/// read-only location (the Nix store, say) would otherwise leave a read-only
+/// file that the next overwrite cannot open (aws/aws-lc-rs#1193).
+pub(crate) fn copy_writable(src: &Path, dest: &Path) -> Result<(), String> {
+    // Removal needs write permission on the directory, overwriting in place on
+    // the file; try both.
+    if remove_existing(dest).is_err() {
+        grant_write_permission(dest);
+    }
+    std::fs::copy(src, dest).map_err(|e| {
+        format!(
+            "Failed to copy {} to {}: {e}",
+            src.display(),
+            dest.display()
+        )
+    })?;
+    // nasm -o and bindgen write these same paths without clearing read-only first.
+    grant_write_permission(dest);
+    Ok(())
+}
+
+fn remove_existing(path: &Path) -> std::io::Result<()> {
+    // Only Windows refuses to remove a read-only file -- through at least Rust
+    // 1.85; std fixed it by 1.90, but our MSRV is 1.71.
+    #[cfg(windows)]
+    grant_write_permission(path);
+    match std::fs::remove_file(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        result => result,
+    }
+}
+
+fn grant_write_permission(path: &Path) {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return;
+    };
+    let mut permissions = metadata.permissions();
+    if !permissions.readonly() {
+        return;
+    }
+    #[cfg(unix)]
+    {
+        // `set_readonly(false)` would widen this to 0o666.
+        use std::os::unix::fs::PermissionsExt;
+        permissions.set_mode(permissions.mode() | 0o200);
+    }
+    #[cfg(windows)]
+    {
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+    }
+    let _ = std::fs::set_permissions(path, permissions);
+}
+
+/// On Windows, convert a path to its 8.3 short form to avoid `MAX_PATH` (260 char) limits
 /// when cl.exe is invoked with deeply nested source trees (e.g. Bazel runfiles).
 #[cfg(windows)]
 fn to_short_path(path: &Path) -> PathBuf {
@@ -612,6 +688,7 @@ fn to_short_path(path: &Path) -> PathBuf {
             cchBuffer: u32,
         ) -> u32;
     }
+    const MAX_PATH: usize = 260;
     let wide: Vec<u16> = path
         .as_os_str()
         .encode_wide()
@@ -629,14 +706,12 @@ fn to_short_path(path: &Path) -> PathBuf {
     buf.truncate(result as usize);
     let short_path = PathBuf::from(std::ffi::OsString::from_wide(&buf));
 
-    const MAX_PATH: usize = 260;
     let original_len = wide.len() - 1;
     if original_len >= MAX_PATH && (result as usize) >= MAX_PATH {
         emit_warning(format!(
-            "Path length ({}) exceeds MAX_PATH ({}) and 8.3 short name conversion was ineffective. \
-             8.3 short names may be disabled on this volume. \
-             See: https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-8dot3name",
-            original_len, MAX_PATH,
+            "Path length ({original_len}) exceeds MAX_PATH ({MAX_PATH}) and 8.3 short name \
+             conversion was ineffective. 8.3 short names may be disabled on this volume. \
+             See: https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/fsutil-8dot3name"
         ));
     }
 
@@ -772,6 +847,7 @@ static mut SYS_NO_ASM: bool = false;
 static mut SYS_PREBUILT_NASM: Option<bool> = None;
 static mut SYS_CMAKE_BUILDER: Option<bool> = None;
 static mut SYS_NO_PREGENERATED_SRC: bool = false;
+static mut SYS_SMALL: Option<bool> = None;
 static mut SYS_EFFECTIVE_TARGET: String = String::new();
 static mut SYS_NO_JITTER_ENTROPY: Option<bool> = None;
 static mut SYS_NO_U1_BINDINGS: Option<bool> = None;
@@ -796,6 +872,7 @@ fn initialize() {
         SYS_C_STD = CStdRequested::from_env();
         SYS_CMAKE_BUILDER = env_crate_var_to_bool("CMAKE_BUILDER");
         SYS_NO_PREGENERATED_SRC = env_crate_var_to_bool("NO_PREGENERATED_SRC").unwrap_or(false);
+        SYS_SMALL = env_crate_var_to_bool("SMALL");
         SYS_EFFECTIVE_TARGET = optional_env_crate_target("EFFECTIVE_TARGET").unwrap_or_default();
         SYS_NO_JITTER_ENTROPY = env_crate_var_to_bool("NO_JITTER_ENTROPY");
         SYS_NO_U1_BINDINGS = env_crate_var_to_bool("NO_U1_BINDINGS");
@@ -815,6 +892,15 @@ fn initialize() {
         !is_fips_crate() || is_fips_build(),
         "aws-lc-fips-sys requires 'fips' feature to be enabled.",
     );
+
+    // Emitted here because is_small() is called multiple times per build.
+    if is_fips_crate() && is_small() {
+        emit_warning(
+            "OPENSSL_SMALL is being applied to a FIPS build. \
+             This changes the compiled module and may affect FIPS validation status. \
+             Consult your compliance requirements before shipping this configuration.",
+        );
+    }
 
     if !is_external_bindgen_requested().unwrap_or(false)
         && (is_pregenerating_bindings() || !has_bindgen_feature())
@@ -914,6 +1000,20 @@ fn is_external_bindgen_requested() -> Option<bool> {
 
 fn is_no_asm() -> bool {
     unsafe { SYS_NO_ASM }
+}
+
+pub(crate) fn is_small() -> bool {
+    // An explicit setting takes precedence over opt-level detection.
+    if let Some(explicit) = unsafe { SYS_SMALL } {
+        return explicit;
+    }
+    // aws-lc-fips-sys tracks a certification-track FIPS module whose exact shape
+    // matters: size optimization requires an explicit AWS_LC_FIPS_SYS_SMALL=1.
+    // Mainline FIPS-mode builds (`fips` feature) use normal opt-level detection.
+    if is_fips_crate() {
+        return false;
+    }
+    matches!(cargo_env("OPT_LEVEL").as_str(), "z" | "s")
 }
 
 #[allow(static_mut_refs)]
@@ -1051,17 +1151,36 @@ fn use_no_u1_bindings() -> Option<bool> {
     unsafe { SYS_NO_U1_BINDINGS }
 }
 
+// Per the cc-rs convention, `TARGET_*` vars apply only when cross-compiling and
+// `HOST_*` vars only to native builds. This keeps cross-target flags out of the
+// host build when this crate is compiled for both in one cargo invocation
+// (e.g., as a transitive build-dependency).
+// See: https://github.com/aws/aws-lc-rs/issues/1169
 fn get_crate_cc() -> Option<String> {
-    optional_env_optional_crate_target("TARGET_CC").or(optional_env_optional_crate_target("CC"))
+    let host_or_target = if is_cross_compiling() {
+        optional_env_optional_crate_target("TARGET_CC")
+    } else {
+        optional_env_optional_crate_target("HOST_CC")
+    };
+    host_or_target.or(optional_env_optional_crate_target("CC"))
 }
 
 fn get_crate_cxx() -> Option<String> {
-    optional_env_optional_crate_target("TARGET_CXX").or(optional_env_optional_crate_target("CXX"))
+    let host_or_target = if is_cross_compiling() {
+        optional_env_optional_crate_target("TARGET_CXX")
+    } else {
+        optional_env_optional_crate_target("HOST_CXX")
+    };
+    host_or_target.or(optional_env_optional_crate_target("CXX"))
 }
 
 fn get_crate_cflags() -> Option<String> {
-    optional_env_optional_crate_target("TARGET_CFLAGS")
-        .or(optional_env_optional_crate_target("CFLAGS"))
+    let host_or_target = if is_cross_compiling() {
+        optional_env_optional_crate_target("TARGET_CFLAGS")
+    } else {
+        optional_env_optional_crate_target("HOST_CFLAGS")
+    };
+    host_or_target.or(optional_env_optional_crate_target("CFLAGS"))
 }
 
 fn use_prebuilt_nasm() -> bool {
@@ -1348,27 +1467,102 @@ fn main() {
 /// Emits the shared post-build cargo metadata for source-based builders
 /// (`CMake` and CC). This sets up include paths, exports library and
 /// configuration names for downstream crates, and registers rerun triggers.
-pub(crate) fn emit_source_build_metadata(manifest_dir: &Path) {
-    // MinGW/GCC ignores `#pragma comment(lib, "bcrypt.lib")`, so we must
-    // link explicitly. The upstream CMakeLists.txt forces _WIN32_WINNT_WIN7
-    // for MINGW+GCC, activating the BCryptGenRandom codepath.
-    // See: https://github.com/aws/aws-lc/pull/3239
-    if target().contains("-windows-gnu") {
-        println!("cargo:rustc-link-lib=bcrypt");
+pub(crate) fn emit_source_build_metadata(manifest_dir: &Path, build_prefix: &Option<String>) {
+    // Only aws-lc-fips-sys consumes the generated FIPS-version constant; a
+    // FIPS-flavored aws-lc-sys build reports a module version of 0.
+    if is_fips_crate() {
+        system_library::emit_fips_version(&get_aws_lc_include_path(manifest_dir)).unwrap();
     }
+
+    emit_system_libs_metadata();
 
     println!(
         "cargo:include={}",
         setup_include_paths(&out_dir(), manifest_dir).display()
     );
 
-    // export the artifact names
-    println!("cargo:libcrypto={}_crypto", prefix_string());
+    // Derive the artifact names from `build_prefix`, not `prefix_string()`:
+    // with `AWS_LC_SYS_NO_PREFIX` set the libraries are built unprefixed.
+    println!(
+        "cargo:libcrypto={}",
+        OutputLib::Crypto.libname(build_prefix)
+    );
     if cfg!(feature = "ssl") {
-        println!("cargo:libssl={}_ssl", prefix_string());
+        println!("cargo:libssl={}", OutputLib::Ssl.libname(build_prefix));
     }
 
     println!("cargo:rerun-if-changed=aws-lc/");
+}
+
+/// System libraries that AWS-LC itself requires, beyond its own artifacts.
+///
+/// The `-windows-gnu` match also covers `-windows-gnullvm` (same MinGW ABI).
+fn required_system_libs(target: &str) -> Vec<&'static str> {
+    let mut libs = Vec::new();
+
+    // MinGW/GCC ignores `#pragma comment(lib, "bcrypt.lib")`, so we must
+    // link explicitly. The upstream CMakeLists.txt forces _WIN32_WINNT_WIN7
+    // for MINGW+GCC, activating the BCryptGenRandom codepath.
+    // See: https://github.com/aws/aws-lc/pull/3239
+    if target.contains("-windows-gnu") {
+        libs.push("bcrypt");
+    }
+
+    libs
+}
+
+/// Links the system libraries AWS-LC needs and exports the same list as
+/// `system_libs`, so the directives and the metadata cannot drift. Consumers
+/// cannot infer these from the artifact paths, and Cargo only propagates our
+/// directives to crates that link the sys crate's rlib.
+pub(crate) fn emit_system_libs_metadata() {
+    let libs = required_system_libs(&target());
+    for lib in &libs {
+        println!("cargo:rustc-link-lib={lib}");
+    }
+    println!("cargo:system_libs={}", libs.join(","));
+}
+
+/// Exports stable, absolute native-library locations for downstream build
+/// scripts that need to compile additional C code against this AWS-LC build.
+///
+/// The artifact filenames are predicted from the target platform and link
+/// kind, so a wrong prediction is possible on configurations we don't
+/// exercise. If a predicted artifact is missing, the corresponding `*_path`
+/// key is skipped (with a warning) rather than failing the build; the
+/// `links-testing` crate asserts these exports are present for every
+/// configuration covered by CI.
+pub(crate) fn emit_source_library_metadata(
+    lib_dir: &Path,
+    output_lib_type: OutputLibType,
+    build_prefix: &Option<String>,
+) {
+    println!("cargo:libdir={}", lib_dir.display());
+    println!("cargo:link_kind={}", output_lib_type.rust_lib_type());
+
+    let crypto_path =
+        lib_dir.join(output_lib_type.library_filename(&OutputLib::Crypto.libname(build_prefix)));
+    if crypto_path.is_file() {
+        println!("cargo:libcrypto_path={}", crypto_path.display());
+    } else {
+        emit_warning(format!(
+            "AWS-LC libcrypto artifact not found: {}; not exporting libcrypto_path",
+            crypto_path.display()
+        ));
+    }
+
+    if cfg!(feature = "ssl") {
+        let ssl_path =
+            lib_dir.join(output_lib_type.library_filename(&OutputLib::Ssl.libname(build_prefix)));
+        if ssl_path.is_file() {
+            println!("cargo:libssl_path={}", ssl_path.display());
+        } else {
+            emit_warning(format!(
+                "AWS-LC libssl artifact not found: {}; not exporting libssl_path",
+                ssl_path.display()
+            ));
+        }
+    }
 }
 
 fn setup_include_paths(out_dir: &Path, manifest_dir: &Path) -> PathBuf {
@@ -1389,9 +1583,9 @@ fn setup_include_paths(out_dir: &Path, manifest_dir: &Path) -> PathBuf {
     for path in include_paths {
         for child in std::fs::read_dir(path).into_iter().flatten().flatten() {
             if child.path().is_file() {
-                std::fs::copy(
-                    child.path(),
-                    include_dir.join(child.path().file_name().unwrap()),
+                copy_writable(
+                    &child.path(),
+                    &include_dir.join(child.path().file_name().unwrap()),
                 )
                 .expect("Failed to copy include file during build setup");
                 continue;
@@ -1697,6 +1891,46 @@ mod tests {
         assert_eq!(parse_to_bool("invalid"), None);
         assert_eq!(parse_to_bool("maybe"), None);
         assert_eq!(parse_to_bool("   "), None);
+    }
+
+    // -------------------------------------------------------------------------
+    // required_system_libs tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_required_system_libs_mingw_targets_need_bcrypt() {
+        for target in [
+            "x86_64-pc-windows-gnu",
+            "i686-pc-windows-gnu",
+            // gnullvm shares the MinGW ABI, and the substring match covers it.
+            "aarch64-pc-windows-gnullvm",
+        ] {
+            assert_eq!(
+                required_system_libs(target),
+                ["bcrypt"],
+                "expected bcrypt for {target}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_required_system_libs_empty_elsewhere() {
+        for target in [
+            // MSVC gets bcrypt via `#pragma comment(lib, ...)`.
+            "x86_64-pc-windows-msvc",
+            "aarch64-pc-windows-msvc",
+            "aarch64-apple-darwin",
+            // Must not be confused by the unrelated `-gnu` environment.
+            "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-musl",
+            "aarch64-linux-android",
+        ] {
+            assert!(
+                required_system_libs(target).is_empty(),
+                "unexpected system libs for {target}: {:?}",
+                required_system_libs(target)
+            );
+        }
     }
 
     // -------------------------------------------------------------------------

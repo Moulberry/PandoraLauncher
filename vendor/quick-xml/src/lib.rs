@@ -52,6 +52,7 @@
 // docs.rs defines `docsrs` when building documentation
 // Since 1.92 `doc_auto_cfg` was merged into `doc_cfg`
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![warn(clippy::missing_const_for_fn)]
 
 #[cfg(feature = "serialize")]
 pub mod de;
@@ -71,6 +72,8 @@ pub mod serde_helpers;
 pub mod utils;
 pub mod writer;
 
+use std::borrow::Cow;
+
 // reexports
 pub use crate::encoding::Decoder;
 #[cfg(feature = "serialize")]
@@ -78,3 +81,51 @@ pub use crate::errors::serialize::{DeError, SeError};
 pub use crate::errors::{Error, Result};
 pub use crate::reader::{NsReader, Reader};
 pub use crate::writer::{ElementWriter, Writer};
+
+/// Version of XML standard
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum XmlVersion {
+    /// XML declaration was missed in the entity (root document or referenced
+    /// external DTD), so according to the specification, [version 1.0] is assumed.
+    /// Most documents in the world are still XML 1.0 documents.
+    ///
+    /// [version 1.0]: https://www.w3.org/TR/xml/
+    Implicit1_0,
+    /// XML version was specified as [`1.0`] in the entity (root document or referenced
+    /// external DTD).
+    ///
+    /// [`1.0`]: https://www.w3.org/TR/xml/
+    Explicit1_0,
+    /// XML version was specified as [`1.1`] in the entity (root document or referenced
+    /// external DTD).
+    ///
+    /// [`1.1`]: https://www.w3.org/TR/xml11/
+    Explicit1_1,
+}
+
+impl XmlVersion {
+    pub(crate) fn normalize_attribute_value<'input, 'entity, F>(
+        &self,
+        value: &'input str,
+        depth: usize,
+        resolve_entity: F,
+    ) -> std::result::Result<Cow<'input, str>, escape::EscapeError>
+    where
+        // the lifetime of the output comes from a capture or is `'static`
+        F: FnMut(&str) -> Option<&'entity str>,
+    {
+        match self {
+            Self::Explicit1_1 => {
+                escape::normalize_xml11_attribute_value(value, depth, resolve_entity)
+            }
+            _ => escape::normalize_xml10_attribute_value(value, depth, resolve_entity),
+        }
+    }
+}
+
+impl Default for XmlVersion {
+    #[inline]
+    fn default() -> Self {
+        Self::Implicit1_0
+    }
+}

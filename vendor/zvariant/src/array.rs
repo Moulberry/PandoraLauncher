@@ -121,7 +121,7 @@ impl<'a> Array<'a> {
                 .into_iter()
                 .map(|v| v.try_into_owned().map(Into::into))
                 .collect::<Result<_>>()?,
-            signature: self.signature.clone(),
+            signature: self.signature,
         })
     }
 

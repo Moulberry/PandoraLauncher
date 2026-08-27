@@ -20,9 +20,10 @@ mod win_x86_64;
 use crate::nasm_builder::NasmBuilder;
 use crate::{
     cargo_env, compiler_is_cl_like, emit_warning, env_var_to_bool, execute_command, find_clang_cl,
-    get_crate_cc, get_crate_cflags, get_crate_cxx, is_link_whole_archive, is_no_asm, out_dir,
-    requested_c_std, set_env_for_target, should_build_jitter_entropy, target, target_arch,
-    target_env, target_is_msvc, target_os, target_vendor, CStdRequested, EnvGuard, OutputLibType,
+    get_crate_cc, get_crate_cflags, get_crate_cxx, is_cross_compiling, is_link_whole_archive,
+    is_no_asm, is_small, out_dir, requested_c_std, set_env_for_target, should_build_jitter_entropy,
+    target, target_arch, target_env, target_is_msvc, target_os, target_vendor, use_prebuilt_nasm,
+    CStdRequested, EnvGuard, OutputLibType,
 };
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -92,6 +93,7 @@ fn identify_sources() -> Vec<&'static str> {
 }
 
 #[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, PartialEq, Eq)]
 pub(crate) enum BuildOption {
     STD(String),
     FLAG(String),
@@ -169,6 +171,18 @@ impl BuildOption {
 }
 
 impl CcBuilder {
+    fn small_c_build_options() -> Vec<BuildOption> {
+        vec![BuildOption::define("OPENSSL_SMALL", "1")]
+    }
+
+    fn small_nasm_build_options() -> Vec<BuildOption> {
+        // Raw NASM sources cannot include target.h, where OPENSSL_SMALL implies this gate.
+        vec![
+            BuildOption::define("OPENSSL_SMALL", "1"),
+            BuildOption::define("MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX", "1"),
+        ]
+    }
+
     pub(crate) fn new(
         manifest_dir: PathBuf,
         out_dir: PathBuf,
@@ -369,6 +383,14 @@ impl CcBuilder {
         let (is_cl_like, build_options) = self.collect_universal_build_options(&cc_build, false);
         for option in build_options {
             option.apply_cc(&mut cc_build);
+        }
+        if is_small() {
+            emit_warning(
+                "Size-optimized AWS-LC build enabled. Applying OPENSSL_SMALL and disabling AVX-512 assembly.",
+            );
+            for option in Self::small_c_build_options() {
+                option.apply_cc(&mut cc_build);
+            }
         }
 
         // Add --noexecstack flag for assembly files to prevent executable stacks
@@ -642,6 +664,17 @@ impl CcBuilder {
         for option in &build_options {
             option.apply_nasm(&mut nasm_builder);
         }
+        if is_small() {
+            for option in Self::small_nasm_build_options() {
+                option.apply_nasm(&mut nasm_builder);
+            }
+            if use_prebuilt_nasm() {
+                emit_warning(
+                    "Prebuilt NASM objects cannot apply size-optimization definitions. \
+                     Install NASM to minimize Windows assembly code.",
+                );
+            }
+        }
 
         let s2n_bignum_source_feature_map = Self::build_s2n_bignum_source_feature_map();
         let compiler_features = self.compiler_features.take();
@@ -795,40 +828,62 @@ impl CcBuilder {
         ret_val
     }
 
-    // This checks whether the compiler contains a critical bug that causes `memcmp` to erroneously
-    // consider two regions of memory to be equal when they're not.
-    // See GCC bug report: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189
-    // This should be kept in alignment with the same check performed by the CMake build.
-    // See: https://github.com/search?q=repo%3Aaws%2Faws-lc%20check_run&type=code
+    // Detects a GCC bug that causes `memcmp` to erroneously consider two unequal regions of
+    // memory to be equal. See: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189
+    // Mirrors the `check_run` performed by AWS-LC's CMake build:
+    // https://github.com/search?q=repo%3Aaws%2Faws-lc%20check_run&type=code
+    //
+    // The check is layered so that only a high-confidence positive result can fail the build:
+    //   1. Skipped when cross-compiling (the probe must run on the build host).
+    //   2. Skipped for non-GCC compilers; the bug is GCC-specific, matching CMake's `if(GCC)`.
+    //   3. Skipped for GCC versions outside the affected range (9.0-9.3, 10.0-10.1).
+    //   4. A probe that fails to build or execute only warns, as in CMake, where `check_run`
+    //      compile failures were never fatal. Such failures have historically been
+    //      environmental (LTO in CFLAGS, PIE link flags, AIX ABI selection; see #1132,
+    //      #1168, #1170), not evidence of the bug.
+    //   5. Only a probe that builds, runs, and demonstrates the miscompilation fails the build.
     fn memcmp_check(&self) {
-        // This check compiles, links, and executes a test program. When cross-compiling
-        // (HOST != TARGET), we cannot execute the resulting binary, so we skip this check.
-        // This also avoids linker configuration issues with cross-compilation toolchains
-        // (e.g., cross-rs Darwin toolchains that set invalid -fuse-ld= flags in CFLAGS).
-        if cargo_env("HOST") != target() {
+        // (1) The probe binary must run on the build host.
+        if is_cross_compiling() {
             return;
+        }
+
+        // User CFLAGS are intentionally excluded (#1132): they have no bearing on whether
+        // the compiler contains the bug and can break the probe's compile+link (e.g.,
+        // -flto=thin without -fuse-ld=lld). The cc crate's computed default flags ARE kept:
+        // dropping them broke hardened PIE builds (-fPIC, #1168) and AIX (-maix64, #1170).
+        // cc reads the CFLAGS env vars eagerly inside get_compiler(), so guarding them for
+        // just this call removes exactly the user-provided flags.
+        let memcmp_tool = {
+            let _cflags_guards = cflags_ignore_guards();
+            let mut probe_build = cc::Build::default();
+            // -O3 is required to trigger the bug; the build profile's opt level may be lower.
+            probe_build.opt_level(3);
+            probe_build.get_compiler()
+        };
+
+        // (2) The bug is GCC-specific.
+        if !memcmp_tool.is_like_gnu() {
+            return;
+        }
+
+        // (3) Distributions backport fixes, so the version gate only decides whether to run
+        // the probe; the probe decides whether this compiler is actually affected.
+        if let Some(version) = gcc_version(&memcmp_tool) {
+            if !gcc_version_may_have_memcmp_bug(&version) {
+                return;
+            }
+            emit_warning(format!(
+                "GCC {version} may contain a memcmp-related bug \
+                (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189); probing the compiler."
+            ));
         }
 
         let basename = "memcmp_invalid_stripped_check";
         let exec_path = out_dir().join(basename);
-        let memcmp_build = cc::Build::default();
-        let memcmp_compiler = memcmp_build.get_compiler();
-        // The logic below assumes a Clang or GCC compiler; skip any other
-        // family (keyed on the compiler, not the target ABI).
-        if !memcmp_compiler.is_like_clang() && !memcmp_compiler.is_like_gnu() {
-            return;
-        }
-        // Only pass -O3 to trigger the optimization bug. We intentionally ignore
-        // CFLAGS here — this check is about compiler behavior at high optimization
-        // levels, not about the user's build configuration. Arbitrary CFLAGS can
-        // cause unrelated compile/link failures (e.g., -flto=thin on Windows
-        // requires -fuse-ld=lld). This matches the CMake build which only passes
-        // CMAKE_C_FLAGS_RELEASE (-O3) to check_run().
-        let mut memcmp_compile_args: Vec<std::ffi::OsString> = vec!["-O3".into()];
+        let mut memcmp_compile_args: Vec<std::ffi::OsString> = memcmp_tool.args().to_vec();
 
-        // Respect LDFLAGS for custom linker configurations. This check produces
-        // an executable, so the linker must be reachable. LDFLAGS may contain
-        // necessary flags like library search paths or linker selection.
+        // The probe links an executable; honor LDFLAGS for linker configuration (#958).
         if let Ok(ldflags) = std::env::var("LDFLAGS") {
             for flag in ldflags.split_whitespace() {
                 memcmp_compile_args.push(flag.into());
@@ -851,38 +906,54 @@ impl CcBuilder {
             .map(std::ffi::OsString::as_os_str)
             .collect();
         let memcmp_compile_result =
-            execute_command(memcmp_compiler.path().as_os_str(), memcmp_args.as_slice());
-        assert!(
-            memcmp_compile_result.status,
-            "COMPILER: {}\
-            ARGS: {:?}\
-            EXECUTED: {}\
-            ERROR: {}\
-            OUTPUT: {}\
-            Failed to compile {basename}
-            ",
-            memcmp_compiler.path().display(),
-            memcmp_args.as_slice(),
-            memcmp_compile_result.executed,
-            memcmp_compile_result.stderr,
-            memcmp_compile_result.stdout
-        );
+            execute_command(memcmp_tool.path().as_os_str(), memcmp_args.as_slice());
+
+        // (4) A probe that fails to build only warns, matching CMake's `check_run`.
+        if !memcmp_compile_result.status {
+            emit_warning(format!(
+                "Unable to build the memcmp probe; skipping the GCC memcmp bug check \
+                (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189).\n\
+                COMPILER: {}\n\
+                ARGS: {:?}\n\
+                EXECUTED: {}\n\
+                ERROR: {}\n\
+                OUTPUT: {}\n\
+                ",
+                memcmp_tool.path().display(),
+                memcmp_args.as_slice(),
+                memcmp_compile_result.executed,
+                memcmp_compile_result.stderr,
+                memcmp_compile_result.stdout
+            ));
+            return;
+        }
 
         let result = execute_command(exec_path.as_os_str(), &[]);
-        assert!(
-            result.status,
-            "### COMPILER BUG DETECTED ###\nYour compiler ({}) is not supported due to a memcmp related bug reported in \
-            https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189. \
-            We strongly recommend against using this compiler. \n\
-            EXECUTED: {}\n\
-            ERROR: {}\n\
-            OUTPUT: {}\n\
-            ",
-            memcmp_compiler.path().display(),
-            memcmp_compile_result.executed,
-            memcmp_compile_result.stderr,
-            memcmp_compile_result.stdout
-        );
+        if result.executed {
+            // (5) The probe demonstrated the miscompilation; fail the build.
+            assert!(
+                result.status,
+                "### COMPILER BUG DETECTED ###\nYour compiler ({}) is not supported due to a memcmp related bug reported in \
+                https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189. \
+                We strongly recommend against using this compiler. \n\
+                EXIT CODE: {:?}\n\
+                ERROR: {}\n\
+                OUTPUT: {}\n\
+                ",
+                memcmp_tool.path().display(),
+                result.exit_code,
+                result.stderr,
+                result.stdout
+            );
+        } else {
+            // Failure to launch the probe (e.g., a noexec build directory) is
+            // environmental, not evidence of the bug.
+            emit_warning(format!(
+                "Unable to execute the memcmp probe; skipping the GCC memcmp bug check \
+                (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189). ERROR: {:?}",
+                result.spawn_error
+            ));
+        }
         let _ = fs::remove_file(exec_path);
     }
     fn run_compiler_checks(&self, cc_build: &mut cc::Build) {
@@ -915,6 +986,55 @@ impl CcBuilder {
             }
         }
         self.memcmp_check();
+    }
+}
+
+/// Temporarily removes every `CFLAGS`-family env var the cc crate consults (see its
+/// `target_envs`), so that `cc::Build::get_compiler()` computes only the target's
+/// default flags. Assumes HOST == TARGET (the memcmp probe only runs natively), where
+/// cc consults `HOST_CFLAGS` and never `TARGET_CFLAGS`.
+fn cflags_ignore_guards() -> Vec<EnvGuard> {
+    let target = target();
+    let target_u = target.replace(['-', '.'], "_");
+    [
+        format!("CFLAGS_{target}"),
+        format!("CFLAGS_{target_u}"),
+        "HOST_CFLAGS".to_string(),
+        "CFLAGS".to_string(),
+    ]
+    .iter()
+    .map(|name| EnvGuard::remove(name))
+    .collect()
+}
+
+/// Version reported by a GCC-like compiler, if determinable. Prefers `-dumpfullversion`
+/// (GCC 7+); `-dumpversion` may report only the major version.
+fn gcc_version(compiler: &cc::Tool) -> Option<String> {
+    for flag in ["-dumpfullversion", "-dumpversion"] {
+        let result = execute_command(compiler.path().as_os_str(), &[flag.as_ref()]);
+        if result.status {
+            let version = result.stdout.trim();
+            if !version.is_empty() {
+                return Some(version.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// GCC bug 95189 (`memcmp` wrongly folded like `strcmp`) was introduced in GCC 9 and fixed
+/// in the 9.4 and 10.2 releases; GCC 11+ never contained it.
+/// See: <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189>
+fn gcc_version_may_have_memcmp_bug(version: &str) -> bool {
+    let mut parts = version.trim().split('.');
+    let major = parts.next().and_then(|v| v.parse::<u64>().ok());
+    let minor = parts.next().and_then(|v| v.parse::<u64>().ok());
+    match (major, minor) {
+        (Some(9), Some(minor)) => minor < 4,
+        (Some(10), Some(minor)) => minor < 2,
+        // Major-only version strings and unparseable output are conservatively probed.
+        (Some(9 | 10), None) | (None, _) => true,
+        (Some(_), _) => false,
     }
 }
 
@@ -958,7 +1078,13 @@ impl crate::Builder for CcBuilder {
         let sources = crate::cc_builder::identify_sources();
         self.build_library(sources.as_slice());
 
-        crate::emit_source_build_metadata(&self.manifest_dir);
+        crate::emit_source_library_metadata(
+            &self.out_dir,
+            self.output_lib_type,
+            &self.build_prefix,
+        );
+
+        crate::emit_source_build_metadata(&self.manifest_dir, &self.build_prefix);
 
         Ok(())
     }
@@ -988,6 +1114,66 @@ mod tests {
         assert!(!with_target_env("gnu", target_is_msvc));
         assert!(!with_target_env("musl", target_is_msvc));
         assert!(!with_target_env("", target_is_msvc));
+    }
+
+    // GCC bug 95189 affected the 9.0-9.3 and 10.0-10.1 releases; it was fixed in
+    // 9.4 and 10.2, and GCC 11+ never contained it.
+    #[test]
+    fn test_gcc_version_may_have_memcmp_bug() {
+        // Affected versions must be probed.
+        assert!(gcc_version_may_have_memcmp_bug("9"));
+        assert!(gcc_version_may_have_memcmp_bug("9.1.0"));
+        assert!(gcc_version_may_have_memcmp_bug("9.2.0"));
+        assert!(gcc_version_may_have_memcmp_bug("9.3.1"));
+        assert!(gcc_version_may_have_memcmp_bug("10"));
+        assert!(gcc_version_may_have_memcmp_bug("10.1.0"));
+        // Releases containing the fix are skipped.
+        assert!(!gcc_version_may_have_memcmp_bug("9.4.0"));
+        assert!(!gcc_version_may_have_memcmp_bug("9.5.0"));
+        assert!(!gcc_version_may_have_memcmp_bug("10.2.1"));
+        // Unaffected major versions are skipped.
+        assert!(!gcc_version_may_have_memcmp_bug("4.8.5"));
+        assert!(!gcc_version_may_have_memcmp_bug("8.5.0"));
+        assert!(!gcc_version_may_have_memcmp_bug("11.4.0"));
+        assert!(!gcc_version_may_have_memcmp_bug("12"));
+        assert!(!gcc_version_may_have_memcmp_bug("15.1.0"));
+        // Whitespace from command output is tolerated.
+        assert!(gcc_version_may_have_memcmp_bug("9.3.0\n"));
+        // Undeterminable versions are conservatively probed.
+        assert!(gcc_version_may_have_memcmp_bug(""));
+        assert!(gcc_version_may_have_memcmp_bug("unknown"));
+    }
+
+    // The memcmp probe must exclude user CFLAGS (#1132) while `cc` computes the
+    // compiler's default flags; every env var variant `cc` consults must be
+    // suppressed, and all must be restored when the guards drop.
+    #[test]
+    fn test_cflags_ignore_guards_suppress_and_restore() {
+        let _lock = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _target_guard = EnvGuard::new("TARGET", "x86_64-unknown-linux-gnu");
+        let _g1 = EnvGuard::new("CFLAGS", "-flto=thin");
+        let _g2 = EnvGuard::new("CFLAGS_x86_64-unknown-linux-gnu", "-fdash-variant");
+        let _g3 = EnvGuard::new("CFLAGS_x86_64_unknown_linux_gnu", "-funderscore-variant");
+        let _g4 = EnvGuard::new("HOST_CFLAGS", "-fhost");
+        let _g5 = EnvGuard::new("TARGET_CFLAGS", "-ftarget");
+        {
+            let _guards = cflags_ignore_guards();
+            assert!(env::var("CFLAGS").is_err());
+            assert!(env::var("CFLAGS_x86_64-unknown-linux-gnu").is_err());
+            assert!(env::var("CFLAGS_x86_64_unknown_linux_gnu").is_err());
+            assert!(env::var("HOST_CFLAGS").is_err());
+            assert_eq!(env::var("TARGET_CFLAGS").unwrap(), "-ftarget");
+        }
+        assert_eq!(env::var("CFLAGS").unwrap(), "-flto=thin");
+        assert_eq!(
+            env::var("CFLAGS_x86_64-unknown-linux-gnu").unwrap(),
+            "-fdash-variant"
+        );
+        assert_eq!(
+            env::var("CFLAGS_x86_64_unknown_linux_gnu").unwrap(),
+            "-funderscore-variant"
+        );
+        assert_eq!(env::var("HOST_CFLAGS").unwrap(), "-fhost");
     }
 
     // Guards https://github.com/aws/aws-lc-rs/issues/1146: in cl driver mode
@@ -1039,5 +1225,30 @@ mod tests {
                 "{gnu} should not be detected as cl driver mode"
             );
         }
+    }
+
+    #[test]
+    fn test_small_c_build_options() {
+        assert_eq!(
+            CcBuilder::small_c_build_options(),
+            [BuildOption::DEFINE(
+                "OPENSSL_SMALL".to_string(),
+                "1".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn test_small_nasm_build_options() {
+        assert_eq!(
+            CcBuilder::small_nasm_build_options(),
+            [
+                BuildOption::DEFINE("OPENSSL_SMALL".to_string(), "1".to_string()),
+                BuildOption::DEFINE(
+                    "MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX".to_string(),
+                    "1".to_string(),
+                ),
+            ]
+        );
     }
 }

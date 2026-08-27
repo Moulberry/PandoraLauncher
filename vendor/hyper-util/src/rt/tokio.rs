@@ -295,6 +295,10 @@ impl Timer for TokioTimer {
             sleep.reset(new_deadline)
         }
     }
+
+    fn now(&self) -> Instant {
+        tokio::time::Instant::now().into()
+    }
 }
 
 impl TokioTimer {

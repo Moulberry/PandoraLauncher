@@ -9,7 +9,7 @@ use std::os::windows::io::{
 use std::path::Path;
 use std::time::Duration;
 
-use winapi::um::winsock2::{
+use windows_sys::Win32::Networking::WinSock::{
     bind, connect, getpeername, getsockname, listen, SO_RCVTIMEO, SO_SNDTIMEO,
 };
 
@@ -274,7 +274,7 @@ impl io::Read for UnixStream {
     }
 }
 
-impl<'a> io::Read for &'a UnixStream {
+impl io::Read for &UnixStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.0.read(buf)
     }
@@ -290,7 +290,7 @@ impl io::Write for UnixStream {
     }
 }
 
-impl<'a> io::Write for &'a UnixStream {
+impl io::Write for &UnixStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.write(buf)
     }
@@ -301,7 +301,7 @@ impl<'a> io::Write for &'a UnixStream {
 }
 
 impl AsSocket for UnixStream {
-    fn as_socket(&self) -> BorrowedSocket {
+    fn as_socket(&self) -> BorrowedSocket<'_> {
         self.0.as_socket()
     }
 }
@@ -596,7 +596,7 @@ pub struct Incoming<'a> {
     listener: &'a UnixListener,
 }
 
-impl<'a> Iterator for Incoming<'a> {
+impl Iterator for Incoming<'_> {
     type Item = io::Result<UnixStream>;
 
     fn next(&mut self) -> Option<io::Result<UnixStream>> {
@@ -604,19 +604,17 @@ impl<'a> Iterator for Incoming<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (usize::max_value(), None)
+        (usize::MAX, None)
     }
 }
 
 #[cfg(test)]
 mod test {
-    extern crate tempfile;
-
     use std::io::{self, Read, Write};
     use std::path::PathBuf;
     use std::thread;
 
-    use self::tempfile::TempDir;
+    use tempfile::TempDir;
 
     use super::*;
 

@@ -10,7 +10,7 @@ pub struct Gray_v08<T>(
     pub T,
 );
 
-impl<T: Copy> Gray_v08<T> {
+impl<T: Clone> Gray_v08<T> {
     /// Reads the `.0` field
     ///
     /// This function isn't necessary, but it is forwards-compatible with the next major version of the RGB crate.
@@ -70,7 +70,7 @@ impl<T> core::ops::Deref for Gray_v08<T> {
 }
 
 #[cfg(feature = "unstable-experimental")]
-impl<T: Copy> Gray_v09<T> {
+impl<T: Clone> Gray_v09<T> {
     /// Reads the `.v` field
     ///
     /// This function isn't necessary, but it is forwards-compatible with the next major version of the RGB crate.
@@ -93,6 +93,7 @@ impl<T: Copy> Gray_v09<T> {
 
 #[test]
 #[cfg(feature = "unstable-experimental")]
+#[allow(deprecated)]
 fn swizzle() {
     let g = Gray_v08(10u8);
     assert_eq!(10, g.v);

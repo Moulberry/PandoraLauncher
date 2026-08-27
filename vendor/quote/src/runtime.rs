@@ -9,6 +9,8 @@ use proc_macro2::{Group, Ident, Punct, Spacing, TokenTree};
 pub use alloc::format;
 #[doc(hidden)]
 pub use core::option::Option;
+#[doc(hidden)]
+pub use core::stringify;
 
 #[doc(hidden)]
 pub type Delimiter = proc_macro2::Delimiter;
@@ -73,6 +75,7 @@ pub mod ext {
     use super::{HasIterator, RepInterp};
     use crate::ToTokens;
     use alloc::collections::btree_set::{self, BTreeSet};
+    use alloc::vec::Vec;
     use core::slice;
 
     /// Extension trait providing the `quote_into_iter` method on iterators.
@@ -283,19 +286,20 @@ pub fn parse(tokens: &mut TokenStream, s: &str) {
 #[doc(hidden)]
 pub fn parse_spanned(tokens: &mut TokenStream, span: Span, s: &str) {
     let s: TokenStream = s.parse().expect("invalid token stream");
-    tokens.extend(s.into_iter().map(|t| respan_token_tree(t, span)));
+    for token in s {
+        tokens.append(respan_token_tree(token, span));
+    }
 }
 
 // Token tree with every span replaced by the given one.
 fn respan_token_tree(mut token: TokenTree, span: Span) -> TokenTree {
     match &mut token {
         TokenTree::Group(g) => {
-            let stream = g
-                .stream()
-                .into_iter()
-                .map(|token| respan_token_tree(token, span))
-                .collect();
-            *g = Group::new(g.delimiter(), stream);
+            let mut tokens = TokenStream::new();
+            for token in g.stream() {
+                tokens.append(respan_token_tree(token, span));
+            }
+            *g = Group::new(g.delimiter(), tokens);
             g.set_span(span);
         }
         other => other.set_span(span),
@@ -316,22 +320,21 @@ pub fn push_ident_spanned(tokens: &mut TokenStream, span: Span, s: &str) {
 
 #[doc(hidden)]
 pub fn push_lifetime(tokens: &mut TokenStream, lifetime: &str) {
-    tokens.extend([
-        TokenTree::Punct(Punct::new('\'', Spacing::Joint)),
-        TokenTree::Ident(Ident::new(&lifetime[1..], Span::call_site())),
-    ]);
+    tokens.append(TokenTree::Punct(Punct::new('\'', Spacing::Joint)));
+    tokens.append(TokenTree::Ident(ident_maybe_raw(
+        &lifetime[1..],
+        Span::call_site(),
+    )));
 }
 
 #[doc(hidden)]
 pub fn push_lifetime_spanned(tokens: &mut TokenStream, span: Span, lifetime: &str) {
-    tokens.extend([
-        TokenTree::Punct({
-            let mut apostrophe = Punct::new('\'', Spacing::Joint);
-            apostrophe.set_span(span);
-            apostrophe
-        }),
-        TokenTree::Ident(Ident::new(&lifetime[1..], span)),
-    ]);
+    tokens.append(TokenTree::Punct({
+        let mut apostrophe = Punct::new('\'', Spacing::Joint);
+        apostrophe.set_span(span);
+        apostrophe
+    }));
+    tokens.append(TokenTree::Ident(ident_maybe_raw(&lifetime[1..], span)));
 }
 
 macro_rules! push_punct {

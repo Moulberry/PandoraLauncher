@@ -8,7 +8,7 @@ use std::time::Duration;
 use kqueue_sys::constants::{EventFilter, EventFlag, FilterFlag};
 use kqueue_sys::kevent;
 
-use crate::os::vnode;
+use crate::os::{proc, vnode};
 use crate::time::duration_to_timespec;
 use crate::types::{Ident, Proc, Vnode};
 use crate::watcher::Watcher;
@@ -88,6 +88,10 @@ pub(crate) fn get_event(watcher: &Watcher, timeout: Option<Duration>) -> Option<
     // timeout when we don't haven't called `Watcher.watch`.
     if !watcher.started {
         return None;
+    }
+
+    if let Some(ev) = watcher.decoalesced_events.lock().unwrap().pop_front() {
+        return Some(ev);
     }
 
     let mut kev = kevent::new(
@@ -190,59 +194,22 @@ impl Event {
             EventFilter::EVFILT_SIGNAL => EventData::Signal(ev.data as usize),
             EventFilter::EVFILT_TIMER => EventData::Timer(ev.data as usize),
             EventFilter::EVFILT_PROC => {
-                let inner = if ev.fflags.contains(FilterFlag::NOTE_EXIT) {
-                    Proc::Exit(ev.data as usize)
-                } else if ev.fflags.contains(FilterFlag::NOTE_FORK) {
-                    Proc::Fork
-                } else if ev.fflags.contains(FilterFlag::NOTE_EXEC) {
-                    Proc::Exec
-                } else if ev.fflags.contains(FilterFlag::NOTE_TRACK) {
-                    Proc::Track(ev.data as libc::pid_t)
-                } else if ev.fflags.contains(FilterFlag::NOTE_CHILD) {
-                    Proc::Child(ev.data as libc::pid_t)
-                } else {
-                    return Event {
-                        ident,
-                        data: EventData::Error(Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!("proc filterflag not supported: {:?}", ev.fflags),
-                        )),
-                    };
-                };
-
-                EventData::Proc(inner)
+                if let Some(event) = proc::handle_event(ev, &ident, watcher) {
+                    return event;
+                }
+                EventData::Error(Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("proc filterflag not supported: {:?}", ev.fflags),
+                ))
             }
             EventFilter::EVFILT_VNODE => {
-                let inner = if ev.fflags.contains(FilterFlag::NOTE_DELETE) {
-                    Vnode::Delete
-                } else if ev.fflags.contains(FilterFlag::NOTE_WRITE) {
-                    Vnode::Write
-                } else if ev.fflags.contains(FilterFlag::NOTE_EXTEND) {
-                    Vnode::Extend
-                } else if ev.fflags.contains(FilterFlag::NOTE_ATTRIB) {
-                    Vnode::Attrib
-                } else if ev.fflags.contains(FilterFlag::NOTE_LINK) {
-                    Vnode::Link
-                } else if ev.fflags.contains(FilterFlag::NOTE_RENAME) {
-                    Vnode::Rename
-                } else if ev.fflags.contains(FilterFlag::NOTE_REVOKE) {
-                    Vnode::Revoke
-                } else {
-                    // This handles any filter flags that are OS-specific
-                    let Some(vnode) = vnode::handle_vnode_extras(ev.fflags) else {
-                        return Event {
-                            ident,
-                            data: EventData::Error(Error::new(
-                                io::ErrorKind::InvalidData,
-                                format!("vnode filterflag not supported: {:?}", ev.fflags),
-                            )),
-                        };
-                    };
-
-                    vnode
-                };
-
-                EventData::Vnode(inner)
+                if let Some(event) = vnode::handle_event(ev, &ident, watcher) {
+                    return event;
+                }
+                EventData::Error(Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("vnode filterflag not supported: {:?}", ev.fflags),
+                ))
             }
             _ => EventData::Error(Error::new(
                 io::ErrorKind::InvalidData,
@@ -341,7 +308,7 @@ mod tests {
                 0,
                 EventFilter::EVFILT_PROC,
                 EventFlag::all(),
-                FilterFlag::NOTE_WRITE,
+                FilterFlag::NOTE_ATTRIB,
             ),
             &Watcher::new().expect("Could not create watcher"),
         );

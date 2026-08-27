@@ -62,12 +62,12 @@
 //! [signal-hook]: https://docs.rs/signal-hook
 //! [async-signal-safe]: http://www.man7.org/linux/man-pages/man7/signal-safety.7.html
 
+extern crate errno;
 extern crate libc;
 
 mod half_lock;
+mod vec_map;
 
-use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap};
 use std::io::Error;
 use std::mem;
 use std::ptr;
@@ -78,6 +78,7 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::ONCE_INIT;
 use std::sync::{Arc, Once};
 
+use errno::Errno;
 #[cfg(not(windows))]
 use libc::{c_int, c_void, sigaction, siginfo_t};
 #[cfg(windows)]
@@ -89,6 +90,7 @@ use libc::{SIGFPE, SIGILL, SIGKILL, SIGSEGV, SIGSTOP};
 use libc::{SIGFPE, SIGILL, SIGSEGV};
 
 use half_lock::HalfLock;
+use vec_map::VecMap;
 
 // These constants are not defined in the current version of libc, but it actually
 // exists in Windows CRT.
@@ -140,21 +142,20 @@ type Action = Fn(&siginfo_t) + Send + Sync;
 #[derive(Clone)]
 struct Slot {
     prev: Prev,
-    // We use BTreeMap here, because we want to run the actions in the order they were inserted.
-    // This works, because the ActionIds are assigned in an increasing order.
-    actions: BTreeMap<ActionId, Arc<Action>>,
+    // Actions are stored and executed in the order they were registered.
+    actions: VecMap<ActionId, Arc<Action>>,
 }
 
 impl Slot {
     #[cfg(windows)]
     fn new(signal: libc::c_int) -> Result<Self, Error> {
-        let old = unsafe { libc::signal(signal, handler as sighandler_t) };
+        let old = unsafe { libc::signal(signal, handler as *const () as sighandler_t) };
         if old == SIG_ERR {
             return Err(Error::last_os_error());
         }
         Ok(Slot {
             prev: Prev { signal, info: old },
-            actions: BTreeMap::new(),
+            actions: VecMap::new(),
         })
     }
 
@@ -177,16 +178,16 @@ impl Slot {
         //
         // See #169.
 
-        new.sa_sigaction = handler as usize; // If it doesn't compile on AIX, upgrade the libc dependency
+        new.sa_sigaction = handler as *const () as usize; // If it doesn't compile on AIX, upgrade the libc dependency
 
+        #[cfg(target_os = "nto")]
+        let flags = 0;
+        // SA_RESTART is not supported by qnx https://www.qnx.com/support/knowledgebase.html?id=50130000000SmiD
+        #[cfg(not(target_os = "nto"))]
+        let flags = libc::SA_RESTART;
         // Android is broken and uses different int types than the rest (and different depending on
         // the pointer width). This converts the flags to the proper type no matter what it is on
         // the given platform.
-        #[cfg(target_os = "nto")]
-        let flags = 0;
-        // SA_RESTART is supported by qnx https://www.qnx.com/support/knowledgebase.html?id=50130000000SmiD
-        #[cfg(not(target_os = "nto"))]
-        let flags = libc::SA_RESTART;
         #[allow(unused_assignments)]
         let mut siginfo = flags;
         siginfo = libc::SA_SIGINFO as _;
@@ -200,14 +201,14 @@ impl Slot {
         }
         Ok(Slot {
             prev: Prev { signal, info: old },
-            actions: BTreeMap::new(),
+            actions: VecMap::new(),
         })
     }
 }
 
 #[derive(Clone)]
 struct SignalData {
-    signals: HashMap<c_int, Slot>,
+    signals: VecMap<c_int, Slot>,
     next_id: u128,
 }
 
@@ -246,18 +247,29 @@ impl Prev {
     fn execute(&self, sig: c_int) {
         let fptr = self.info;
         if fptr != 0 && fptr != SIG_DFL && fptr != SIG_IGN {
+            // `sighandler_t` is an integer type. Transmuting it directly from an integer to a
+            // function pointer seems dubious w.r.t. pointer provenance -- at least Miri complains
+            // about it. Casting to a raw pointer first side-steps the issue.
+            let fptr = fptr as *mut ();
             // FFI ‒ calling the original signal handler.
             unsafe {
-                let action = mem::transmute::<usize, extern "C" fn(c_int)>(fptr);
+                let action = mem::transmute::<*mut (), extern "C" fn(c_int)>(fptr);
                 action(sig);
             }
         }
     }
 
     #[cfg(not(windows))]
+    // libc re-exports the core::ffi::c_void on rustc >= 1.30, else defines its own type
+    // cfg_attr is needed because the `allow(clippy::lint)` syntax was added in Rust 1.31
+    #[cfg_attr(clippy, allow(clippy::incompatible_msrv))]
     unsafe fn execute(&self, sig: c_int, info: *mut siginfo_t, data: *mut c_void) {
         let fptr = self.info.sa_sigaction;
         if fptr != 0 && fptr != libc::SIG_DFL && fptr != libc::SIG_IGN {
+            // `sa_sigaction` is usually stored as integer type. Transmuting it directly from an
+            // integer to a function pointer seems dubious w.r.t. pointer provenance -- at least
+            // Miri complains about it. Casting to a raw pointer first side-steps the issue.
+            let fptr = fptr as *mut ();
             // Android is broken and uses different int types than the rest (and different
             // depending on the pointer width). This converts the flags to the proper type no
             // matter what it is on the given platform.
@@ -269,11 +281,11 @@ impl Prev {
             let mut siginfo = self.info.sa_flags;
             siginfo = libc::SA_SIGINFO as _;
             if self.info.sa_flags & siginfo == 0 {
-                let action = mem::transmute::<usize, extern "C" fn(c_int)>(fptr);
+                let action = mem::transmute::<*mut (), extern "C" fn(c_int)>(fptr);
                 action(sig);
             } else {
                 type SigAction = extern "C" fn(c_int, *mut siginfo_t, *mut c_void);
-                let action = mem::transmute::<usize, SigAction>(fptr);
+                let action = mem::transmute::<*mut (), SigAction>(fptr);
                 action(sig, info, data);
             }
         }
@@ -313,7 +325,7 @@ impl GlobalData {
         GLOBAL_INIT.call_once(|| {
             let data = Box::into_raw(Box::new(GlobalData {
                 data: HalfLock::new(SignalData {
-                    signals: HashMap::new(),
+                    signals: VecMap::new(),
                     next_id: 1,
                 }),
                 race_fallback: HalfLock::new(None),
@@ -327,13 +339,15 @@ impl GlobalData {
 
 #[cfg(windows)]
 extern "C" fn handler(sig: c_int) {
+    let _errno = ErrnoGuard::new();
+
     if sig != SIGFPE {
         // Windows CRT `signal` resets handler every time, unless for SIGFPE.
         // Reregister the handler to retain maximal compatibility.
         // Problems:
         // - It's racy. But this is inevitably racy in Windows.
         // - Interacts poorly with handlers outside signal-hook-registry.
-        let old = unsafe { libc::signal(sig, handler as sighandler_t) };
+        let old = unsafe { libc::signal(sig, handler as *const () as sighandler_t) };
         if old == SIG_ERR {
             // MSDN doesn't describe which errors might occur,
             // but we can tell from the Linux manpage that
@@ -370,7 +384,12 @@ extern "C" fn handler(sig: c_int) {
 }
 
 #[cfg(not(windows))]
+// libc re-exports the core::ffi::c_void on rustc >= 1.30, else defines its own type
+// cfg_attr is needed because the `allow(clippy::lint)` syntax was added in Rust 1.31
+#[cfg_attr(clippy, allow(clippy::incompatible_msrv))]
 extern "C" fn handler(sig: c_int, info: *mut siginfo_t, data: *mut c_void) {
+    let _errno = ErrnoGuard::new();
+
     let globals = GlobalData::get();
     let fallback = globals.race_fallback.read();
     let sigdata = globals.data.read();
@@ -405,6 +424,20 @@ extern "C" fn handler(sig: c_int, info: *mut siginfo_t, data: *mut c_void) {
         }
         // else -> probably should not happen, but races with other threads are possible so
         // better safe
+    }
+}
+
+struct ErrnoGuard(Errno);
+
+impl ErrnoGuard {
+    fn new() -> Self {
+        ErrnoGuard(errno::errno())
+    }
+}
+
+impl Drop for ErrnoGuard {
+    fn drop(&mut self) {
+        errno::set_errno(self.0);
     }
 }
 
@@ -542,7 +575,7 @@ pub unsafe fn register<F>(signal: c_int, action: F) -> Result<SigId, Error>
 where
     F: Fn() + Sync + Send + 'static,
 {
-    register_sigaction_impl(signal, move |_: &_| action())
+    register_sigaction_impl(signal, Arc::new(move |_: &_| action()))
 }
 
 /// Register a signal action.
@@ -559,13 +592,10 @@ pub unsafe fn register_sigaction<F>(signal: c_int, action: F) -> Result<SigId, E
 where
     F: Fn(&siginfo_t) + Sync + Send + 'static,
 {
-    register_sigaction_impl(signal, action)
+    register_sigaction_impl(signal, Arc::new(action))
 }
 
-unsafe fn register_sigaction_impl<F>(signal: c_int, action: F) -> Result<SigId, Error>
-where
-    F: Fn(&siginfo_t) + Sync + Send + 'static,
-{
+unsafe fn register_sigaction_impl(signal: c_int, action: Arc<Action>) -> Result<SigId, Error> {
     assert!(
         !FORBIDDEN.contains(&signal),
         "Attempted to register forbidden signal {}",
@@ -587,7 +617,7 @@ pub unsafe fn register_signal_unchecked<F>(signal: c_int, action: F) -> Result<S
 where
     F: Fn() + Sync + Send + 'static,
 {
-    register_unchecked_impl(signal, move |_: &_| action())
+    register_unchecked_impl(signal, Arc::new(move |_: &_| action()))
 }
 
 /// Register a signal action without checking for forbidden signals.
@@ -608,15 +638,11 @@ pub unsafe fn register_unchecked<F>(signal: c_int, action: F) -> Result<SigId, E
 where
     F: Fn(&siginfo_t) + Sync + Send + 'static,
 {
-    register_unchecked_impl(signal, action)
+    register_unchecked_impl(signal, Arc::new(action))
 }
 
-unsafe fn register_unchecked_impl<F>(signal: c_int, action: F) -> Result<SigId, Error>
-where
-    F: Fn(&siginfo_t) + Sync + Send + 'static,
-{
+unsafe fn register_unchecked_impl(signal: c_int, action: Arc<Action>) -> Result<SigId, Error> {
     let globals = GlobalData::ensure();
-    let action = Arc::from(action);
 
     let mut lock = globals.data.write();
 
@@ -624,34 +650,32 @@ where
     let id = ActionId(sigdata.next_id);
     sigdata.next_id += 1;
 
-    match sigdata.signals.entry(signal) {
-        Entry::Occupied(mut occupied) => {
-            assert!(occupied.get_mut().actions.insert(id, action).is_none());
-        }
-        Entry::Vacant(place) => {
-            // While the sigaction/signal exchanges the old one atomically, we are not able to
-            // atomically store it somewhere a signal handler could read it. That poses a race
-            // condition where we could lose some signals delivered in between changing it and
-            // storing it.
-            //
-            // Therefore we first store the old one in the fallback storage. The fallback only
-            // covers the cases where the slot is not yet active and becomes "inert" after that,
-            // even if not removed (it may get overwritten by some other signal, but for that the
-            // mutex in globals.data must be unlocked here - and by that time we already stored the
-            // slot.
-            //
-            // And yes, this still leaves a short race condition when some other thread could
-            // replace the signal handler and we would be calling the outdated one for a short
-            // time, until we install the slot.
-            globals
-                .race_fallback
-                .write()
-                .store(Some(Prev::detect(signal)?));
+    if sigdata.signals.contains(&signal) {
+        let slot = sigdata.signals.get_mut(&signal).unwrap();
+        assert!(slot.actions.insert(id, action).is_none());
+    } else {
+        // While the sigaction/signal exchanges the old one atomically, we are not able to
+        // atomically store it somewhere a signal handler could read it. That poses a race
+        // condition where we could lose some signals delivered in between changing it and
+        // storing it.
+        //
+        // Therefore we first store the old one in the fallback storage. The fallback only
+        // covers the cases where the slot is not yet active and becomes "inert" after that,
+        // even if not removed (it may get overwritten by some other signal, but for that the
+        // mutex in globals.data must be unlocked here - and by that time we already stored the
+        // slot.
+        //
+        // And yes, this still leaves a short race condition when some other thread could
+        // replace the signal handler and we would be calling the outdated one for a short
+        // time, until we install the slot.
+        globals
+            .race_fallback
+            .write()
+            .store(Some(Prev::detect(signal)?));
 
-            let mut slot = Slot::new(signal)?;
-            slot.actions.insert(id, action);
-            place.insert(slot);
-        }
+        let mut slot = Slot::new(signal)?;
+        slot.actions.insert(id, action);
+        sigdata.signals.insert(signal, slot);
     }
 
     lock.store(sigdata);
@@ -826,5 +850,21 @@ mod tests {
         assert!(unregister(signal));
         // The next time unregistering does nothing and tells us so.
         assert!(!unregister(signal));
+    }
+
+    /// Check that errno is not clobbered by the signal handler.
+    #[test]
+    fn save_restore_errno() {
+        const MAGIC_ERRNO: i32 = 123456;
+        let action = move || {
+            errno::set_errno(Errno(MAGIC_ERRNO));
+        };
+        unsafe {
+            register(SIGUSR1, action).unwrap();
+            libc::raise(SIGUSR1);
+        }
+        // NB: raise() might clobber errno on some platforms, so this test isn't waterproof. But it
+        // fails at least sometimes on some platforms if the errno save/restore is removed.
+        assert!(errno::errno().0 != MAGIC_ERRNO);
     }
 }

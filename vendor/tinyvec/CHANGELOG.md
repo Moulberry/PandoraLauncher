@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.12
+
+* Add `schemars` support.
+
+## 1.11.1
+
+* Fix accidental OOM when deserializing hostile Borsh input.
+
+## 1.11
+
+* switched from `serde` dep to `serde_core` dep, which should allow more
+  parallelization in builds for downstream users.
+* add `as_mut_inner` method when the `latest_stable_rust` feature is enabled
+* add `is_full` method to check if the size is equal to the capacity
+* add `defmt` support
+
 ## 1.10
 
 * Minimum rust version is now 1.55, and the non-const-generic impls are removed.

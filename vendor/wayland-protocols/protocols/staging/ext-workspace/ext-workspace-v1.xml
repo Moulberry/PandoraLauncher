@@ -184,7 +184,7 @@
       <description summary="workspace added to workspace group">
         This event is emitted whenever a workspace is assigned to this group.
         A workspace may only ever be assigned to a single group at a single point
-        in time, but can be re-assigned during it's lifetime.
+        in time, but can be re-assigned during its lifetime.
       </description>
       <arg name="workspace" type="object" interface="ext_workspace_handle_v1"/>
     </event>
@@ -255,10 +255,10 @@
       <description summary="workspace id">
         If this event is emitted, it will be send immediately after the
         ext_workspace_handle_v1 is created or when an id is assigned to
-        a workspace (at most once during it's lifetime).
+        a workspace (at most once during its lifetime).
 
         An id will never change during the lifetime of the `ext_workspace_handle_v1`
-        and is guaranteed to be unique during it's lifetime.
+        and is guaranteed to be unique during its lifetime.
 
         Ids are not human-readable and shouldn't be displayed, use `name` for that purpose.
 

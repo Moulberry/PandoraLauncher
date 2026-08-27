@@ -51,7 +51,7 @@
 //! build = "build.rs"
 //!
 //! [build-dependencies]
-//! built = "0.7"
+//! built = "0.8"
 //! ```
 //!
 //! Add or modify a build-script. In `build.rs`:
@@ -131,11 +131,13 @@
 //!
 //! Override-variables are prefixed by `BUILT_OVERRIDE_{PKG_NAME}_`, where `{PKG_NAME}` is the name
 //! of the package as reported by `cargo`. For example, if the package is named "mypkg", and the value
-//! to be overridden is named "CI_PLATFORM", then the override variable is named
+//! to be overridden is named "CI_PLATFORM", then the override-variable is named
 //! "BUILT_OVERRIDE_mypkg_CI_PLATFORM". Remember that more than one package in a dependency-graph
 //! might use `built` internally, so you might have to override multiple instances of the same
-//! value.
-//! Unused override variables result in a warning at compile time, albeit cargo only reports those
+//! value. If the original `{PKG_NAME}` contain hyphens `-`, they will be substituted by underscores `_`.
+//! For example, if the package name is `great-pkg`, the corresponding override-variable is named
+//! "BUILT_OVERRIDE_great_pkg_...".
+//! Unused override-variables result in a warning at compile time, albeit cargo only reports those
 //! for path-specific (e.g. local) packages.
 //!
 //! An override-variable's text-presentation must parse to the value's respective type:
@@ -155,6 +157,14 @@
 //! ## Feature flags
 //! The information that `built` collects and makes available in `built.rs` depends
 //! on the features that were enabled on the build-time dependency.
+//!
+//! Crates using `built` should avoid enabling unnecessary features on `built`: These features
+//! pull in other dependencies, which slows down the compilation-process; in the worst case,
+//! one of `built`'s dependencies may fail to build on the target-platform, causing a build-
+//! failure for the entire dependency-tree; there is nothing dependent crates can do to fix
+//! the build in these situations.  
+//! If your crate separates into multiple sub-crates, `built` should generally be used most close
+//! to the top-most crate (e.g. in the CLI crate).
 //!
 //! ### _Always available_
 //! The following information is available regardless of feature-flags.
@@ -225,7 +235,7 @@
 //! /// Can be overridden with `BUILT_OVERRIDE_{pkg_name}_RUSTDOC_VERSION`.
 //! pub static RUSTDOC_VERSION: &str = "rustdoc 1.43.1 (8d69840ab 2020-05-04)";
 //!
-//! /// Value of OPT_LEVEL for the profile used during compilation.
+//! /// Value of `OPT_LEVEL` for the profile used during compilation.
 //! /// Can be overridden with `BUILT_OVERRIDE_{pkg_name}_OPT_LEVEL`.
 //! pub static OPT_LEVEL: &str = "0";
 //! /// The parallelism that was specified during compilation.
@@ -270,7 +280,7 @@
 //! ```
 //!
 //! ### `cargo-lock`
-//! Parses `Cargo.lock`and generates representations of  dependencies and their versions.
+//! Parses `Cargo.lock` and generates representations of  dependencies and their versions.
 //!
 //! For this to work, `Cargo.lock` needs to actually be there; this is (usually)
 //! only true for executables and not for libraries. Cargo will only create a
@@ -345,14 +355,21 @@
 //!
 //! /// If the crate was compiled from within a git-repository,
 //! /// `GIT_COMMIT_HASH` contains HEAD's full commit SHA-1 hash.
-//! /// Can be overridden with `BUILT_OVERRIDE_{pkg_name}_GIT_GIT_COMMIT_HASH`.
+//! /// Can be overridden with `BUILT_OVERRIDE_{pkg_name}_GIT_COMMIT_HASH`.
 //! pub static GIT_COMMIT_HASH: Option<&str> = Some("ca2af4f11bb8f4f6421c4cccf428bf4862573daf");
 //!
 //! /// If the crate was compiled from within a git-repository,
 //! /// `GIT_COMMIT_HASH_SHORT` contains HEAD's short commit SHA-1 hash.
-//! /// Can be overriden using `BUILT_OVERRIDE_{pkg_name}_GIT_COMMIT_HASH_SHORT`.
+//! /// Can be overridden using `BUILT_OVERRIDE_{pkg_name}_GIT_COMMIT_HASH_SHORT`.
 //! pub static GIT_COMMIT_HASH_SHORT: Option<&str> = Some("ca2af4f");
 //! ```
+//!
+//! ### `gix`
+//! An alternative to `git2` that uses the `gix` (gitoxide) crate for git operations.
+//! This feature provides the same git information as `git2` but uses a pure Rust
+//! implementation with potentially faster build times.
+//!
+//! **Note**: When both `git2` and `gix` features are enabled, `git2` takes precedence.
 //!
 //! ### `chrono`
 //!
@@ -375,7 +392,11 @@
 mod dependencies;
 mod environment;
 #[cfg(feature = "git2")]
-mod git;
+mod git_impl;
+#[cfg(any(feature = "git2", feature = "gix"))]
+mod git_shared;
+#[cfg(all(feature = "gix", any(test, not(feature = "git2"))))]
+mod gix_impl;
 #[cfg(feature = "chrono")]
 mod krono;
 pub mod util;
@@ -388,13 +409,16 @@ pub use semver;
 #[cfg(feature = "chrono")]
 pub use chrono;
 
+#[cfg(feature = "gix")]
+pub use gix;
+
 pub use environment::CIPlatform;
 
 #[doc = include_str!("../README.md")]
 #[allow(dead_code)]
 type _READMETEST = ();
 
-/// If `SOURCE_DATE_EPOCH` is defined, it's value is used instead of
+/// If `SOURCE_DATE_EPOCH` is defined, its value is used instead of
 /// `chrono::..::now()` as `BUILT_TIME_UTC`.
 /// The presence of `SOURCE_DATE_EPOCH` also soft-indicates that a
 /// reproducible build is desired, which we may or may not be able
@@ -439,7 +463,8 @@ pub(crate) fn fmt_option_str<S: fmt::Display>(o: Option<S>) -> String {
 /// be written to. This should not be a concern if the filename points to
 /// `OUR_DIR`.
 pub fn write_built_file_with_opts(
-    #[cfg(any(feature = "cargo-lock", feature = "git2"))] manifest_location: Option<&path::Path>,
+    #[cfg(any(feature = "cargo-lock", feature = "git2", feature = "gix"))]
+    manifest_location: Option<&path::Path>,
     dst: &path::Path,
 ) -> io::Result<()> {
     let mut built_file = fs::File::create(dst)?;
@@ -458,10 +483,10 @@ pub fn write_built_file_with_opts(
     envmap.write_compiler_version(&built_file)?;
     envmap.write_cfg(&built_file)?;
 
-    #[cfg(feature = "git2")]
+    #[cfg(any(feature = "git2", feature = "gix"))]
     {
         if let Some(manifest_location) = manifest_location {
-            git::write_git_version(manifest_location, &envmap, &built_file)?;
+            git_shared::write_git_version(manifest_location, &envmap, &built_file)?;
         }
     }
 
@@ -497,7 +522,9 @@ pub fn write_built_file_with_opts(
 
     let unused_override_vars = envmap.unused_override_vars().collect::<Vec<_>>().join(", ");
     if !unused_override_vars.is_empty() {
-        println!("cargo::warning=At least one environment variable looks like an override-variable but was ignored by built: `{unused_override_vars}`. Typo?");
+        println!(
+            "cargo::warning=At least one environment variable looks like an override-variable but was ignored by built: `{unused_override_vars}`. Typo?"
+        );
     }
 
     Ok(())
@@ -514,7 +541,7 @@ pub fn write_built_file_with_opts(
 pub fn write_built_file() -> io::Result<()> {
     let dst = path::Path::new(&env::var("OUT_DIR").expect("OUT_DIR not set")).join("built.rs");
     write_built_file_with_opts(
-        #[cfg(any(feature = "cargo-lock", feature = "git2"))]
+        #[cfg(any(feature = "cargo-lock", feature = "git2", feature = "gix"))]
         Some(
             env::var("CARGO_MANIFEST_DIR")
                 .expect("CARGO_MANIFEST_DIR")

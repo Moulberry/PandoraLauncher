@@ -740,8 +740,8 @@ impl PartialEq for BasePathBuf {
     }
 }
 
+#[expect(clippy::non_canonical_partial_ord_impl)]
 impl PartialOrd for BasePathBuf {
-    #[expect(clippy::non_canonical_partial_ord_impl)]
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         (**self).partial_cmp(&**other)

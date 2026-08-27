@@ -1,4 +1,4 @@
-use annotate_snippets::{renderer::DecorStyle, AnnotationKind, Level, Renderer, Snippet};
+use annotate_snippets::{AnnotationKind, Level, Renderer, Snippet, renderer::DecorStyle};
 use anstyle::AnsiColor;
 use anstyle::Effects;
 use anstyle::Style;

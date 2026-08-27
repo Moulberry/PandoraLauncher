@@ -180,8 +180,10 @@ impl<R: BufRead + Seek> Decoder<R> {
 
     /// Read the PNG header and return the information contained within.
     ///
-    /// Most image metadata will not be read until `read_info` is called, so those fields will be
+    /// Most image metadata will not be read until [`read_info`] is called, so those fields will be
     /// None or empty.
+    ///
+    /// [`read_info`]: Self::read_info
     pub fn read_header_info(&mut self) -> Result<&Info<'static>, DecodingError> {
         self.read_decoder.read_header_info()
     }
@@ -227,7 +229,9 @@ impl<R: BufRead + Seek> Decoder<R> {
         reader.remaining_frames = match reader.info().animation_control.as_ref() {
             None => 1, // No `acTL` => only expecting `IDAT` frame.
             Some(animation) => {
-                let mut num_frames = animation.num_frames as usize;
+                // Note: limited to (2^32 - 1) frames by the APNG spec so addition does not
+                // overflow on 32-bit targets nor 64-bit targets.
+                let mut num_frames = animation.num_frames;
                 if reader.info().frame_control.is_none() {
                     // No `fcTL` before `IDAT` => `IDAT` is not part of the animation, but
                     // represents an *extra*, default frame for non-APNG-aware decoders.
@@ -292,7 +296,7 @@ pub struct Reader<R: BufRead + Seek> {
     bpp: BytesPerPixel,
     subframe: SubframeInfo,
     /// How many frames remain to be decoded.  Decremented after each `IDAT` or `fdAT` sequence.
-    remaining_frames: usize,
+    remaining_frames: u32,
     /// Buffer with not-yet-`unfilter`-ed image rows
     unfiltering_buffer: UnfilteringBuffer,
     /// Output transformations
@@ -325,12 +329,15 @@ struct SubframeInfo {
 
 impl<R: BufRead + Seek> Reader<R> {
     /// Advances to the start of the next animation frame and
-    /// returns a reference to the `FrameControl` info that describes it.
+    /// returns a reference to the [`FrameControl`] info that describes it.
     /// Skips and discards the image data of the previous frame if necessary.
     ///
     /// Returns a [`ParameterError`] when there are no more animation frames.
     /// To avoid this the caller can check if [`Info::animation_control`] exists
     /// and consult [`AnimationControl::num_frames`].
+    ///
+    /// [`ParameterError`]: crate::ParameterError
+    /// [`AnimationControl::num_frames`]: crate::AnimationControl::num_frames
     pub fn next_frame_info(&mut self) -> Result<&FrameControl, DecodingError> {
         let remaining_frames = if self.subframe.consumed_and_flushed {
             self.remaining_frames
@@ -363,7 +370,21 @@ impl<R: BufRead + Seek> Reader<R> {
 
         self.subframe = SubframeInfo::new(self.info());
         self.bpp = self.info().bpp_in_prediction();
-        self.unfiltering_buffer.reset_all();
+
+        let frame_bytes = if self.info().interlaced {
+            let mut bytes = 0u64;
+            for pass in crate::adam7::PassConstants::PASSES {
+                bytes += self
+                    .info()
+                    .raw_row_length_from_width(pass.count_samples(self.subframe.width))
+                    as u64
+                    * pass.count_lines(self.subframe.height) as u64;
+            }
+            bytes
+        } else {
+            (self.subframe.rowlen as u64) * self.subframe.height as u64
+        };
+        self.unfiltering_buffer.start_frame(frame_bytes);
 
         // Allocate output buffer.
         let buflen = self.unguarded_output_line_size(self.subframe.width);
@@ -386,7 +407,7 @@ impl<R: BufRead + Seek> Reader<R> {
     ///
     /// The caller must always provide a buffer large enough to hold a complete frame (the APNG
     /// specification restricts subframes to the dimensions given in the image header). The region
-    /// that has been written be checked afterwards by calling `info` after a successful call and
+    /// that has been written be checked afterwards by calling [`Reader::info`] after a successful call and
     /// inspecting the `frame_control` data. This requirement may be lifted in a later version of
     /// `png`.
     ///
@@ -489,9 +510,9 @@ impl<R: BufRead + Seek> Reader<R> {
         Ok(())
     }
 
-    /// Returns the next processed row of the image (discarding `InterlaceInfo`).
+    /// Returns the next processed row of the image (discarding [`InterlaceInfo`]).
     ///
-    /// See also [`Reader.read_row`], which reads into a caller-provided buffer.
+    /// See also [`Reader::read_row`], which reads into a caller-provided buffer.
     pub fn next_row(&mut self) -> Result<Option<Row<'_>>, DecodingError> {
         self.next_interlaced_row()
             .map(|v| v.map(|v| Row { data: v.data }))
@@ -499,7 +520,7 @@ impl<R: BufRead + Seek> Reader<R> {
 
     /// Returns the next processed row of the image.
     ///
-    /// See also [`Reader.read_row`], which reads into a caller-provided buffer.
+    /// See also [`Reader::read_row`], which reads into a caller-provided buffer.
     pub fn next_interlaced_row(&mut self) -> Result<Option<InterlacedRow<'_>>, DecodingError> {
         let mut output_buffer = mem::take(&mut self.scratch_buffer);
         let max_line_size = self
@@ -522,10 +543,10 @@ impl<R: BufRead + Seek> Reader<R> {
     /// Reads the next row of the image into the provided `output_buffer`.
     /// `Ok(None)` will be returned if the current image frame has no more rows.
     ///
-    /// `output_buffer` needs to be long enough to accommodate [`Reader.output_line_size`] for
-    /// [`Info.width`] (initial interlaced rows may need less than that).
+    /// `output_buffer` needs to be long enough to accommodate [`Reader::output_line_size`] for
+    /// [`Info::width`] (initial interlaced rows may need less than that).
     ///
-    /// See also [`Reader.next_row`] and [`Reader.next_interlaced_row`], which read into a
+    /// See also [`Reader::next_row`] and [`Reader::next_interlaced_row`], which read into a
     /// `Reader`-owned buffer.
     pub fn read_row(
         &mut self,
@@ -574,7 +595,6 @@ impl<R: BufRead + Seek> Reader<R> {
         }
 
         self.remaining_frames = 0;
-        self.unfiltering_buffer.reset_all();
         self.decoder.read_until_end_of_input()?;
 
         self.finished = true;
@@ -605,7 +625,7 @@ impl<R: BufRead + Seek> Reader<R> {
     }
 
     /// Returns the color type and the number of bits per sample
-    /// of the data returned by `Reader::next_row` and Reader::frames`.
+    /// of the data returned by [`Reader::next_row`] and [`Reader::next_frame`].
     pub fn output_color_type(&self) -> (ColorType, BitDepth) {
         use crate::common::ColorType::*;
         let t = self.transform;
@@ -679,21 +699,34 @@ impl<R: BufRead + Seek> Reader<R> {
     /// Unfilter the next raw interlaced row into `self.unfiltering_buffer`.
     fn next_raw_interlaced_row(&mut self, rowlen: usize) -> Result<(), DecodingError> {
         // Read image data until we have at least one full row (but possibly more than one).
-        while self.unfiltering_buffer.curr_row_len() < rowlen {
+        while self.unfiltering_buffer.mutable_len_of_curr_row() < rowlen {
             if self.subframe.consumed_and_flushed {
                 return Err(DecodingError::Format(
                     FormatErrorInner::NoMoreImageData.into(),
                 ));
             }
 
-            let mut buffer = self.unfiltering_buffer.as_unfilled_buffer();
-            match self.decoder.decode_image_data(Some(&mut buffer))? {
-                ImageDataCompletionStatus::ExpectingMoreData => (),
-                ImageDataCompletionStatus::Done => self.mark_subframe_as_consumed_and_flushed(),
+            assert!(self.unfiltering_buffer.remaining_bytes() > 0);
+            let completion_status = self
+                .unfiltering_buffer
+                .with_unfilled_buffer(|buffer| self.decoder.decode_image_data(Some(buffer)));
+            match completion_status {
+                Ok(ImageDataCompletionStatus::ExpectingMoreData) => (),
+                Ok(ImageDataCompletionStatus::Done) => self.mark_subframe_as_consumed_and_flushed(),
+                Err(DecodingError::IoError(e))
+                    if e.kind() == std::io::ErrorKind::UnexpectedEof
+                        && self.unfiltering_buffer.readable_len_of_curr_row() >= rowlen =>
+                {
+                    return self
+                        .unfiltering_buffer
+                        .unfilter_curr_row_using_scratch_buffer(rowlen, self.bpp);
+                }
+                Err(other_error) => return Err(other_error),
             }
         }
 
-        self.unfiltering_buffer.unfilter_curr_row(rowlen, self.bpp)
+        self.unfiltering_buffer
+            .unfilter_curr_row_in_place(rowlen, self.bpp)
     }
 }
 

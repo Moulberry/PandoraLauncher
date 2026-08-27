@@ -1,5 +1,8 @@
-use crate::{Encode, Xz2Encoder, Xz2FileFormat};
-use compression_core::{util::PartialBuffer, Level};
+use crate::{EncodeV2, Xz2Encoder, Xz2FileFormat};
+use compression_core::{
+    util::{PartialBuffer, WriteBuffer},
+    Level,
+};
 use std::io::Result;
 
 /// Lzma encoding stream
@@ -22,27 +25,21 @@ impl From<Xz2Encoder> for LzmaEncoder {
     }
 }
 
-impl Encode for LzmaEncoder {
+impl EncodeV2 for LzmaEncoder {
     fn encode(
         &mut self,
-        input: &mut PartialBuffer<impl AsRef<[u8]>>,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
+        input: &mut PartialBuffer<&[u8]>,
+        output: &mut WriteBuffer<'_>,
     ) -> Result<()> {
         self.inner.encode(input, output)
     }
 
-    fn flush(
-        &mut self,
-        _output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> Result<bool> {
+    fn flush(&mut self, _output: &mut WriteBuffer<'_>) -> Result<bool> {
         // Flush on LZMA 1 is not supported
         Ok(true)
     }
 
-    fn finish(
-        &mut self,
-        output: &mut PartialBuffer<impl AsRef<[u8]> + AsMut<[u8]>>,
-    ) -> Result<bool> {
+    fn finish(&mut self, output: &mut WriteBuffer<'_>) -> Result<bool> {
         self.inner.finish(output)
     }
 }

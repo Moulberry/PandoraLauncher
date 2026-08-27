@@ -681,7 +681,7 @@ L$mul4x_epilogue:
 	.byte	0xf3,0xc3
 
 
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 
 #endif
 
@@ -770,7 +770,7 @@ L$sqr8x_body:
 	pxor	%xmm0,%xmm0
 .byte	102,72,15,110,207
 .byte	102,73,15,110,218
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 	testq	%rdx,%rdx
 	jz	L$sqr8x_nox
 
@@ -876,7 +876,7 @@ L$sqr8x_epilogue:
 	.byte	0xf3,0xc3
 
 
-#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_512AVX
+#ifndef MY_ASSEMBLER_IS_TOO_OLD_FOR_ADX_AVX2
 .globl	_bn_mulx4x_mont
 .private_extern _bn_mulx4x_mont
 

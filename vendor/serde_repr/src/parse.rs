@@ -50,11 +50,8 @@ impl Parse for Input {
         let call_site = Span::call_site();
         let derive_input = DeriveInput::parse(input)?;
 
-        let data = match derive_input.data {
-            Data::Enum(data) => data,
-            _ => {
-                return Err(Error::new(call_site, "input must be an enum"));
-            }
+        let Data::Enum(data) = derive_input.data else {
+            return Err(Error::new(call_site, "input must be an enum"));
         };
 
         let variants = data

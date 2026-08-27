@@ -8,7 +8,7 @@ use raw::types::{GlyphId, Tag};
 /// Defines the script and style associated with a single glyph.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[repr(transparent)]
-pub(crate) struct GlyphStyle(pub(super) u16);
+pub struct GlyphStyle(pub(super) u16);
 
 impl GlyphStyle {
     // The following flags roughly correspond to those defined in FreeType
@@ -24,23 +24,35 @@ impl GlyphStyle {
     // for a given script
     const FROM_GSUB_OUTPUT: u16 = 0x8000;
 
+    /// Constructs a new glyph style from the given style index and properties.
+    pub const fn from_raw_parts(style_index: u16, is_non_base: bool, is_digit: bool) -> Self {
+        let base = is_non_base as u16 * Self::NON_BASE;
+        let digit = is_digit as u16 * Self::DIGIT;
+        Self((style_index & Self::STYLE_INDEX_MASK) | base | digit)
+    }
+
+    /// Returns true if this glyph doesn't have an assigned style.
     pub const fn is_unassigned(self) -> bool {
         self.0 & Self::STYLE_INDEX_MASK == Self::UNASSIGNED
     }
 
+    /// Returns true if this glyph is a non-base (usually a mark).
     pub const fn is_non_base(self) -> bool {
         self.0 & Self::NON_BASE != 0
     }
 
+    /// Returns true if this glyph is a digit.
     pub const fn is_digit(self) -> bool {
         self.0 & Self::DIGIT != 0
     }
 
+    /// Returns the associated style class for this glyph.
     pub fn style_class(self) -> Option<&'static StyleClass> {
         StyleClass::from_index(self.style_index()?)
     }
 
-    pub fn style_index(self) -> Option<u16> {
+    /// Returns the index of the style class for this class.
+    pub const fn style_index(self) -> Option<u16> {
         let ix = self.0 & Self::STYLE_INDEX_MASK;
         if ix != Self::UNASSIGNED {
             Some(ix)
@@ -307,7 +319,7 @@ impl Default for GlyphStyleMap {
 /// Determines which algorithms the autohinter will use while generating
 /// metrics and processing a glyph outline.
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
-pub(crate) enum ScriptGroup {
+pub enum ScriptGroup {
     /// All scripts that are not CJK or Indic.
     ///
     /// FreeType calls this Latin.
@@ -320,13 +332,12 @@ pub(crate) enum ScriptGroup {
 /// Defines the basic properties for each script supported by the
 /// autohinter.
 #[derive(Clone, Debug)]
-pub(crate) struct ScriptClass {
-    #[allow(unused)]
+pub struct ScriptClass {
+    /// The name of the script class.
     pub name: &'static str,
     /// Group that defines how glyphs belonging to this script are hinted.
     pub group: ScriptGroup,
     /// Unicode tag for the script.
-    #[allow(unused)]
     pub tag: Tag,
     /// True if outline edges are processed top to bottom.
     pub hint_top_to_bottom: bool,
@@ -343,8 +354,8 @@ pub(crate) struct ScriptClass {
 /// in the cases where style coverage is determined by OpenType feature
 /// coverage.
 #[derive(Clone, Debug)]
-pub(crate) struct StyleClass {
-    #[allow(unused)]
+pub struct StyleClass {
+    /// The name of the style class.
     pub name: &'static str,
     /// Index of self in the STYLE_CLASSES array.
     pub index: usize,

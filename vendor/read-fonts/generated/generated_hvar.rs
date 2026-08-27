@@ -5,41 +5,13 @@
 #[allow(unused_imports)]
 use crate::codegen_prelude::*;
 
-/// The [HVAR (Horizontal Metrics Variations)](https://docs.microsoft.com/en-us/typography/opentype/spec/hvar) table
-#[derive(Debug, Clone, Copy)]
-#[doc(hidden)]
-pub struct HvarMarker {}
-
-impl HvarMarker {
-    pub fn version_byte_range(&self) -> Range<usize> {
-        let start = 0;
-        start..start + MajorMinor::RAW_BYTE_LEN
-    }
-
-    pub fn item_variation_store_offset_byte_range(&self) -> Range<usize> {
-        let start = self.version_byte_range().end;
-        start..start + Offset32::RAW_BYTE_LEN
-    }
-
-    pub fn advance_width_mapping_offset_byte_range(&self) -> Range<usize> {
-        let start = self.item_variation_store_offset_byte_range().end;
-        start..start + Offset32::RAW_BYTE_LEN
-    }
-
-    pub fn lsb_mapping_offset_byte_range(&self) -> Range<usize> {
-        let start = self.advance_width_mapping_offset_byte_range().end;
-        start..start + Offset32::RAW_BYTE_LEN
-    }
-
-    pub fn rsb_mapping_offset_byte_range(&self) -> Range<usize> {
-        let start = self.lsb_mapping_offset_byte_range().end;
-        start..start + Offset32::RAW_BYTE_LEN
-    }
-}
-
-impl MinByteRange for HvarMarker {
+impl<'a> MinByteRange<'a> for Hvar<'a> {
     fn min_byte_range(&self) -> Range<usize> {
         0..self.rsb_mapping_offset_byte_range().end
+    }
+    fn min_table_bytes(&self) -> &'a [u8] {
+        let range = self.min_byte_range();
+        self.data.as_bytes().get(range).unwrap_or_default()
     }
 }
 
@@ -50,32 +22,40 @@ impl TopLevelTable for Hvar<'_> {
 
 impl<'a> FontRead<'a> for Hvar<'a> {
     fn read(data: FontData<'a>) -> Result<Self, ReadError> {
-        let mut cursor = data.cursor();
-        cursor.advance::<MajorMinor>();
-        cursor.advance::<Offset32>();
-        cursor.advance::<Offset32>();
-        cursor.advance::<Offset32>();
-        cursor.advance::<Offset32>();
-        cursor.finish(HvarMarker {})
+        #[allow(clippy::absurd_extreme_comparisons)]
+        if data.len() < Self::MIN_SIZE {
+            return Err(ReadError::OutOfBounds);
+        }
+        Ok(Self { data })
     }
 }
 
 /// The [HVAR (Horizontal Metrics Variations)](https://docs.microsoft.com/en-us/typography/opentype/spec/hvar) table
-pub type Hvar<'a> = TableRef<'a, HvarMarker>;
+#[derive(Clone)]
+pub struct Hvar<'a> {
+    data: FontData<'a>,
+}
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> Hvar<'a> {
+    pub const MIN_SIZE: usize = (MajorMinor::RAW_BYTE_LEN
+        + Offset32::RAW_BYTE_LEN
+        + Offset32::RAW_BYTE_LEN
+        + Offset32::RAW_BYTE_LEN
+        + Offset32::RAW_BYTE_LEN);
+    basic_table_impls!(impl_the_methods);
+
     /// Major version number of the horizontal metrics variations table — set to 1.
     /// Minor version number of the horizontal metrics variations table — set to 0.
     pub fn version(&self) -> MajorMinor {
-        let range = self.shape.version_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.version_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Offset in bytes from the start of this table to the item variation store table.
     pub fn item_variation_store_offset(&self) -> Offset32 {
-        let range = self.shape.item_variation_store_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.item_variation_store_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`item_variation_store_offset`][Self::item_variation_store_offset].
@@ -86,8 +66,8 @@ impl<'a> Hvar<'a> {
 
     /// Offset in bytes from the start of this table to the delta-set index mapping for advance widths (may be NULL).
     pub fn advance_width_mapping_offset(&self) -> Nullable<Offset32> {
-        let range = self.shape.advance_width_mapping_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.advance_width_mapping_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`advance_width_mapping_offset`][Self::advance_width_mapping_offset].
@@ -98,8 +78,8 @@ impl<'a> Hvar<'a> {
 
     /// Offset in bytes from the start of this table to the delta-set index mapping for left side bearings (may be NULL).
     pub fn lsb_mapping_offset(&self) -> Nullable<Offset32> {
-        let range = self.shape.lsb_mapping_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.lsb_mapping_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`lsb_mapping_offset`][Self::lsb_mapping_offset].
@@ -110,14 +90,54 @@ impl<'a> Hvar<'a> {
 
     /// Offset in bytes from the start of this table to the delta-set index mapping for right side bearings (may be NULL).
     pub fn rsb_mapping_offset(&self) -> Nullable<Offset32> {
-        let range = self.shape.rsb_mapping_offset_byte_range();
-        self.data.read_at(range.start).unwrap()
+        let range = self.rsb_mapping_offset_byte_range();
+        self.data.read_at(range.start).ok().unwrap()
     }
 
     /// Attempt to resolve [`rsb_mapping_offset`][Self::rsb_mapping_offset].
     pub fn rsb_mapping(&self) -> Option<Result<DeltaSetIndexMap<'a>, ReadError>> {
         let data = self.data;
         self.rsb_mapping_offset().resolve(data)
+    }
+
+    pub fn version_byte_range(&self) -> Range<usize> {
+        let start = 0;
+        let end = start + MajorMinor::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn item_variation_store_offset_byte_range(&self) -> Range<usize> {
+        let start = self.version_byte_range().end;
+        let end = start + Offset32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn advance_width_mapping_offset_byte_range(&self) -> Range<usize> {
+        let start = self.item_variation_store_offset_byte_range().end;
+        let end = start + Offset32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn lsb_mapping_offset_byte_range(&self) -> Range<usize> {
+        let start = self.advance_width_mapping_offset_byte_range().end;
+        let end = start + Offset32::RAW_BYTE_LEN;
+        start..end
+    }
+
+    pub fn rsb_mapping_offset_byte_range(&self) -> Range<usize> {
+        let start = self.lsb_mapping_offset_byte_range().end;
+        let end = start + Offset32::RAW_BYTE_LEN;
+        start..end
+    }
+}
+
+const _: () = assert!(FontData::default_data_long_enough(Hvar::MIN_SIZE));
+
+impl Default for Hvar<'_> {
+    fn default() -> Self {
+        Self {
+            data: FontData::default_table_data(),
+        }
     }
 }
 

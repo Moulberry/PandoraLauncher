@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "taffy"
-version = "0.12.2"
+version = "0.13.0"
 authors = [
     "Alice Cecile <alice.i.cecile@gmail.com>",
     "Johnathan Kelley <jkelleyrtp@gmail.com>",
@@ -77,7 +77,7 @@ flexbox = []
 float_layout = []
 grid = [
     "alloc",
-    "dep:grid",
+    "dep:smallvec",
 ]
 parse = ["dep:cssparser"]
 parse_faster = [
@@ -87,7 +87,6 @@ parse_faster = [
 profile = ["std"]
 serde = ["dep:serde"]
 std = [
-    "grid?/std",
     "serde?/std",
     "slotmap?/std",
 ]
@@ -144,11 +143,6 @@ default-features = false
 version = "0.2.7"
 optional = true
 
-[dependencies.grid]
-version = "1.0.0"
-optional = true
-default-features = false
-
 [dependencies.serde]
 version = "1.0"
 features = ["serde_derive"]
@@ -157,6 +151,11 @@ default-features = false
 
 [dependencies.slotmap]
 version = "1.0.6"
+optional = true
+default-features = false
+
+[dependencies.smallvec]
+version = "1.13"
 optional = true
 default-features = false
 

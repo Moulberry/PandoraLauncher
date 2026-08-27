@@ -1,97 +1,83 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0 OR ISC
 
-//! This module contains unstable/experimental APIs.
+//! The ML-DSA signature APIs have been stabilized; use [`crate::signature`] instead.
 //!
-//! # ⚠️ Warning
-//! The APIs under this module are not stable and may change in the future.
-//! They are not covered by semver guarantees.
+//! Everything in this module is a deprecated alias for its stable counterpart in
+//! [`crate::signature`]. Aliases are used rather than re-exports so that usage
+//! produces deprecation warnings; type identity is unchanged.
 //!
-//! # Signing and verifying with MLDSA-44
-//!
-//! ```rust
-//! # use std::error::Error;
-//! # fn main() -> Result<(), Box<dyn Error>> {
-//!     use aws_lc_rs::encoding::AsDer;
-//!     use aws_lc_rs::signature::{KeyPair, UnparsedPublicKey};
-//!     use aws_lc_rs::unstable::signature::{PqdsaKeyPair, MLDSA_44_SIGNING, MLDSA_44};
-//!
-//!     let signing_alg = &MLDSA_44_SIGNING;
-//!     let key_pair = PqdsaKeyPair::generate(signing_alg)?;
-//!
-//!     const MESSAGE: &'static [u8] = b"hello, world";
-//!     let mut signature = vec![0; signing_alg.signature_len()];
-//!
-//!     let signature_len = key_pair.sign(MESSAGE, &mut signature)?;
-//!     assert_eq!(signature_len, signature.len());
-//!
-//!     // Verify the signature.
-//!     let public_key_bytes = key_pair.public_key().as_der()?;
-//!     let public_key = UnparsedPublicKey::new(&MLDSA_44, public_key_bytes.as_ref());
-//!
-//!     assert!(public_key.verify(MESSAGE, &signature).is_ok());
-//! #   Ok(())
-//! # }
-//! ```
-//!
+//! During stabilization, `PqdsaKeyPair::to_pkcs8` was renamed to
+//! [`crate::signature::PqdsaKeyPair::to_pkcs8v1`]. A deprecated `to_pkcs8` alias
+//! remains available while the `unstable` feature is enabled; it will be removed
+//! along with this module in a future release.
 
-pub use crate::pqdsa::key_pair::{PqdsaKeyPair, PqdsaPrivateKey};
-pub use crate::pqdsa::signature::{
-    PqdsaSigningAlgorithm, PqdsaVerificationAlgorithm, PublicKey as PqdsaPublicKey,
-};
+use crate::signature;
 
-use crate::pqdsa::AlgorithmID;
+/// Deprecated alias for [`crate::signature::PqdsaKeyPair`].
+#[deprecated(note = "use aws_lc_rs::signature::PqdsaKeyPair")]
+pub type PqdsaKeyPair = signature::PqdsaKeyPair;
+
+/// Deprecated alias for [`crate::signature::PqdsaPrivateKey`].
+#[deprecated(note = "use aws_lc_rs::signature::PqdsaPrivateKey")]
+pub type PqdsaPrivateKey<'a> = signature::PqdsaPrivateKey<'a>;
+
+/// Deprecated alias for [`crate::signature::PqdsaPublicKey`].
+#[deprecated(note = "use aws_lc_rs::signature::PqdsaPublicKey")]
+pub type PqdsaPublicKey = signature::PqdsaPublicKey;
+
+/// Deprecated alias for [`crate::signature::PqdsaSigningAlgorithm`].
+#[deprecated(note = "use aws_lc_rs::signature::PqdsaSigningAlgorithm")]
+pub type PqdsaSigningAlgorithm = signature::PqdsaSigningAlgorithm;
+
+/// Deprecated alias for [`crate::signature::PqdsaVerificationAlgorithm`].
+#[deprecated(note = "use aws_lc_rs::signature::PqdsaVerificationAlgorithm")]
+pub type PqdsaVerificationAlgorithm = signature::PqdsaVerificationAlgorithm;
+
+/// Verification of ML-DSA-44 signatures.
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_44")]
+pub const ML_DSA_44: signature::PqdsaVerificationAlgorithm = signature::ML_DSA_44;
+
+/// Verification of ML-DSA-65 signatures.
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_65")]
+pub const ML_DSA_65: signature::PqdsaVerificationAlgorithm = signature::ML_DSA_65;
+
+/// Verification of ML-DSA-87 signatures.
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_87")]
+pub const ML_DSA_87: signature::PqdsaVerificationAlgorithm = signature::ML_DSA_87;
+
+/// Signing using ML-DSA-44.
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_44_SIGNING")]
+pub const ML_DSA_44_SIGNING: signature::PqdsaSigningAlgorithm = signature::ML_DSA_44_SIGNING;
+
+/// Signing using ML-DSA-65.
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_65_SIGNING")]
+pub const ML_DSA_65_SIGNING: signature::PqdsaSigningAlgorithm = signature::ML_DSA_65_SIGNING;
+
+/// Signing using ML-DSA-87.
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_87_SIGNING")]
+pub const ML_DSA_87_SIGNING: signature::PqdsaSigningAlgorithm = signature::ML_DSA_87_SIGNING;
 
 /// Verification of MLDSA-44 signatures
-#[deprecated(note = "Use ML_DSA_44")]
-pub const MLDSA_44: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
-    id: &AlgorithmID::ML_DSA_44,
-};
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_44")]
+pub const MLDSA_44: signature::PqdsaVerificationAlgorithm = signature::ML_DSA_44;
 
 /// Verification of MLDSA-65 signatures
-#[deprecated(note = "Use ML_DSA_65")]
-pub const MLDSA_65: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
-    id: &AlgorithmID::ML_DSA_65,
-};
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_65")]
+pub const MLDSA_65: signature::PqdsaVerificationAlgorithm = signature::ML_DSA_65;
 
 /// Verification of MLDSA-87 signatures
-#[deprecated(note = "Use ML_DSA_87")]
-pub const MLDSA_87: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
-    id: &AlgorithmID::ML_DSA_87,
-};
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_87")]
+pub const MLDSA_87: signature::PqdsaVerificationAlgorithm = signature::ML_DSA_87;
 
 /// Sign using MLDSA-44
-#[deprecated(note = "Use ML_DSA_44_SIGNING")]
-pub const MLDSA_44_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_44);
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_44_SIGNING")]
+pub const MLDSA_44_SIGNING: signature::PqdsaSigningAlgorithm = signature::ML_DSA_44_SIGNING;
 
 /// Sign using MLDSA-65
-#[deprecated(note = "Use ML_DSA_65_SIGNING")]
-pub const MLDSA_65_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_65);
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_65_SIGNING")]
+pub const MLDSA_65_SIGNING: signature::PqdsaSigningAlgorithm = signature::ML_DSA_65_SIGNING;
 
 /// Sign using MLDSA-87
-#[deprecated(note = "Use ML_DSA_87_SIGNING")]
-pub const MLDSA_87_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_87);
-
-/// Verification of ML-DSA-44 signatures
-pub const ML_DSA_44: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
-    id: &AlgorithmID::ML_DSA_44,
-};
-
-/// Verification of ML-DSA-65 signatures
-pub const ML_DSA_65: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
-    id: &AlgorithmID::ML_DSA_65,
-};
-
-/// Verification of ML-DSA-87 signatures
-pub const ML_DSA_87: PqdsaVerificationAlgorithm = PqdsaVerificationAlgorithm {
-    id: &AlgorithmID::ML_DSA_87,
-};
-
-/// Sign using ML-DSA-44
-pub const ML_DSA_44_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_44);
-
-/// Sign using ML-DSA-65
-pub const ML_DSA_65_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_65);
-
-/// Sign using ML-DSA-87
-pub const ML_DSA_87_SIGNING: PqdsaSigningAlgorithm = PqdsaSigningAlgorithm(&ML_DSA_87);
+#[deprecated(note = "use aws_lc_rs::signature::ML_DSA_87_SIGNING")]
+pub const MLDSA_87_SIGNING: signature::PqdsaSigningAlgorithm = signature::ML_DSA_87_SIGNING;

@@ -16,11 +16,13 @@ macro_rules! impl_imgref_index {
             /// The x coordinate can't exceed `stride`.
             #[inline(always)]
             #[cfg_attr(debug_assertions, track_caller)]
-            fn index(&self, index: ($index, $index)) -> &Self::Output {
+            fn index(&self, (x, y): ($index, $index)) -> &Self::Output {
                 let stride = self.stride();
                 debug_assert_eq!(stride, stride as $index as usize);
-                debug_assert!(index.0 < stride as $index);
-                &self.buf()[(index.1 * (stride as $index) + index.0) as usize]
+                debug_assert!(x < stride as $index);
+                let x = x as usize;
+                let y = y as usize;
+                &self.buf()[y * stride + x]
             }
         }
     };
@@ -35,11 +37,13 @@ macro_rules! impl_imgref_index_mut {
             /// The x coordinate can't exceed `stride`.
             #[inline(always)]
             #[cfg_attr(debug_assertions, track_caller)]
-            fn index_mut(&mut self, index: ($index, $index)) -> &mut Self::Output {
+            fn index_mut(&mut self, (x, y): ($index, $index)) -> &mut Self::Output {
                 let stride = self.stride();
                 debug_assert_eq!(stride, stride as $index as usize);
-                debug_assert!(index.0 < stride as $index);
-                &mut self.buf_mut()[(index.1 * (stride as $index) + index.0) as usize]
+                debug_assert!(x < stride as $index);
+                let x = x as usize;
+                let y = y as usize;
+                &mut self.buf_mut()[y * stride + x]
             }
         }
     };
@@ -65,6 +69,13 @@ fn index() {
     assert_eq!(4, img[(0usize,1usize)]);
     assert_eq!(8, img[(1usize,2usize)]);
     assert_eq!(5, img.sub_image_mut(1,1,1,1)[(0usize,0usize)]);
+}
+
+#[test]
+#[should_panic]
+fn index_u32_with_huge_stride_does_not_wrap() {
+    let img = Img::new_stride(vec![1, 2, 3], 1, 1, 1usize << 32);
+    let _ = img[(0u32, 1u32)];
 }
 
 macro_rules! impl_imgref_row_index {

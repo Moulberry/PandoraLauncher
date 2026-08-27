@@ -1,7 +1,7 @@
 //! Middleware that applies a timeout to requests.
 //!
-//! If the request does not complete within the specified timeout it will be aborted and a `408
-//! Request Timeout` response will be sent.
+//! If the request does not complete within the specified timeout, it will be aborted and a
+//! response with an empty body and a custom status code will be returned.
 //!
 //! # Differences from `tower::timeout`
 //!
@@ -9,14 +9,14 @@
 //! it changes the error type to [`BoxError`](tower::BoxError). For HTTP services that is rarely
 //! what you want as returning errors will terminate the connection without sending a response.
 //!
-//! This middleware won't change the error type and instead return a `408 Request Timeout`
-//! response. That means if your service's error type is [`Infallible`] it will still be
-//! [`Infallible`] after applying this middleware.
+//! This middleware won't change the error type and instead returns a response with an empty body
+//! and the specified status code. That means if your service's error type is [`Infallible`], it will
+//! still be [`Infallible`] after applying this middleware.
 //!
 //! # Example
 //!
 //! ```
-//! use http::{Request, Response};
+//! use http::{Request, Response, StatusCode};
 //! use http_body_util::Full;
 //! use bytes::Bytes;
 //! use std::{convert::Infallible, time::Duration};
@@ -31,8 +31,8 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let svc = ServiceBuilder::new()
-//!     // Timeout requests after 30 seconds
-//!     .layer(TimeoutLayer::new(Duration::from_secs(30)))
+//!     // Timeout requests after 30 seconds with the specified status code
+//!     .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30)))
 //!     .service_fn(handle);
 //! # Ok(())
 //! # }

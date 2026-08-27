@@ -8,14 +8,21 @@ use crate::prelude::*;
 pub(crate) fn size_hint_cautious<Element>(hint: Option<usize>) -> usize {
     const MAX_PREALLOC_BYTES: usize = 1024 * 1024;
 
-    if core::mem::size_of::<Element>() == 0 {
+    if size_of::<Element>() == 0 {
         0
     } else {
-        core::cmp::min(
-            hint.unwrap_or(0),
-            MAX_PREALLOC_BYTES / core::mem::size_of::<Element>(),
-        )
+        core::cmp::min(hint.unwrap_or(0), MAX_PREALLOC_BYTES / size_of::<Element>())
     }
+}
+
+/// Safer version of [`Vec::with_capacity`] that uses `size_hint_cautious` to prevent overflow when calculating the capacity.
+///
+/// Implemented to address crashes due to capacity overflow, e.g., GHSA-7gcf-g7xr-8hxj
+#[cfg(feature = "alloc")]
+#[inline]
+pub(crate) fn vec_with_capacity_cautious<Element>(hint: Option<usize>) -> Vec<Element> {
+    #[allow(clippy::disallowed_methods)]
+    Vec::with_capacity(size_hint_cautious::<Element>(hint))
 }
 
 /// Re-Implementation of `serde::private::de::size_hint::from_bounds`
@@ -210,12 +217,12 @@ impl<'a> BufWriter<'a> {
 
     fn into_str(self) -> &'a str {
         let slice = &self.bytes[..self.offset];
-        core::str::from_utf8(slice)
+        str::from_utf8(slice)
             .unwrap_or("Failed to extract valid string from BufWriter. This should never happen.")
     }
 }
 
-impl core::fmt::Write for BufWriter<'_> {
+impl fmt::Write for BufWriter<'_> {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         if s.len() > self.bytes.len() - self.offset {
             Err(fmt::Error)

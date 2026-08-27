@@ -16,7 +16,7 @@
 //! * `triomphe::ArcBorrow` is functionally similar to `&triomphe::Arc<T>`, however in memory it's simply `&T`. This makes it more flexible for FFI; the source of the borrow need not be an `Arc` pinned on the stack (and can instead be a pointer from C++, or an `OffsetArc`). Additionally, this helps avoid pointer-chasing.
 //! * `triomphe::Arc` has can be constructed for dynamically-sized types via `from_header_and_iter`
 //! * `triomphe::ThinArc` provides thin-pointer `Arc`s to dynamically sized types
-//! * `triomphe::ArcUnion` is union of two `triomphe:Arc`s which fits inside one word of memory
+//! * `triomphe::ArcUnion` is union of two `triomphe::Arc`s which fits inside one word of memory
 
 #![allow(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -35,6 +35,7 @@ extern crate stable_deref_trait;
 #[cfg(feature = "unsize")]
 extern crate unsize;
 
+mod alloc_error;
 mod arc;
 mod arc_borrow;
 #[cfg(feature = "arc-swap")]
@@ -46,6 +47,7 @@ mod offset_arc;
 mod thin_arc;
 mod unique_arc;
 
+pub use alloc_error::*;
 pub use arc::*;
 pub use arc_borrow::*;
 pub use arc_union::*;

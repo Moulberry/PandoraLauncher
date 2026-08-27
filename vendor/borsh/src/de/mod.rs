@@ -374,9 +374,9 @@ pub mod ascii {
     //!
     //! Module defines [BorshDeserialize] implementation for
     //! some types from [ascii](::ascii) crate.
-    use crate::BorshDeserialize;
     use crate::__private::maybestd::{string::ToString, vec::Vec};
     use crate::io::{Error, ErrorKind, Read, Result};
+    use crate::BorshDeserialize;
 
     impl BorshDeserialize for ascii::AsciiString {
         #[inline]
@@ -486,6 +486,15 @@ where
     }
 }
 
+#[cfg(feature = "uuid")]
+impl BorshDeserialize for uuid::Uuid {
+    fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Self> {
+        Ok(uuid::Uuid::from_bytes(
+            BorshDeserialize::deserialize_reader(reader)?,
+        ))
+    }
+}
+
 impl<T> BorshDeserialize for Cow<'_, T>
 where
     T: ToOwned + ?Sized,
@@ -527,10 +536,10 @@ where
 pub mod hashes {
     use core::hash::{BuildHasher, Hash};
 
-    use crate::BorshDeserialize;
     use crate::__private::maybestd::collections::{HashMap, HashSet};
     use crate::__private::maybestd::vec::Vec;
     use crate::io::{Read, Result};
+    use crate::BorshDeserialize;
 
     #[cfg(feature = "de_strict_order")]
     const ERROR_WRONG_ORDER_OF_KEYS: &str = "keys were not serialized in ascending order";
@@ -676,14 +685,13 @@ where
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshDeserialize for std::net::SocketAddr {
+impl BorshDeserialize for core::net::SocketAddr {
     #[inline]
     fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Self> {
         let kind = u8::deserialize_reader(reader)?;
         match kind {
-            0 => std::net::SocketAddrV4::deserialize_reader(reader).map(std::net::SocketAddr::V4),
-            1 => std::net::SocketAddrV6::deserialize_reader(reader).map(std::net::SocketAddr::V6),
+            0 => core::net::SocketAddrV4::deserialize_reader(reader).map(core::net::SocketAddr::V4),
+            1 => core::net::SocketAddrV6::deserialize_reader(reader).map(core::net::SocketAddr::V6),
             value => Err(Error::new(
                 ErrorKind::InvalidData,
                 format!("Invalid SocketAddr variant: {}", value),
@@ -692,21 +700,20 @@ impl BorshDeserialize for std::net::SocketAddr {
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshDeserialize for std::net::IpAddr {
+impl BorshDeserialize for core::net::IpAddr {
     #[inline]
     fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Self> {
         let kind = u8::deserialize_reader(reader)?;
         match kind {
             0u8 => {
                 // Deserialize an Ipv4Addr and convert it to IpAddr::V4
-                let ipv4_addr = std::net::Ipv4Addr::deserialize_reader(reader)?;
-                Ok(std::net::IpAddr::V4(ipv4_addr))
+                let ipv4_addr = core::net::Ipv4Addr::deserialize_reader(reader)?;
+                Ok(core::net::IpAddr::V4(ipv4_addr))
             }
             1u8 => {
                 // Deserialize an Ipv6Addr and convert it to IpAddr::V6
-                let ipv6_addr = std::net::Ipv6Addr::deserialize_reader(reader)?;
-                Ok(std::net::IpAddr::V6(ipv6_addr))
+                let ipv6_addr = core::net::Ipv6Addr::deserialize_reader(reader)?;
+                Ok(core::net::IpAddr::V6(ipv6_addr))
             }
             value => Err(Error::new(
                 ErrorKind::InvalidData,
@@ -716,47 +723,43 @@ impl BorshDeserialize for std::net::IpAddr {
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshDeserialize for std::net::SocketAddrV4 {
+impl BorshDeserialize for core::net::SocketAddrV4 {
     #[inline]
     fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Self> {
-        let ip = std::net::Ipv4Addr::deserialize_reader(reader)?;
+        let ip = core::net::Ipv4Addr::deserialize_reader(reader)?;
         let port = u16::deserialize_reader(reader)?;
-        Ok(std::net::SocketAddrV4::new(ip, port))
+        Ok(core::net::SocketAddrV4::new(ip, port))
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshDeserialize for std::net::SocketAddrV6 {
+impl BorshDeserialize for core::net::SocketAddrV6 {
     #[inline]
     fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Self> {
-        let ip = std::net::Ipv6Addr::deserialize_reader(reader)?;
+        let ip = core::net::Ipv6Addr::deserialize_reader(reader)?;
         let port = u16::deserialize_reader(reader)?;
-        Ok(std::net::SocketAddrV6::new(ip, port, 0, 0))
+        Ok(core::net::SocketAddrV6::new(ip, port, 0, 0))
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshDeserialize for std::net::Ipv4Addr {
+impl BorshDeserialize for core::net::Ipv4Addr {
     #[inline]
     fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Self> {
         let mut buf = [0u8; 4];
         reader
             .read_exact(&mut buf)
             .map_err(unexpected_eof_to_unexpected_length_of_input)?;
-        Ok(std::net::Ipv4Addr::from(buf))
+        Ok(core::net::Ipv4Addr::from(buf))
     }
 }
 
-#[cfg(feature = "std")]
-impl BorshDeserialize for std::net::Ipv6Addr {
+impl BorshDeserialize for core::net::Ipv6Addr {
     #[inline]
     fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Self> {
         let mut buf = [0u8; 16];
         reader
             .read_exact(&mut buf)
             .map_err(unexpected_eof_to_unexpected_length_of_input)?;
-        Ok(std::net::Ipv6Addr::from(buf))
+        Ok(core::net::Ipv6Addr::from(buf))
     }
 }
 

@@ -13,12 +13,18 @@
 edition = "2018"
 rust-version = "1.31"
 name = "num-iter"
-version = "0.1.45"
+version = "0.1.46"
 authors = ["The Rust Project Developers"]
+build = false
 exclude = [
     "/ci/*",
     "/.github/*",
 ]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "External iterators for generic mathematics"
 homepage = "https://github.com/rust-num/num-iter"
 documentation = "https://docs.rs/num-iter"
@@ -38,6 +44,18 @@ repository = "https://github.com/rust-num/num-iter"
 [package.metadata.docs.rs]
 features = ["std"]
 
+[features]
+default = ["std"]
+i128 = []
+std = [
+    "num-integer/std",
+    "num-traits/std",
+]
+
+[lib]
+name = "num_iter"
+path = "src/lib.rs"
+
 [dependencies.num-integer]
 version = "0.1.46"
 features = ["i128"]
@@ -47,14 +65,3 @@ default-features = false
 version = "0.2.11"
 features = ["i128"]
 default-features = false
-
-[build-dependencies.autocfg]
-version = "1"
-
-[features]
-default = ["std"]
-i128 = []
-std = [
-    "num-integer/std",
-    "num-traits/std",
-]

@@ -1,6 +1,6 @@
 [package]
 name = "uds_windows"
-version = "1.1.0"
+version = "1.2.1"
 license = "MIT"
 authors = ["Azure IoT Edge Devs", "Harald Hoyer <harald@redhat.com>"]
 description = "Unix Domain Sockets for Windows!"
@@ -8,13 +8,20 @@ repository = "https://github.com/haraldh/rust_uds_windows"
 readme = "README.md"
 keywords = ["windows", "uds", "unix", "domain", "sockets"]
 categories = ["os::windows-apis"]
+edition = "2021"
+rust-version = "1.85"
 exclude = [".gitignore", ".github"]
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.9", features = ["winsock2", "ws2def", "minwinbase", "ntdef", "processthreadsapi", "handleapi", "ws2tcpip", "winbase"] }
+windows-sys = { version = ">=0.60, <0.62", features = [
+    "Win32_Networking_WinSock",
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_IO",
+] }
 tempfile = "3"
 
 [dependencies]

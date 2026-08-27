@@ -122,6 +122,7 @@ pub fn enum_table_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
             #(#snake_idents: T,)*
         }
 
+        #[automatically_derived]
         impl<T: Clone> #table_name<T> {
             #[doc = #doc_filled]
             #vis fn filled(value: T) -> #table_name<T> {
@@ -131,6 +132,7 @@ pub fn enum_table_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
+        #[automatically_derived]
         impl<T> #table_name<T> {
             #[doc = #doc_new]
             #[inline]
@@ -160,6 +162,7 @@ pub fn enum_table_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
 
         }
 
+        #[automatically_derived]
         impl<T> ::core::ops::Index<#name> for #table_name<T> {
             type Output = T;
 
@@ -172,6 +175,7 @@ pub fn enum_table_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
+        #[automatically_derived]
         impl<T> ::core::ops::IndexMut<#name> for #table_name<T> {
             #[inline]
             fn index_mut(&mut self, idx: #name) -> &mut T {
@@ -182,6 +186,7 @@ pub fn enum_table_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
+        #[automatically_derived]
         impl<T> #table_name<::core::option::Option<T>> {
             #[doc = #doc_option_all]
             #[inline]
@@ -198,6 +203,7 @@ pub fn enum_table_inner(ast: &DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
+        #[automatically_derived]
         impl<T, E> #table_name<::core::result::Result<T, E>> {
             #[doc = #doc_result_all_ok]
             #[inline]

@@ -168,20 +168,11 @@ impl<'a> Outlines<'a> {
         Ok(outline)
     }
 
-    pub fn compute_scale(&self, ppem: Option<f32>) -> (bool, F26Dot6) {
-        if let Some(ppem) = ppem {
-            if self.units_per_em > 0 {
-                return (
-                    true,
-                    F26Dot6::from_bits((ppem * 64.) as i32)
-                        / F26Dot6::from_bits(self.units_per_em as i32),
-                );
-            }
-        }
-        (false, F26Dot6::from_bits(0x10000))
+    pub fn compute_scale(&self, ppem: Option<f32>) -> Scale26Dot6 {
+        Scale26Dot6::new(ppem, self.units_per_em)
     }
 
-    pub fn compute_hinted_scale(&self, ppem: Option<f32>) -> (bool, F26Dot6) {
+    pub fn compute_hinted_scale(&self, ppem: Option<f32>) -> Scale26Dot6 {
         if let Some(ppem) = ppem {
             if !self.fractional_size_hinting {
                 // Apply a fixed point round to ppem if the font doesn't
@@ -325,8 +316,7 @@ pub(crate) struct HarfBuzzScaler<'a> {
     contour_count: usize,
     component_delta_count: usize,
     ppem: f32,
-    scale: F26Dot6,
-    is_scaled: bool,
+    scale: f32,
     /// Phantom points. These are 4 extra points appended to the end of an
     /// outline that allow the bytecode interpreter to produce hinted
     /// metrics.
@@ -344,7 +334,12 @@ impl<'a> HarfBuzzScaler<'a> {
         coords: &'a [F2Dot14],
     ) -> Result<Self, DrawError> {
         outline.ensure_point_count_limit()?;
-        let (is_scaled, scale) = outlines.compute_scale(ppem);
+        let scale = if outlines.units_per_em == 0 {
+            1.0
+        } else {
+            ppem.map(|ppem| ppem / outlines.units_per_em as f32)
+                .unwrap_or(1.0)
+        };
         let memory =
             HarfBuzzOutlineMemory::new(outline, buf).ok_or(DrawError::InsufficientMemory)?;
         Ok(Self {
@@ -356,7 +351,6 @@ impl<'a> HarfBuzzScaler<'a> {
             component_delta_count: 0,
             ppem: ppem.unwrap_or_default(),
             scale,
-            is_scaled,
             phantom: Default::default(),
         })
     }
@@ -377,6 +371,52 @@ impl<'a> HarfBuzzScaler<'a> {
     }
 }
 
+/// Scales from font units to 26.6 fixed point with the given size.
+#[derive(Copy, Clone)]
+pub(crate) struct Scale26Dot6 {
+    scale: Fixed,
+    /// True if we're actually applying a scale factor.
+    is_scaled: bool,
+}
+
+impl Scale26Dot6 {
+    fn new(ppem: Option<f32>, units_per_em: u16) -> Self {
+        if let Some(ppem) = ppem {
+            if units_per_em > 0 {
+                return Self {
+                    scale: Fixed::from_bits((ppem * 64.) as i32)
+                        / Fixed::from_bits(units_per_em as i32),
+                    is_scaled: true,
+                };
+            }
+        }
+        Self {
+            scale: Fixed::from_bits(0x10000),
+            is_scaled: false,
+        }
+    }
+
+    fn apply(&self, value: i32) -> F26Dot6 {
+        F26Dot6::from_bits((Fixed::from_bits(value) * self.scale).to_bits())
+    }
+
+    fn apply_point(&self, value: Point<i32>) -> Point<F26Dot6> {
+        Point::new(self.apply(value.x), self.apply(value.y))
+    }
+
+    fn mul(&self, value: F26Dot6) -> F26Dot6 {
+        F26Dot6::from_bits((Fixed::from_bits(value.to_bits()) * self.scale).to_bits())
+    }
+
+    fn mul_point(&self, value: Point<F26Dot6>) -> Point<F26Dot6> {
+        Point::new(self.mul(value.x), self.mul(value.y))
+    }
+
+    pub(crate) fn to_bits(self) -> i32 {
+        self.scale.to_bits()
+    }
+}
+
 /// F26Dot6 coords, Fixed deltas, and a penchant for rounding
 pub(crate) struct FreeTypeScaler<'a> {
     outlines: &'a Outlines<'a>,
@@ -386,8 +426,7 @@ pub(crate) struct FreeTypeScaler<'a> {
     contour_count: usize,
     component_delta_count: usize,
     ppem: f32,
-    scale: F26Dot6,
-    is_scaled: bool,
+    scale: Scale26Dot6,
     is_hinted: bool,
     pedantic_hinting: bool,
     /// Phantom points. These are 4 extra points appended to the end of an
@@ -408,7 +447,7 @@ impl<'a> FreeTypeScaler<'a> {
         coords: &'a [F2Dot14],
     ) -> Result<Self, DrawError> {
         outline.ensure_point_count_limit()?;
-        let (is_scaled, scale) = outlines.compute_scale(ppem);
+        let scale = outlines.compute_scale(ppem);
         let memory = FreeTypeOutlineMemory::new(outline, buf, Hinting::None)
             .ok_or(DrawError::InsufficientMemory)?;
         Ok(Self {
@@ -420,7 +459,6 @@ impl<'a> FreeTypeScaler<'a> {
             component_delta_count: 0,
             ppem: ppem.unwrap_or_default(),
             scale,
-            is_scaled,
             is_hinted: false,
             pedantic_hinting: false,
             phantom: Default::default(),
@@ -438,7 +476,7 @@ impl<'a> FreeTypeScaler<'a> {
         pedantic_hinting: bool,
     ) -> Result<Self, DrawError> {
         outline.ensure_point_count_limit()?;
-        let (is_scaled, scale) = outlines.compute_hinted_scale(ppem);
+        let scale = outlines.compute_hinted_scale(ppem);
         let memory = FreeTypeOutlineMemory::new(outline, buf, Hinting::Embedded)
             .ok_or(DrawError::InsufficientMemory)?;
         Ok(Self {
@@ -450,9 +488,8 @@ impl<'a> FreeTypeScaler<'a> {
             component_delta_count: 0,
             ppem: ppem.unwrap_or_default(),
             scale,
-            is_scaled,
             // We don't hint unscaled outlines
-            is_hinted: is_scaled,
+            is_hinted: scale.is_scaled,
             pedantic_hinting,
             phantom: Default::default(),
             hinter: Some(hinter),
@@ -532,9 +569,9 @@ impl Scaler for FreeTypeScaler<'_> {
                 unscaled[1] += deltas[1].map(Fixed::to_i32);
             }
         }
-        if self.is_scaled {
+        if self.scale.is_scaled {
             for (phantom, unscaled) in self.phantom.iter_mut().zip(&unscaled) {
-                *phantom = unscaled.map(F26Dot6::from_bits) * scale;
+                *phantom = scale.apply_point(*unscaled);
             }
         } else {
             for (phantom, unscaled) in self.phantom.iter_mut().zip(&unscaled) {
@@ -632,7 +669,7 @@ impl Scaler for FreeTypeScaler<'_> {
         }
         let ins = glyph.instructions();
         let is_hinted = self.is_hinted;
-        if self.is_scaled {
+        if self.scale.is_scaled {
             let scale = self.scale;
             if have_deltas {
                 for ((point, unscaled), delta) in scaled
@@ -641,7 +678,7 @@ impl Scaler for FreeTypeScaler<'_> {
                     .zip(self.memory.deltas.iter())
                 {
                     let delta = delta.map(Fixed::to_f26dot6);
-                    let scaled = (unscaled.map(F26Dot6::from_i32) + delta) * scale;
+                    let scaled = scale.mul_point(unscaled.map(F26Dot6::from_i32) + delta);
                     // The computed scale factor has an i32 -> 26.26 conversion built in. This undoes the
                     // extra shift.
                     *point = scaled.map(|v| F26Dot6::from_bits(v.to_i32()));
@@ -656,7 +693,7 @@ impl Scaler for FreeTypeScaler<'_> {
                         .zip(&self.memory.deltas[phantom_start..])
                     {
                         let delta = delta.map(Fixed::to_i32).map(F26Dot6::from_i32);
-                        let scaled = (unscaled.map(F26Dot6::from_i32) + delta) * scale;
+                        let scaled = scale.mul_point(unscaled.map(F26Dot6::from_i32) + delta);
                         *point = scaled.map(|v| F26Dot6::from_bits(v.to_i32()));
                     }
                 }
@@ -669,7 +706,7 @@ impl Scaler for FreeTypeScaler<'_> {
                 }
             } else {
                 for (point, unscaled) in scaled.iter_mut().zip(unscaled.iter_mut()) {
-                    *point = unscaled.map(|v| F26Dot6::from_bits(v) * scale);
+                    *point = scale.apply_point(*unscaled);
                 }
             }
         } else {
@@ -780,9 +817,9 @@ impl Scaler for FreeTypeScaler<'_> {
             }
             self.component_delta_count += count;
         }
-        if self.is_scaled {
+        if self.scale.is_scaled {
             for point in self.phantom.iter_mut() {
-                *point *= scale;
+                *point = scale.mul_point(*point);
             }
         } else {
             for point in self.phantom.iter_mut() {
@@ -810,8 +847,8 @@ impl Scaler for FreeTypeScaler<'_> {
                 self.phantom = phantom;
             }
             // Prepares the transform components for our conversion math below.
-            fn scale_component(x: F2Dot14) -> F26Dot6 {
-                F26Dot6::from_bits(x.to_bits() as i32 * 4)
+            fn scale_component(x: F2Dot14) -> Fixed {
+                Fixed::from_bits(x.to_bits() as i32 * 4)
             }
             let xform = &component.transform;
             let xx = scale_component(xform.xx);
@@ -825,10 +862,12 @@ impl Scaler for FreeTypeScaler<'_> {
             );
             if have_xform {
                 let scaled = &mut self.memory.scaled[start_point..end_point];
-                if self.is_scaled {
+                if self.scale.is_scaled {
                     for point in scaled {
-                        let x = point.x * xx + point.y * xy;
-                        let y = point.x * yx + point.y * yy;
+                        let p = point.map(|c| Fixed::from_bits(c.to_bits()));
+                        let x = p.x * xx + p.y * xy;
+                        let y = p.x * yx + p.y * yy;
+                        let [x, y] = [x, y].map(|c| F26Dot6::from_bits(c.to_bits()));
                         point.x = x;
                         point.y = y;
                     }
@@ -836,7 +875,7 @@ impl Scaler for FreeTypeScaler<'_> {
                     for point in scaled {
                         // This juggling is necessary because, unlike FreeType, we also
                         // return unscaled outlines in 26.6 format for a consistent interface.
-                        let unscaled = point.map(|c| F26Dot6::from_bits(c.to_i32()));
+                        let unscaled = point.map(|c| Fixed::from_bits(c.to_i32()));
                         let x = unscaled.x * xx + unscaled.y * xy;
                         let y = unscaled.x * yx + unscaled.y * yy;
                         *point = Point::new(x, y).map(|c| F26Dot6::from_i32(c.to_bits()));
@@ -855,7 +894,7 @@ impl Scaler for FreeTypeScaler<'_> {
                         // According to FreeType, this algorithm is a "guess"
                         // and works better than the one documented by Apple.
                         // https://github.com/freetype/freetype/blob/b1c90733ee6a04882b133101d61b12e352eeb290/src/truetype/ttgload.c#L1259
-                        fn hypot(a: F26Dot6, b: F26Dot6) -> Fixed {
+                        fn hypot(a: Fixed, b: Fixed) -> Fixed {
                             let a = a.to_bits().abs();
                             let b = b.to_bits().abs();
                             Fixed::from_bits(if a > b {
@@ -880,8 +919,8 @@ impl Scaler for FreeTypeScaler<'_> {
                         x += delta.x.to_i32();
                         y += delta.y.to_i32();
                     }
-                    if self.is_scaled {
-                        let mut offset = Point::new(x, y).map(F26Dot6::from_bits) * scale;
+                    if scale.is_scaled {
+                        let mut offset = scale.apply_point(Point::new(x, y));
                         if self.is_hinted
                             && component
                                 .flags
@@ -1040,7 +1079,7 @@ impl Scaler for HarfBuzzScaler<'_> {
     fn load_empty(&mut self, glyph_id: GlyphId) -> Result<(), DrawError> {
         // HB doesn't have an equivalent so this version just copies the
         // FreeType version above but changed to use floating point
-        let scale = self.scale.to_f32();
+        let scale = self.scale;
         let mut unscaled = self.phantom;
         if self.outlines.glyph_metrics.hvar.is_none()
             && self.outlines.gvar.is_some()
@@ -1056,14 +1095,8 @@ impl Scaler for HarfBuzzScaler<'_> {
                 unscaled[1] += deltas[1].map(Fixed::to_f32);
             }
         }
-        if self.is_scaled {
-            for (phantom, unscaled) in self.phantom.iter_mut().zip(&unscaled) {
-                *phantom = *unscaled * scale;
-            }
-        } else {
-            for (phantom, unscaled) in self.phantom.iter_mut().zip(&unscaled) {
-                *phantom = *unscaled;
-            }
+        for (phantom, unscaled) in self.phantom.iter_mut().zip(&unscaled) {
+            *phantom = *unscaled * scale;
         }
         Ok(())
     }
@@ -1136,10 +1169,9 @@ impl Scaler for HarfBuzzScaler<'_> {
             }
         }
         // Apply scaling
-        if self.is_scaled {
-            let scale = self.scale.to_f32();
+        if self.scale != 1.0 {
             for point in points.iter_mut() {
-                *point = point.map(|c| c * scale);
+                *point *= self.scale;
             }
         }
 
@@ -1159,7 +1191,7 @@ impl Scaler for HarfBuzzScaler<'_> {
         recurse_depth: usize,
     ) -> Result<(), DrawError> {
         use DrawError::InsufficientMemory;
-        let scale = self.scale.to_f32();
+        let scale = self.scale;
         // The base indices of the points for the current glyph.
         let point_base = self.point_count;
         // Compute the per component deltas. Since composites can be nested, we
@@ -1187,7 +1219,7 @@ impl Scaler for HarfBuzzScaler<'_> {
             }
             self.component_delta_count += count;
         }
-        if self.is_scaled {
+        if scale != 1.0 {
             for point in self.phantom.iter_mut() {
                 *point *= scale;
             }
@@ -1430,8 +1462,8 @@ mod tests {
         // values
         for size in [10.0, 10.2, 10.5, 10.8, 11.0] {
             assert_eq!(
-                outlines.compute_hinted_scale(Some(size)),
-                outlines.compute_hinted_scale(Some(size.round()))
+                outlines.compute_hinted_scale(Some(size)).scale,
+                outlines.compute_hinted_scale(Some(size.round())).scale
             );
         }
     }

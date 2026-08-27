@@ -122,7 +122,7 @@ impl<T> HalfLock<T> {
         }
     }
 
-    pub(crate) fn read(&self) -> ReadGuard<T> {
+    pub(crate) fn read(&self) -> ReadGuard<'_, T> {
         // Relaxed should be enough; we only pick one or the other slot and the writer observes
         // that both were 0 at some time. So the actual value doesn't really matter for safety,
         // only the changing improves the performance.
@@ -191,7 +191,7 @@ impl<T> HalfLock<T> {
         }
     }
 
-    pub(crate) fn write(&self) -> WriteGuard<T> {
+    pub(crate) fn write(&self) -> WriteGuard<'_, T> {
         // While it's possible the user code panics, our code in store doesn't and the data gets
         // swapped atomically. So if it panics, nothing gets changed, therefore poisons are of no
         // interest here.

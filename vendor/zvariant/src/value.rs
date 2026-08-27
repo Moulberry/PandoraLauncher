@@ -22,6 +22,7 @@ use crate::{
     StructureBuilder, Type, array_display_fmt, dict_display_fmt, structure_display_fmt, utils::*,
 };
 #[cfg(feature = "gvariant")]
+#[allow(deprecated)]
 use crate::{Maybe, maybe_display_fmt};
 
 #[cfg(unix)]
@@ -97,6 +98,12 @@ pub enum Value<'a> {
     Dict(Dict<'a, 'a>),
     Structure(Structure<'a>),
     #[cfg(feature = "gvariant")]
+    #[deprecated(
+        since = "5.15.0",
+        note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+                `zgvariant` crate instead."
+    )]
+    #[allow(deprecated)]
     Maybe(Maybe<'a>),
 
     #[cfg(unix)]
@@ -127,6 +134,7 @@ impl Hash for Value<'_> {
             Self::Dict(inner) => inner.hash(state),
             Self::Structure(inner) => inner.hash(state),
             #[cfg(feature = "gvariant")]
+            #[allow(deprecated)]
             Self::Maybe(inner) => inner.hash(state),
             #[cfg(unix)]
             Self::Fd(inner) => inner.hash(state),
@@ -172,6 +180,7 @@ macro_rules! serialize_value {
             Value::Dict(value) => $serializer.$method($($first_arg,)* value),
             Value::Structure(value) => $serializer.$method($($first_arg,)* value),
             #[cfg(feature = "gvariant")]
+            #[allow(deprecated)]
             Value::Maybe(value) => $serializer.$method($($first_arg,)* value),
 
             #[cfg(unix)]
@@ -240,6 +249,7 @@ impl<'a> Value<'a> {
             Value::Dict(v) => Value::Dict(v.try_to_owned()?),
             Value::Structure(v) => Value::Structure(v.try_to_owned()?),
             #[cfg(feature = "gvariant")]
+            #[allow(deprecated)]
             Value::Maybe(v) => Value::Maybe(v.try_to_owned()?),
             #[cfg(unix)]
             Value::Fd(v) => Value::Fd(v.try_to_owned()?),
@@ -272,6 +282,7 @@ impl<'a> Value<'a> {
             Value::Dict(v) => Value::Dict(v.try_into_owned()?),
             Value::Structure(v) => Value::Structure(v.try_into_owned()?),
             #[cfg(feature = "gvariant")]
+            #[allow(deprecated)]
             Value::Maybe(v) => Value::Maybe(v.try_into_owned()?),
             #[cfg(unix)]
             Value::Fd(v) => Value::Fd(v.try_to_owned()?),
@@ -300,6 +311,7 @@ impl<'a> Value<'a> {
             Value::Dict(value) => value.signature(),
             Value::Structure(value) => value.signature(),
             #[cfg(feature = "gvariant")]
+            #[allow(deprecated)]
             Value::Maybe(value) => value.signature(),
 
             #[cfg(unix)]
@@ -333,6 +345,7 @@ impl<'a> Value<'a> {
             Value::Dict(v) => Value::Dict(v.try_clone()?),
             Value::Structure(v) => Value::Structure(v.try_clone()?),
             #[cfg(feature = "gvariant")]
+            #[allow(deprecated)]
             Value::Maybe(v) => Value::Maybe(v.try_clone()?),
             #[cfg(unix)]
             Value::Fd(v) => Value::Fd(v.try_clone()?),
@@ -594,6 +607,7 @@ pub(crate) fn value_display_fmt(
         Value::Dict(dict) => dict_display_fmt(dict, f, type_annotate),
         Value::Structure(structure) => structure_display_fmt(structure, f, type_annotate),
         #[cfg(feature = "gvariant")]
+        #[allow(deprecated)]
         Value::Maybe(maybe) => maybe_display_fmt(maybe, f, type_annotate),
         #[cfg(unix)]
         Value::Fd(handle) => {
@@ -830,6 +844,7 @@ where
         let v = match &self.signature {
             #[cfg(unix)]
             Signature::Fd => {
+                debug_assert!(value >= 0);
                 // SAFETY: The `'de` lifetimes will ensure the borrow won't outlive the raw FD.
                 let fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(value) };
                 Fd::Borrowed(fd).into()
@@ -923,6 +938,7 @@ where
     }
 
     #[cfg(feature = "gvariant")]
+    #[allow(deprecated)]
     fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: Deserializer<'de>,
@@ -955,6 +971,7 @@ where
     }
 
     #[cfg(feature = "gvariant")]
+    #[allow(deprecated)]
     fn visit_none<E>(self) -> Result<Self::Value, E>
     where
         E: Error,

@@ -1,13 +1,15 @@
-![Build Status](https://github.com/mmastrac/linktime/actions/workflows/rust.yml/badge.svg)
-
 The crate is part of the [`linktime`](https://crates.io/crates/linktime) project.
 
-| crate          | docs                                                                               | version                                                                                                 |
-| -------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `linktime`     | [![docs.rs](https://docs.rs/linktime/badge.svg)](https://docs.rs/linktime)         | [![crates.io](https://img.shields.io/crates/v/linktime.svg)](https://crates.io/crates/linktime)       |
-| `ctor`         | [![docs.rs](https://docs.rs/ctor/badge.svg)](https://docs.rs/ctor)                 | [![crates.io](https://img.shields.io/crates/v/ctor.svg)](https://crates.io/crates/ctor)                 |
-| `dtor`         | [![docs.rs](https://docs.rs/dtor/badge.svg)](https://docs.rs/dtor)                 | [![crates.io](https://img.shields.io/crates/v/dtor.svg)](https://crates.io/crates/dtor)                 |
-| `link-section` | [![docs.rs](https://docs.rs/link-section/badge.svg)](https://docs.rs/link-section) | [![crates.io](https://img.shields.io/crates/v/link-section.svg)](https://crates.io/crates/link-section) |
+[![GitHub](https://img.shields.io/badge/repo-github-blue)](https://github.com/mmastrac/linktime) [![Crates.io License](https://img.shields.io/crates/l/link-section)](https://crates.io/crates/link-section) [![Build Status](https://github.com/mmastrac/linktime/actions/workflows/rust.yml/badge.svg)](https://github.com/mmastrac/linktime/actions/workflows/rust.yml) 
+
+
+| crate | |
+| --- | --- |
+| `linktime`<br>[![docs.rs](https://docs.rs/linktime/badge.svg)](https://docs.rs/linktime) [![crates.io](https://img.shields.io/crates/v/linktime.svg)](https://crates.io/crates/linktime) | Convenience crate for `ctor`, `dtor` and `link-section` |
+| `ctor`<br>[![docs.rs](https://docs.rs/ctor/badge.svg)](https://docs.rs/ctor) [![crates.io](https://img.shields.io/crates/v/ctor.svg)](https://crates.io/crates/ctor) | Module initialization functions before main |
+| `dtor`<br>[![docs.rs](https://docs.rs/dtor/badge.svg)](https://docs.rs/dtor) [![crates.io](https://img.shields.io/crates/v/dtor.svg)](https://crates.io/crates/dtor) | Module shutdown functions before main |
+| `link-section`<br>[![docs.rs](https://docs.rs/link-section/badge.svg)](https://docs.rs/link-section) [![crates.io](https://img.shields.io/crates/v/link-section.svg)](https://crates.io/crates/link-section) | Linker-managed typed (slices) and untyped sections |
+| `scattered-collect`<br>[![docs.rs](https://docs.rs/scattered-collect/badge.svg)](https://docs.rs/scattered-collect) [![crates.io](https://img.shields.io/crates/v/scattered-collect.svg)](https://crates.io/crates/scattered-collect) | Linker-managed collections: slices, sorted slices, maps |
 # ctor
 Module initialization functions for Rust (like `__attribute__((constructor))` in
 C/C++) for Linux, macOS, Windows, WASM, BSD-likes, and many others.
@@ -217,6 +219,20 @@ static FOO: extern fn() = {
 ## Inspiration
 
 The idea for `ctor` was originally inspired by the Neon project.
+# Re-exporting from another crate
+
+The macros assume this crate is available as a direct dependency, resolving their
+support paths through the crate's own name. If you re-export this crate's items as
+part of your own crate (so that downstream users don't need to depend on it
+directly), you have two options:
+
+- (preferred) use the declarative macro form. It resolves its support paths
+  relative to your re-export, so no extra configuration is required.
+- Alternatively, pass the `crate_path` attribute to redirect the macro's
+  generated output to the path where this crate has been re-exported.
+
+See the `crate_path` entry in the *Macro Attributes* section below for the exact
+syntax for this crate.
 # Crate Features
 
 | Cargo feature | Description |

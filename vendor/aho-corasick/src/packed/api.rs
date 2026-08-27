@@ -502,6 +502,10 @@ impl Searcher {
     /// `0`) in which it was added. The offsets in the `Match` will be relative
     /// to the start of `haystack` (and not `at`).
     ///
+    /// # Panics
+    ///
+    /// When `span` does not correspond to a valid range in `haystack`.
+    ///
     /// # Example
     ///
     /// Basic usage:
@@ -676,7 +680,7 @@ impl<'s, 'h> Iterator for FindIter<'s, 'h> {
         if self.span.start > self.span.end {
             return None;
         }
-        match self.searcher.find_in(&self.haystack, self.span) {
+        match self.searcher.find_in(self.haystack, self.span) {
             None => None,
             Some(m) => {
                 self.span.start = m.end();

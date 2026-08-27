@@ -409,12 +409,12 @@ fn preprocess_text(plan: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut hb_
                 buffer.out_info_mut()[i + start + 1] = buffer.out_info()[i + start];
             }
             buffer.out_info_mut()[start] = t;
-        } else {
-            // Since we decomposed, and NIKHAHIT is combining, merge clusters with the
-            // previous cluster.
-            if start != 0 {
-                buffer.merge_out_clusters(start - 1, end);
-            }
+        }
+
+        // Since we decomposed, and NIKHAHIT is combining, merge clusters with the
+        // previous cluster.
+        if start != 0 {
+            buffer.merge_out_grapheme_clusters(start - 1, end);
         }
     }
 

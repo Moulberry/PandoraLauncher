@@ -46,6 +46,11 @@ mod de;
 
 pub mod dbus;
 #[cfg(feature = "gvariant")]
+#[deprecated(
+    since = "5.15.0",
+    note = "GVariant support is deprecated and will be removed in zvariant 6.0. Use the \
+            `zgvariant` crate instead."
+)]
 pub mod gvariant;
 
 pub mod signature;
@@ -60,6 +65,7 @@ pub use crate::structure::*;
 #[cfg(feature = "gvariant")]
 mod maybe;
 #[cfg(feature = "gvariant")]
+#[allow(deprecated)]
 pub use crate::maybe::*;
 
 mod optional;

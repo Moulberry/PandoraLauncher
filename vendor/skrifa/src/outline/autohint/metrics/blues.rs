@@ -27,7 +27,7 @@ const BLUE_STRING_MAX_LEN: usize = 51;
 /// Defines the zone(s) that are associated with a blue value.
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
 #[repr(transparent)]
-pub(crate) struct BlueZones(u16);
+pub struct BlueZones(u16);
 
 impl BlueZones {
     // These properties ostensibly come from
@@ -53,11 +53,11 @@ impl BlueZones {
     // Used for generated data structures because the bit-or operator
     // cannot be const.
     #[must_use]
-    pub const fn union(self, other: Self) -> Self {
+    pub(crate) const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
 
-    pub fn is_top_like(self) -> bool {
+    pub(crate) fn is_top_like(self) -> bool {
         self & (Self::TOP | Self::SUB_TOP) != Self::NONE
     }
 
@@ -77,15 +77,15 @@ impl BlueZones {
         self.contains(Self::X_HEIGHT)
     }
 
-    pub fn is_long(self) -> bool {
+    pub(crate) fn is_long(self) -> bool {
         self.contains(Self::LONG)
     }
 
-    pub fn is_horizontal(self) -> bool {
+    pub(crate) fn is_horizontal(self) -> bool {
         self.contains(Self::HORIZONTAL)
     }
 
-    pub fn is_right(self) -> bool {
+    pub(crate) fn is_right(self) -> bool {
         self.contains(Self::RIGHT)
     }
 
@@ -131,27 +131,38 @@ impl core::ops::BitAndAssign for BlueZones {
     }
 }
 
+/// An unscaled alignment zone.
 // FreeType keeps a single array of blue values per metrics set
 // and mutates when the scale factor changes. We'll separate them so
 // that we can reuse unscaled metrics as immutable state without
 // recomputing them (which is the expensive part).
 // <https://gitlab.freedesktop.org/freetype/freetype/-/blob/57617782464411201ce7bbc93b086c1b4d7d84a5/src/autofit/aflatin.h#L77>
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
-pub(crate) struct UnscaledBlue {
+pub struct UnscaledBlue {
+    /// Position of the blue.
     pub position: i32,
+    /// Overshoot value of the blue.
     pub overshoot: i32,
+    /// Maximum extent of outlines used to compute this blue.
     pub ascender: i32,
+    /// Minimum extent of outlines used to compute this blue.
     pub descender: i32,
+    /// Active zones for this blue.
     pub zones: BlueZones,
 }
 
 pub(crate) type UnscaledBlues = SmallVec<UnscaledBlue, MAX_BLUES>;
 
+/// A scaled alignment zone.
 #[derive(Copy, Clone, PartialEq, Eq, Default, Debug)]
-pub(crate) struct ScaledBlue {
+pub struct ScaledBlue {
+    /// Scaled position of the blue.
     pub position: ScaledWidth,
+    /// Scaled overshoot for the blue.
     pub overshoot: ScaledWidth,
+    /// Active zones for this blue.
     pub zones: BlueZones,
+    /// True if the blue is active.
     pub is_active: bool,
 }
 

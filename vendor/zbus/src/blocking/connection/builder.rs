@@ -9,6 +9,14 @@ use tokio::net::UnixStream;
 #[cfg(all(windows, not(feature = "tokio")))]
 use uds_windows::UnixStream;
 
+// Feature-independent stream types for the `async_io_*_stream` builders.
+#[cfg(feature = "async-io")]
+use std::net::TcpStream as AsyncIoTcpStream;
+#[cfg(all(unix, feature = "async-io"))]
+use std::os::unix::net::UnixStream as AsyncIoUnixStream;
+#[cfg(all(windows, feature = "async-io"))]
+use uds_windows::UnixStream as AsyncIoUnixStream;
+
 use zvariant::ObjectPath;
 
 #[cfg(feature = "p2p")]
@@ -35,6 +43,39 @@ impl<'a> Builder<'a> {
         crate::connection::Builder::system().map(Self)
     }
 
+    /// Create a builder for an IBus connection.
+    ///
+    /// IBus (Intelligent Input Bus) is an input method framework. This method creates a builder
+    /// that will query the IBus daemon for its D-Bus address using the `ibus address` command.
+    ///
+    /// # Platform Support
+    ///
+    /// This method is available on Unix-like systems where IBus is installed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The `ibus` command is not found or fails to execute
+    /// - The IBus daemon is not running
+    /// - The command output cannot be parsed as a valid D-Bus address
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use std::error::Error;
+    /// # use zbus::blocking::connection;
+    /// #
+    /// let _conn = connection::Builder::ibus()?
+    ///     .build()?;
+    ///
+    /// // Use the connection to interact with IBus services.
+    /// # Ok::<_, Box<dyn Error + Send + Sync>>(())
+    /// ```
+    #[cfg(unix)]
+    pub fn ibus() -> Result<Self> {
+        crate::connection::Builder::ibus().map(Self)
+    }
+
     /// Create a builder for a connection that will use the given [D-Bus bus address].
     ///
     /// [D-Bus bus address]: https://dbus.freedesktop.org/doc/dbus-specification.html#addresses
@@ -48,24 +89,62 @@ impl<'a> Builder<'a> {
 
     /// Create a builder for a connection that will use the given unix stream.
     ///
-    /// If the default `async-io` feature is disabled, this method will expect a
-    /// [`tokio::net::UnixStream`](https://docs.rs/tokio/latest/tokio/net/struct.UnixStream.html)
-    /// argument.
+    /// The stream is a [`std::os::unix::net::UnixStream`] (or [`uds_windows::UnixStream`] on
+    /// Windows).
+    ///
+    /// [`uds_windows::UnixStream`]: https://docs.rs/uds_windows/latest/uds_windows/struct.UnixStream.html
+    #[cfg(all(any(unix, windows), feature = "async-io"))]
+    pub fn async_io_unix_stream(stream: AsyncIoUnixStream) -> Self {
+        Self(crate::connection::Builder::async_io_unix_stream(stream))
+    }
+
+    /// Create a builder for a connection that will use the given unix stream.
+    ///
+    /// This method expects a
+    /// [`tokio::net::UnixStream`](https://docs.rs/tokio/latest/tokio/net/struct.UnixStream.html).
+    /// Without the `tokio` feature it accepts a [`std::os::unix::net::UnixStream`] instead, but
+    /// that form is deprecated in favor of
+    /// [`async_io_unix_stream`](Self::async_io_unix_stream).
     ///
     /// Since tokio currently [does not support Unix domain sockets][tuds] on Windows, this method
     /// is not available when the `tokio` feature is enabled and building for Windows target.
     ///
     /// [tuds]: https://github.com/tokio-rs/tokio/issues/2201
+    #[cfg_attr(
+        not(feature = "tokio"),
+        deprecated(
+            since = "5.19.0",
+            note = "Use `async_io_unix_stream` to avoid a build failure if the `tokio` feature gets enabled"
+        )
+    )]
     #[cfg(any(unix, not(feature = "tokio")))]
+    #[allow(deprecated)] // forwards to the async builder's equally-deprecated `unix_stream`
     pub fn unix_stream(stream: UnixStream) -> Self {
         Self(crate::connection::Builder::unix_stream(stream))
     }
 
     /// Create a builder for a connection that will use the given TCP stream.
     ///
-    /// If the default `async-io` feature is disabled, this method will expect a
-    /// [`tokio::net::TcpStream`](https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html)
-    /// argument.
+    /// The stream is a [`std::net::TcpStream`].
+    #[cfg(feature = "async-io")]
+    pub fn async_io_tcp_stream(stream: AsyncIoTcpStream) -> Self {
+        Self(crate::connection::Builder::async_io_tcp_stream(stream))
+    }
+
+    /// Create a builder for a connection that will use the given TCP stream.
+    ///
+    /// This method expects a
+    /// [`tokio::net::TcpStream`](https://docs.rs/tokio/latest/tokio/net/struct.TcpStream.html).
+    /// Without the `tokio` feature it accepts a [`std::net::TcpStream`] instead, but that form is
+    /// deprecated in favor of [`async_io_tcp_stream`](Self::async_io_tcp_stream).
+    #[cfg_attr(
+        not(feature = "tokio"),
+        deprecated(
+            since = "5.19.0",
+            note = "Use `async_io_tcp_stream` to avoid a build failure if the `tokio` feature gets enabled"
+        )
+    )]
+    #[allow(deprecated)] // forwards to the async builder's equally-deprecated `tcp_stream`
     pub fn tcp_stream(stream: TcpStream) -> Self {
         Self(crate::connection::Builder::tcp_stream(stream))
     }
@@ -230,5 +309,24 @@ impl<'a> Builder<'a> {
     /// result in a [`Error::Unsupported`] error.
     pub fn build(self) -> Result<Connection> {
         block_on(self.0.build()).map(Into::into)
+    }
+
+    /// Build the connection and return a [`MessageIterator`] to receive messages from it.
+    ///
+    /// This is the blocking counterpart of [`crate::connection::Builder::build_message_stream`].
+    /// The iterator is set up **before** the socket-reader task is started, so no messages can
+    /// be lost in the window between the connection being built and the iterator being created.
+    /// Use this when the peer may pipeline traffic right after authentication — e.g. a bus
+    /// implementation reading a `Hello` method call from a just-connected client.
+    ///
+    /// To get the [`Connection`] out of the returned iterator, use `Connection::from(&iter)`.
+    ///
+    /// This method is only available when the `bus-impl` feature is enabled.
+    ///
+    /// [`MessageIterator`]: crate::blocking::MessageIterator
+    #[cfg(feature = "bus-impl")]
+    pub fn build_message_iterator(self) -> Result<crate::blocking::MessageIterator> {
+        block_on(self.0.build_message_stream())
+            .map(|azync| crate::blocking::MessageIterator { azync: Some(azync) })
     }
 }

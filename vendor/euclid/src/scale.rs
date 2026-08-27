@@ -21,6 +21,8 @@ use core::ops::{Add, Div, Mul, Sub};
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
+#[cfg(feature = "malloc_size_of")]
+use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use num_traits::NumCast;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -241,6 +243,18 @@ impl<T, Src, Dst> Scale<T, Src, Dst> {
         let one: T = One::one();
         Scale::new(one / self.0)
     }
+
+    /// Returns the same transform with a different source unit.
+    #[inline]
+    pub fn with_source<NewSrc>(self) -> Scale<T, NewSrc, Dst> {
+        Scale::new(self.0)
+    }
+
+    /// Returns the same transform with a different destination unit.
+    #[inline]
+    pub fn with_destination<NewDst>(self) -> Scale<T, Src, NewDst> {
+        Scale::new(self.0)
+    }
 }
 
 impl<T: PartialOrd, Src, Dst> Scale<T, Src, Dst> {
@@ -340,6 +354,13 @@ unsafe impl<T: Zeroable, Src, Dst> Zeroable for Scale<T, Src, Dst> {}
 #[cfg(feature = "bytemuck")]
 unsafe impl<T: Pod, Src: 'static, Dst: 'static> Pod for Scale<T, Src, Dst> {}
 
+#[cfg(feature = "malloc_size_of")]
+impl<T: MallocSizeOf, Src, Dst> MallocSizeOf for Scale<T, Src, Dst> {
+    fn size_of(&self, ops: &mut MallocSizeOfOps) -> usize {
+        self.0.size_of(ops)
+    }
+}
+
 // scale0 * scale1
 // (A,B) * (B,C) = (A,C)
 impl<T: Mul, A, B, C> Mul<Scale<T, B, C>> for Scale<T, A, B> {
@@ -416,7 +437,7 @@ impl<T: Default, Src, Dst> Default for Scale<T, Src, Dst> {
 
 impl<T: Hash, Src, Dst> Hash for Scale<T, Src, Dst> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state)
+        self.0.hash(state);
     }
 }
 
@@ -428,6 +449,7 @@ impl<T: One, Src, Dst> One for Scale<T, Src, Dst> {
 }
 
 #[cfg(test)]
+#[cfg(any(feature = "std", feature = "libm"))]
 mod tests {
     use super::Scale;
 

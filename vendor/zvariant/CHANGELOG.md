@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 5.15.0 - 2026-08-18
+
+### CI
+- 💚 Work around nightly rustfmt macro mangling.
+
+### Deprecated
+- 🗑️ Deprecate GVariant support in zvariant.
+
+### Documentation
+- 📝 Point GVariant users to the zgvariant crate.
+
+### Fixed
+- 🐛 Support zvariant_utils/gvariant being enabled externally. #1910
+
+### Removed
+- 🔥 Remove the gvariant fuzz target.
+- 🔥 Remove gvariant benches, ostree tests and test data.
+
+## 5.14.0 - 2026-08-09
+
+### Changed
+- ♻️ Use zcheapstr for the Str type.
+- ♻️ Remove unnecessary clones.
+
+### Dependencies
+- ➕ Add zcheapstr dependency. It's actually just a split.
+
+### Fixed
+- 🐛 insert tail padding to fixed-sized dictionary entry.
+- 🐛 insert tail padding to fixed-sized struct.
+
+### Testing
+- ✅ Add test case for `a{uy}` encoding.
+- ✅ Add test case for `(uy)` encoding.
+
+## 5.13.1 - 2026-07-17
+
+### Other
+- 🚨 Use Option::filter instead of a manual match.
+
+## 5.13.0 - 2026-07-07
+
+### Dependencies
+- ⬆️ Update libfuzzer-sys to v0.4.13 (#1815).
+
+### Fixed
+- 🐛 Don't double-wrap variant-typed fields in as_value. #1819
+
+### Testing
+- ✅ Cover nested a{sv}-in-a{sv} in nested_dict_value test.
+- ✅ Add test case for `amb` encoding (GVariant only).
+
+## 5.12.0 - 2026-05-27
+
+### Dependencies
+- ⬆️ Bump zvariant_utils requirement to 3.4.
+
+### Documentation
+- 📝 Document D-Bus FD encoding on `Fd`.
+- 📝 Show catch-all enum variant in docs.
+
+### Other
+- 🦺 Add 2 debug asserts.
+
+### Performance
+- ⚡️ Use Fields::get(i) for O(1) field signature lookup.
+
 ## 5.11.0 - 2026-05-03
 
 ### Added

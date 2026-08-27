@@ -11,8 +11,9 @@
 
 [package]
 edition = "2021"
+rust-version = "1.60"
 name = "humantime"
-version = "2.3.0"
+version = "2.4.0"
 build = false
 autolib = false
 autobins = false

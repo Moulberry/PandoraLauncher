@@ -9,6 +9,18 @@ use crate::{Basic, Type};
 /// do not implement  [`Serialize`] and [`Deserialize`]. So we provide a
 /// wrapper for both that implements these traits.
 ///
+/// # D-Bus FD Encoding
+///
+/// In D-Bus, file descriptors are **not** encoded as their raw numeric values on the wire.
+/// Instead, the message body contains a `u32` **index** into an out-of-band array of file
+/// descriptors that is transferred alongside the message via `SCM_RIGHTS` on Unix sockets.
+///
+/// The [`Deserialize`] implementation on this type is designed for zvariant's D-Bus
+/// deserializer, which resolves that index through the message's FD list before calling the
+/// serde visitor. **Using this type with other deserializers (JSON, CBOR, etc.) is not
+/// supported** — you would receive a `BorrowedFd` pointing to whatever FD number happened to
+/// be in the payload, which is almost certainly not what you want.
+///
 /// [`Serialize`]: https://docs.serde.rs/serde/trait.Serialize.html
 /// [`Deserialize`]: https://docs.serde.rs/serde/de/trait.Deserialize.html
 #[derive(Debug)]
@@ -124,6 +136,7 @@ impl<'de> Deserialize<'de> for Fd<'de> {
         D: Deserializer<'de>,
     {
         let raw = i32::deserialize(deserializer)?;
+        debug_assert!(raw >= 0);
         // SAFETY: The `'de` lifetimes will ensure the borrow won't outlive the raw FD.
         let fd = unsafe { BorrowedFd::borrow_raw(raw) };
 

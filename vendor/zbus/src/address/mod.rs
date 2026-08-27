@@ -56,7 +56,9 @@ impl Address {
 
     #[cfg_attr(any(target_os = "macos", windows), async_recursion::async_recursion)]
     pub(crate) async fn connect(self) -> Result<Stream> {
-        self.transport.connect().await
+        // FIXME: Avoid the unconditional clone of the whole `Address`.
+        let address = self.clone();
+        self.transport.connect(address).await
     }
 
     /// Get the address for the session socket respecting the `DBUS_SESSION_BUS_ADDRESS` environment
@@ -293,8 +295,13 @@ mod tests {
             Address::from_str("launchd:env=my_cool_env_key").unwrap(),
             Transport::Launchd(Launchd::new("my_cool_env_key")).into(),
         );
+        #[cfg(unix)]
+        assert_eq!(
+            Address::from_str("ibus:").unwrap(),
+            Transport::Ibus(crate::address::transport::Ibus::new()).into(),
+        );
 
-        #[cfg(all(feature = "vsock", feature = "p2p", not(feature = "tokio")))]
+        #[cfg(all(any(feature = "vsock", feature = "tokio-vsock"), feature = "p2p"))]
         {
             let guid = crate::Guid::generate();
             assert_eq!(
@@ -391,8 +398,13 @@ mod tests {
             Address::from(Transport::Launchd(Launchd::new("my_cool_key"))).to_string(),
             "launchd:env=my_cool_key"
         );
+        #[cfg(unix)]
+        assert_eq!(
+            Address::from(Transport::Ibus(crate::address::transport::Ibus::new())).to_string(),
+            "ibus:"
+        );
 
-        #[cfg(all(feature = "vsock", feature = "p2p", not(feature = "tokio")))]
+        #[cfg(all(any(feature = "vsock", feature = "tokio-vsock"), feature = "p2p"))]
         {
             let guid = crate::Guid::generate();
             assert_eq!(

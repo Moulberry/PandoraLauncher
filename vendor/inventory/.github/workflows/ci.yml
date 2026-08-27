@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [nightly, beta, stable, 1.70.0]
+        rust: [nightly, beta, stable, 1.85.0]
         os: [ubuntu]
         include:
           - name: macOS
@@ -38,7 +38,7 @@ jobs:
             rust: nightly-x86_64-pc-windows-msvc
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{matrix.rust}}
@@ -51,7 +51,7 @@ jobs:
         if: matrix.rust == 'nightly-x86_64-pc-windows-gnu'
         shell: bash
       - run: cargo test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: matrix.os == 'ubuntu' && matrix.rust == 'nightly' && always()
         with:
           name: Cargo.lock
@@ -59,14 +59,14 @@ jobs:
         continue-on-error: true
 
   msrv:
-    name: Rust 1.62.0
+    name: Rust 1.68.0
     needs: pre_ci
     if: needs.pre_ci.outputs.continue
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.62.0
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.68.0
       - run: cargo check
 
   doc:
@@ -78,7 +78,7 @@ jobs:
     env:
       RUSTDOCFLAGS: -Dwarnings
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@nightly
       - uses: dtolnay/install@cargo-docs-rs
       - run: cargo docs-rs
@@ -89,7 +89,7 @@ jobs:
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@clippy
       - run: cargo clippy -- -Dclippy::all -Dclippy::pedantic
 
@@ -99,7 +99,7 @@ jobs:
     if: github.event_name != 'pull_request'
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: dtolnay/install@cargo-outdated
       - run: cargo outdated --exit-code 1

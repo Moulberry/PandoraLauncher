@@ -25,18 +25,18 @@ cover.
 
 ## tables
 
-All tables are aliases of the type `TableRef<Marker>`, where `Marker` is a
-struct that indicates the type of the table. For instance, the [GDEF table][Gdef]
-is defined as `TableRef<GdefMarker>`. `TableRef` itself is a wrapper around a
-slice of bytes, with the *marker* type providing typed access to those bytes.
+All tables are newtype structs wrapping what is essentially a byte slice. When a
+table is parsed, we perform _minimal validation_: that is, we ensure that the
+provided data is at least long enough to contain all of the required,
+non-version-dependent fields.
 
-The marker type can only be created from a specific byte slice, and is always
-associated with that slice. It is created through a `parse` method that performs
-a one-time validation of the slice, ensuring that all expected fields are
-present. This includes bounds checking any arrays, as well as ensuring the
-presence of fields the existence of which may depend on the table's version.
+All other validation occurs at runtime. If table data is malformed, and a field
+cannot be read, we will always return a default value. In the case of a
+versioned field, this will always be `None`; for a field that is expected to
+always be present, it will be the default value for the type in question,
+usually either `0` or an empty array.
 
-### variable lengths and version-dependent fields
+### variable length and version-dependent fields
 
 **n.b**: *the design described below has not been benchmarked against the
 alternatives, and may change*
@@ -45,13 +45,6 @@ For fields that have variable length, or which only exist in certain table
 versions, the marker struct has a corresponding field where that length or
 offset is stored. This means that at runtime there is no need to double check a
 version or length.
-
-### TableRef methods
-
-For each table, we define methods on the type `TableRef<Marker>` that provide
-access to that table's fields. These methods use the marker type to determine
-the byte range of a given field, and then interpret those bytes as the
-appropriate type.
 
 ## records
 

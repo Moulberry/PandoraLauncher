@@ -176,7 +176,7 @@ fn preprocess_text_hangul(_: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut
                 buffer.unsafe_to_break_from_outbuffer(Some(start), Some(buffer.idx));
                 buffer.next_glyph();
                 if !is_zero_width_char(face, c) {
-                    buffer.merge_out_clusters(start, end + 1);
+                    buffer.merge_out_grapheme_clusters(start, end + 1);
                     let out_info = buffer.out_info_mut();
                     let tone = out_info[end];
                     for i in (0..end - start).rev() {
@@ -265,7 +265,7 @@ fn preprocess_text_hangul(_: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut
                     end = start + 2;
                 }
 
-                buffer.merge_out_clusters(start, end);
+                buffer.merge_out_grapheme_clusters(start, end);
 
                 continue;
             }
@@ -326,7 +326,7 @@ fn preprocess_text_hangul(_: &hb_ot_shape_plan_t, face: &hb_font_t, buffer: &mut
                         buffer.out_info_mut()[start + 2].set_hangul_shaping_feature(TJMO);
                     }
 
-                    buffer.merge_out_clusters(start, end);
+                    buffer.merge_out_grapheme_clusters(start, end);
 
                     continue;
                 } else if tindex == 0 && buffer.idx + 1 > buffer.len && is_t(buffer.cur(1).glyph_id)

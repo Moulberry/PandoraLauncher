@@ -1,22 +1,34 @@
-#![cfg(feature = "seq")]
-#![feature(test)]
+#[cfg(feature = "seq")]
+mod imp {
+    use value_bag::ValueBag;
 
-extern crate test;
+    use std::hint::black_box;
 
-use value_bag::ValueBag;
+    pub fn criterion_benchmark(c: &mut criterion::Criterion) {
+        #[cfg(feature = "serde1")]
+        {
+            c.bench_function("from serde to f64 seq 5", |b| {
+                let v = ValueBag::from_serde1(&[1.0, 2.0, 3.0, 4.0, 5.0]);
 
-#[cfg(feature = "serde1")]
-#[bench]
-fn serde1_to_seq_5(b: &mut test::Bencher) {
-    let v = ValueBag::from_serde1(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+                b.iter(|| black_box(v.to_f64_seq::<Vec<Option<f64>>>()))
+            });
+        }
 
-    b.iter(|| v.to_f64_seq::<Vec<Option<f64>>>())
+        #[cfg(feature = "sval2")]
+        {
+            c.bench_function("from sval to f64 seq 5", |b| {
+                let v = ValueBag::from_sval2(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+
+                b.iter(|| black_box(v.to_f64_seq::<Vec<Option<f64>>>()))
+            });
+        }
+    }
 }
 
-#[cfg(feature = "sval2")]
-#[bench]
-fn sval2_to_seq_5(b: &mut test::Bencher) {
-    let v = ValueBag::from_sval2(&[1.0, 2.0, 3.0, 4.0, 5.0]);
+#[cfg(feature = "seq")]
+criterion::criterion_group!(benches, imp::criterion_benchmark);
+#[cfg(feature = "seq")]
+criterion::criterion_main!(benches);
 
-    b.iter(|| v.to_f64_seq::<Vec<Option<f64>>>())
-}
+#[cfg(not(feature = "seq"))]
+fn main() {}

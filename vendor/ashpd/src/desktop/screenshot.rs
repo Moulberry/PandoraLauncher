@@ -35,7 +35,9 @@
 //! ```
 use std::fmt::Debug;
 
+use enumflags2::{BitFlags, bitflags};
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use zbus::zvariant::{
     Optional, Type,
     as_value::{self, optional},
@@ -43,6 +45,21 @@ use zbus::zvariant::{
 
 use super::{HandleToken, Request};
 use crate::{Error, Uri, WindowIdentifier, desktop::Color, proxy::Proxy};
+
+#[bitflags]
+#[derive(Serialize_repr, Deserialize_repr, PartialEq, Eq, Debug, Copy, Clone, Type)]
+#[repr(u32)]
+/// Available screenshot targets
+pub enum AvailableTargets {
+    /// Screen.
+    Screen = 1,
+    /// Window.
+    Window = 2,
+    /// Area.
+    Area = 4,
+    /// Active window.
+    ActiveWindow = 8,
+}
 
 /// Options for taking a screenshot.
 #[derive(Serialize, Deserialize, Type, Debug, Default)]
@@ -57,6 +74,8 @@ pub struct ScreenshotOptions {
     #[serde(default, with = "optional", skip_serializing)]
     #[cfg_attr(not(feature = "backend"), allow(dead_code))]
     permission_store_checked: Option<bool>,
+    #[serde(default, with = "optional", skip_serializing_if = "Option::is_none")]
+    target: Option<AvailableTargets>,
 }
 
 impl ScreenshotOptions {
@@ -80,10 +99,23 @@ impl ScreenshotOptions {
         self
     }
 
+    #[must_use]
+    /// Set the screenshot requested targets.
+    pub fn set_target(mut self, targets: impl Into<Option<AvailableTargets>>) -> Self {
+        self.target = targets.into();
+        self
+    }
+
     /// Gets whether the dialog should offer customization.
     #[cfg(feature = "backend")]
     pub fn interactive(&self) -> Option<bool> {
         self.interactive
+    }
+
+    /// The screenshot target.
+    #[cfg(feature = "backend")]
+    pub fn target(&self) -> Option<AvailableTargets> {
+        self.target
     }
 
     /// Gets whether the permission store has been checked.
@@ -212,6 +244,18 @@ impl ScreenshotProxy {
             .request(&options.handle_token, "Screenshot", &(identifier, &options))
             .await
     }
+
+    /// Supported screenshot targets.
+    ///
+    ///  # Specifications
+    ///
+    /// See also [`AvailableTargets`](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Screenshot.html#org-freedesktop-portal-screenshot-availabletargets).
+    #[doc(alias = "AvailableTargets")]
+    pub async fn available_targets(&self) -> Result<BitFlags<AvailableTargets>, Error> {
+        self.0
+            .property_versioned::<BitFlags<AvailableTargets>>("AvailableTargets", 3)
+            .await
+    }
 }
 
 impl std::ops::Deref for ScreenshotProxy {
@@ -302,6 +346,13 @@ impl ScreenshotRequest {
     #[must_use]
     pub fn interactive(mut self, interactive: impl Into<Option<bool>>) -> Self {
         self.options.interactive = interactive.into();
+        self
+    }
+
+    #[must_use]
+    /// Set the screenshot requested targets.
+    pub fn target(mut self, targets: impl Into<Option<AvailableTargets>>) -> Self {
+        self.options.target = targets.into();
         self
     }
 

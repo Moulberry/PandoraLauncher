@@ -38,7 +38,7 @@ use smallvec::SmallVec;
 use std::{
     borrow::Borrow,
     collections::hash_map::RandomState,
-    hash::{BuildHasher, Hash, Hasher},
+    hash::{BuildHasher, Hash},
     rc::Rc,
     sync::{
         atomic::{AtomicBool, AtomicU8, Ordering},
@@ -572,15 +572,29 @@ where
         if let (Some(expiry), WriteOp::Upsert { value_entry, .. }) =
             (&self.inner.expiration_policy.expiry(), &upd_op)
         {
-            Self::expire_after_read_or_update(
-                |k, v, t, d| expiry.expire_after_update(k, v, t, d),
-                &key,
-                value_entry,
-                self.inner.expiration_policy.time_to_live(),
-                self.inner.expiration_policy.time_to_idle(),
-                ts,
-                self.inner.clock(),
-            );
+            // Check if the old entry was expired by per-entry TTL.
+            // If so, this is semantically a "create" (re-inserting after expiration),
+            // not an "update".
+            let old_expired_by_per_entry_ttl = old_info
+                .entry
+                .entry_info()
+                .expiration_state()
+                .0
+                .is_some_and(|exp_time| exp_time <= ts);
+
+            if old_expired_by_per_entry_ttl {
+                Self::expire_after_create(expiry, &key, value_entry, ts, self.inner.clock());
+            } else {
+                Self::expire_after_read_or_update(
+                    |k, v, t, d| expiry.expire_after_update(k, v, t, d),
+                    &key,
+                    value_entry,
+                    self.inner.expiration_policy.time_to_live(),
+                    self.inner.expiration_policy.time_to_idle(),
+                    ts,
+                    self.inner.clock(),
+                );
+            }
         }
 
         if self.is_removal_notifier_enabled() {
@@ -678,17 +692,20 @@ impl<K, V, S> BaseCache<K, V, S> {
         let current_time = clock.to_std_instant(ts);
         let ei = &value_entry.entry_info();
 
+        // Track the current per-entry expiration time.
+        let current_per_entry_exp_time = ei.expiration_state().0;
+
         let exp_time = IntoIterator::into_iter([
-            ei.expiration_time(),
+            current_per_entry_exp_time,
             ttl.and_then(|dur| ei.last_modified().map(|ts| ts.saturating_add(dur))),
             tti.and_then(|dur| ei.last_accessed().map(|ts| ts.saturating_add(dur))),
         ])
         .flatten()
         .min();
 
-        let current_duration = exp_time.and_then(|time| {
+        let current_duration = exp_time.map(|time| {
             let std_time = clock.to_std_instant(time);
-            std_time.checked_duration_since(current_time)
+            std_time.saturating_duration_since(current_time)
         });
 
         let duration = expiry(key, &value_entry.value, current_time, current_duration);
@@ -1062,9 +1079,7 @@ where
     where
         Q: Equivalent<K> + Hash + ?Sized,
     {
-        let mut hasher = self.build_hasher.build_hasher();
-        key.hash(&mut hasher);
-        hasher.finish()
+        self.build_hasher.hash_one(key)
     }
 
     #[inline]
@@ -1092,9 +1107,18 @@ where
     where
         Q: Equivalent<K> + Hash + ?Sized,
     {
-        self.cache
-            .remove_entry(hash, |k| key.equivalent(k as &K))
-            .map(|(key, entry)| KvEntry::new(key, entry))
+        // Linearise the CHT unlink with the retire transition via the
+        // post-CAS `with_previous_entry` callback. See `EntryInfo::is_retired`
+        // for why the transition must happen here and not in the caller.
+        self.cache.remove_entry_if_and(
+            hash,
+            |k| key.equivalent(k as &K),
+            |_, _| true,
+            |k, v| {
+                v.entry_info().retire();
+                KvEntry::new(Arc::clone(k), MiniArc::clone(v))
+            },
+        )
     }
 
     fn keys(&self, cht_segment: usize) -> Option<Vec<Arc<K>>> {
@@ -1377,6 +1401,13 @@ where
                 }) => {
                     let kh = value_entry.entry_info().key_hash();
                     freq.increment(kh.hash);
+                    if !value_entry.entry_info().is_alive() {
+                        // Stale ReadOp: the backing CHT entry has been
+                        // retired since the Get was recorded. Policy-tier
+                        // mutations (timer-wheel reschedule, deque move-to-
+                        // back) must not run against a non-Alive entry.
+                        continue;
+                    }
                     if is_expiry_modified {
                         self.update_timer_wheel(&value_entry, timer_wheel);
                     }
@@ -1437,6 +1468,29 @@ where
         }
     }
 
+    /// Removes an entry from the CHT if `condition` is satisfied, flipping its
+    /// `is_retired` flag atomically with the unlink.
+    ///
+    /// This is moka's analogue of Caffeine's `synchronized(node); retire()`
+    /// pattern inside the CHM mutation callback: the `retire()` store runs in
+    /// the post-success `with_previous_entry` closure of
+    /// `cht::remove_entry_if_and`, which fires exactly once after the CHT's
+    /// bucket-pointer CAS has succeeded. Consumers draining a stale `WriteOp`
+    /// for the same entry therefore observe `is_retired == true` via
+    /// `is_alive()` returning `false`, and decline to touch policy state.
+    fn cht_remove_if_and_retire(
+        &self,
+        hash: u64,
+        eq: impl FnMut(&Arc<K>) -> bool,
+        condition: impl FnMut(&Arc<K>, &MiniArc<ValueEntry<K, V>>) -> bool,
+    ) -> Option<MiniArc<ValueEntry<K, V>>> {
+        self.cache
+            .remove_entry_if_and(hash, eq, condition, |_k, v| {
+                v.entry_info().retire();
+                MiniArc::clone(v)
+            })
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn handle_upsert(
         &self,
@@ -1452,6 +1506,17 @@ where
     ) where
         V: Clone,
     {
+        // If the entry has been retired (its CHT slot was unlinked while this
+        // `WriteOp` sat in the channel), admitting it would create an orphan
+        // deque node that the eviction loop cannot reach, stalling eviction
+        // indefinitely. Update `policy_gen` so `is_dirty()` stops firing and
+        // bail. See `EntryInfo::is_retired` and
+        // <https://github.com/moka-rs/moka/issues/590>.
+        if !entry.entry_info().is_alive() {
+            entry.entry_info().set_policy_gen(gen);
+            return;
+        }
+
         {
             let counters = &mut eviction_state.counters;
 
@@ -1483,7 +1548,7 @@ where
                 let kl = self.maybe_key_lock(&kh.key);
                 let _klg = &kl.as_ref().map(|kl| kl.lock());
 
-                let removed = self.cache.remove_if(
+                let removed = self.cht_remove_if_and_retire(
                     kh.hash,
                     |k| k == &kh.key,
                     |_, current_entry| {
@@ -1533,7 +1598,10 @@ where
                         vic_hash,
                         |k| k == &vic_key,
                         |_, entry| entry.entry_info().last_accessed() == vic_la,
-                        |k, v| (k.clone(), v.clone()),
+                        |k, v| {
+                            v.entry_info().retire();
+                            (k.clone(), v.clone())
+                        },
                     ) {
                         if eviction_state.is_notifier_enabled() {
                             eviction_state.notify_entry_removal(
@@ -1580,7 +1648,7 @@ where
                 // Remove the candidate from the cache (hash map) if the entry
                 // generation matches.
                 let key = Arc::clone(&kh.key);
-                let removed = self.cache.remove_if(
+                let removed = self.cht_remove_if_and_retire(
                     kh.hash,
                     |k| k == &key,
                     |_, current_entry| {
@@ -1647,8 +1715,11 @@ where
             next_victim = DeqNode::next_node_ptr(victim);
 
             let vic_elem = &unsafe { victim.as_ref() }.element;
-            if vic_elem.is_dirty() {
-                // Skip this node as its ValueEntry have been updated or invalidated.
+            if vic_elem.is_dirty() || !vic_elem.entry_info().is_alive() {
+                // Skip this node: its `ValueEntry` was updated / invalidated
+                // (dirty) or retired (non-Alive). Retired entries are being
+                // torn down; admitting them would re-link a node that is
+                // about to be unlinked.
                 unsafe { deq.move_to_back(victim) };
                 retries += 1;
                 continue;
@@ -1692,6 +1763,33 @@ where
         timer_wheel: &mut TimerWheel<K>,
         counters: &mut EvictionCounters,
     ) {
+        // The caller checked `is_alive()` before calling us, but a concurrent
+        // `remove`/`invalidate` on a user thread may have retired the entry in
+        // the meantime; retirement is lock-free and does not take the
+        // maintenance locks. Skip the admission in that case: admitting a
+        // retired entry would produce an orphan deque node unreachable from
+        // the CHT (moka-rs/moka#590). The thread that retired the entry has
+        // already recorded a `WriteOp::Remove`, and since this entry is not
+        // admitted, that op will not touch the deques, leaving no dangling
+        // policy state.
+        //
+        // Note this re-check is best-effort, not a guarantee: because we hold
+        // no lock, the entry can still be retired between this check and the
+        // `set_admitted(true)` below. That residual race is benign and
+        // self-healing: the same queued `WriteOp::Remove` will observe
+        // `is_admitted() == true`, unlink the node, and reverse the entry
+        // count/weight updates. A *permanent* orphan (the #590 zombie) cannot
+        // form here, because the only retirement paths that run outside the
+        // maintenance locks are user `remove`/`invalidate`, and both always
+        // enqueue that `WriteOp::Remove`.
+        if !entry.entry_info().is_alive() {
+            return;
+        }
+        debug_assert!(
+            !entry.is_admitted(),
+            "handle_admit called on already-admitted entry",
+        );
+
         counters.saturating_add(1, policy_weight);
 
         self.update_timer_wheel(entry, timer_wheel);
@@ -1714,16 +1812,19 @@ where
         entry: &MiniArc<ValueEntry<K, V>>,
         timer_wheel: &mut TimerWheel<K>,
     ) {
+        // Atomically read both expiration_time and expiry_gen as a single unit
+        // to ensure consistent state and avoid TOCTOU issues.
+        let (expiration_time, current_expiry_gen) = entry.entry_info().expiration_state();
         // Enable the timer wheel if needed.
-        if entry.entry_info().expiration_time().is_some() && !timer_wheel.is_enabled() {
+        if expiration_time.is_some() && !timer_wheel.is_enabled() {
             timer_wheel.enable();
         }
 
+        // Get timer_node with its expiry generation to detect stale pointers.
+        let (timer_node, expected_expiry_gen) = entry.timer_node_with_expiry_gen();
+
         // Update the timer wheel.
-        match (
-            entry.entry_info().expiration_time().is_some(),
-            entry.timer_node(),
-        ) {
+        match (expiration_time.is_some(), timer_node) {
             // Do nothing; the cache entry has no expiration time and not registered
             // to the timer wheel.
             (false, None) => (),
@@ -1733,26 +1834,39 @@ where
                 let timer = timer_wheel.schedule(
                     MiniArc::clone(entry.entry_info()),
                     MiniArc::clone(entry.deq_nodes()),
+                    current_expiry_gen,
                 );
-                entry.set_timer_node(timer);
+                entry.set_timer_node(timer, current_expiry_gen);
             }
             // Reschedule the cache entry in the timer wheel; the cache entry has an
             // expiration time and already registered to the timer wheel.
             (true, Some(tn)) => {
-                let result = timer_wheel.reschedule(tn);
-                if let ReschedulingResult::Removed(removed_tn) = result {
-                    // The timer node was removed from the timer wheel because the
-                    // expiration time has been unset by other thread after we
-                    // checked.
-                    entry.set_timer_node(None);
-                    drop(removed_tn);
+                // Reschedule with generation validation to prevent use-after-free
+                match timer_wheel.reschedule(tn, expected_expiry_gen) {
+                    Some(ReschedulingResult::Removed(removed_tn)) => {
+                        // The timer node was removed from the timer wheel because the
+                        // expiration time has been unset by other thread after we
+                        // checked.
+                        entry.set_timer_node(None, current_expiry_gen);
+                        drop(removed_tn);
+                    }
+                    Some(ReschedulingResult::Rescheduled) => {
+                        // Successfully rescheduled, nothing to do.
+                    }
+                    None => {
+                        // The timer node was invalid (stale - expiry gen mismatch).
+                        // Clear the timer_node to prevent further issues.
+                        entry.set_timer_node(None, current_expiry_gen);
+                    }
                 }
             }
             // Unregister the cache entry from the timer wheel; the cache entry has
             // no expiration time but registered to the timer wheel.
             (false, Some(tn)) => {
-                entry.set_timer_node(None);
-                timer_wheel.deschedule(tn);
+                entry.set_timer_node(None, current_expiry_gen);
+                // Returns false if the node was stale, but we've already
+                // cleared timer_node above, so we can ignore the return value.
+                let _ = timer_wheel.deschedule(tn, expected_expiry_gen);
             }
         }
     }
@@ -1764,8 +1878,12 @@ where
         gen: Option<u16>,
         counters: &mut EvictionCounters,
     ) {
-        if let Some(timer_node) = entry.take_timer_node() {
-            timer_wheel.deschedule(timer_node);
+        // Take the timer node along with its stored expiry generation for validation.
+        let (timer_node, expiry_gen) = entry.take_timer_node();
+        if let Some(tn) = timer_node {
+            // Returns false if the node was stale, but we've already
+            // taken (cleared) the timer_node, so we can ignore the return value.
+            let _ = timer_wheel.deschedule(tn, expiry_gen);
         }
         Self::handle_remove_without_timer_wheel(deqs, entry, gen, counters);
     }
@@ -1776,6 +1894,14 @@ where
         gen: Option<u16>,
         counters: &mut EvictionCounters,
     ) {
+        // Precondition: the caller has already retired the entry (removed it
+        // from the CHT via `cht_remove_if_and_retire` or produced a
+        // `WriteOp::Remove` from `Inner::remove_entry`, which retires).
+        debug_assert!(
+            entry.entry_info().is_retired(),
+            "handle_remove_without_timer_wheel called on an Alive entry",
+        );
+
         if entry.is_admitted() {
             entry.set_admitted(false);
             counters.saturating_sub(1, entry.policy_weight());
@@ -1798,8 +1924,19 @@ where
         entry: MiniArc<ValueEntry<K, V>>,
         counters: &mut EvictionCounters,
     ) {
-        if let Some(timer) = entry.take_timer_node() {
-            timer_wheel.deschedule(timer);
+        // Precondition: the caller has already retired the entry.
+        debug_assert!(
+            entry.entry_info().is_retired(),
+            "handle_remove_with_deques called on an Alive entry",
+        );
+
+        // Take the timer node along with its stored expiry generation for validation.
+        let (timer_node, expiry_gen) = entry.take_timer_node();
+        if let Some(timer) = timer_node {
+            // Deschedule with generation validation to prevent use-after-free.
+            // Returns false if the node was stale, but we've already
+            // taken (cleared) the timer_node, so we can ignore the return value.
+            let _ = timer_wheel.deschedule(timer, expiry_gen);
         }
         if entry.is_admitted() {
             entry.set_admitted(false);
@@ -1857,7 +1994,7 @@ where
                 let _klg = &kl.as_ref().map(|kl| kl.lock());
 
                 // Remove the key from the map only when the entry is really expired.
-                let maybe_entry = self.cache.remove_if(
+                let maybe_entry = self.cht_remove_if_and_retire(
                     hash,
                     |k| k == key,
                     |_, v| is_expired_by_per_entry_ttl(v.entry_info(), now),
@@ -1977,7 +2114,7 @@ where
             // expired. This check is needed because it is possible that the entry in
             // the map has been updated or deleted but its deque node we checked
             // above has not been updated yet.
-            let maybe_entry = self.cache.remove_if(
+            let maybe_entry = self.cht_remove_if_and_retire(
                 hash,
                 |k| k == &key,
                 |_, v| is_expired_entry_ao(tti, va, v, now),
@@ -2104,7 +2241,7 @@ where
             let kl = self.maybe_key_lock(&key);
             let _klg = &kl.as_ref().map(|kl| kl.lock());
 
-            let maybe_entry = self.cache.remove_if(
+            let maybe_entry = self.cht_remove_if_and_retire(
                 hash,
                 |k| k == &key,
                 |_, v| is_expired_entry_wo(ttl, va, v, now),
@@ -2247,7 +2384,7 @@ where
             let kl = self.maybe_key_lock(&key);
             let _klg = &kl.as_ref().map(|kl| kl.lock());
 
-            let maybe_entry = self.cache.remove_if(
+            let maybe_entry = self.cht_remove_if_and_retire(
                 hash,
                 |k| k == &key,
                 |_, v| {
@@ -2388,7 +2525,7 @@ where
 /// Returns `true` if this entry is expired by its per-entry TTL.
 #[inline]
 fn is_expired_by_per_entry_ttl<K>(entry_info: &MiniArc<EntryInfo<K>>, now: Instant) -> bool {
-    if let Some(ts) = entry_info.expiration_time() {
+    if let Some(ts) = entry_info.expiration_state().0 {
         ts <= now
     } else {
         false
@@ -2599,6 +2736,36 @@ mod tests {
             };
         }
 
+        /// Helper function to compare Duration values with tolerance for precision loss.
+        /// Due to precision loss from bit packing (lower 12 bits cleared), durations may be
+        /// off by up to ~4 microseconds.
+        fn assert_duration_approx_eq(
+            actual: Option<Duration>,
+            expected: Option<Duration>,
+            caller_line: u32,
+        ) {
+            const TOLERANCE: Duration = Duration::from_micros(10);
+            match (actual, expected) {
+                (Some(a), Some(e)) => {
+                    let diff = if a > e { a - e } else { e - a };
+                    assert!(
+                        diff < TOLERANCE,
+                        "Mismatched `current_duration`s. line: {}\n  left: {:?}\n right: {:?}",
+                        caller_line,
+                        a,
+                        e
+                    );
+                }
+                _ => {
+                    assert_eq!(
+                        actual, expected,
+                        "Mismatched `current_duration`s. line: {}",
+                        caller_line
+                    );
+                }
+            }
+        }
+
         macro_rules! assert_expiry {
             ($cache:ident, $key:ident, $hash:ident, $mock:ident, $duration_secs:expr) => {
                 // Increment the time.
@@ -2780,11 +2947,10 @@ mod tests {
                             "current_time",
                             caller_line
                         );
-                        assert_params_eq!(
+                        assert_duration_approx_eq(
                             actual_current_duration,
                             current_duration_secs.map(Duration::from_secs),
-                            "current_duration",
-                            caller_line
+                            caller_line,
                         );
                         assert_params_eq!(
                             actual_last_modified_at,
@@ -2831,11 +2997,10 @@ mod tests {
                             "current_time",
                             caller_line
                         );
-                        assert_params_eq!(
+                        assert_duration_approx_eq(
                             actual_current_duration,
                             current_duration_secs.map(Duration::from_secs),
-                            "current_duration",
-                            caller_line
+                            caller_line,
                         );
                         new_duration_secs.map(Duration::from_secs)
                     }
@@ -3290,5 +3455,204 @@ mod tests {
         cache.inner.run_pending_tasks(None, 1, 10);
 
         assert_expiry!(cache, key, hash, mock, 4);
+    }
+
+    // =====================================================================
+    // Reproduction tests for issue #590 (sync mirror of the future tests;
+    // see the race narrative in the `gh590` test module of
+    // `src/future/base_cache.rs`).
+    // The issue was reported for `future::Cache`; these verify whether the
+    // same structural race reproduces in `sync::Cache` (it does).
+    // =====================================================================
+    mod gh590 {
+        use super::super::BaseCache;
+        use crate::common::concurrent::WriteOp;
+        use crate::{
+            common::{time::Clock, HousekeeperConfig},
+            policy::{EvictionPolicy, ExpirationPolicy},
+        };
+        use std::collections::hash_map::RandomState;
+        use std::sync::Arc;
+
+        const MAX: u64 = 4;
+
+        fn new_lru_cache() -> BaseCache<u32, u32> {
+            let mut cache = BaseCache::<u32, u32>::new(
+                None,
+                Some(MAX),
+                None,
+                RandomState::default(),
+                None,
+                EvictionPolicy::lru(),
+                None,
+                ExpirationPolicy::default(),
+                HousekeeperConfig::default(),
+                false,
+                Clock::default(),
+            );
+            cache.reconfigure_for_testing();
+            cache
+        }
+
+        fn insert(cache: &BaseCache<u32, u32>, k: u32, v: u32) {
+            let hash = cache.hash(&k);
+            let (op, _now) = cache.do_insert_with_hash(Arc::new(k), hash, v);
+            cache.write_op_ch.send(op).expect("send upsert");
+        }
+
+        fn run(cache: &BaseCache<u32, u32>) {
+            cache.inner.do_run_pending_tasks(None, 1, 10);
+        }
+
+        fn probe(op: &WriteOp<u32, u32>) -> (bool, bool, u16) {
+            match op {
+                WriteOp::Upsert { value_entry, .. } => {
+                    let ei = value_entry.entry_info();
+                    (ei.is_admitted(), ei.is_dirty(), ei.entry_gen())
+                }
+                _ => panic!("expected an Upsert WriteOp"),
+            }
+        }
+
+        fn queue_remove(cache: &BaseCache<u32, u32>, k: u32, hash: u64) {
+            let kv = cache.remove_entry(&k, hash).expect("remove_entry");
+            let entry_gen = kv.entry.entry_info().incr_entry_gen();
+            cache
+                .write_op_ch
+                .send(WriteOp::Remove {
+                    kv_entry: kv,
+                    entry_gen,
+                })
+                .expect("send remove");
+        }
+
+        // PRIMARY REPRO: at 7006d8c this test FAILS with the stall assertion.
+        #[test]
+        fn sync_lru_zombie_stall_repro() {
+            let cache = new_lru_cache();
+            let k: u32 = 0;
+            let hash_k = cache.hash(&k);
+
+            insert(&cache, k, 1);
+            run(&cache);
+            assert!(cache.contains_key_with_hash(&k, hash_k));
+            assert_eq!(cache.entry_count(), 1);
+
+            // t2: update K, HOLD the stale WriteOp (A2).
+            let (a2, _now) = cache.do_insert_with_hash(Arc::new(k), hash_k, 100);
+            let (adm, dirty, eg) = probe(&a2);
+            eprintln!("[t2] held A2: is_admitted={adm} is_dirty={dirty} entry_gen={eg}");
+
+            // t3: flip is_admitted -> false via an explicit remove while A2 waits.
+            queue_remove(&cache, k, hash_k);
+            run(&cache);
+            assert!(!cache.contains_key_with_hash(&k, hash_k));
+            let (adm, _dirty, _eg) = probe(&a2);
+            assert!(!adm, "EntryInfo_A must be de-admitted");
+
+            // t4: drain the STALE A2 -> zombie node for the defunct EntryInfo_A.
+            cache.write_op_ch.send(a2).expect("send stale A2");
+            run(&cache);
+            eprintln!(
+                "[t4] entry_count={} contains(K)={}",
+                cache.entry_count(),
+                cache.contains_key_with_hash(&k, hash_k)
+            );
+
+            // t5: re-insert K -> live node, so skip_updated_entry_ao can never
+            // reach the zombie.
+            insert(&cache, k, 2);
+            run(&cache);
+
+            for nk in 100u32..150 {
+                insert(&cache, nk, nk);
+                run(&cache);
+            }
+
+            let before = cache.entry_count();
+            for _ in 0..20 {
+                run(&cache);
+            }
+            let after = cache.entry_count();
+            eprintln!("[final] before={before} after={after} MAX={MAX}");
+
+            assert_eq!(before, after, "count must be stable across no-op drains");
+            assert!(
+                after <= MAX,
+                "STALL (issue #590, sync): entry_count={after} stays above max_capacity={MAX}"
+            );
+        }
+
+        // CONTROL: correct ordering, must PASS.
+        #[test]
+        fn sync_lru_zombie_stall_control() {
+            let cache = new_lru_cache();
+            let k: u32 = 0;
+            let hash_k = cache.hash(&k);
+
+            insert(&cache, k, 1);
+            run(&cache);
+
+            let (a2, _now) = cache.do_insert_with_hash(Arc::new(k), hash_k, 100);
+            cache.write_op_ch.send(a2).expect("send A2");
+            run(&cache);
+
+            queue_remove(&cache, k, hash_k);
+            run(&cache);
+            assert!(!cache.contains_key_with_hash(&k, hash_k));
+
+            insert(&cache, k, 2);
+            run(&cache);
+            for nk in 100u32..150 {
+                insert(&cache, nk, nk);
+                run(&cache);
+            }
+            let before = cache.entry_count();
+            for _ in 0..20 {
+                run(&cache);
+            }
+            let after = cache.entry_count();
+            eprintln!("[control final] before={before} after={after} MAX={MAX}");
+            assert!(
+                after <= MAX,
+                "control must converge but entry_count={after} > {MAX}"
+            );
+        }
+
+        // DIAGNOSTIC: capacity eviction skips the dirty node; must PASS.
+        #[test]
+        fn sync_lru_capacity_eviction_skips_dirty_node_diag() {
+            let cache = new_lru_cache();
+            let k: u32 = 0;
+            let hash_k = cache.hash(&k);
+
+            insert(&cache, k, 1);
+            run(&cache);
+
+            let (a2, _now) = cache.do_insert_with_hash(Arc::new(k), hash_k, 100);
+            let (_adm, dirty_after_update, _eg) = probe(&a2);
+
+            for nk in 1u32..=4 {
+                insert(&cache, nk, nk);
+            }
+            run(&cache);
+
+            let still_present = cache.contains_key_with_hash(&k, hash_k);
+            let (adm_after, _d, _e) = probe(&a2);
+            eprintln!(
+                "[cap-diag] dirty_after_update={dirty_after_update} K_present={still_present} \
+                 K_is_admitted={adm_after} entry_count={}",
+                cache.entry_count()
+            );
+            assert!(
+                dirty_after_update,
+                "a held update must leave the node dirty"
+            );
+            assert!(
+                still_present,
+                "capacity eviction skips the dirty node, K survives (t3 cannot happen this way)"
+            );
+            assert!(adm_after, "K remains admitted because it was never evicted");
+        }
     }
 }

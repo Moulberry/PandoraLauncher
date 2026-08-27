@@ -1,3 +1,7 @@
+// The whole module is already deprecated (see `gvariant` in `lib.rs`); every item here
+// necessarily references its now-deprecated siblings.
+#![allow(deprecated)]
+
 use serde::de::{self, DeserializeSeed, EnumAccess, MapAccess, SeqAccess, Visitor};
 
 use std::{marker::PhantomData, str};
@@ -638,6 +642,11 @@ impl<'d, 'de, 'sig, 'f, #[cfg(unix)] F: AsFd, #[cfg(not(unix))] F> MapAccess<'de
         self.de.0.pos += de.0.pos;
         // No need for retaking the container depths as the value can't be incomplete.
 
+        // A fixed-sized dictionary entry should be padded to its alignment.
+        if self.offsets.is_none() {
+            self.de.0.parse_padding(self.element_alignment)?;
+        }
+
         if let Some(key_offset_size) = self.key_offset_size {
             self.de.0.pos += key_offset_size as usize;
         }
@@ -717,7 +726,7 @@ impl<'d, 'de, 'sig, 'f, #[cfg(unix)] F: AsFd, #[cfg(not(unix))] F> SeqAccess<'de
         let signature = self.de.0.signature;
         let field_signature = match signature {
             Signature::Structure(fields) => {
-                let signature = fields.iter().nth(self.field_idx).ok_or_else(|| {
+                let signature = fields.get(self.field_idx).ok_or_else(|| {
                     Error::SignatureMismatch(signature.clone(), "a struct".to_string())
                 })?;
                 self.field_idx += 1;
@@ -768,6 +777,12 @@ impl<'d, 'de, 'sig, 'f, #[cfg(unix)] F: AsFd, #[cfg(not(unix))] F> SeqAccess<'de
         if self.field_idx == self.num_fields {
             // All fields have been deserialized.
             self.de.0.container_depths = self.de.0.container_depths.dec_structure();
+
+            if self.de.0.signature.is_fixed_sized() {
+                debug_assert_eq!(self.offsets_len, 0);
+                let alignment = self.de.0.signature.alignment(Format::GVariant);
+                self.de.0.parse_padding(alignment)?;
+            }
 
             // Skip over the framing offsets (if any)
             self.de.0.pos += self.offsets_len;

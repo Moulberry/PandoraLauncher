@@ -119,7 +119,10 @@ macro_rules! cascade {
             $year += 1;
         } else if crate::hint::unlikely($ordinal < 1) {
             $year -= 1;
-            $ordinal += crate::util::range_validated::days_in_year($year).cast_signed();
+            // The year may now be out of range if it was previously `MIN_YEAR`. This macro arm is
+            // only called in situations where this is possible, so branching on where this is a
+            // possibility is not necessary.
+            $ordinal += crate::util::days_in_year($year).cast_signed();
         }
     };
 }
@@ -182,7 +185,7 @@ macro_rules! const_try {
 /// Try to unwrap an expression, returning if not possible.
 ///
 /// This is identical to `?` in terms of behavior, but marks the error path as cold.
-#[cfg(any(feature = "formatting", feature = "parsing"))]
+#[cfg(any(feature = "formatting", feature = "parsing", feature = "serde"))]
 macro_rules! try_likely_ok {
     ($e:expr) => {
         match $e {
@@ -211,16 +214,22 @@ macro_rules! const_try_opt {
 }
 
 /// `unreachable!()`, but better.
-#[cfg(any(feature = "formatting", feature = "parsing"))]
 macro_rules! bug {
     () => {
         compile_error!("provide an error message to help fix a possible bug")
     };
-    ($descr:literal) => {
+    ($descr:literal) => {{
+        $crate::hint::cold_path();
         panic!(concat!("internal error: ", $descr))
-    };
+    }};
 }
 
-#[cfg(any(feature = "formatting", feature = "parsing"))]
-pub(crate) use {bug, try_likely_ok};
-pub(crate) use {carry, cascade, const_try, const_try_opt, div_floor, ensure_ranged};
+pub(crate) use bug;
+pub(crate) use carry;
+pub(crate) use cascade;
+pub(crate) use const_try;
+pub(crate) use const_try_opt;
+pub(crate) use div_floor;
+pub(crate) use ensure_ranged;
+#[cfg(any(feature = "formatting", feature = "parsing", feature = "serde"))]
+pub(crate) use try_likely_ok;

@@ -106,3 +106,9 @@ pub fn BIO_get_mem_data(b: *mut BIO, pp: *mut *mut c_char) -> c_long {
 pub fn init() {
     unsafe { CRYPTO_library_init() }
 }
+
+/// Always `0`: `aws-lc-sys` does not track an AWS-LC FIPS release branch.
+#[must_use]
+pub const fn fips_version() -> u32 {
+    0
+}

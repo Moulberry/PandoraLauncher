@@ -67,6 +67,16 @@ pub trait Format<T> {
     const FORMAT: T;
 }
 
+/// A trait for tables that contain offsets to subtables of heterogeneous types.
+///
+/// The type of the subtable is determiend by an inline discriminant; this trait
+/// reads that discriminant.
+pub trait Discriminant {
+    /// Read the discriminant for this table.
+    // Currently these are always u16, we can switch to an associated type if needed
+    fn read_discriminant(data: FontData<'_>) -> Result<u16, ReadError>;
+}
+
 /// A type that can compute its size at runtime, based on some input.
 ///
 /// For types with a constant size, see [`FixedSize`] and
@@ -153,8 +163,7 @@ impl std::fmt::Display for ReadError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for ReadError {}
+impl core::error::Error for ReadError {}
 
 #[cfg(test)]
 mod tests {

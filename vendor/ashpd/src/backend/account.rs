@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use crate::{
-    AppID, WindowIdentifierType,
+    MaybeAppID, WindowIdentifierType,
     backend::{
         Result,
         request::{Request, RequestImpl},
@@ -22,7 +22,7 @@ pub trait AccountImpl: RequestImpl {
     async fn get_user_information(
         &self,
         token: HandleToken,
-        app_id: Option<AppID>,
+        app_id: Option<MaybeAppID>,
         window_identifier: Option<WindowIdentifierType>,
         options: UserInformationOptions,
     ) -> Result<UserInformation>;
@@ -56,7 +56,7 @@ impl AccountInterface {
     async fn get_user_information(
         &self,
         handle: OwnedObjectPath,
-        app_id: Optional<AppID>,
+        app_id: Optional<MaybeAppID>,
         window_identifier: Optional<WindowIdentifierType>,
         options: UserInformationOptions,
     ) -> Result<Response<UserInformation>> {

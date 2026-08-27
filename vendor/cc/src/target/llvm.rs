@@ -21,6 +21,13 @@ impl TargetInfo<'_> {
         if rustc_target == "armv7-apple-ios" {
             // FIXME(madsmtm): Unnecessary once we bump MSRV to Rust 1.74
             return Cow::Borrowed("armv7-apple-ios");
+        } else if rustc_target == "aarch64-unknown-linux-pauthtest" {
+            // `aarch64-unknown-linux-pauthtest` rustc target sets both
+            // environment and abi (to `musl` and `pauthtest` respectively`).
+            // However, the abi field exists mainly for `cfg(...)` evaluation in
+            // Rust, not for generating the actual LLVM triple. The logic of:
+            // `arch-vendor-os-env+abi` does not applay here.
+            return Cow::Borrowed("aarch64-unknown-linux-pauthtest");
         } else if self.os == "uefi" {
             // Override the UEFI LLVM targets.
             //
@@ -83,8 +90,8 @@ impl TargetInfo<'_> {
             "visionos" => "xros",
             "uefi" => "windows",
             "solid_asp3" | "horizon" | "teeos" | "nuttx" | "espidf" => "none",
-            "nto" => "unknown",    // FIXME
-            "trusty" => "unknown", // FIXME
+            "qnx" | "nto" => "unknown", // LLVM doesn't know about QNX
+            "trusty" => "unknown",      // FIXME
             os => os,
         };
         let version = version.unwrap_or("");
@@ -111,6 +118,7 @@ impl TargetInfo<'_> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use std::process::Command;
 
@@ -267,6 +275,7 @@ mod tests {
     #[test]
     #[ignore = "not yet done"]
     fn llvm_for_all_rustc_targets() {
+        #[allow(clippy::disallowed_methods)]
         let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
 
         let target_list = Command::new(&rustc)

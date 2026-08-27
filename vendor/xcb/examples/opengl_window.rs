@@ -78,6 +78,10 @@ fn get_glxfbconfig(
     }
 }
 
+fn raw_dpy(conn: &xcb::Connection) -> *mut xlib::Display {
+    conn.get_raw_dpy() as *mut xlib::Display
+}
+
 fn main() -> xcb::Result<()> {
     let (conn, screen_num) =
         xcb::Connection::connect_with_xlib_display_and_extensions(&[], &[xcb::Extension::Dri2])?;
@@ -91,7 +95,7 @@ fn main() -> xcb::Result<()> {
     assert!(glx_ver.major_version() >= 1 && glx_ver.minor_version() >= 3);
 
     let fbc = get_glxfbconfig(
-        conn.get_raw_dpy(),
+        raw_dpy(&conn),
         screen_num,
         &[
             GLX_X_RENDERABLE,
@@ -120,8 +124,7 @@ fn main() -> xcb::Result<()> {
         ],
     );
 
-    let vi_ptr: *mut xlib::XVisualInfo =
-        unsafe { glXGetVisualFromFBConfig(conn.get_raw_dpy(), fbc) };
+    let vi_ptr: *mut xlib::XVisualInfo = unsafe { glXGetVisualFromFBConfig(raw_dpy(&conn), fbc) };
     let vi = unsafe { *vi_ptr };
 
     // retrieving a few atoms
@@ -198,13 +201,12 @@ fn main() -> xcb::Result<()> {
     conn.check_request(conn.send_request_checked(&x::MapWindow { window: win }))?;
 
     unsafe {
-        xlib::XSync(conn.get_raw_dpy(), xlib::False);
+        xlib::XSync(raw_dpy(&conn), xlib::False);
     }
 
-    let glx_exts =
-        unsafe { CStr::from_ptr(glXQueryExtensionsString(conn.get_raw_dpy(), screen_num)) }
-            .to_str()
-            .unwrap();
+    let glx_exts = unsafe { CStr::from_ptr(glXQueryExtensionsString(raw_dpy(&conn), screen_num)) }
+        .to_str()
+        .unwrap();
 
     if !check_glx_extension(&glx_exts, "GLX_ARB_create_context") {
         panic!("could not find GLX extension GLX_ARB_create_context");
@@ -241,7 +243,7 @@ fn main() -> xcb::Result<()> {
     ];
     let ctx = unsafe {
         glx_create_context_attribs(
-            conn.get_raw_dpy(),
+            raw_dpy(&conn),
             fbc,
             ptr::null_mut(),
             xlib::True,
@@ -252,7 +254,7 @@ fn main() -> xcb::Result<()> {
     conn.flush()?;
 
     unsafe {
-        xlib::XSync(conn.get_raw_dpy(), xlib::False);
+        xlib::XSync(raw_dpy(&conn), xlib::False);
         xlib::XSetErrorHandler(std::mem::transmute(old_handler));
     }
 
@@ -260,7 +262,7 @@ fn main() -> xcb::Result<()> {
         panic!("error when creating gl-3.0 context");
     }
 
-    if unsafe { glXIsDirect(conn.get_raw_dpy(), ctx) } == 0 {
+    if unsafe { glXIsDirect(raw_dpy(&conn), ctx) } == 0 {
         panic!("obtained indirect rendering context")
     }
 
@@ -269,13 +271,13 @@ fn main() -> xcb::Result<()> {
 
         match conn.wait_for_event()? {
             xcb::Event::X(x::Event::Expose(_)) => unsafe {
-                glXMakeCurrent(conn.get_raw_dpy(), win.resource_id() as xlib::XID, ctx);
+                glXMakeCurrent(raw_dpy(&conn), win.resource_id() as xlib::XID, ctx);
                 gl::ClearColor(0.5f32, 0.5f32, 1.0f32, 1.0f32);
                 gl::Clear(gl::COLOR_BUFFER_BIT);
                 gl::Flush();
                 check_gl_error();
-                glXSwapBuffers(conn.get_raw_dpy(), win.resource_id() as xlib::XID);
-                glXMakeCurrent(conn.get_raw_dpy(), 0, ptr::null_mut());
+                glXSwapBuffers(raw_dpy(&conn), win.resource_id() as xlib::XID);
+                glXMakeCurrent(raw_dpy(&conn), 0, ptr::null_mut());
             },
             xcb::Event::X(x::Event::KeyPress(_ev)) => {}
             xcb::Event::X(x::Event::ClientMessage(ev)) => {
@@ -308,7 +310,7 @@ fn main() -> xcb::Result<()> {
     }
 
     unsafe {
-        glXDestroyContext(conn.get_raw_dpy(), ctx);
+        glXDestroyContext(raw_dpy(&conn), ctx);
     }
 
     conn.send_request(&x::UnmapWindow { window: win });
@@ -322,12 +324,12 @@ fn main() -> xcb::Result<()> {
 unsafe fn rewire_event(conn: &xcb::Connection, raw_ev: *mut xcb_generic_event_t) {
     let ev_type = ((*raw_ev).response_type & 0x7f) as i32;
 
-    if let Some(proc) = xlib::XESetWireToEvent(conn.get_raw_dpy(), ev_type, None) {
-        xlib::XESetWireToEvent(conn.get_raw_dpy(), ev_type, Some(proc));
-        (*raw_ev).sequence = xlib::XLastKnownRequestProcessed(conn.get_raw_dpy()) as u16;
+    if let Some(proc) = xlib::XESetWireToEvent(raw_dpy(conn), ev_type, None) {
+        xlib::XESetWireToEvent(raw_dpy(conn), ev_type, Some(proc));
+        (*raw_ev).sequence = xlib::XLastKnownRequestProcessed(raw_dpy(conn)) as u16;
         let mut dummy: xlib::XEvent = std::mem::zeroed();
         proc(
-            conn.get_raw_dpy(),
+            raw_dpy(conn),
             &mut dummy as *mut xlib::XEvent,
             raw_ev as *mut xlib::xEvent,
         );

@@ -219,11 +219,91 @@ tuple! {
 mod alloc_support {
     use super::*;
 
-    use crate::std::vec::Vec;
+    use crate::std::{
+        collections::{BTreeSet, BinaryHeap, LinkedList, VecDeque},
+        vec::Vec,
+    };
 
     impl<T: Value> Value for Vec<T> {
         fn stream<'a, S: Stream<'a> + ?Sized>(&'a self, stream: &mut S) -> Result {
             (&**self).stream(stream)
+        }
+    }
+
+    impl<T: Value> Value for BTreeSet<T> {
+        fn stream<'a, S: Stream<'a> + ?Sized>(&'a self, stream: &mut S) -> Result {
+            stream.seq_begin(Some(self.len()))?;
+
+            for elem in self {
+                stream.seq_value_begin()?;
+                stream.value(elem)?;
+                stream.seq_value_end()?;
+            }
+
+            stream.seq_end()
+        }
+    }
+
+    impl<T: Value> Value for VecDeque<T> {
+        fn stream<'a, S: Stream<'a> + ?Sized>(&'a self, stream: &mut S) -> Result {
+            stream.seq_begin(Some(self.len()))?;
+
+            for elem in self {
+                stream.seq_value_begin()?;
+                stream.value(elem)?;
+                stream.seq_value_end()?;
+            }
+
+            stream.seq_end()
+        }
+    }
+
+    impl<T: Value> Value for LinkedList<T> {
+        fn stream<'a, S: Stream<'a> + ?Sized>(&'a self, stream: &mut S) -> Result {
+            stream.seq_begin(Some(self.len()))?;
+
+            for elem in self {
+                stream.seq_value_begin()?;
+                stream.value(elem)?;
+                stream.seq_value_end()?;
+            }
+
+            stream.seq_end()
+        }
+    }
+
+    impl<T: Value> Value for BinaryHeap<T> {
+        fn stream<'a, S: Stream<'a> + ?Sized>(&'a self, stream: &mut S) -> Result {
+            stream.seq_begin(Some(self.len()))?;
+
+            for elem in self {
+                stream.seq_value_begin()?;
+                stream.value(elem)?;
+                stream.seq_value_end()?;
+            }
+
+            stream.seq_end()
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+mod std_support {
+    use super::*;
+
+    use crate::std::{collections::HashSet, hash::BuildHasher};
+
+    impl<T: Value, H: BuildHasher> Value for HashSet<T, H> {
+        fn stream<'a, S: Stream<'a> + ?Sized>(&'a self, stream: &mut S) -> Result {
+            stream.seq_begin(Some(self.len()))?;
+
+            for elem in self {
+                stream.seq_value_begin()?;
+                stream.value(elem)?;
+                stream.seq_value_end()?;
+            }
+
+            stream.seq_end()
         }
     }
 }

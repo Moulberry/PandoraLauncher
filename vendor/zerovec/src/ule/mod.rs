@@ -35,7 +35,10 @@ pub use niche::{NicheBytes, NichedOption, NichedOptionULE};
 pub use option::{OptionULE, OptionVarULE};
 pub use plain::RawBytesULE;
 
-use core::{any, fmt, mem, slice};
+use core::{any, fmt, slice};
+
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
 
 /// Fixed-width, byte-aligned data that can be cast to and from a little-endian byte slice.
 ///
@@ -100,7 +103,7 @@ where
     /// means that the returned slice can span the entire byte slice.
     fn parse_bytes_to_slice(bytes: &[u8]) -> Result<&[Self], UleError> {
         Self::validate_bytes(bytes)?;
-        debug_assert_eq!(bytes.len() % mem::size_of::<Self>(), 0);
+        debug_assert_eq!(bytes.len() % size_of::<Self>(), 0);
         Ok(unsafe { Self::slice_from_bytes_unchecked(bytes) })
     }
 
@@ -131,9 +134,9 @@ where
     #[inline]
     unsafe fn slice_from_bytes_unchecked(bytes: &[u8]) -> &[Self] {
         let data = bytes.as_ptr();
-        let len = bytes.len() / mem::size_of::<Self>();
-        debug_assert_eq!(bytes.len() % mem::size_of::<Self>(), 0);
-        core::slice::from_raw_parts(data as *const Self, len)
+        let len = bytes.len() / size_of::<Self>();
+        debug_assert_eq!(bytes.len() % size_of::<Self>(), 0);
+        slice::from_raw_parts(data as *const Self, len)
     }
 
     /// Given `&[Self]`, returns a `&[u8]` with the same lifetime.
@@ -148,9 +151,7 @@ where
     /// Keep in mind that `&[Self]` and `&[u8]` may have different lengths.
     #[inline]
     fn slice_as_bytes(slice: &[Self]) -> &[u8] {
-        unsafe {
-            slice::from_raw_parts(slice as *const [Self] as *const u8, mem::size_of_val(slice))
-        }
+        unsafe { slice::from_raw_parts(slice as *const [Self] as *const u8, size_of_val(slice)) }
     }
 }
 
@@ -224,7 +225,7 @@ where
         // is equivalent to the byte sequence of &[T::ULE] by the contract of EqULE,
         // and &[T::ULE] has equal or looser alignment than &[T].
         let ule_slice =
-            unsafe { core::slice::from_raw_parts(slice.as_ptr() as *const Self::ULE, slice.len()) };
+            unsafe { slice::from_raw_parts(slice.as_ptr() as *const Self::ULE, slice.len()) };
         Some(ule_slice)
     }
 }
@@ -315,7 +316,7 @@ pub unsafe trait VarULE: 'static {
     fn parse_bytes(bytes: &[u8]) -> Result<&Self, UleError> {
         Self::validate_bytes(bytes)?;
         let result = unsafe { Self::from_bytes_unchecked(bytes) };
-        debug_assert_eq!(mem::size_of_val(result), mem::size_of_val(bytes));
+        debug_assert_eq!(size_of_val(result), size_of_val(bytes));
         Ok(result)
     }
 
@@ -351,25 +352,20 @@ pub unsafe trait VarULE: 'static {
     /// pointer to the correct type.
     #[inline]
     fn as_bytes(&self) -> &[u8] {
-        unsafe { slice::from_raw_parts(self as *const Self as *const u8, mem::size_of_val(self)) }
+        unsafe { slice::from_raw_parts(self as *const Self as *const u8, size_of_val(self)) }
     }
 
     /// Allocate on the heap as a `Box<T>`
+    ///
+    /// ✨ *Enabled with the `alloc` Cargo feature.*
     #[inline]
     #[cfg(feature = "alloc")]
-    fn to_boxed(&self) -> alloc::boxed::Box<Self> {
+    fn to_boxed(&self) -> Box<Self> {
         use alloc::borrow::ToOwned;
-        use alloc::boxed::Box;
-        use core::alloc::Layout;
-        let bytesvec = self.as_bytes().to_owned().into_boxed_slice();
-        let bytesvec = mem::ManuallyDrop::new(bytesvec);
-        unsafe {
-            // Get the pointer representation
-            let ptr: *mut Self = Self::from_bytes_unchecked(&bytesvec) as *const Self as *mut Self;
-            assert_eq!(Layout::for_value(&*ptr), Layout::for_value(&**bytesvec));
-            // Transmute the pointer to an owned pointer
-            Box::from_raw(ptr)
-        }
+        let bytes = self.as_bytes().to_owned().into_boxed_slice();
+        // SAFETY:
+        // - Self::from_bytes_unchecked is safe because the bytes came from self.as_bytes() which is valid.
+        unsafe { cast_box(bytes) }
     }
 }
 
@@ -448,3 +444,50 @@ impl UleError {
 }
 
 impl core::error::Error for UleError {}
+
+#[cfg(feature = "alloc")]
+/// Reconstructs a `Box<T>` from a `Box<[u8]>` while preserving unique pointer provenance
+/// and correctly resolving DST metadata.
+///
+/// This is an internal helper used to safely convert a heap-allocated byte buffer
+/// into an owned `Box<T>` where `T` is an unsized `VarULE` type.
+///
+/// ### Why this is needed
+///
+/// Reconstructing a `Box<T>` is tricky because:
+/// 1. **Provenance**: If we derive the pointer from a temporary shared reference (e.g., `&[u8]`),
+///    Miri/Stacked Borrows will tag the pointer as `SharedReadOnly`. Reclaiming unique ownership
+///    and deallocating through a pointer with shared provenance is Undefined Behavior. To avoid this,
+///    we must derive the final pointer directly from `Box::into_raw` (which carries `Unique` provenance).
+/// 2. **DST Metadata**: Unsized types (like `VarTupleULE`) may have custom metadata that is *not*
+///    simply the byte length of the allocation. We must use `T::from_bytes_unchecked` to construct
+///    a reference with the correct metadata, and then combine that metadata with the unique thin
+///    pointer from `Box::into_raw` without clobbering the provenance.
+///
+/// ### Safety
+///
+/// - `T::from_bytes_unchecked` must be safe to call on the slice behind bytes
+pub(crate) unsafe fn cast_box<T: VarULE + ?Sized>(bytes: Box<[u8]>) -> Box<T> {
+    use core::alloc::Layout;
+    let raw = Box::into_raw(bytes);
+    // SAFETY: we just produced `raw`; it is valid
+    let slice: &[u8] = unsafe { &*raw };
+    // SAFETY: caller guarantees `from_bytes_unchecked` is safe.
+    let ref_t: &T = unsafe { T::from_bytes_unchecked(slice) };
+
+    // Extract metadata from ref_t.
+    debug_assert_eq!(size_of::<&T>(), size_of::<(*const u8, usize)>());
+    let (_, metadata) = unsafe { core::mem::transmute_copy::<&T, (*const u8, usize)>(&ref_t) };
+
+    // Construct *mut T from (raw_data_ptr, metadata).
+    debug_assert_eq!(size_of::<*mut T>(), size_of::<(*mut u8, usize)>());
+    let ptr: *mut T = unsafe {
+        core::mem::transmute_copy::<(*mut u8, usize), *mut T>(&(raw.cast::<u8>(), metadata))
+    };
+
+    let expected_layout = Layout::for_value(slice);
+    // SAFETY: ptr was reconstructed with the correct metadata and the unique pointer from Box::into_raw.
+    let boxed = unsafe { Box::from_raw(ptr) };
+    assert_eq!(Layout::for_value(&*boxed), expected_layout);
+    boxed
+}

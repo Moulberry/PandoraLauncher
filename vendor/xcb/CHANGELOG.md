@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] -  - various authors
 
+## [1.7.1] - 2026-08-09 - Sachin-Bath
+### Fixed
+ - Update dependencies and modernize CI actions (#296)
+
+## [1.7.0] - 2026-01-03 - to-miz, rtbo
+### Added
+ - support for dynamic library loading (#287)
+ - `Connection::from_raw_conn_and_extensions_no_drop` (#289)
+
+### Changed
+ - XidNew::new is now safe
+
 ## [1.6.0] - 2025-08-15 - various authors
 ### Added
  - export well-known RandR output property names, this time for real

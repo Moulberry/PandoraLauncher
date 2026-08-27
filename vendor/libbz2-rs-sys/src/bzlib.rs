@@ -87,7 +87,7 @@ macro_rules! prefix {
 
 pub(crate) use prefix;
 
-/// The version of the zlib library.
+/// The version of the libbzip2-rs-sys library.
 ///
 /// Its value is a pointer to a NULL-terminated sequence of bytes.
 ///
@@ -95,8 +95,8 @@ pub(crate) use prefix;
 #[doc = libbz2_rs_sys_version!()]
 /// `:
 ///
-/// - The first component is the version of stock zlib that this release is compatible with
-/// - The final component is the zlib-rs version used to build this release.
+/// - The first component is the version of stock bzip2 that this release is compatible with
+/// - The final component is the libbzip2-rs-sys version used to build this release.
 #[cfg_attr(feature = "export-symbols", export_name = prefix!(BZ2_bzlibVersion))]
 #[cfg(feature = "stdio")]
 pub const extern "C" fn BZ2_bzlibVersion() -> *const core::ffi::c_char {
@@ -322,7 +322,7 @@ mod stream {
                 return None;
             }
 
-            let read = unsafe { *(self.next_in as *mut u8) };
+            let read = unsafe { self.next_in.cast::<u8>().read() };
             bit_buffer <<= 8;
             bit_buffer |= u64::from(read);
 
@@ -339,7 +339,7 @@ mod stream {
             if self.avail_in == 0 {
                 return None;
             }
-            let b = unsafe { *(self.next_in as *mut u8) };
+            let b = unsafe { self.next_in.cast::<u8>().read() };
             self.next_in = unsafe { (self.next_in).offset(1) };
             self.avail_in -= 1;
             self.total_in_lo32 = (self.total_in_lo32).wrapping_add(1);
@@ -443,9 +443,9 @@ pub(crate) enum State {
     Input,
 }
 
-pub(crate) const BZ_N_RADIX: i32 = 2;
-pub(crate) const BZ_N_QSORT: i32 = 12;
-pub(crate) const BZ_N_SHELL: i32 = 18;
+pub(crate) const BZ_N_RADIX: u32 = 2;
+pub(crate) const BZ_N_QSORT: u32 = 12;
+pub(crate) const BZ_N_SHELL: u32 = 18;
 pub(crate) const BZ_N_OVERSHOOT: usize = (BZ_N_RADIX + BZ_N_QSORT + BZ_N_SHELL + 2) as usize;
 
 pub(crate) const FTAB_LEN: usize = u16::MAX as usize + 2;
@@ -745,11 +745,14 @@ fn isempty_rl(s: &mut EState) -> bool {
 /// - [`BZ_PARAM_ERROR`] if any of
 ///     - `strm.is_null()`
 ///     - `!(1..=9).contains(&blockSize100k)`
-///     - `!(0..=4).contains(&verbosity)`
 ///     - `!(0..=250).contains(&workFactor)`
 ///     - no [valid allocator](bz_stream#custom-allocators) could be configured
 /// - [`BZ_MEM_ERROR`] if insufficient memory is available
 /// - [`BZ_OK`] otherwise
+///
+/// Note: unlike [`BZ2_bzDecompressInit`], `verbosity` is not validated. Only values in
+/// `0..=4` have any effect: `0` suppresses all output, and higher values enable
+/// progressively more verbose diagnostic output.
 ///
 /// # Safety
 ///
@@ -804,7 +807,7 @@ pub(crate) fn BZ2_bzCompressInitHelp(
     let arr1_len = n as usize;
     let arr1 = Arr1::alloc(&allocator, arr1_len);
 
-    let arr2_len = n as usize + (2 + 12 + 18 + 2);
+    let arr2_len = n as usize + BZ_N_OVERSHOOT;
     let arr2 = Arr2::alloc(&allocator, arr2_len);
 
     let ftab = Ftab::alloc(&allocator);
@@ -1058,7 +1061,7 @@ impl TryFrom<i32> for Action {
 ///     - after [`BZ2_bzCompressEnd`]
 /// - [`BZ_PARAM_ERROR`] if any of
 ///     - `strm.is_null()`
-///     - `strm.s.is_null()`
+///     - `strm.state.is_null()`
 ///     - action is not one of [`BZ_RUN`], [`BZ_FLUSH`] or [`BZ_FINISH`]
 /// - [`BZ_RUN_OK`] successfully compressed, but ran out of input or output space
 /// - [`BZ_FLUSH_OK`] not all compressed data has been written to the output yet
@@ -1173,7 +1176,7 @@ fn compress_loop(strm: &mut BzStream<EState>, s: &mut EState, action: i32) -> Re
 ///
 /// - [`BZ_PARAM_ERROR`] if any of
 ///     - `strm.is_null()`
-///     - `strm.s.is_null()`
+///     - `strm.state.is_null()`
 ///     - no [valid allocator](bz_stream#custom-allocators) could be configured
 /// - [`BZ_OK`] otherwise
 ///
@@ -1596,7 +1599,7 @@ pub(crate) fn index_into_f(index: u32, cftab: &[u32; 257]) -> u8 {
 
 macro_rules! GET_LL4 {
     ($s:expr, $i:expr) => {
-        $s.ll4.as_slice()[($s.tPos >> 1) as usize] as u32 >> ($s.tPos << 2 & 0x4) & 0xf
+        $s.ll4.as_slice()[($s.tPos >> 1) as usize] as u32 >> ($i << 2 & 0x4) & 0xf
     };
 }
 
@@ -1766,14 +1769,17 @@ fn un_rle_obuf_to_output_small(strm: &mut BzStream<DState>, s: &mut DState) -> b
 ///
 /// - [`BZ_PARAM_ERROR`] if any of
 ///     - `strm.is_null()`
-///     - `strm.s.is_null()`
-///     - `strm.avail_out < 1`
+///     - `strm.state.is_null()`
 /// - [`BZ_DATA_ERROR`] if a data integrity error is detected in the compressed stream
 /// - [`BZ_DATA_ERROR_MAGIC`] if the compressed stream doesn't begin with the right magic bytes
 /// - [`BZ_MEM_ERROR`] if there wasn't enough memory available
 /// - [`BZ_STREAM_END`] if the logical end of the data stream was detected and all output has been
 ///   written to the output buffer
 /// - [`BZ_OK`] otherwise
+///
+/// Note: the bzip2 manual documents `strm.avail_out < 1` as a [`BZ_PARAM_ERROR`] condition,
+/// but does not actually check for it, and neither do we. Calling with `avail_out == 0`
+/// returns [`BZ_OK`] with no output written; the caller should increase `avail_out` and retry.
 ///
 /// # Safety
 ///
@@ -1879,7 +1885,7 @@ pub(crate) fn BZ2_bzDecompressHelp(strm: &mut BzStream<DState>) -> ReturnCode {
 ///
 /// - [`BZ_PARAM_ERROR`] if any of
 ///     - `strm.is_null()`
-///     - `strm.s.is_null()`
+///     - `strm.state.is_null()`
 ///     - no [valid allocator](bz_stream#custom-allocators) could be configured
 /// - [`BZ_OK`] otherwise
 ///
@@ -1970,6 +1976,10 @@ pub unsafe extern "C" fn BZ2_bzBuffToBuffCompress(
     workFactor: c_int,
 ) -> c_int {
     if dest.is_null() || source.is_null() {
+        return ReturnCode::BZ_PARAM_ERROR as c_int;
+    }
+
+    if !(0..=4).contains(&verbosity) {
         return ReturnCode::BZ_PARAM_ERROR as c_int;
     }
 
@@ -2083,7 +2093,7 @@ pub unsafe extern "C" fn BZ2_bzBuffToBuffDecompress(
     small: c_int,
     verbosity: c_int,
 ) -> c_int {
-    if dest.is_null() || destLen.is_null() || source.is_null() {
+    if dest.is_null() || source.is_null() {
         return ReturnCode::BZ_PARAM_ERROR as c_int;
     }
 

@@ -314,10 +314,10 @@ impl Emitter {
                 //prefix if self.nst.get(prefix) == Some(uri) => Ok(()),
                 // emit xmlns only if it is overridden
                 NS_NO_PREFIX => if uri != NS_EMPTY_URI {
-                    write!(target, " xmlns=\"{uri}\"")
+                    write!(target, " xmlns=\"{}\"", Escaped::<AttributeEscapes>::new(uri))
                 } else { Ok(()) },
                 // everything else
-                prefix => write!(target, " xmlns:{prefix}=\"{uri}\""),
+                prefix => write!(target, " xmlns:{prefix}=\"{}\"", Escaped::<AttributeEscapes>::new(uri)),
             }?;
         }
         Ok(())

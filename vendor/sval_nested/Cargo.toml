@@ -12,8 +12,8 @@
 [package]
 edition = "2021"
 name = "sval_nested"
-version = "2.15.0"
-authors = ["Ashley Mannix <ashleymannix@live.com.au>"]
+version = "2.21.1"
+authors = ["Ashley Mannix <hey@kodraus.com>"]
 build = false
 autolib = false
 autobins = false
@@ -59,17 +59,17 @@ name = "stream_nested_simple"
 path = "examples/stream_nested_simple.rs"
 
 [dependencies.sval]
-version = "2.15.0"
+version = "2.21.1"
 
 [dependencies.sval_buffer]
-version = "2.15.0"
+version = "2.21.1"
 default-features = false
 
 [dependencies.sval_ref]
-version = "2.15.0"
+version = "2.21.1"
 
 [dev-dependencies.sval_derive_macros]
-version = "2.15.0"
+version = "2.21.1"
 
 [lints.rust.unexpected_cfgs]
 level = "allow"

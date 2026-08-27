@@ -13,7 +13,7 @@
 [package]
 edition = "2018"
 name = "self_cell"
-version = "1.2.2"
+version = "1.3.0"
 authors = ["Lukas Bergdoll <lukas.bergdoll@gmail.com>"]
 include = ["src/*.rs", "Cargo.toml", "README.md", "LICENSE*"]
 description = "Safe-to-use proc-macro-free self-referential structs in stable Rust."

@@ -1,136 +1,80 @@
-use proc_macro::{Delimiter, Group, Ident, Literal, Span, TokenStream, TokenTree};
+use proc_macro::{Delimiter, TokenStream, TokenTree};
+use std::path::Path;
 
-use crate::tokens::{
-    decode_literal_string, decode_literal_strings, expect_literal, expect_numeric_literal,
-};
+pub(crate) mod xx3;
 
-mod xx3;
-
-/// Concatenate two identifiers.
-pub(crate) fn ident_concat(item: TokenStream) -> TokenStream {
-    let mut item = item.into_iter();
-    let Some(TokenTree::Group(pre_group)) = item.next() else {
-        panic!("pre_group: Expected a group");
-    };
-    let Some(TokenTree::Group(name_group)) = item.next() else {
-        panic!("name_group: Expected a group");
-    };
-    let Some(TokenTree::Group(post_group)) = item.next() else {
-        panic!("post_group: Expected a group");
-    };
-
-    let mut item = name_group.stream().into_iter();
-    let mut name = String::new();
-    while let Some(TokenTree::Ident(ident)) = item.next() {
-        name.push_str(&ident.to_string());
-    }
-
-    let mut output = pre_group.stream();
-    output.extend([TokenTree::Ident(Ident::new(&name, Span::call_site()))]);
-    output.extend(post_group.stream());
-    output
+struct TokenTreeDeepIterator {
+    stack: Vec<proc_macro::token_stream::IntoIter>,
 }
 
-/// If the input string is longer than the max length, replace the tail end of
-/// the string with the hash of the string.
-///
-/// hash!(output (prefix) (name) (suffix) hash_length max_length valid_section_chars)
-pub(crate) fn hash(item: TokenStream) -> TokenStream {
-    let mut item = item.into_iter();
+impl Iterator for TokenTreeDeepIterator {
+    type Item = TokenTree;
 
-    let Some(TokenTree::Group(group)) = item.next() else {
-        panic!("output: Expected a group");
-    };
-    let group = group.stream();
-
-    let Some(prefix_group) = item.next() else {
-        panic!("prefix: Expected a group");
-    };
-    let prefix = decode_literal_strings("prefix", prefix_group);
-
-    let Some(input_group) = item.next() else {
-        panic!("input: Expected an identifier");
-    };
-    let literal = decode_literal_strings("input", input_group);
-
-    let Some(suffix_group) = item.next() else {
-        panic!("suffix: Expected a group");
-    };
-    let suffix = decode_literal_strings("suffix", suffix_group);
-
-    let hash_length = expect_numeric_literal(
-        "hash_length",
-        item.next().expect("hash_length: Missing argument"),
-    );
-    let max_length = expect_numeric_literal(
-        "max_length",
-        item.next().expect("max_length: Missing argument"),
-    );
-
-    let valid_section_chars = expect_literal(
-        "valid_section_chars",
-        item.next().expect("valid_section_chars: Missing argument"),
-    );
-    let valid_section_chars =
-        decode_literal_string("valid_section_chars", valid_section_chars).into_bytes();
-
-    // If the string is valid as-is, return it
-    let output = if literal.len() < max_length
-        && !literal
-            .to_string()
-            .contains(|c| c > '\u{007f}' || !valid_section_chars.contains(&(c as u8)))
-    {
-        format!("{prefix}{literal}{suffix}")
-    } else {
-        // Not valid, so we need to hash the string
-        let mut output = String::with_capacity(max_length + prefix.len() + suffix.len());
-        output.push_str(&prefix.to_string());
-        let mut next = literal.chars();
-        while output.len() < max_length - hash_length + prefix.len() {
-            let Some(c) = next.next() else {
-                break;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let mut iter = self.stack.pop()?;
+            let Some(token) = iter.next() else {
+                continue;
             };
-            if c <= '\u{007f}' && valid_section_chars.contains(&(c as u8)) {
-                output.push(c);
+            self.stack.push(iter);
+            if let TokenTree::Group(group) = &token {
+                self.stack.push(group.stream().into_iter());
             }
+            return Some(token);
         }
+    }
+}
 
-        let mut hash = xx3::xx3hash(&literal);
-        while output.len() < max_length + prefix.len() {
-            let c = valid_section_chars[hash as usize % valid_section_chars.len()];
-            output.push(c as char);
-            hash /= valid_section_chars.len() as u64;
-        }
-        output.push_str(&suffix);
-        output
+/// Content (position-independent) identity for an ignored token. Groups
+/// contribute only their delimiter and the deep iterator visits children
+/// separately.
+fn token_content(token: &TokenTree) -> String {
+    match token {
+        TokenTree::Group(group) => match group.delimiter() {
+            Delimiter::Parenthesis => "(".to_string(),
+            Delimiter::Brace => "{".to_string(),
+            Delimiter::Bracket => "[".to_string(),
+            Delimiter::None => String::new(),
+        },
+        TokenTree::Ident(ident) => ident.to_string(),
+        TokenTree::Punct(punct) => punct.as_char().to_string(),
+        TokenTree::Literal(literal) => literal.to_string(),
+    }
+}
+
+/// Hash location of every token in `tokens`. Tokens under `ignore_base` contribute
+/// content instead, so def-site spans from that crate don't shift the hash.
+#[allow(clippy::unnecessary_map_or)]
+pub(crate) fn location_hash(tokens: TokenStream, ignore_base: Option<&Path>) -> u64 {
+    let iterator = TokenTreeDeepIterator {
+        stack: vec![tokens.into_iter()],
     };
 
-    fn emit(tree: TokenStream, output: &str, found: &mut bool) -> TokenStream {
-        if *found {
-            return tree;
+    // TODO: Can we avoid doing multiple hashes?
+    let mut buffer: Vec<u8> = Vec::with_capacity(1024);
+    let mut last_hash = 0_u64;
+    for token in iterator {
+        let span = token.span();
+        buffer.clear();
+        buffer.extend_from_slice(&last_hash.to_be_bytes());
+
+        let ignored = ignore_base.map_or(false, |base| {
+            crate::fallback::local_file(&span).map_or(false, |file| file.starts_with(base))
+        });
+
+        if ignored {
+            buffer.extend_from_slice(token_content(&token).as_bytes());
+        } else {
+            let line = crate::fallback::line(&span);
+            let column = crate::fallback::column(&span);
+            let file = crate::fallback::file(&span);
+            buffer.extend_from_slice(&(line as u64).to_be_bytes());
+            buffer.extend_from_slice(&(column as u64).to_be_bytes());
+            buffer.extend_from_slice(file.as_bytes());
         }
-        let mut stream = TokenStream::new();
-        for input in tree.into_iter() {
-            match input {
-                _ if *found => stream.extend([input]),
-                TokenTree::Ident(ident) if ident.to_string() == "__" => {
-                    stream.extend([TokenTree::Literal(Literal::string(output))]);
-                    *found = true;
-                }
-                TokenTree::Group(group) => stream.extend([TokenTree::Group(Group::new(
-                    group.delimiter(),
-                    emit(group.stream(), output, found),
-                ))]),
-                _ => stream.extend([input]),
-            }
-        }
-        stream
+
+        last_hash = crate::hash::xx3::xx3hash_bytes(&buffer);
     }
 
-    let mut found = false;
-    let stream = emit(group, &output, &mut found);
-    if !found {
-        panic!("output: Expected to find __");
-    }
-    TokenStream::from_iter([TokenTree::Group(Group::new(Delimiter::None, stream))])
+    last_hash
 }

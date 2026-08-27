@@ -94,7 +94,7 @@ impl MockInlineOperands {
         }
     }
 
-    pub fn operands(&self) -> InlineOperands {
+    pub fn operands(&self) -> InlineOperands<'_> {
         InlineOperands {
             bytes: &self.bytes,
             is_words: self.is_words,

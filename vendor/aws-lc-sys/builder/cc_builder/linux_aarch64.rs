@@ -1,6 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0 OR ISC
-// Mon Jun 29 12:41:07 UTC 2026
+// Wed Aug  5 20:40:42 UTC 2026
 
 pub(super) const CRYPTO_LIBRARY: &[&str] = &[
     "crypto/fipsmodule/ml_dsa/mldsa/native/aarch64/src/intt_aarch64_asm.S",

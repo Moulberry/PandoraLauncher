@@ -18,7 +18,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --all
   msrv:
-    name: "Check MSRV: 1.67.0"
+    name: "Check MSRV: 1.82.0"
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -26,7 +26,7 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: 1.67.0  # MSRV
+        toolchain: 1.82.0  # MSRV
     - uses: Swatinem/rust-cache@v2
     - name: Default features
       run: cargo test --all

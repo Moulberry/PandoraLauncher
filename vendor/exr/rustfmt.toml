@@ -1,0 +1,13 @@
+imports_granularity = "Crate"
+reorder_impl_items = true
+unstable_features = true
+use_field_init_shorthand = true
+wrap_comments = true
+reorder_imports = true
+reorder_modules = true
+group_imports = "StdExternalCrate"
+comment_width = 80
+normalize_comments = true
+format_code_in_doc_comments = true
+max_width = 100
+use_small_heuristics = "Off" # This disables adaptive formatting and forces full normalization.

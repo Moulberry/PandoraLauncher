@@ -31,30 +31,6 @@ macro_rules! benchmark {
             })
         });
         group.finish();
-
-        // Now GVariant.
-        #[cfg(feature = "gvariant")]
-        {
-            let ctxt = Context::new_gvariant(LE, 0);
-            let mut group = $c.benchmark_group("gvariant");
-            group.measurement_time(std::time::Duration::from_secs(30));
-
-            group.bench_function(&ser_function_name, |b| {
-                b.iter(|| {
-                    let encoded = to_bytes(black_box(ctxt), black_box(&$data)).unwrap();
-                    black_box(encoded);
-                })
-            });
-
-            let encoded = to_bytes(ctxt, &$data).unwrap();
-            group.bench_function(&de_function_name, |b| {
-                b.iter(|| {
-                    let (s, _): ($data_type, _) = encoded.deserialize().unwrap();
-                    black_box(s);
-                })
-            });
-            group.finish();
-        }
     };
 }
 

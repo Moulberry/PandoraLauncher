@@ -108,7 +108,7 @@ pub struct BomPeeker<R> {
     rdr: R,
     strip: bool,
     bom: Option<PossibleBom>,
-    nread: usize,
+    bom_pos: usize,
 }
 
 impl<R: io::Read> BomPeeker<R> {
@@ -117,12 +117,12 @@ impl<R: io::Read> BomPeeker<R> {
     /// The first three bytes can be read using the `peek_bom` method, but
     /// will not advance the reader.
     pub fn with_bom(rdr: R) -> BomPeeker<R> {
-        BomPeeker { rdr: rdr, strip: false, bom: None, nread: 0 }
+        BomPeeker { rdr, strip: false, bom: None, bom_pos: 0 }
     }
 
     /// Create a new BomPeeker that never includes the BOM in calls to `read`.
     pub fn without_bom(rdr: R) -> BomPeeker<R> {
-        BomPeeker { rdr: rdr, strip: true, bom: None, nread: 0 }
+        BomPeeker { rdr, strip: true, bom: None, bom_pos: 0 }
     }
 
     /// Peek at the first three bytes of the underlying reader.
@@ -149,24 +149,23 @@ impl<R: io::Read> BomPeeker<R> {
 
 impl<R: io::Read> io::Read for BomPeeker<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.nread < 3 {
+        if self.bom_pos < 3 {
             let bom = self.peek_bom()?;
 
             // If we don't have a valid BOM (e.g., no encoding for it), then
             // we always pass through the first 3 bytes. Otherwise, if we have
             // a valid BOM, we only pass it thru if we don't want to strip it.
             let bom = bom.as_slice(!self.strip);
-            if self.nread < bom.len() {
-                let rest = &bom[self.nread..];
+            if self.bom_pos < bom.len() {
+                let rest = &bom[self.bom_pos..];
                 let len = cmp::min(buf.len(), rest.len());
                 buf[..len].copy_from_slice(&rest[..len]);
-                self.nread += len;
+                self.bom_pos += len;
                 return Ok(len);
             }
+            self.bom_pos = 3;
         }
-        let nread = self.rdr.read(buf)?;
-        self.nread += nread;
-        Ok(nread)
+        self.rdr.read(buf)
     }
 }
 

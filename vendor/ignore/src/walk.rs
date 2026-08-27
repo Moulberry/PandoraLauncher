@@ -18,6 +18,7 @@ use crate::{
     Error, PartialErrorBuilder,
     dir::{Ignore, IgnoreBuilder},
     gitignore::GitignoreBuilder,
+    incremental::{IncrementalIgnore, IncrementalIgnoreOptions},
     overrides::Override,
     types::Types,
 };
@@ -179,7 +180,9 @@ impl DirEntryInner {
                 Err(err.with_path("<stdin>"))
             }
             Walkdir(ref x) => x.metadata().map_err(|err| {
-                Error::Io(io::Error::from(err)).with_path(x.path())
+                Error::Io(io::Error::from(err))
+                    .with_depth(x.depth())
+                    .with_path(x.path())
             }),
             Raw(ref x) => x.metadata(),
         }
@@ -299,7 +302,9 @@ impl DirEntryRaw {
         } else {
             fs::symlink_metadata(&self.path)
         }
-        .map_err(|err| Error::Io(io::Error::from(err)).with_path(&self.path))
+        .map_err(|err| {
+            Error::Io(err).with_depth(self.depth).with_path(&self.path)
+        })
     }
 
     fn file_type(&self) -> FileType {
@@ -324,7 +329,7 @@ impl DirEntryRaw {
         ent: &fs::DirEntry,
     ) -> Result<DirEntryRaw, Error> {
         let ty = ent.file_type().map_err(|err| {
-            let err = Error::Io(io::Error::from(err)).with_path(ent.path());
+            let err = Error::Io(err).with_depth(depth).with_path(ent.path());
             Error::WithDepth { depth, err: Box::new(err) }
         })?;
         DirEntryRaw::from_entry_os(depth, ent, ty)
@@ -337,7 +342,7 @@ impl DirEntryRaw {
         ty: fs::FileType,
     ) -> Result<DirEntryRaw, Error> {
         let md = ent.metadata().map_err(|err| {
-            let err = Error::Io(io::Error::from(err)).with_path(ent.path());
+            let err = Error::Io(err).with_depth(depth).with_path(ent.path());
             Error::WithDepth { depth, err: Box::new(err) }
         })?;
         Ok(DirEntryRaw {
@@ -386,8 +391,8 @@ impl DirEntryRaw {
         pb: PathBuf,
         link: bool,
     ) -> Result<DirEntryRaw, Error> {
-        let md =
-            fs::metadata(&pb).map_err(|err| Error::Io(err).with_path(&pb))?;
+        let md = fs::metadata(&pb)
+            .map_err(|err| Error::Io(err).with_depth(depth).with_path(&pb))?;
         Ok(DirEntryRaw {
             path: pb,
             ty: md.file_type(),
@@ -405,8 +410,8 @@ impl DirEntryRaw {
     ) -> Result<DirEntryRaw, Error> {
         use std::os::unix::fs::MetadataExt;
 
-        let md =
-            fs::metadata(&pb).map_err(|err| Error::Io(err).with_path(&pb))?;
+        let md = fs::metadata(&pb)
+            .map_err(|err| Error::Io(err).with_depth(depth).with_path(&pb))?;
         Ok(DirEntryRaw {
             path: pb,
             ty: md.file_type(),
@@ -545,8 +550,16 @@ impl WalkBuilder {
     /// is better to call `add` on this builder than to create multiple
     /// `Walk` values.
     pub fn new<P: AsRef<Path>>(path: P) -> WalkBuilder {
+        WalkBuilder::from_iter([path])
+    }
+
+    /// Create an empty builder to which paths can be added.
+    ///
+    /// Note that if you call `build` on this instance before calling `add`
+    /// on it, it will return exactly zero items during iteration.
+    pub fn empty() -> WalkBuilder {
         WalkBuilder {
-            paths: vec![path.as_ref().to_path_buf()],
+            paths: vec![],
             ig_builder: IgnoreBuilder::new(),
             max_depth: None,
             min_depth: None,
@@ -559,6 +572,21 @@ impl WalkBuilder {
             filter: None,
             global_gitignores_relative_to: OnceLock::new(),
         }
+    }
+
+    /// Create a new builder for a recursive directory iterator from the
+    /// sequence of paths.
+    ///
+    /// Note that if the iterator is empty, this is the same as
+    /// `WalkBuilder::empty`.
+    pub fn from_iter<P: AsRef<Path>, I: IntoIterator<Item = P>>(
+        paths: I,
+    ) -> WalkBuilder {
+        let mut builder = WalkBuilder::empty();
+        for path in paths.into_iter() {
+            builder.add(path);
+        }
+        builder
     }
 
     /// Build a new `Walk` iterator.
@@ -602,19 +630,67 @@ impl WalkBuilder {
             })
             .collect::<Vec<_>>()
             .into_iter();
-        let ig_root = self
-            .get_or_set_current_dir()
-            .map(|cwd| self.ig_builder.build_with_cwd(Some(cwd.to_path_buf())))
-            .unwrap_or_else(|| self.ig_builder.build());
+        let ig_root = self.build_ignore();
         Walk {
             its,
             it: None,
             ig_root: ig_root.clone(),
             ig: ig_root.clone(),
+            max_depth: self.max_depth,
             max_filesize: self.max_filesize,
             skip: self.skip.clone(),
             filter: self.filter.clone(),
         }
+    }
+
+    /// Build matchers for checking paths against ignore files without
+    /// recursively walking the configured roots.
+    ///
+    /// The returned matchers use the path-based filtering configuration
+    /// on this builder, including glob overrides, file type selections,
+    /// parent ignore files, `.ignore`, `.gitignore`, global Git
+    /// ignore files, explicitly added ignore files and custom ignore
+    /// file names. For example, ripgrep configures `.rgignore` via
+    /// [`WalkBuilder::add_custom_ignore_filename`]. Minimum and maximum depth
+    /// limits, maximum file size and hidden-file filtering are also applied.
+    /// Other options that only control traversal or require a directory entry,
+    /// such as custom entry predicates, are not applied.
+    ///
+    /// One matcher is returned for each configured path, in the same order as
+    /// the paths were added to this builder. Each matcher accepts paths
+    /// relative to its own [`IncrementalIgnore::root`]. The matcher for the
+    /// special `-` path representing standard input always returns a non-match
+    /// for all inputs.
+    ///
+    /// Ignore matchers are loaded lazily and cached by directory.
+    /// Thus, the first query may read ignore files from the root and
+    /// its parents, while later queries reuse the compiled matchers.
+    /// Errors encountered while loading ignore files are returned by
+    /// [`IncrementalIgnore::matched_with_errors`]. Once an ignore file has
+    /// been loaded, changes to it are not observed. Build new matchers to
+    /// reload changed ignore files.
+    ///
+    /// Matchers built together share the builder's base ignore configuration
+    /// and compiled parent matchers.
+    pub fn build_matchers(&self) -> Vec<IncrementalIgnore> {
+        let ignore = self.build_ignore();
+        let options = IncrementalIgnoreOptions {
+            min_depth: self.min_depth,
+            max_depth: self.max_depth,
+            max_filesize: self.max_filesize,
+            hidden: self.ig_builder.is_hidden(),
+            follow_links: self.follow_links,
+        };
+        self.paths
+            .iter()
+            .map(move |path| {
+                IncrementalIgnore::new(
+                    path.clone(),
+                    ignore.clone(),
+                    options.clone(),
+                )
+            })
+            .collect()
     }
 
     /// Build a new `WalkParallel` iterator.
@@ -623,10 +699,7 @@ impl WalkBuilder {
     /// Instead, the returned value must be run with a closure. e.g.,
     /// `builder.build_parallel().run(|| |path| { println!("{path:?}"); WalkState::Continue })`.
     pub fn build_parallel(&self) -> WalkParallel {
-        let ig_root = self
-            .get_or_set_current_dir()
-            .map(|cwd| self.ig_builder.build_with_cwd(Some(cwd.to_path_buf())))
-            .unwrap_or_else(|| self.ig_builder.build());
+        let ig_root = self.build_ignore();
         WalkParallel {
             paths: self.paths.clone().into_iter(),
             ig_root,
@@ -1026,6 +1099,13 @@ impl WalkBuilder {
         });
         result.as_ref().ok().map(|path| &**path)
     }
+
+    /// Build the root ignore matcher shared by all consumers of this builder.
+    fn build_ignore(&self) -> Ignore {
+        self.get_or_set_current_dir()
+            .map(|cwd| self.ig_builder.build_with_cwd(Some(cwd.to_path_buf())))
+            .unwrap_or_else(|| self.ig_builder.build())
+    }
 }
 
 /// Walk is a recursive directory iterator over file paths in one or more
@@ -1039,6 +1119,7 @@ pub struct Walk {
     it: Option<WalkEventIter>,
     ig_root: Ignore,
     ig: Ignore,
+    max_depth: Option<usize>,
     max_filesize: Option<u64>,
     skip: Option<Arc<Handle>>,
     filter: Option<Filter>,
@@ -1052,6 +1133,17 @@ impl Walk {
     /// instead.
     pub fn new<P: AsRef<Path>>(path: P) -> Walk {
         WalkBuilder::new(path).build()
+    }
+
+    /// Create a new recursive directory iterator from the sequence of paths
+    /// given.
+    ///
+    /// Note that if the provided iterator is empty, then `Walk` is guaranteed
+    /// to yield zero entries.
+    pub fn from_iter<P: AsRef<Path>, I: IntoIterator<Item = P>>(
+        paths: I,
+    ) -> Walk {
+        WalkBuilder::from_iter(paths).build()
     }
 
     fn skip_entry(&self, ent: &DirEntry) -> Result<bool, Error> {
@@ -1138,12 +1230,17 @@ impl Iterator for Walk {
                         self.it.as_mut().unwrap().it.skip_current_dir();
                         // Still need to push this on the stack because
                         // we'll get a WalkEvent::Exit event for this dir.
-                        // We don't care if it errors though.
-                        let (igtmp, _) = self.ig.add_child(ent.path());
+                        // Its ignore files cannot apply to any visited entry.
+                        let (igtmp, _) =
+                            self.ig.add_child_with_entries(ent.path(), &[]);
                         self.ig = igtmp;
                         continue;
                     }
-                    let (igtmp, err) = self.ig.add_child(ent.path());
+                    let (igtmp, err) = if self.max_depth == Some(ent.depth()) {
+                        self.ig.add_child_with_entries(ent.path(), &[])
+                    } else {
+                        self.ig.add_child(ent.path())
+                    };
                     self.ig = igtmp;
                     ent.err = err;
                     return Some(Ok(ent));
@@ -1407,21 +1504,28 @@ impl WalkParallel {
         let quit_now = Arc::new(AtomicBool::new(false));
         let active_workers = Arc::new(AtomicUsize::new(threads));
         let stacks = Stack::new_for_each_thread(threads, stack);
+        // Collect all of the workers first. In the case that
+        // `builder.build()` panics, we want that to happen and
+        // propagate before we actually start to run any of the
+        // workers.
+        let workers: Vec<_> = stacks
+            .into_iter()
+            .map(|stack| Worker {
+                visitor: builder.build(),
+                stack,
+                quit_now: quit_now.clone(),
+                active_workers: active_workers.clone(),
+                max_depth: self.max_depth,
+                min_depth: self.min_depth,
+                max_filesize: self.max_filesize,
+                follow_links: self.follow_links,
+                skip: self.skip.clone(),
+                filter: self.filter.clone(),
+            })
+            .collect();
         std::thread::scope(|s| {
-            let handles: Vec<_> = stacks
+            let handles: Vec<_> = workers
                 .into_iter()
-                .map(|stack| Worker {
-                    visitor: builder.build(),
-                    stack,
-                    quit_now: quit_now.clone(),
-                    active_workers: active_workers.clone(),
-                    max_depth: self.max_depth,
-                    min_depth: self.min_depth,
-                    max_filesize: self.max_filesize,
-                    follow_links: self.follow_links,
-                    skip: self.skip.clone(),
-                    filter: self.filter.clone(),
-                })
                 .map(|worker| s.spawn(|| worker.run()))
                 .collect();
             for handle in handles {
@@ -1463,6 +1567,12 @@ struct Work {
     root_device: Option<u64>,
 }
 
+#[derive(Default)]
+struct ReadDirResult {
+    entries: Vec<fs::DirEntry>,
+    errors: Vec<Error>,
+}
+
 impl Work {
     /// Returns true if and only if this work item is a directory.
     fn is_dir(&self) -> bool {
@@ -1489,6 +1599,13 @@ impl Work {
         err
     }
 
+    /// Adds ignore rules for this directory without reading its contents.
+    fn add_ignore(&mut self) {
+        let (ig, err) = self.ignore.add_child(self.dent.path());
+        self.ignore = ig;
+        self.dent.err = err;
+    }
+
     /// Reads the directory contents of this work item and adds ignore
     /// rules for this directory.
     ///
@@ -1496,7 +1613,7 @@ impl Work {
     /// an error is returned. If there was a problem reading the ignore
     /// rules for this directory, then the error is attached to this
     /// work item's directory entry.
-    fn read_dir(&mut self) -> Result<fs::ReadDir, Error> {
+    fn read_dir(&mut self) -> Result<ReadDirResult, Error> {
         let readdir = match fs::read_dir(self.dent.path()) {
             Ok(readdir) => readdir,
             Err(err) => {
@@ -1506,10 +1623,24 @@ impl Work {
                 return Err(err);
             }
         };
-        let (ig, err) = self.ignore.add_child(self.dent.path());
+        // Actually descend into the directory and read its contents
+        let mut result = ReadDirResult::default();
+        for entry in readdir {
+            match entry {
+                Ok(entry) => result.entries.push(entry),
+                Err(err) => result.errors.push(
+                    Error::from(err)
+                        .with_path(self.dent.path())
+                        .with_depth(self.dent.depth() + 1),
+                ),
+            }
+        }
+        let (ig, err) = self
+            .ignore
+            .add_child_with_entries(self.dent.path(), &result.entries);
         self.ignore = ig;
         self.dent.err = err;
-        Ok(readdir)
+        Ok(result)
     }
 }
 
@@ -1679,8 +1810,13 @@ impl<'s> Worker<'s> {
         // have sufficient read permissions to list the directory.
         // In that case we still want to provide the closure with a valid
         // entry before passing the error value.
-        let readdir = work.read_dir();
         let depth = work.dent.depth();
+        let readdir = if descend && self.max_depth.is_none_or(|m| depth < m) {
+            Some(work.read_dir())
+        } else {
+            work.add_ignore();
+            None
+        };
         if should_visit {
             let state = self.visitor.visit(Ok(work.dent));
             if !state.is_continue() {
@@ -1692,22 +1828,29 @@ impl<'s> Worker<'s> {
         }
 
         let readdir = match readdir {
+            Some(readdir) => readdir,
+            None => return WalkState::Skip,
+        };
+        let readdir = match readdir {
             Ok(readdir) => readdir,
             Err(err) => {
                 return self.visitor.visit(Err(err));
             }
         };
 
-        if self.max_depth.map_or(false, |max| depth >= max) {
-            return WalkState::Skip;
-        }
-        for result in readdir {
+        for result in readdir.entries {
             let state = self.generate_work(
                 &work.ignore,
                 depth + 1,
                 work.root_device,
                 result,
             );
+            if state.is_quit() {
+                return state;
+            }
+        }
+        for err in readdir.errors {
+            let state = self.visitor.visit(Err(err));
             if state.is_quit() {
                 return state;
             }
@@ -1733,16 +1876,8 @@ impl<'s> Worker<'s> {
         ig: &Ignore,
         depth: usize,
         root_device: Option<u64>,
-        result: Result<fs::DirEntry, io::Error>,
+        fs_dent: fs::DirEntry,
     ) -> WalkState {
-        let fs_dent = match result {
-            Ok(fs_dent) => fs_dent,
-            Err(err) => {
-                return self
-                    .visitor
-                    .visit(Err(Error::from(err).with_depth(depth)));
-            }
-        };
         let mut dent = match DirEntryRaw::from_entry(depth, &fs_dent) {
             Ok(dent) => DirEntry::new_raw(dent, None),
             Err(err) => {
@@ -1836,6 +1971,9 @@ impl<'s> Worker<'s> {
                     }
                     // Wait for next `Work` or `Quit` message.
                     loop {
+                        if self.is_quit_now() {
+                            return None;
+                        }
                         if let Some(v) = self.recv() {
                             self.activate_worker();
                             value = Some(v);
@@ -1886,6 +2024,14 @@ impl<'s> Worker<'s> {
     /// Reactivates a worker.
     fn activate_worker(&self) {
         self.active_workers.fetch_add(1, AtomicOrdering::Release);
+    }
+}
+
+impl<'s> Drop for Worker<'s> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.quit_now();
+        }
     }
 }
 
@@ -1990,9 +2136,9 @@ fn path_equals(dent: &DirEntry, handle: &Handle) -> Result<bool, Error> {
     if dent.is_stdin() || never_equal(dent, handle) {
         return Ok(false);
     }
-    Handle::from_path(dent.path())
-        .map(|h| &h == handle)
-        .map_err(|err| Error::Io(err).with_path(dent.path()))
+    Handle::from_path(dent.path()).map(|h| &h == handle).map_err(|err| {
+        Error::Io(err).with_depth(dent.depth()).with_path(dent.path())
+    })
 }
 
 /// Returns true if the given walkdir entry corresponds to a directory.
@@ -2289,6 +2435,27 @@ mod tests {
     }
 
     #[test]
+    fn max_depth_does_not_load_unreachable_ignore_files() {
+        let td = tmpdir();
+        let leaf = td.path().join("leaf");
+        mkdirp(&leaf);
+        wfile(leaf.join(".ignore"), "{invalid\n");
+
+        let mut builder = WalkBuilder::new(td.path());
+        builder.max_depth(Some(1));
+        let entry = builder
+            .build()
+            .find_map(|result| {
+                let entry = result.unwrap();
+                (entry.path() == leaf).then_some(entry)
+            })
+            .unwrap();
+
+        assert!(entry.error().is_none());
+        assert_paths(td.path(), &builder, &["leaf"]);
+    }
+
+    #[test]
     fn min_depth() {
         let td = tmpdir();
         mkdirp(td.path().join("a/b/c"));
@@ -2490,5 +2657,84 @@ mod tests {
                 .filter_entry(|entry| entry.file_name() != OsStr::new("a")),
             &["x", "x/y", "x/y/foo"],
         );
+    }
+
+    #[test]
+    fn empty() {
+        let td = tmpdir();
+        assert_paths(td.path(), &WalkBuilder::empty(), &[]);
+
+        let empty_paths: Vec<&OsStr> = Vec::new();
+        assert_paths(td.path(), &WalkBuilder::from_iter(empty_paths), &[]);
+    }
+
+    #[test]
+    fn from_iter() {
+        let td = tmpdir();
+        mkdirp(td.path().join("a/b/c"));
+        mkdirp(td.path().join("d/e/f"));
+        mkdirp(td.path().join("x/y"));
+        wfile(td.path().join("a/b/foo"), "");
+        wfile(td.path().join("d/e/f/foo"), "");
+        wfile(td.path().join("x/y/foo"), "");
+
+        let paths = vec![
+            td.path().join("a"),
+            td.path().join("d"),
+            td.path().join("x"),
+        ];
+
+        assert_paths(
+            td.path(),
+            &WalkBuilder::from_iter(paths),
+            &[
+                "x",
+                "x/y",
+                "x/y/foo",
+                "d",
+                "d/e",
+                "d/e/f",
+                "d/e/f/foo",
+                "a",
+                "a/b",
+                "a/b/foo",
+                "a/b/c",
+            ],
+        );
+    }
+
+    // This should always panic and never hang.
+    //
+    // Ref: https://github.com/BurntSushi/ripgrep/issues/3009
+    #[test]
+    #[should_panic]
+    fn panic_in_parallel() {
+        let td = tmpdir();
+        wfile(td.path().join("foo.txt"), "");
+
+        WalkBuilder::new(td.path())
+            .threads(40)
+            .build_parallel()
+            .run(|| Box::new(|_| panic!("oops!")));
+    }
+
+    // This should always panic and never hang. The first call to the visitor
+    // builder is used while processing the root paths. Previously, a panic on
+    // the third call occurred after the first worker had already been spawned,
+    // leaving it waiting indefinitely for workers that were never created.
+    #[test]
+    #[should_panic(expected = "builder panic")]
+    fn panic_in_parallel_builder() {
+        let td = tmpdir();
+        wfile(td.path().join("foo.txt"), "");
+
+        let mut builds = 0;
+        WalkBuilder::new(td.path()).threads(2).build_parallel().run(|| {
+            builds += 1;
+            if builds == 3 {
+                panic!("builder panic");
+            }
+            Box::new(|_| WalkState::Continue)
+        });
     }
 }

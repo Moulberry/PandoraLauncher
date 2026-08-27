@@ -95,8 +95,61 @@ void EVP_AEAD_CTX_cleanup(EVP_AEAD_CTX *ctx) {
   if (ctx->aead == NULL) {
     return;
   }
-  ctx->aead->cleanup(ctx);
+  if (ctx->aead->cleanup != NULL) {
+    ctx->aead->cleanup(ctx);
+  }
   ctx->aead = NULL;
+}
+
+int aead_ctx_copy_state_trivial(EVP_AEAD_CTX *out, const EVP_AEAD_CTX *in) {
+  // The state is self-contained within |state| and owns no external
+  // resources, so a verbatim copy fully duplicates it. |state_offset| is
+  // preserved for uniformity; AEADs whose live state depends on the runtime
+  // address of |state| must not use this helper (see internal.h).
+  OPENSSL_memcpy(&out->state, &in->state, sizeof(out->state));
+  out->state_offset = in->state_offset;
+  return 1;
+}
+
+int EVP_AEAD_CTX_copy(EVP_AEAD_CTX *out, const EVP_AEAD_CTX *in) {
+  SET_DIT_AUTO_RESET;
+  GUARD_PTR(in);
+  GUARD_PTR(out);
+
+  // A self-copy would first release |out| (== |in|) and then read from it, so
+  // treat it as a no-op.
+  if (out == in) {
+    return 1;
+  }
+
+  if (in->aead == NULL) {
+    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_INPUT_NOT_INITIALIZED);
+    return 0;
+  }
+
+  if (in->aead->copy == NULL) {
+    // This AEAD does not support copying (e.g. its state owns heap resources).
+    OPENSSL_PUT_ERROR(CIPHER, CIPHER_R_CTRL_NOT_IMPLEMENTED);
+    return 0;
+  }
+
+  // Release any prior state in |out| and start from a clean slate. This is
+  // safe whether |out| was zeroed or previously initialized.
+  EVP_AEAD_CTX_cleanup(out);
+  EVP_AEAD_CTX_zero(out);
+
+  out->aead = in->aead;
+  out->tag_len = in->tag_len;
+
+  // The callback owns duplicating |state| (and |state_offset| where the layout
+  // depends on alignment).
+  if (!in->aead->copy(out, in)) {
+    // Leave |out| in the zero state so it remains safe to clean up.
+    EVP_AEAD_CTX_zero(out);
+    return 0;
+  }
+
+  return 1;
 }
 
 // check_alias returns 1 if |out| is compatible with |in| and 0 otherwise. If

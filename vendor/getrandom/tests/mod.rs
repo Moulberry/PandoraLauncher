@@ -2,7 +2,11 @@
 use core::mem::MaybeUninit;
 use getrandom::{fill, fill_uninit};
 
-#[cfg(all(feature = "wasm_js", target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(all(
+    feature = "wasm_js",
+    target_family = "wasm",
+    any(target_os = "unknown", target_os = "none"),
+))]
 use wasm_bindgen_test::wasm_bindgen_test as test;
 
 #[test]

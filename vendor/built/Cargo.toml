@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
-rust-version = "1.81"
+edition = "2024"
+rust-version = "1.87"
 name = "built"
-version = "0.8.0"
+version = "0.8.1"
 authors = ["Lukas Lueg <lukas.lueg@gmail.com>"]
 build = false
 autolib = false
@@ -37,6 +37,7 @@ features = [
     "chrono",
     "dependency-tree",
     "git2",
+    "gix",
     "semver",
 ]
 
@@ -52,7 +53,7 @@ name = "testbox_tests"
 path = "tests/testbox_tests.rs"
 
 [dependencies.cargo-lock]
-version = "10.0"
+version = "11.0"
 optional = true
 default-features = false
 
@@ -63,8 +64,19 @@ optional = true
 default-features = false
 
 [dependencies.git2]
-version = "0.20"
+version = "0.21"
 features = []
+optional = true
+default-features = false
+
+[dependencies.gix]
+version = "0.83"
+features = [
+    "sha1",
+    "revision",
+    "status",
+    "max-performance-safe",
+]
 optional = true
 default-features = false
 

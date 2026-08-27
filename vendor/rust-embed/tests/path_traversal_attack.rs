@@ -14,6 +14,7 @@ fn path_traversal_attack_fails() {
 
 #[derive(Embed)]
 #[folder = "examples/axum-spa/"]
+#[allow(dead_code)]
 struct AxumAssets;
 
 // TODO:

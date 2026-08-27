@@ -1,6 +1,6 @@
 [package]
 name = "quick-xml"
-version = "0.39.3"
+version = "0.41.0"
 description = "High performance xml reader and writer"
 edition = "2021"
 
@@ -10,7 +10,7 @@ repository = "https://github.com/tafia/quick-xml"
 keywords = ["xml", "serde", "parser", "writer", "html"]
 categories = ["asynchronous", "encoding", "parsing", "parser-implementations"]
 license = "MIT"
-rust-version = "1.56"
+rust-version = "1.79"
 # We exclude tests & examples & benches to reduce the size of a package.
 # Unfortunately, this is source of warnings in latest cargo when packaging:
 # > warning: ignoring {context} `{name}` as `{path}` is not included in the published package
@@ -62,6 +62,17 @@ name = "macrobenches"
 harness = false
 path = "benches/macrobenches.rs"
 
+[[bench]]
+name = "encoding"
+harness = false
+path = "benches/encoding.rs"
+required-features = ["encoding"]
+
+[[bench]]
+name = "issue971"
+harness = false
+path = "benches/issue971.rs"
+
 [features]
 default = []
 
@@ -77,12 +88,17 @@ async-tokio = ["tokio"]
 ## Currently, only ASCII-compatible encodings are supported. For example,
 ## UTF-16 will not work (therefore, `quick-xml` is not [standard compliant]).
 ##
-## Thus, quick-xml supports all encodings of [`encoding_rs`] except these:
+## Thus, quick-xml supports all encodings of [`encoding_rs`]. Note, that for correct
+## handling of:
 ## - [UTF-16BE]
 ## - [UTF-16LE]
 ## - [ISO-2022-JP]
 ##
+## encodings you need to use the [`DecodingReader`] intermediate reader. That is because
+## those encodings are the only supported encodings that are not ASCII compatible.
+##
 ## You should stop processing a document when one of these encodings is detected,
+## if you do not use [`DecodingReader`] (or similar third-party decoder),
 ## because generated events can be wrong and do not reflect a real document structure!
 ##
 ## Because these are the only supported encodings that are not ASCII compatible, you can
@@ -100,7 +116,7 @@ async-tokio = ["tokio"]
 ## #     }
 ## #     bytes
 ## # }
-## let xml = to_utf16le_with_bom(r#"<?xml encoding='UTF-16'><element/>"#);
+## let xml = to_utf16le_with_bom(r#"<?xml encoding='UTF-16'?><element/>"#);
 ## let mut reader = Reader::from_reader(xml.as_ref());
 ## reader.config_mut().trim_text(true);
 ##
@@ -119,13 +135,12 @@ async-tokio = ["tokio"]
 ## }
 ## assert_eq!(unsupported, true);
 ## ```
-## This restriction will be eliminated once issue [#158] is resolved.
 ##
 ## [standard compliant]: https://www.w3.org/TR/xml11/#charencoding
 ## [UTF-16BE]: encoding_rs::UTF_16BE
 ## [UTF-16LE]: encoding_rs::UTF_16LE
 ## [ISO-2022-JP]: encoding_rs::ISO_2022_JP
-## [#158]: https://github.com/tafia/quick-xml/issues/158
+## [`DecodingReader`]: ./encoding/struct.DecodingReader.html
 encoding = ["encoding_rs"]
 
 ## Enables support for recognizing all [HTML 5 entities] in [`unescape`]
@@ -262,3 +277,8 @@ path = "examples/read_nodes_serde.rs"
 name = "flattened_enum"
 required-features = ["serialize"]
 path = "examples/flattened_enum.rs"
+
+[[example]]
+name = "read_utf16"
+required-features = ["encoding"]
+path = "examples/read_utf16.rs"

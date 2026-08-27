@@ -112,7 +112,7 @@ pub fn start(
 
         let theme = gpui_component::Theme::global_mut(cx);
         theme.font_family = SharedString::new_static(MAIN_FONT);
-        theme.scrollbar_show = gpui_component::scroll::ScrollbarShow::Always;
+        theme.scrollbar_mode = gpui_component::scroll::ScrollbarMode::Always;
 
         cx.set_quit_mode(QuitMode::Explicit);
 

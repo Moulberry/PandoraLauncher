@@ -5,6 +5,55 @@ All notable changes to this crate will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.13] - 2026-08-09
+
+### Changed
+
+- Bump `linktime-proc-macro` dependency to 0.2.3 (consistent 64-bit hash chunks
+  and cross-crate section-name fix).
+
+### Documentation
+
+- Documented the `crate_path` override for re-exporting the macro from another
+  crate.
+
+## [1.0.12] - 2026-07-29
+
+### Changed
+
+- Bump `linktime-proc-macro` dependency to 0.2.1 (makes link-section names more stable).
+
+## [1.0.11] - 2026-07-26
+
+### Fixed
+
+- Pointer-align the priority ctor anchor on Apple platforms (#502).
+
+## [1.0.10] - 2026-07-21
+
+### Changed
+
+ - Faster atomics and #[cold] for `Static::deref` initialization (@yvt PR #501)
+
+## [1.0.9] - 2026-07-15
+
+### Fixed
+
+- Ensure the single executing priority ctor is kept alive on Apple platforms (#496).
+
+## [1.0.8] - 2026-07-06
+
+### Changed
+
+- Bump `link-section` dependency to 0.19.0.
+
+## [1.0.7] - 2026-05-28
+
+### Changed
+
+- Bump `link-section` dependency to 0.18.0.
+- Improve error messages for bad attribute values.
+
 ## [1.0.6] - 2026-05-16
 
 ### Changed

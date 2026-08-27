@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.38](https://github.com/Nullus157/async-compression/compare/compression-codecs-v0.4.37...compression-codecs-v0.4.38) - 2026-04-21
+
+### Other
+
+- Include license files in published crates ([#467](https://github.com/Nullus157/async-compression/pull/467))
+
+## [0.4.37](https://github.com/Nullus157/async-compression/compare/compression-codecs-v0.4.36...compression-codecs-v0.4.37) - 2026-02-18
+
+### Other
+
+- Stop consuming input on errors in codecs. ([#451](https://github.com/Nullus157/async-compression/pull/451))
+
+## [0.4.36](https://github.com/Nullus157/async-compression/compare/compression-codecs-v0.4.35...compression-codecs-v0.4.36) - 2026-01-10
+
+### Other
+
+- Set async-compression msrv ([#440](https://github.com/Nullus157/async-compression/pull/440))
+
+## [0.4.35](https://github.com/Nullus157/async-compression/compare/compression-codecs-v0.4.34...compression-codecs-v0.4.35) - 2025-12-11
+
+### Other
+
+- Add Crc checksum validation for gzip::header::Parser ([#432](https://github.com/Nullus157/async-compression/pull/432))
+
+## [0.4.34](https://github.com/Nullus157/async-compression/compare/compression-codecs-v0.4.33...compression-codecs-v0.4.34) - 2025-12-07
+
+### Other
+
+- Optimize GzipEncoder to not allocate for header and footer ([#431](https://github.com/Nullus157/async-compression/pull/431))
+- Optimize GzipDecoder ([#430](https://github.com/Nullus157/async-compression/pull/430))
+- Optimize gzip::header remove heap allocation ([#428](https://github.com/Nullus157/async-compression/pull/428))
+
+## [0.4.33](https://github.com/Nullus157/async-compression/compare/compression-codecs-v0.4.32...compression-codecs-v0.4.33) - 2025-11-21
+
+### Added
+
+- Add uninitialized output buffer support ([#414](https://github.com/Nullus157/async-compression/pull/414))
+
+### Other
+
+- Set msrv for codecs to 1.83 ([#422](https://github.com/Nullus157/async-compression/pull/422))
+
+## [0.4.32](https://github.com/Nullus157/async-compression/compare/compression-codecs-v0.4.31...compression-codecs-v0.4.32) - 2025-11-06
+
+### Added
+
+- allow reading uncompressed size ([#396](https://github.com/Nullus157/async-compression/pull/396))
+
+### Fixed
+
+- `UnexpectedEof` on truncated input ([#412](https://github.com/Nullus157/async-compression/pull/412))
+
+### Other
+
+- Simplify `WriteBuffer`: Rm `unwritten_initialized_mut` ([#413](https://github.com/Nullus157/async-compression/pull/413))
+- Implement new traits `DecodeV2`/`EncodeV2` ([#398](https://github.com/Nullus157/async-compression/pull/398))
+- Re-export core in codecs ([#395](https://github.com/Nullus157/async-compression/pull/395))
+- Disable nightly feature `doc_auto_cfg` on docsrs ([#392](https://github.com/Nullus157/async-compression/pull/392))
+
 ## [0.4.31](https://github.com/Nullus157/async-compression/compare/compression-codecs-v0.4.30...compression-codecs-v0.4.31) - 2025-09-25
 
 ### Other

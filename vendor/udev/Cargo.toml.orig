@@ -1,0 +1,29 @@
+[package]
+name = "udev"
+version = "0.9.3"
+authors = ["David Cuddeback <david.cuddeback@gmail.com>", "Victoria Brekenfeld <github@drakulix.de>"]
+description = "libudev bindings for Rust"
+license = "MIT"
+homepage = "https://github.com/Smithay/udev-rs"
+repository = "https://github.com/Smithay/udev-rs"
+documentation = "http://docs.rs/udev/"
+keywords = ["udev", "hardware", "bindings", "sysfs"]
+readme = "README.md"
+
+[dependencies]
+io-lifetimes = "1.0.3"
+libudev-sys = "0.1.4"
+libc = "0.2"
+mio06 = { package = "mio", version = "^0.6.21", optional = true }
+mio07 = { package = "mio", version = "0.7", features = ["os-ext"], optional = true }
+mio08 = { package = "mio", version = "0.8", features = ["os-ext"], optional = true }
+mio10 = { package = "mio", version = "1.0", features = ["os-ext"], optional = true }
+
+[build-dependencies]
+pkg-config = "0.3.3" #force a newer version for libudev-sys to fix minimal versions
+
+[features]
+mio = ["mio10"] # mio feature defaults to the newest mio version
+hwdb = []
+send = []
+sync = ["send"]

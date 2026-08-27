@@ -6,7 +6,7 @@ use crate::ident::Ident;
 use crate::lifetime::Lifetime;
 use crate::punctuated::Punctuated;
 use crate::token;
-use crate::ty::{ReturnType, Type};
+use crate::ty::{NamedArg, ReturnType, Type};
 use alloc::boxed::Box;
 
 ast_struct! {
@@ -248,7 +248,7 @@ ast_struct! {
     pub struct ParenthesizedGenericArguments {
         pub paren_token: token::Paren,
         /// `(A, B)`
-        pub inputs: Punctuated<Type, Token![,]>,
+        pub inputs: Punctuated<NamedArg, Token![,]>,
         /// `C`
         pub output: ReturnType,
     }
@@ -299,7 +299,7 @@ pub(crate) mod parsing {
     };
     use crate::punctuated::Punctuated;
     use crate::token;
-    use crate::ty::{ReturnType, Type};
+    use crate::ty::{NamedArg, ReturnType, Type};
     #[cfg(not(feature = "full"))]
     use crate::verbatim;
     use alloc::boxed::Box;
@@ -316,7 +316,7 @@ pub(crate) mod parsing {
     impl Parse for GenericArgument {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Lifetime) && !input.peek2(Token![+]) {
-                return Ok(GenericArgument::Lifetime(input.parse()?));
+                return Ok(GenericArgument::Lifetime(Lifetime::parse_any(input)?));
             }
 
             if input.peek(Lit) || input.peek(token::Brace) {
@@ -336,7 +336,7 @@ pub(crate) mod parsing {
                         } =>
                 {
                     if let Some(eq_token) = input.parse::<Option<Token![=]>>()? {
-                        let segment = ty.path.segments.pop().unwrap().into_value();
+                        let segment = ty.path.segments.pop().unwrap();
                         let ident = segment.ident;
                         let generics = match segment.arguments {
                             PathArguments::None => None,
@@ -361,7 +361,7 @@ pub(crate) mod parsing {
                     }
 
                     if let Some(colon_token) = input.parse::<Option<Token![:]>>()? {
-                        let segment = ty.path.segments.pop().unwrap().into_value();
+                        let segment = ty.path.segments.pop().unwrap();
                         return Ok(GenericArgument::Constraint(Constraint {
                             ident: segment.ident,
                             generics: match segment.arguments {
@@ -431,11 +431,11 @@ pub(crate) mod parsing {
 
             #[cfg(not(feature = "full"))]
             {
-                let begin = input.fork();
+                let begin = input.cursor();
                 let content;
                 braced!(content in input);
                 content.parse::<Expr>()?;
-                let verbatim = verbatim::between(&begin, input);
+                let verbatim = verbatim::between(begin, input.cursor());
                 return Ok(Expr::Verbatim(verbatim));
             }
         }
@@ -494,10 +494,17 @@ pub(crate) mod parsing {
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
     impl Parse for ParenthesizedGenericArguments {
         fn parse(input: ParseStream) -> Result<Self> {
+            fn type_as_named_arg(input: ParseStream) -> Result<NamedArg> {
+                Ok(NamedArg {
+                    attrs: Vec::new(),
+                    name: None,
+                    ty: input.parse()?,
+                })
+            }
             let content;
             Ok(ParenthesizedGenericArguments {
                 paren_token: parenthesized!(content in input),
-                inputs: content.parse_terminated(Type::parse, Token![,])?,
+                inputs: content.parse_terminated(type_as_named_arg, Token![,])?,
                 output: input.call(ReturnType::without_plus)?,
             })
         }

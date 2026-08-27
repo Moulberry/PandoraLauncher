@@ -7,7 +7,7 @@ error: trait bound PhantomPinned: Unpin does not depend on any type or lifetime 
 note: the lint level is defined here
   --> tests/ui/unstable-features/trivial_bounds.rs:8:9
    |
-8  | #![deny(trivial_bounds)]
+ 8 | #![deny(trivial_bounds)]
    |         ^^^^^^^^^^^^^^
 
 error: trait bound Inner: Unpin does not depend on any type or lifetime parameters

@@ -584,7 +584,7 @@ static int tls_read_buffer_extend_to(SSL *ssl, size_t len) {
       // SSL_ERROR_ZERO_RETURN.
       if (ret == 0  && (ssl->options & SSL_OP_IGNORE_UNEXPECTED_EOF) &&
           ssl->s3->read_shutdown == ssl_shutdown_none &&
-          !SSL_in_init(ssl) && BIO_eof(ssl->rbio.get())) {
+          !SSL_in_init(ssl)) {
         ssl->s3->read_shutdown = ssl_shutdown_close_notify;
         ssl->s3->rwstate = SSL_ERROR_ZERO_RETURN;
         return ret;

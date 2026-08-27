@@ -1,15 +1,7 @@
-
 //! Error type definitions.
 
-use std::borrow::Cow;
-use std::io::ErrorKind;
-pub use std::io::Error as IoError;
-pub use std::io::Result as IoResult;
-use std::convert::TryFrom;
-use std::error;
-use std::fmt;
-use std::num::TryFromIntError;
-
+pub use std::io::{Error as IoError, Result as IoResult};
+use std::{borrow::Cow, convert::TryFrom, error, fmt, io::ErrorKind, num::TryFromIntError};
 
 // Export types
 
@@ -19,13 +11,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// A result that, if ok, contains nothing, and otherwise contains an exr error.
 pub type UnitResult = Result<()>;
 
-
 /// An error that may happen while reading or writing an exr file.
 /// Distinguishes between three types of errors:
 /// unsupported features, invalid data, and file system errors.
 #[derive(Debug)]
 pub enum Error {
-
     /// Reading or Writing the file has been aborted by the caller.
     /// This error will never be triggered by this crate itself,
     /// only by users of this library.
@@ -46,9 +36,7 @@ pub enum Error {
     Io(IoError),
 }
 
-
 impl Error {
-
     /// Create an error of the variant `Invalid`.
     pub(crate) fn invalid(message: impl Into<Cow<'static, str>>) -> Self {
         Error::Invalid(message.into())
@@ -65,17 +53,20 @@ impl From<IoError> for Error {
     fn from(error: IoError) -> Self {
         if error.kind() == ErrorKind::UnexpectedEof {
             Error::invalid("reference to missing bytes")
-        }
-        else {
+        } else {
             Error::Io(error)
         }
     }
 }
 
 // TODO use `usize::try_from(x)?` everywhere
+// Note: This provides a generic error message for integer conversion failures.
+// For better error messages, prefer using `.map_err(|_|
+// Error::invalid(format!("specific context"))) instead of relying on this From
+// impl.
 impl From<TryFromIntError> for Error {
     fn from(_: TryFromIntError) -> Self {
-        Error::invalid("invalid size")
+        Error::invalid("integer conversion failed: value out of range")
     }
 }
 
@@ -103,8 +94,11 @@ impl fmt::Display for Error {
 #[inline]
 pub(crate) fn i32_to_usize(value: i32, error_message: &'static str) -> Result<usize> {
     usize::try_from(value).map_err(|_| {
-        if value < 0 { Error::invalid(error_message) }
-        else { Error::unsupported(error_message) }
+        if value < 0 {
+            Error::invalid(error_message)
+        } else {
+            Error::unsupported(error_message)
+        }
     })
 }
 

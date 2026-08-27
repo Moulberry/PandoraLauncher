@@ -115,6 +115,8 @@ pub enum Signature {
     /// The signature for a structure.
     Structure(Fields),
     /// The signature for a maybe type (gvariant-specific).
+    ///
+    /// Only used with the GVariant format (see the `zgvariant` crate).
     #[cfg(feature = "gvariant")]
     Maybe(Child),
 }
@@ -266,6 +268,22 @@ impl Signature {
         }
     }
 
+    /// Whether a maybe (`m`) type appears anywhere within this signature.
+    ///
+    /// The maybe type is GVariant-specific and has no representation in the D-Bus wire format, so
+    /// a signature bound for D-Bus must not contain one. This walks the whole signature tree,
+    /// since a maybe can be nested inside any container.
+    pub fn contains_maybe(&self) -> bool {
+        match self {
+            Signature::Array(child) => child.contains_maybe(),
+            Signature::Dict { key, value } => key.contains_maybe() || value.contains_maybe(),
+            Signature::Structure(fields) => fields.iter().any(Signature::contains_maybe),
+            #[cfg(feature = "gvariant")]
+            Signature::Maybe(_) => true,
+            _ => false,
+        }
+    }
+
     fn alignment_dbus(&self) -> usize {
         match self {
             Signature::U8 | Signature::Variant | Signature::Signature => 1,
@@ -294,6 +312,7 @@ impl Signature {
         use std::cmp::max;
 
         match self {
+            Signature::Bool => 1,
             Signature::Unit
             | Signature::U8
             | Signature::I16
@@ -301,7 +320,6 @@ impl Signature {
             | Signature::I32
             | Signature::U32
             | Signature::F64
-            | Signature::Bool
             | Signature::I64
             | Signature::U64
             | Signature::Signature => self.alignment_dbus(),
@@ -442,8 +460,46 @@ fn parse(bytes: &[u8], check_only: bool) -> Result<Signature, Error> {
 
     // `many1` allocates so we only want to use it when `check_only == false`
     type ManyError = winnow::error::ErrMode<()>;
-    fn many(bytes: &mut &[u8], check_only: bool, top_level: bool) -> Result<Signature, ManyError> {
-        let parser = |s: &mut _| parse_signature(s, check_only);
+
+    // The maximum struct- and array-nesting depths a signature may use, matching the limits
+    // `zvariant` enforces when (de)serializing (see its `container_depths` module). This also
+    // bounds the recursion below, so a hostile signature string — e.g. tens of thousands of `(`
+    // — cannot exhaust the stack. `maybe` (gvariant) is deliberately not bounded, to stay no
+    // stricter than what the (de)serializer accepts.
+    const MAX_STRUCT_DEPTH: u8 = 32;
+    const MAX_ARRAY_DEPTH: u8 = 32;
+
+    /// The struct- and array-nesting depth at a point in a signature, used to bound the recursion.
+    #[derive(Debug, Default, Clone, Copy)]
+    struct Depth {
+        structure: u8,
+        array: u8,
+    }
+
+    impl Depth {
+        fn inc_structure(mut self) -> Self {
+            self.structure += 1;
+            self
+        }
+
+        fn inc_array(mut self) -> Self {
+            self.array += 1;
+            self
+        }
+
+        /// Whether either nesting limit has been exceeded.
+        fn exceeded(self) -> bool {
+            self.structure > MAX_STRUCT_DEPTH || self.array > MAX_ARRAY_DEPTH
+        }
+    }
+
+    fn many(
+        bytes: &mut &[u8],
+        check_only: bool,
+        top_level: bool,
+        depth: Depth,
+    ) -> Result<Signature, ManyError> {
+        let parser = |s: &mut _| parse_signature(s, check_only, depth);
         if check_only {
             return repeat(1.., parser)
                 .map(|_: ()| Signature::Unit)
@@ -482,8 +538,19 @@ fn parse(bytes: &[u8], check_only: bool) -> Result<Signature, Error> {
             .parse_next(bytes)
     }
 
-    fn parse_signature(bytes: &mut &[u8], check_only: bool) -> Result<Signature, ManyError> {
-        let parse_with_context = |bytes: &mut _| parse_signature(bytes, check_only);
+    fn parse_signature(
+        bytes: &mut &[u8],
+        check_only: bool,
+        depth: Depth,
+    ) -> Result<Signature, ManyError> {
+        // Reject types nested past the container-depth limits. Besides matching what `zvariant`
+        // can actually encode, this keeps the recursion below — and hence the stack usage —
+        // bounded on adversarial input.
+        if depth.exceeded() {
+            return fail.parse_next(bytes);
+        }
+        let array_depth = depth.inc_array();
+        let struct_depth = depth.inc_structure();
 
         let simple_type = dispatch! {any;
             b'y' => empty.value(Signature::U8),
@@ -504,7 +571,14 @@ fn parse(bytes: &[u8], check_only: bool) -> Result<Signature, Error> {
 
         let dict = (
             b'a',
-            delimited(b'{', (parse_with_context, parse_with_context), b'}'),
+            delimited(
+                b'{',
+                (
+                    move |s: &mut _| parse_signature(s, check_only, array_depth),
+                    move |s: &mut _| parse_signature(s, check_only, array_depth),
+                ),
+                b'}',
+            ),
         )
             .map(|(_, (key, value))| {
                 if check_only {
@@ -520,24 +594,34 @@ fn parse(bytes: &[u8], check_only: bool) -> Result<Signature, Error> {
                 }
             });
 
-        let array = (b'a', parse_with_context).map(|(_, child)| {
-            if check_only {
-                return Signature::Array(Signature::Unit.into());
-            }
+        let array = (b'a', move |s: &mut _| {
+            parse_signature(s, check_only, array_depth)
+        })
+            .map(|(_, child)| {
+                if check_only {
+                    return Signature::Array(Signature::Unit.into());
+                }
 
-            Signature::Array(child.into())
-        });
+                Signature::Array(child.into())
+            });
 
-        let structure = delimited(b'(', |s: &mut _| many(s, check_only, false), b')');
+        let structure = delimited(
+            b'(',
+            move |s: &mut _| many(s, check_only, false, struct_depth),
+            b')',
+        );
 
+        // `maybe` does not count toward the depth limits (see `Depth`), so its child is parsed
+        // at the same depth.
         #[cfg(feature = "gvariant")]
-        let maybe = (b'm', parse_with_context).map(|(_, child)| {
-            if check_only {
-                return Signature::Maybe(Signature::Unit.into());
-            }
+        let maybe =
+            (b'm', move |s: &mut _| parse_signature(s, check_only, depth)).map(|(_, child)| {
+                if check_only {
+                    return Signature::Maybe(Signature::Unit.into());
+                }
 
-            Signature::Maybe(child.into())
-        });
+                Signature::Maybe(child.into())
+            });
 
         alt((
             simple_type,
@@ -554,9 +638,11 @@ fn parse(bytes: &[u8], check_only: bool) -> Result<Signature, Error> {
         .parse_next(bytes)
     }
 
-    let signature = alt((unit, |s: &mut _| many(s, check_only, true)))
-        .parse(bytes)
-        .map_err(|_| Error::InvalidSignature)?;
+    let signature = alt((unit, |s: &mut _| {
+        many(s, check_only, true, Depth::default())
+    }))
+    .parse(bytes)
+    .map_err(|_| Error::InvalidSignature)?;
 
     Ok(signature)
 }

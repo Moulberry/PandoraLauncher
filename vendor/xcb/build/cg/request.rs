@@ -885,6 +885,10 @@ impl CodeGen {
         } else {
             "xcb_send_request64"
         };
+
+        writeln!(out)?;
+        writeln!(out, "{}#[cfg(feature = \"dl\")]", cg::ind(2))?;
+        writeln!(out, "{}base::xcb_get_conn_funcs!(c, {});", cg::ind(2), func)?;
         writeln!(out)?;
         writeln!(out, "{}{}(", cg::ind(2), func)?;
         writeln!(out, "{}    c.get_raw_conn(),", cg::ind(2))?;

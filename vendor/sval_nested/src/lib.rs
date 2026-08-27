@@ -7,6 +7,7 @@ Streaming via `sval_nested` will discard any [`sval::Stream::tag_hint`]s. `sval`
 appear anywhere in a stream, but this library enforces a stricter lifecycle, making those hints unreliable.
 */
 
+#![doc(html_logo_url = "https://raw.githubusercontent.com/sval-rs/sval/main/asset/logo.svg")]
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 

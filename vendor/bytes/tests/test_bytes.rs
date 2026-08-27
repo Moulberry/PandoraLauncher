@@ -608,6 +608,23 @@ fn extend_from_slice_mut() {
 }
 
 #[test]
+fn extend_from_within_normal() {
+    let mut bytes = BytesMut::new();
+    bytes.extend_from_slice(&LONG[..23]);
+    bytes.extend_from_within(10..22);
+    bytes.extend_from_within(22..35);
+    assert_eq!(LONG[..], *bytes);
+}
+
+#[test]
+#[should_panic]
+fn extend_from_within_out_of_range() {
+    let mut bytes = BytesMut::new();
+    bytes.extend_from_slice(&LONG[..23]);
+    bytes.extend_from_within(23..=23);
+}
+
+#[test]
 fn extend_mut_from_bytes() {
     let mut bytes = BytesMut::with_capacity(0);
     bytes.extend([Bytes::from(LONG)]);
@@ -1524,6 +1541,65 @@ fn split_to_empty_addr_mut() {
     // Is miri happy about the provenance?
     let _ = &empty_start[..];
     let _ = &buf[..];
+}
+
+#[test]
+fn bytes_mut_split_boundary_capacities() {
+    // VEC mode
+    for at in [0, 5, 11] {
+        let mut buf = BytesMut::with_capacity(64);
+        buf.extend_from_slice(b"hello world");
+
+        let other = buf.split_off(at);
+        assert_eq!(
+            buf.capacity() + other.capacity(),
+            64,
+            "split_off at {} should preserve total capacity",
+            at
+        );
+    }
+
+    for at in [0, 5, 11] {
+        let mut buf = BytesMut::with_capacity(64);
+        buf.extend_from_slice(b"hello world");
+
+        let other = buf.split_to(at);
+        assert_eq!(
+            buf.capacity() + other.capacity(),
+            64,
+            "split_to at {} should preserve total capacity",
+            at
+        );
+    }
+
+    // ARC mode (promote via a no-op split)
+    for at in [0, 5, 11] {
+        let mut buf = BytesMut::with_capacity(64);
+        buf.extend_from_slice(b"hello world");
+        let _ = buf.split_to(0); // promotes to ARC
+
+        let other = buf.split_off(at);
+        assert_eq!(
+            buf.capacity() + other.capacity(),
+            64,
+            "ARC split_off at {} should preserve total capacity",
+            at
+        );
+    }
+
+    for at in [0, 5, 11] {
+        let mut buf = BytesMut::with_capacity(64);
+        buf.extend_from_slice(b"hello world");
+        let _ = buf.split_to(0); // promotes to ARC
+
+        let other = buf.split_to(at);
+        assert_eq!(
+            buf.capacity() + other.capacity(),
+            64,
+            "ARC split_to at {} should preserve total capacity",
+            at
+        );
+    }
 }
 
 #[derive(Clone)]

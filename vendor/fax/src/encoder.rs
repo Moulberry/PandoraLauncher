@@ -1,4 +1,7 @@
-use crate::{Color, BitWriter, Transitions, maps::{Mode, mode, black, white, EDFB_HALF}};
+use crate::{
+    maps::{black, mode, white, Mode, EDFB_HALF},
+    BitWriter, Color, Transitions,
+};
 
 fn absdiff(a: u16, b: u16) -> u16 {
     if a > b {
@@ -25,7 +28,7 @@ fn encode_color<W: BitWriter>(writer: &mut W, color: Color, mut n: u16) -> Resul
         //debug!("{}", n);
         writer.write(bits)
     };
-    
+
     while n >= 2560 {
         write(2560)?;
         n -= 2560;
@@ -46,21 +49,27 @@ impl<W: BitWriter> Encoder<W> {
             current: vec![],
         }
     }
-    pub fn encode_line(&mut self, pels: impl Iterator<Item=Color>, width: u16) -> Result<(), W::Error> {
+    pub fn encode_line(
+        &mut self,
+        pels: impl Iterator<Item = Color>,
+        width: u16,
+    ) -> Result<(), W::Error> {
         let mut color = Color::White;
         let mut transitions = Transitions::new(&self.reference);
         let mut a0 = 0;
         let mut start_of_line = true;
-        let mut pels = pels.enumerate()
-        .scan(Color::White, |state, (i, c)| {
-            Some(if c != *state {
-                debug!("  {i} {c:?}");
-                *state = c;
-                Some(i as u16)
-            } else {
-                None
+        let mut pels = pels
+            .enumerate()
+            .scan(Color::White, |state, (i, c)| {
+                Some(if c != *state {
+                    debug!("  {i} {c:?}");
+                    *state = c;
+                    Some(i as u16)
+                } else {
+                    None
+                })
             })
-        }).filter_map(|x| x);
+            .filter_map(|x| x);
         let writer = &mut self.writer;
         self.current.clear();
 
@@ -74,7 +83,9 @@ impl<W: BitWriter> Encoder<W> {
             }
             loop {
                 transitions.seek_back(a0);
-                let b1 = transitions.next_color(a0, !color, start_of_line).unwrap_or(width);
+                let b1 = transitions
+                    .next_color(a0, !color, start_of_line)
+                    .unwrap_or(width);
                 let b2 = transitions.peek();
                 start_of_line = false;
                 debug!("  a0={a0}, a1={a1}, b1={:?}, b2={:?}", b1, b2);
@@ -100,19 +111,15 @@ impl<W: BitWriter> Encoder<W> {
                             Some(a2) => {
                                 self.current.push(a2);
                                 a2
-                            },
-                            None => width
+                            }
+                            None => width,
                         };
-                        let a0a1 = a1 - a0;
-                        let a1a2 = a2 - a1;
+                        let a0a1 = a1.saturating_sub(a0);
+                        let a1a2 = a2.saturating_sub(a1);
                         debug!("  Horizontal({}, {}) color={color:?}", a0a1, a1a2);
                         let bits = mode::encode(Mode::Horizontal).unwrap();
                         writer.write(bits)?;
-                        let c = if a0 + a1 == 0 {
-                            Color::White
-                        } else {
-                            color
-                        };
+                        let c = if a0 + a1 == 0 { Color::White } else { color };
                         encode_color(writer, c, a0a1)?;
                         encode_color(writer, !c, a1a2)?;
                         a0 = a2;

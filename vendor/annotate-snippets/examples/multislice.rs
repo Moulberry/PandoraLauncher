@@ -1,4 +1,4 @@
-use annotate_snippets::{renderer::DecorStyle, Annotation, Level, Renderer, Snippet};
+use annotate_snippets::{Annotation, Level, Renderer, Snippet, renderer::DecorStyle};
 
 fn main() {
     let report = &[Level::ERROR

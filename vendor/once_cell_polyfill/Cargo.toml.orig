@@ -89,7 +89,7 @@ zero_sized_map_values = "warn"
 
 [package]
 name = "once_cell_polyfill"
-version = "1.70.1"
+version = "1.70.2"
 description = "Polyfill for `OnceCell` stdlib feature for use with older MSRVs"
 categories = []
 keywords = []
@@ -101,7 +101,6 @@ include.workspace = true
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs", "--generate-link-to-definition"]
 
 [package.metadata.release]
 pre-release-replacements = [

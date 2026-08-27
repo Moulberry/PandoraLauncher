@@ -13,18 +13,10 @@
 edition = "2018"
 rust-version = "1.70"
 name = "inotify"
-version = "0.11.0"
-authors = [
-    "Hanno Braun <mail@hannobraun.de>",
-    "Félix Saparelli <me@passcod.name>",
-    "Cristian Kubis <cristian.kubis@tsunix.de>",
-    "Frank Denis <github@pureftpd.org>",
-]
+version = "0.11.5"
 build = false
-exclude = [
-    "/.travis.yml",
-    "/inotify-rs.sublime-project",
-]
+exclude = ["/inotify-rs.sublime-project"]
+autolib = false
 autobins = false
 autoexamples = false
 autotests = false
@@ -41,7 +33,21 @@ categories = [
     "filesystem",
 ]
 license = "ISC"
-repository = "https://github.com/hannobraun/inotify"
+repository = "https://github.com/hannobraun/inotify-rs"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = [
+    "--cfg",
+    "docsrs",
+]
+
+[features]
+default = ["stream"]
+stream = [
+    "futures-util",
+    "tokio",
+]
 
 [lib]
 name = "inotify"
@@ -63,23 +69,23 @@ path = "tests/main.rs"
 [dependencies.bitflags]
 version = "2"
 
-[dependencies.futures-core]
-version = "0.3.1"
+[dependencies.futures-util]
+version = "0.3.30"
 optional = true
 
 [dependencies.inotify-sys]
-version = "0.1.3"
+version = "0.1.8"
 
 [dependencies.libc]
 version = "0.2"
 
 [dependencies.tokio]
-version = "1.0.1"
+version = "1.40.0"
 features = ["net"]
 optional = true
 
 [dev-dependencies.futures-util]
-version = "0.3.1"
+version = "0.3.30"
 
 [dev-dependencies.maplit]
 version = "1.0"
@@ -88,24 +94,12 @@ version = "1.0"
 version = "0.8"
 
 [dev-dependencies.tempfile]
-version = "3.1.0"
+version = "3.12.0"
 
 [dev-dependencies.tokio]
-version = "1.0.1"
+version = "1.40.0"
 features = [
     "macros",
     "rt-multi-thread",
+    "time",
 ]
-
-[features]
-default = ["stream"]
-stream = [
-    "futures-core",
-    "tokio",
-]
-
-[badges.maintenance]
-status = "actively-developed"
-
-[badges.travis-ci]
-repository = "inotify-rs/inotify"

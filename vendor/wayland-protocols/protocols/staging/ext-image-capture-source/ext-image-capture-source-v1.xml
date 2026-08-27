@@ -39,7 +39,7 @@
     only be done by creating a new major version of the extension.
   </description>
 
-  <interface name="ext_image_capture_source_v1" version="1">
+  <interface name="ext_image_capture_source_v1" version="1" frozen="true">
     <description summary="opaque image capture source object">
       The image capture source object is an opaque descriptor for a capturable
       resource.  This resource may be any sort of entity from which an image

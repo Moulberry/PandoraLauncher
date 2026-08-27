@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "gvariant", allow(deprecated))]
+
 use zvariant::{serialized::Context, to_bytes_for_signature};
 
 #[macro_use]

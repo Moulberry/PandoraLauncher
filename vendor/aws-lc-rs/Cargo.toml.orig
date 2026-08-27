@@ -1,9 +1,9 @@
 [package]
 name = "aws-lc-rs"
 authors = ["AWS-LibCrypto"]
-version = "1.17.1"
+version = "1.18.0"
 # this crate re-exports whatever sys crate that was selected
-links = "aws_lc_rs_1_17_1_sys"
+links = "aws_lc_rs_1_18_0_sys"
 edition = "2021"
 rust-version = "1.71.0"
 keywords = ["crypto", "cryptography", "security"]
@@ -49,8 +49,8 @@ fips = ["dep:aws-lc-fips-sys"]
 
 [dependencies]
 untrusted = { workspace = true, optional = true }
-aws-lc-sys = { version = "0.42.0", path = "../aws-lc-sys", default-features = false, optional = true }
-aws-lc-fips-sys = { version = "0.13.1", path = "../aws-lc-fips-sys", optional = true }
+aws-lc-sys = { version = "0.44.0", path = "../aws-lc-sys", default-features = false, optional = true }
+aws-lc-fips-sys = { version = "0.14.0", path = "../aws-lc-fips-sys", optional = true }
 zeroize.workspace = true
 
 [dev-dependencies]

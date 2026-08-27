@@ -117,7 +117,9 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                     #fqn => Self::#ident,
                 },
                 Fields::Unnamed(_) => quote! {
-                    #fqn => { Self::#ident(::std::clone::Clone::clone(desc).unwrap_or_default()) },
+                    #fqn => Self::#ident(
+                        desc.map(::std::string::String::from).unwrap_or_default(),
+                    ),
                 },
                 Fields::Named(n) => {
                     let f = &n
@@ -126,11 +128,9 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
                         .ok_or_else(|| Error::new(n.span(), "expected at least one field"))?
                         .ident;
                     quote! {
-                        #fqn => {
-                            let desc = ::std::clone::Clone::clone(desc).unwrap_or_default();
-
-                            Self::#ident { #f: desc }
-                        }
+                        #fqn => Self::#ident {
+                            #f: desc.map(::std::string::String::from).unwrap_or_default(),
+                        },
                     }
                 }
             };
@@ -146,13 +146,24 @@ pub fn expand_derive(input: DeriveInput) -> Result<TokenStream, Error> {
             quote! {
                 impl ::std::convert::From<#zbus::Error> for #name {
                     fn from(value: #zbus::Error) -> #name {
-                        if let #zbus::Error::MethodError(name, desc, _) = &value {
-                            match name.as_str() {
-                                #error_converts
-                                _ => Self::#ident(value),
+                        match &value {
+                            #zbus::Error::MethodError(name, desc, _) => {
+                                let desc = desc.as_deref();
+                                match name.as_str() {
+                                    #error_converts
+                                    _ => Self::#ident(value),
+                                }
                             }
-                        } else {
-                            Self::#ident(value)
+                            #zbus::Error::FDO(e) => {
+                                let e = ::std::convert::AsRef::as_ref(e);
+                                let name = #zbus::DBusError::name(e);
+                                let desc = #zbus::DBusError::description(e);
+                                match name.as_str() {
+                                    #error_converts
+                                    _ => Self::#ident(value),
+                                }
+                            }
+                            _ => Self::#ident(value),
                         }
                     }
                 }

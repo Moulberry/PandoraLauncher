@@ -38,7 +38,6 @@ mod roundtrip {
     mod test_vecs;
     mod test_tuple;
     mod test_primitives;
-    #[cfg(feature = "std")]
     mod test_ip_addr;
     mod test_nonzero_integers;
     mod test_range;
@@ -54,6 +53,8 @@ mod roundtrip {
     mod test_rc;
     #[cfg(feature = "indexmap")]
     mod test_indexmap;
+    #[cfg(feature = "uuid")]
+    mod test_uuid;
 
     #[cfg(feature = "derive")]
     mod requires_derive_category {
@@ -64,6 +65,7 @@ mod roundtrip {
         mod test_recursive_structs;
         mod test_recursive_enums;
         mod test_serde_with_third_party;
+        mod test_multiple_borsh_attrs;
         mod test_enum_discriminants;
         #[cfg(feature = "bytes")]
         mod test_ultimate_many_features_combined;

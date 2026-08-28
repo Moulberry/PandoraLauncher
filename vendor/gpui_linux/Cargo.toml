@@ -114,7 +114,7 @@ optional = true
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.collections]
 version = "0.1.0"
-path = '..\collections'
+path = "../collections"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.filedescriptor]
 version = "0.8.2"
@@ -124,19 +124,19 @@ optional = true
 version = "0.3.32"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.gpui]
-path = '..\gpui'
+path = "../gpui"
 default-features = false
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.gpui_util]
-path = '..\gpui_util'
+path = "../gpui_util"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.gpui_wgpu]
-path = '..\gpui_wgpu'
+path = "../gpui_wgpu"
 features = ["font-kit"]
 optional = true
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.http_client]
-path = '..\http_client'
+path = "../http_client"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.libc]
 version = "0.2"

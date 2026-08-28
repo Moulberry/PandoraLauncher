@@ -42,7 +42,7 @@ name = "gpui_macos"
 path = "src/gpui_macos.rs"
 
 [dependencies.gpui]
-path = '..\gpui'
+path = "../gpui"
 default-features = false
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -72,7 +72,7 @@ version = "=0.26.0"
 
 [target.'cfg(target_os = "macos")'.dependencies.collections]
 version = "0.1.0"
-path = '..\collections'
+path = "../collections"
 
 [target.'cfg(target_os = "macos")'.dependencies.core-foundation]
 version = "0.10"
@@ -103,10 +103,10 @@ version = "0.5"
 version = "0.3.32"
 
 [target.'cfg(target_os = "macos")'.dependencies.gpui_apple]
-path = '..\gpui_apple'
+path = "../gpui_apple"
 
 [target.'cfg(target_os = "macos")'.dependencies.gpui_util]
-path = '..\gpui_util'
+path = "../gpui_util"
 
 [target.'cfg(target_os = "macos")'.dependencies.image]
 version = "0.25.1"
@@ -146,7 +146,7 @@ features = [
 version = "0.5"
 
 [target.'cfg(target_os = "macos")'.dependencies.media]
-path = '..\media'
+path = "../media"
 
 [target.'cfg(target_os = "macos")'.dependencies.metal]
 version = "0.33"
@@ -237,12 +237,12 @@ features = [
 ]
 
 [target.'cfg(target_os = "macos")'.dev-dependencies.gpui]
-path = '..\gpui'
+path = "../gpui"
 features = ["test-support"]
 default-features = false
 
 [target.'cfg(target_os = "macos")'.dev-dependencies.gpui_apple]
-path = '..\gpui_apple'
+path = "../gpui_apple"
 features = ["test-support"]
 
 [lints.clippy]

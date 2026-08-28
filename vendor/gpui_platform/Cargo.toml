@@ -50,30 +50,30 @@ name = "gpui_platform"
 path = "src/gpui_platform.rs"
 
 [dependencies.gpui]
-path = '..\gpui'
+path = "../gpui"
 default-features = false
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.gpui_linux]
-path = '..\gpui_linux'
+path = "../gpui_linux"
 default-features = false
 
 [target.'cfg(target_family = "wasm")'.dependencies.console_error_panic_hook]
 version = "0.1.7"
 
 [target.'cfg(target_family = "wasm")'.dependencies.gpui_web]
-path = '..\gpui_web'
+path = "../gpui_web"
 
 [target.'cfg(target_os = "macos")'.dependencies.gpui_macos]
-path = '..\gpui_macos'
+path = "../gpui_macos"
 default-features = false
 
 [target.'cfg(target_os = "windows")'.dependencies.gpui]
-path = '..\gpui'
+path = "../gpui"
 features = ["windows-manifest"]
 default-features = false
 
 [target.'cfg(target_os = "windows")'.dependencies.gpui_windows]
-path = '..\gpui_windows'
+path = "../gpui_windows"
 default-features = false
 
 [lints.clippy]

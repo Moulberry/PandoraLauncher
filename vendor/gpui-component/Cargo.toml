@@ -273,15 +273,15 @@ git = "https://github.com/zed-industries/zed"
 
 [dependencies.gpui-base]
 version = "0.5.2"
-path = '..\base'
+path = "../base"
 
 [dependencies.gpui-component-assets]
 version = "0.5.1"
-path = '..\assets'
+path = "../assets"
 
 [dependencies.gpui-component-macros]
 version = "0.5.1"
-path = '..\macros'
+path = "../macros"
 
 [dependencies.gpui_macros]
 version = "0.1.0"

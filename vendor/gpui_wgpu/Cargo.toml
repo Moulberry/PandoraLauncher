@@ -45,7 +45,7 @@ version = "1.0.86"
 
 [dependencies.collections]
 version = "0.1.0"
-path = '..\collections'
+path = "../collections"
 
 [dependencies.etagere]
 version = "0.2"
@@ -58,11 +58,11 @@ optional = true
 package = "zed-font-kit"
 
 [dependencies.gpui]
-path = '..\gpui'
+path = "../gpui"
 default-features = false
 
 [dependencies.gpui_util]
-path = '..\gpui_util'
+path = "../gpui_util"
 
 [dependencies.itertools]
 version = "0.14.0"

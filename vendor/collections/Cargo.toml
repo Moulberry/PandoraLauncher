@@ -33,7 +33,7 @@ path = "src/collections.rs"
 doctest = false
 
 [dependencies.gpui_util]
-path = '..\gpui_util'
+path = "../gpui_util"
 
 [dependencies.indexmap]
 version = "2.7.0"

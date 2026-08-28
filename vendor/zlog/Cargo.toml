@@ -39,7 +39,7 @@ features = ["serde"]
 
 [dependencies.collections]
 version = "0.1.0"
-path = '..\collections'
+path = "../collections"
 
 [dependencies.log]
 version = "0.4.16"

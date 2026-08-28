@@ -291,7 +291,7 @@ features = ["serde"]
 
 [dependencies.collections]
 version = "0.1.0"
-path = '..\collections'
+path = "../collections"
 
 [dependencies.criterion]
 version = "0.5"
@@ -326,13 +326,13 @@ version = "0.3.32"
 version = "7.7.1"
 
 [dependencies.gpui_macros]
-path = '..\gpui_macros'
+path = "../gpui_macros"
 
 [dependencies.gpui_shared_string]
-path = '..\gpui_shared_string'
+path = "../gpui_shared_string"
 
 [dependencies.gpui_util]
-path = '..\gpui_util'
+path = "../gpui_util"
 
 [dependencies.hdrhistogram]
 version = "7"
@@ -343,7 +343,7 @@ default-features = false
 version = "0.9.2"
 
 [dependencies.http_client]
-path = '..\http_client'
+path = "../http_client"
 
 [dependencies.image]
 version = "0.25.1"
@@ -405,7 +405,7 @@ version = "0.9"
 version = "0.6"
 
 [dependencies.refineable]
-path = '..\refineable'
+path = "../refineable"
 
 [dependencies.regex]
 version = "1.5"
@@ -421,7 +421,7 @@ features = [
 default-features = false
 
 [dependencies.scheduler]
-path = '..\scheduler'
+path = "../scheduler"
 
 [dependencies.schemars]
 version = "1.0"
@@ -460,7 +460,7 @@ version = "0.28"
 features = ["derive"]
 
 [dependencies.sum_tree]
-path = '..\sum_tree'
+path = "../sum_tree"
 
 [dependencies.thiserror]
 version = "2.0.12"
@@ -476,7 +476,7 @@ version = "0.46.0"
 default-features = false
 
 [dependencies.util_macros]
-path = '..\util_macros'
+path = "../util_macros"
 
 [dependencies.uuid]
 version = "1.1.2"
@@ -491,21 +491,21 @@ features = [
 version = "1.1.0"
 
 [dependencies.ztracing]
-path = '..\ztracing'
+path = "../ztracing"
 
 [dev-dependencies.backtrace]
 version = "0.3"
 
 [dev-dependencies.collections]
 version = "0.1.0"
-path = '..\collections'
+path = "../collections"
 features = ["test-support"]
 
 [dev-dependencies.env_logger]
 version = "0.11"
 
 [dev-dependencies.gpui_platform]
-path = '..\gpui_platform'
+path = "../gpui_platform"
 features = [
     "font-kit",
     "wayland",
@@ -514,7 +514,7 @@ features = [
 default-features = false
 
 [dev-dependencies.gpui_util]
-path = '..\gpui_util'
+path = "../gpui_util"
 
 [dev-dependencies.lyon]
 version = "1.0"
@@ -524,7 +524,7 @@ features = ["extra"]
 version = "0.9"
 
 [dev-dependencies.scheduler]
-path = '..\scheduler'
+path = "../scheduler"
 features = ["test-support"]
 
 [dev-dependencies.unicode-segmentation]
@@ -543,7 +543,7 @@ default-features = false
 package = "zed-scap"
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies.http_client]
-path = '..\http_client'
+path = "../http_client"
 features = ["test-support"]
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies.proptest]
@@ -552,7 +552,7 @@ rev = "3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b"
 features = ["attr-macro"]
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies.reqwest_client]
-path = '..\reqwest_client'
+path = "../reqwest_client"
 features = ["test-support"]
 
 [target.'cfg(target_family = "wasm")'.dependencies.getrandom]

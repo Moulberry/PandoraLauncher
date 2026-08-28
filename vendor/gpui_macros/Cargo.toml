@@ -63,7 +63,7 @@ features = [
 ]
 
 [dev-dependencies.gpui]
-path = '..\gpui'
+path = "../gpui"
 features = ["inspector"]
 default-features = false
 

@@ -73,7 +73,7 @@ pub struct ModrinthHit {
     pub author: Arc<str>,
     pub display_categories: Option<Arc<[Ustr]>>,
     // pub versions: Arc<[Arc<str>]>,
-    // pub follows: usize,
+    pub follows: usize,
     // pub date_created: DateTime<Utc>,
     // pub date_modified: DateTime<Utc>,
     // pub latest_version: Option<Arc<str>>,

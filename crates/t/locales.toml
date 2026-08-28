@@ -2498,6 +2498,41 @@ hu = "${num: u64} letöltés"
 sv = "${num: u64} Nedladdningar"
 ru = "${num: u64} загрузок"
 fr = "${num: u64} Téléchargements"
+[instance.content.followers.b]
+# Billion
+en = "${num: f64}B Followers"
+pl = "${num: f64} mld obserwujących"
+de = "${num: f64}Mrd. Follower"
+hu = "${num: f64}Mrd követő"
+sv = "${num: f64}md följare"
+ru = "${num: f64} млрд подписчиков"
+fr = "${num: f64} Md abonnés"
+[instance.content.followers.m]
+# Million
+en = "${num: f64}M Followers"
+pl = "${num: f64} mln obserwujących"
+de = "${num: f64}Mil. Follower"
+hu = "${num: f64}M követő"
+sv = "${num: f64}mn följare"
+ru = "${num: f64} млн подписчиков"
+fr = "${num: f64} millions d’abonnés"
+[instance.content.followers.k]
+# Thousand
+en = "${num: f64}K Followers"
+pl = "${num: f64} tyś. obserwujących"
+de = "${num: f64}Tsd. Follower"
+hu = "${num: f64}E követő"
+sv = "${num: f64}k följare"
+ru = "${num: f64} тыс. подписчиков"
+fr = "${num: f64} k abonnés"
+[instance.content.followers.n]
+en = "${num: usize} Followers"
+pl = "${num: usize} obserwujących"
+de = "${num: usize} Follower"
+hu = "${num: usize} követő"
+sv = "${num: usize} följare"
+ru = "${num: usize} подписчиков"
+fr = "${num: usize} abonnés"
 [instance.content.load.versions.title]
 en = "Loading project versions..."
 pl = "Wczytywanie wersji projektu..."

@@ -361,3 +361,15 @@ pub fn format_downloads(downloads: u64) -> SharedString {
         t::instance::content::downloads::n(downloads)
     }.into()
 }
+
+pub fn format_followers(followers: usize) -> SharedString {
+    if followers >= 1_000_000_000 {
+        t::instance::content::followers::b((followers / 10_000_000) as f64 / 100.0)
+    } else if followers >= 1_000_000 {
+        t::instance::content::followers::m((followers / 10_000) as f64 / 100.0)
+    } else if followers >= 10_000 {
+        t::instance::content::followers::k((followers / 10) as f64 / 100.0)
+    } else {
+        t::instance::content::followers::n(followers)
+    }.into()
+}

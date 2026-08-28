@@ -16,7 +16,7 @@ use strum::IntoEnumIterator;
 use crate::{
     component::error_alert::ErrorAlert, entity::{
         DataEntities, instance::ContentStates, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
-    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, ui, format_downloads
+    }, icon::PandoraIcon, interface_config::InterfaceConfig, pages::page::Page, ui, format_downloads, format_followers
 };
 
 pub struct ModrinthSearchPage {
@@ -524,6 +524,16 @@ impl ModrinthSearchPage {
                     .child(PandoraIcon::Download)
                     .child(format_downloads(hit.downloads));
 
+                let followers = h_flex()
+                    .gap_1()
+                    .child(PandoraIcon::Heart)
+                    .child(format_followers(hit.follows));
+
+                let stats = v_flex()
+                    .items_end()
+                    .child(downloads)
+                    .child(followers);
+
                 let open_project_page = {
                     let project_id = hit.project_id.clone();
                     let project_title = name.clone();
@@ -635,7 +645,7 @@ impl ModrinthSearchPage {
                                     .children(std::iter::once(environment).chain(categories)),
                             ),
                     )
-                    .child(v_flex().items_end().child(downloads).child(install_button));
+                    .child(v_flex().items_end().child(stats).child(install_button));
 
                 div().pl_3().pt_3().child(item)
             })

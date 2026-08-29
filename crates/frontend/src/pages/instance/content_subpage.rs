@@ -7,10 +7,12 @@ use gpui::{prelude::*, *};
 use gpui_component::{
     ActiveTheme as _, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants, DropdownButton}, h_flex, input::SelectAll, list::{List, ListState}, menu::PopupMenuItem, notification::{Notification, NotificationType}, select::{Select, SelectEvent, SelectState}, switch::Switch, v_flex
 };
+use parking_lot::Mutex;
+use rustc_hash::FxHashSet;
 use schema::{content::{ContentInstallReason, ContentSource}, curseforge::CurseforgeClassId, loader::Loader, modrinth::ModrinthProjectType};
 use ustr::Ustr;
 
-use crate::{component::{content_list::ContentListDelegate, named_dropdown::{NamedDropdown, NamedDropdownItem}}, entity::instance::{ContentStates, InstanceEntry}, interface_config::{InstanceContentSortKey, InterfaceConfig, PreferredAddContentSource}, root, ui::PageType};
+use crate::{component::{content_list::ContentListDelegate, named_dropdown::{NamedDropdown, NamedDropdownItem}}, entity::{DataEntities, instance::{ContentStates, InstanceEntry}}, interface_config::{InstanceContentSortKey, InterfaceConfig, PreferredAddContentSource}, root, ui::PageType};
 
 pub struct InstanceContentSubpage {
     content_type: ContentType,
@@ -21,6 +23,7 @@ pub struct InstanceContentSubpage {
     backend_handle: BackendHandle,
     content_states: ContentStates,
     content_list: Entity<ListState<ContentListDelegate>>,
+    updating: Arc<Mutex<FxHashSet<u64>>>,
     content: Entity<Option<Arc<[InstanceContentSummary]>>>,
     sort_dropdown: Entity<SelectState<NamedDropdown<InstanceContentSortKey>>>,
 
@@ -132,6 +135,7 @@ impl InstanceContentSubpage {
     pub fn new(
         instance: &Entity<InstanceEntry>,
         content_type: ContentType,
+        data: &DataEntities,
         backend_handle: BackendHandle,
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
@@ -155,7 +159,8 @@ impl InstanceContentSubpage {
             sort_key = valid_sort_modes[0];
         }
 
-        let mut content_list_delegate = ContentListDelegate::new(instance_id, backend_handle.clone(), instance_loader, instance_version, sort_key, enabled_first);
+        let updating = Arc::new(Mutex::new(FxHashSet::default()));
+        let mut content_list_delegate = ContentListDelegate::new(instance_id, data, instance_loader, instance_version, sort_key, enabled_first, updating.clone());
 
         let (needs_update_check, update_count) = if let Some(new_content) = content.read(cx) {
             content_list_delegate.set_content(new_content);
@@ -230,6 +235,7 @@ impl InstanceContentSubpage {
             backend_handle,
             content_states,
             content_list,
+            updating,
             content,
             sort_dropdown,
             needs_update_check,
@@ -346,6 +352,14 @@ impl Render for InstanceContentSubpage {
                     .on_click({
                         cx.listener(move |page, _, window, cx| {
                             if let Some(content) = page.content.read(cx).clone() {
+                                let hashes: Vec<u64> = content.iter()
+                                    .filter(|summary| summary.update.can_update(page.instance_loader, page.instance_version.as_str()))
+                                    .map(|summary| summary.filename_hash)
+                                    .collect();
+
+                                page.updating.lock().extend(hashes.iter());
+                                page.content_list.update(cx, |_, cx| cx.notify());
+
                                 for summary in content.iter() {
                                     if summary.update.can_update(page.instance_loader, page.instance_version.as_str()) {
                                         crate::root::update_single_mod(page.instance, summary.id, &page.backend_handle, window, cx);

@@ -35,6 +35,8 @@ pub struct CurseforgeGetModFilesRequest {
     pub game_version: Option<Ustr>,
     #[serde(skip_serializing_if = "crate::skip_if_none")]
     pub mod_loader_type: Option<u32>,
+    #[serde(default, skip_serializing_if = "crate::skip_if_none")]
+    pub release_types: Option<&'static [CurseforgeReleaseType]>,
     #[serde(skip_serializing_if = "crate::skip_if_none")]
     pub page_size: Option<u32>,
 }
@@ -43,6 +45,13 @@ pub struct CurseforgeGetModFilesRequest {
 #[serde(rename_all = "camelCase")]
 pub struct CurseforgeGetFilesRequest {
     pub file_ids: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurseforgeChangelogRequest {
+    pub mod_id: u32,
+    pub file_id: u32,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -60,6 +69,11 @@ pub struct CurseforgeSearchResult {
 #[derive(Debug, Deserialize)]
 pub struct CurseforgeGetModFilesResult {
     pub data: Arc<[CurseforgeFile]>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CurseforgeChangelogResult {
+    pub data: Option<Arc<str>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -148,8 +162,10 @@ pub struct CurseforgeFile {
     pub id: u32,
     pub mod_id: u32,
     pub file_name: Arc<str>,
+    pub file_date: Option<Arc<str>>,
     pub release_type: u32,
     pub file_length: u64,
+    pub game_versions: Option<Arc<[Ustr]>>,
     pub hashes: Arc<[CurseforgeFileHash]>,
     pub download_url: Option<Arc<str>>,
     pub dependencies: Arc<[CurseforgeFileDependency]>,
@@ -171,7 +187,8 @@ pub struct CurseforgeFileHash {
     pub algo: u32,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(into = "u32")]
 #[repr(u32)]
 pub enum CurseforgeReleaseType {
     Release = 1,
@@ -190,6 +207,10 @@ impl CurseforgeReleaseType {
             _ => Self::Other,
         }
     }
+}
+
+impl From<CurseforgeReleaseType> for u32 {
+    fn from(v: CurseforgeReleaseType) -> Self { v as u32 }
 }
 
 #[derive(enumset::EnumSetType, Default, Debug, Hash, PartialOrd, Ord)]

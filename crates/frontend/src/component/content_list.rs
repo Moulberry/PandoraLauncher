@@ -11,11 +11,11 @@ use gpui_component::{
 };
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
-use schema::{loader::Loader, text_component::FlatTextComponent};
+use schema::{content::ContentSource, loader::Loader, text_component::FlatTextComponent};
 use strum::IntoEnumIterator;
 use ustr::Ustr;
 
-use crate::{component::error_alert::ErrorAlert, icon::PandoraIcon, interface_config::{InstanceContentSortKey, InterfaceConfig}, png_render_cache};
+use crate::{component::error_alert::ErrorAlert, entity::DataEntities, icon::PandoraIcon, interface_config::{InstanceContentSortKey, InterfaceConfig}, png_render_cache};
 
 #[derive(Clone)]
 struct ContentEntryChild {
@@ -70,6 +70,7 @@ pub struct ContentListDelegate {
     for_loader: Loader,
     for_version: Ustr,
     backend_handle: BackendHandle,
+    data: DataEntities,
     sort_key: InstanceContentSortKey,
     enabled_first: bool,
     loading: bool,
@@ -88,17 +89,19 @@ pub struct ContentListDelegate {
 impl ContentListDelegate {
     pub fn new(
         id: InstanceID,
-        backend_handle: BackendHandle,
+        data: &DataEntities,
         for_loader: Loader,
         for_version: Ustr,
         sort_key: InstanceContentSortKey,
         enabled_first: bool,
+        updating: Arc<Mutex<FxHashSet<u64>>>,
     ) -> Self {
         Self {
             id,
             for_loader,
             for_version,
-            backend_handle,
+            backend_handle: data.backend_handle.clone(),
+            data: data.clone(),
             sort_key,
             enabled_first,
             loading: true,
@@ -107,7 +110,7 @@ impl ContentListDelegate {
             children: Vec::new(),
             expanded: Arc::new(AtomicUsize::new(0)),
             confirming_delete: Default::default(),
-            updating: Default::default(),
+            updating,
             last_query: SharedString::new_static(""),
             selected: FxHashSet::default(),
             selected_range: FxHashSet::default(),
@@ -186,59 +189,94 @@ impl ContentListDelegate {
         };
 
         let status = summary.update.status_if_matches(self.for_loader, self.for_version.as_str());
+        let is_loading = self.updating.lock().contains(&element_id);
+        let open_change_version = {
+            let summary = summary.clone();
+            let data = self.data.clone();
+            let updating = self.updating.clone();
+            let list = cx.entity();
+            move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                cx.stop_propagation();
+                crate::modals::change_version::open(id, &summary, &data, updating.clone(), list.clone(), window, cx);
+            }
+        };
+        let source_name = match summary.content_source {
+            ContentSource::ModrinthProject { .. } | ContentSource::ModrinthUnknown => t::modrinth::name(),
+            ContentSource::CurseforgeProject { .. } => t::curseforge::name(),
+            _ => t::common::unknown(),
+        };
         let update_button = match status {
-            bridge::instance::ContentUpdateStatus::Unknown => None,
-            bridge::instance::ContentUpdateStatus::ManualInstall => Some(
-                Button::new(("update", element_id)).warning().icon(PandoraIcon::FileQuestionMark)
-                    .tooltip(t::instance::content::update::installed_manually())
-            ),
-            bridge::instance::ContentUpdateStatus::ErrorNotFound => Some(
-                Button::new(("update", element_id)).danger().icon(PandoraIcon::TriangleAlert)
-                    .tooltip(t::instance::content::update::check::error_404())
-            ),
-            bridge::instance::ContentUpdateStatus::ErrorInvalidHash => Some(
-                Button::new(("update", element_id)).danger().icon(PandoraIcon::TriangleAlert)
-                    .tooltip(t::instance::content::update::check::invalid_hash_error())
-            ),
-            bridge::instance::ContentUpdateStatus::AlreadyUpToDate => Some(
-                Button::new(("update", element_id)).icon(PandoraIcon::Check)
-                    .tooltip(t::instance::content::update::check::last_up_to_date())
-            ),
-            bridge::instance::ContentUpdateStatus::Modrinth | bridge::instance::ContentUpdateStatus::Curseforge => {
-                let tooltip = match status {
-                    bridge::instance::ContentUpdateStatus::Modrinth => t::instance::content::update::download::from_modrinth(),
-                    bridge::instance::ContentUpdateStatus::Curseforge => t::instance::content::update::download::from_curseforge(),
-                    _ => unreachable!()
-                };
-
-                let loading = self.updating.lock().contains(&element_id);
+            bridge::instance::ContentUpdateStatus::Unknown | bridge::instance::ContentUpdateStatus::ManualInstall => {
+                if summary.content_source == ContentSource::Manual {
+                    Some(
+                        Button::new(("update", element_id)).warning().icon(PandoraIcon::FileQuestionMark)
+                            .tooltip(t::instance::content::change_version::installed_manually())
+                    )
+                } else {
+                    Some(
+                        Button::new(("update", element_id)).icon(PandoraIcon::ArrowLeftRight)
+                            .loading(is_loading)
+                            .tooltip(t::instance::content::change_version::button(source_name))
+                            .on_click(open_change_version.clone())
+                    )
+                }
+            },
+            bridge::instance::ContentUpdateStatus::ErrorNotFound => {
                 Some(
-                    Button::new(("update", element_id)).success().loading(loading).icon(PandoraIcon::Download)
-                        .tooltip(tooltip)
-                        .on_click({
-                            let backend_handle = self.backend_handle.clone();
-                            let updating = self.updating.clone();
-                            cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
+                    Button::new(("update", element_id)).danger().icon(PandoraIcon::TriangleAlert)
+                        .loading(is_loading)
+                        .tooltip(t::instance::content::change_version::no_compatible_versions())
+                        .on_click(open_change_version.clone())
+                )
+            },
+            bridge::instance::ContentUpdateStatus::ErrorInvalidHash => {
+                Some(
+                    Button::new(("update", element_id)).danger().icon(PandoraIcon::TriangleAlert)
+                        .loading(is_loading)
+                        .tooltip(t::instance::content::update::check::invalid_hash_error())
+                        .on_click(open_change_version.clone())
+                )
+            },
+            bridge::instance::ContentUpdateStatus::AlreadyUpToDate => {
+                Some(
+                    Button::new(("update", element_id)).icon(PandoraIcon::ArrowLeftRight)
+                        .loading(is_loading)
+                        .tooltip(t::instance::content::change_version::up_to_date())
+                        .on_click(open_change_version.clone())
+                )
+            },
+            bridge::instance::ContentUpdateStatus::Modrinth | bridge::instance::ContentUpdateStatus::Curseforge => {
+                let updating = self.updating.clone();
+                let backend_handle = self.backend_handle.clone();
+                Some(
+                    Button::new(("update", element_id)).success().icon(PandoraIcon::Download)
+                        .loading(is_loading)
+                        .tooltip(t::instance::content::change_version::update_available(source_name))
+                        .on_click(cx.listener(move |this, click: &ClickEvent, window, cx| {
+                            cx.stop_propagation();
 
-                                let mut updating = updating.lock();
-                                let delegate = this.delegate_mut();
-                                if delegate.is_selected(element_id) {
-                                    for summary in &delegate.content {
-                                        if delegate.is_selected(summary.filename_hash) && summary.update.can_update(delegate.for_loader, delegate.for_version.as_str()) {
-                                            updating.insert(summary.filename_hash);
-                                            crate::root::update_single_mod(id, summary.id, &backend_handle, window, cx);
-                                        }
+                            if !click.modifiers().shift {
+                                open_change_version(click, window, cx);
+                                return;
+                            }
+
+                            let mut updating = updating.lock();
+                            let delegate = this.delegate_mut();
+                            if delegate.is_selected(element_id) {
+                                for summary in &delegate.content {
+                                    if delegate.is_selected(summary.filename_hash) && summary.update.can_update(delegate.for_loader, delegate.for_version.as_str()) {
+                                        updating.insert(summary.filename_hash);
+                                        crate::root::update_single_mod(id, summary.id, &backend_handle, window, cx);
                                     }
-                                    delegate.selected.clear();
-                                    delegate.selected_range.clear();
-                                    delegate.last_clicked_non_range = None;
-                                } else {
-                                    updating.insert(element_id);
-                                    crate::root::update_single_mod(id, content_id, &backend_handle, window, cx);
                                 }
-                            })
-                        })
+                                delegate.selected.clear();
+                                delegate.selected_range.clear();
+                                delegate.last_clicked_non_range = None;
+                            } else {
+                                updating.insert(element_id);
+                                crate::root::update_single_mod(id, content_id, &backend_handle, window, cx);
+                            }
+                        }))
                 )
             },
         };

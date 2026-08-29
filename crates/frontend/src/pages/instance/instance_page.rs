@@ -261,13 +261,13 @@ impl InstanceSubpageType {
                 InstanceLogsSubpage::new(instance, backend_handle, window, cx)
             })),
             InstanceSubpageType::Mods => InstanceSubpage::Mods(cx.new(|cx| {
-                InstanceContentSubpage::new(instance, ContentType::Mods, backend_handle, window, cx)
+                InstanceContentSubpage::new(instance, ContentType::Mods, data, backend_handle, window, cx)
             })),
             InstanceSubpageType::ResourcePacks => InstanceSubpage::ResourcePacks(cx.new(|cx| {
-                InstanceContentSubpage::new(instance, ContentType::ResourcePacks, backend_handle, window, cx)
+                InstanceContentSubpage::new(instance, ContentType::ResourcePacks, data, backend_handle, window, cx)
             })),
             InstanceSubpageType::Shaders => InstanceSubpage::Shaders(cx.new(|cx| {
-                InstanceContentSubpage::new(instance, ContentType::Shaders, backend_handle, window, cx)
+                InstanceContentSubpage::new(instance, ContentType::Shaders, data, backend_handle, window, cx)
             })),
             InstanceSubpageType::Settings => InstanceSubpage::Settings(cx.new(|cx| {
                 InstanceSettingsSubpage::new(instance, data, backend_handle, window, cx)

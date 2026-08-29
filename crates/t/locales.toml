@@ -1007,6 +1007,17 @@ hu = "VAGY"
 sv = "ELLER"
 ru = "ИЛИ"
 fr = "OU"
+[common.and]
+en = "${first: &str} and ${second: &str}"
+ru = "${first: &str} и ${second: &str}"
+[common.range]
+en = "${from: &str}-${to: &str}"
+pl = "${from: &str}-${to: &str}"
+de = "${from: &str}-${to: &str}"
+hu = "${from: &str}-${to: &str}"
+sv = "${from: &str}-${to: &str}"
+ru = "${from: &str}-${to: &str}"
+fr = "${from: &str}-${to: &str}"
 [common.unset]
 en = "<unset>"
 pl = "<nieustawione>"
@@ -2052,6 +2063,19 @@ hu = "Nem lehet izolálni: hiányzó bwrap és xdg-dbus-proxy parancsok"
 ru = "Невозможно использовать песочницу: отсутствуют команды bwrap и xdg-dbus-proxy"
 fr = "Impossible de lancer le mode sandbox : les commandes bwrap et xdg-dbus-proxy sont manquantes"
 
+[instance.update_channel.label]
+en = "Update Channel"
+ru = "Канал обновления"
+[instance.update_channel.release]
+en = "Release"
+ru = "Релиз"
+[instance.update_channel.beta]
+en = "Beta"
+ru = "Бета"
+[instance.update_channel.alpha]
+en = "Alpha"
+ru = "Альфа"
+
 [instance.linux.label]
 en = "Linux Performance"
 pl = "Wydajność w systemie Linux"
@@ -2608,7 +2632,7 @@ pl = "Dodaj z CurseForge"
 de = "Aus CurseForge hinzufügen"
 hu = "Hozzáadás Curseforgeról"
 sv = "Lägg till från Curseforge"
-ru = "Добавить с Curseforge"
+ru = "Добавить с CurseForge"
 fr = "Ajouter depuis Curseforge"
 [instance.content.install.from_file]
 en = "Add from file"
@@ -2835,14 +2859,6 @@ hu = "Hiba a frissítések keresése közben"
 sv = "Fel vid sökandet efter uppdateringar"
 ru = "Ошибка проверки обновлений"
 fr = "Erreur lors de la recherche de mises à jour"
-[instance.content.update.check.error_404]
-en = "Error while checking updates - 404 not found"
-pl = "Błąd podczas sprawdzania aktualizacji - 404 nie znaleziono"
-de = "Fehler beim Suchen nach Updates - 404 nicht gefunden"
-hu = "Hiba a frissítések keresése közben - 404 nem található"
-sv = "Fel vid sökandet efter uppdateringar - 404 hittades ej"
-ru = "Ошибка при проверке обновлений - 404 не найдено"
-fr = "Erreur lors de la recherche de mises à jour - erreur 404 (page introuvable)"
 [instance.content.update.check.invalid_hash_error]
 en = "Error while checking updates - returned invalid hash"
 pl = "Błąd podczas sprawdzania aktualizacji - zwrócono nieprawidłowy hash"
@@ -2851,14 +2867,6 @@ hu = "Hiba a frissítések keresése közben - helytelen a hash"
 sv = "Fel vid sökandet efter uppdateringar - ogiltig hash"
 ru = "Ошибка при проверке обновлений - неверный хеш"
 fr = "Erreur lors de la vérification des mises à jour - hachage non valide renvoyé"
-[instance.content.update.check.last_up_to_date]
-en = "Up-to-date as of last check"
-pl = "Aktualne na moment ostatniego sprawdzenia"
-de = "Aktuell, Stand letzter Überprüfung"
-hu = "Legutóbbi ellenőrzés óta naprakész"
-sv = "Uppdaterad från senaste kontrollen"
-ru = "Актуально на момент последней проверки"
-fr = "Informations à jour à la date de la dernière vérification"
 [instance.content.update.check.up_to_date]
 en = "Up-to-date"
 pl = "Aktualne"
@@ -2875,22 +2883,6 @@ hu = "Hiba a frissítés letöltése közben"
 sv = "Fel vid nedladdning av uppdatering"
 ru = "Ошибка загрузки обновления"
 fr = "Erreur lors du téléchargement de la mise à jour"
-[instance.content.update.download.from_modrinth]
-en = "Download update from Modrinth"
-pl = "Pobierz aktualizację z Modrinth"
-de = "Lade Update von Modrinth herunter"
-hu = "Frissítés letöltése a Modrinthről"
-sv = "Ladda ned uppdatering från Modrinth"
-ru = "Скачать обновление с Modrinth"
-fr = "Télécharger la mise à jour depuis Modrinth"
-[instance.content.update.download.from_curseforge]
-en = "Download update from Curseforge"
-pl = "Pobierz aktualizację z CurseForge"
-de = "Lade Update von CurseForge herunter"
-hu = "Frissítés letöltése a Curseforgeról"
-sv = "Ladda ned uppdatering från Curseforge"
-ru = "Скачать обновление с Curseforge"
-fr = "Télécharger la mise à jour depuis Curseforge"
 [instance.content.update.error]
 en = "Error updating mod"
 pl = "Błąd aktualizowania moda"
@@ -2899,7 +2891,28 @@ hu = "Hiba a mod frissítése közben"
 sv = "Fel vid uppdatering av mod"
 ru = "Ошибка обновления мода"
 fr = "Erreur lors de la mise à jour du mod"
-[instance.content.update.installed_manually]
+
+[instance.content.change_version.title]
+en = "Change version of ${name: &str}"
+ru = "Смена версии ${name: &str}"
+[instance.content.change_version.button]
+en = "Change version via ${source: &str}"
+ru = "Сменить версию через ${source: &str}"
+[instance.content.change_version.up_to_date]
+en = "Up-to-date as of last check"
+pl = "Aktualne na moment ostatniego sprawdzenia"
+de = "Aktuell, Stand letzter Überprüfung"
+hu = "Legutóbbi ellenőrzés óta naprakész"
+sv = "Uppdaterad från senaste kontrollen"
+ru = "Актуальна на момент последней проверки"
+fr = "Informations à jour à la date de la dernière vérification"
+[instance.content.change_version.update_available]
+en = "Update available from ${source: &str} (Shift-Click for quick download)"
+ru = "Доступно обновление от ${source: &str} (Shift+клик для быстрой загрузки)"
+[instance.content.change_version.no_compatible_versions]
+en = "No compatible versions found"
+ru = "Совместимые версии не найдены"
+[instance.content.change_version.installed_manually]
 en = "Installed manually - cannot automatically update"
 pl = "Zainstalowano ręcznie - brak możliwości automatycznej aktualizacji"
 de = "Manuell installiert – kann nicht automatisch aktualisiert werden"
@@ -2907,6 +2920,32 @@ hu = "Telepítés egyedileg - nem lehet autómatikusan frissíteni"
 sv = "Installera manuellt - kan inte automatiskt uppdatera"
 ru = "Установлено вручную - автоматическое обновление невозможно"
 fr = "Installé manuellement - ne peut pas être mis à jour automatiquement"
+[instance.content.change_version.version]
+en = "${name: &str} (${loader: &str} ${mc_version: &str})"
+pl = "${name: &str} (${loader: &str} ${mc_version: &str})"
+de = "${name: &str} (${loader: &str} ${mc_version: &str})"
+hu = "${name: &str} (${loader: &str} ${mc_version: &str})"
+sv = "${name: &str} (${loader: &str} ${mc_version: &str})"
+ru = "${name: &str} (${loader: &str} ${mc_version: &str})"
+fr = "${name: &str} (${loader: &str} ${mc_version: &str})"
+[instance.content.change_version.show_incompatible]
+en = "Show incompatible"
+ru = "Показать несовместимые"
+[instance.content.change_version.changelog]
+en = "Changelog"
+ru = "Список изменений"
+[instance.content.change_version.loading_changelog]
+en = "Loading changelog..."
+ru = "Загрузка списка изменений..."
+[instance.content.change_version.no_changelog]
+en = "No changelog"
+ru = "Нет списка изменений"
+[instance.content.change_version.update_to]
+en = "Update to ${version: &str}"
+ru = "Обновить до ${version: &str}"
+[instance.content.change_version.downgrade_to]
+en = "Downgrade to ${version: &str}"
+ru = "Откатить до ${version: &str}"
 [instance.content.unzip.tooltip]
 en = "Unzip Modpack"
 ru = "Распаковать сборку"

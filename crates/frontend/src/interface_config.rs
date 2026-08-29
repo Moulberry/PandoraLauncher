@@ -6,7 +6,7 @@ use rand::RngCore;
 use schema::{curseforge::CurseforgeClassId, modrinth::ModrinthProjectType};
 use serde::{Deserialize, Serialize};
 
-use crate::{pages::instance::instance_page::InstanceSubpageType, ui::PageType};
+use crate::{component::named_dropdown::DropdownName, pages::instance::instance_page::InstanceSubpageType, ui::PageType};
 
 struct InterfaceConfigHolder {
     config: InterfaceConfig,
@@ -105,13 +105,13 @@ pub enum InstanceContentSortKey {
 }
 
 impl InstanceContentSortKey {
-    pub fn name(self) -> SharedString {
+    pub fn name(self) -> DropdownName {
         match self {
-            InstanceContentSortKey::Name => t::instance::content::sort_key::name().into(),
-            InstanceContentSortKey::ModId => t::instance::content::sort_key::mod_id().into(),
-            InstanceContentSortKey::Filename => t::instance::content::sort_key::filename().into(),
-            InstanceContentSortKey::ModifiedTime => t::instance::content::sort_key::modified_time().into(),
-            InstanceContentSortKey::FileSize => t::instance::content::sort_key::filesize().into(),
+            InstanceContentSortKey::Name => DropdownName::translated(t::instance::content::sort_key::name),
+            InstanceContentSortKey::ModId => DropdownName::translated(t::instance::content::sort_key::mod_id),
+            InstanceContentSortKey::Filename => DropdownName::translated(t::instance::content::sort_key::filename),
+            InstanceContentSortKey::ModifiedTime => DropdownName::translated(t::instance::content::sort_key::modified_time),
+            InstanceContentSortKey::FileSize => DropdownName::translated(t::instance::content::sort_key::filesize),
         }
     }
 
@@ -232,10 +232,10 @@ pub enum InstancesViewMode {
 }
 
 impl InstancesViewMode {
-    pub fn name(self) -> SharedString {
+    pub fn name(self) -> DropdownName {
         match self {
-            InstancesViewMode::Cards => t::common::layout::cards().into(),
-            InstancesViewMode::List => t::common::layout::list().into(),
+            InstancesViewMode::Cards => DropdownName::translated(t::common::layout::cards),
+            InstancesViewMode::List => DropdownName::translated(t::common::layout::list),
         }
     }
 }

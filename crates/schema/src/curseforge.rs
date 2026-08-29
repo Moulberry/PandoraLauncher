@@ -155,6 +155,14 @@ pub struct CurseforgeFile {
     pub dependencies: Arc<[CurseforgeFileDependency]>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurseforgeProject {
+    pub id: u32,
+    pub name: Arc<str>,
+    pub slug: Arc<str>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CurseforgeFileDependency {

@@ -8,6 +8,7 @@ pub mod keep_alive;
 pub mod message;
 pub mod meta;
 pub mod modal_action;
+pub mod manual_download;
 pub mod notify_signal;
 pub mod quit;
 pub mod safe_path;

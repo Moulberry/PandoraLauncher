@@ -1,7 +1,7 @@
 use std::{ffi::{OsStr, OsString}, io::Write, path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{
-    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentFolder, ContentSummary, ContentType, ModpackFileSource}, modal_action::{ModalAction, ProgressTrackerFinishType}, safe_path::SafePath
+    install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentFolder, ContentSummary, ContentType, ModpackFileSource}, manual_download::ManualCurseforgeDownload, modal_action::{ModalAction, ProgressTrackerFinishType}, safe_path::SafePath
 };
 use parking_lot::Mutex;
 use reqwest::StatusCode;
@@ -900,6 +900,7 @@ impl BackendState {
         };
 
         let mut tasks = Vec::new();
+        let mut manual_downloads: Vec<ManualCurseforgeDownload> = Vec::new();
 
         if let Some(files) = files {
             for file in files.iter() {
@@ -937,8 +938,7 @@ impl BackendState {
             })).await;
 
             if let Ok(files) = files_result {
-                let mut tasks = Vec::new();
-
+                let mut curseforge_tasks = Vec::new();
                 for file in files.data.iter() {
                     let sha1 = file.hashes.iter()
                         .find(|hash| hash.algo == 1).map(|hash| &hash.value);
@@ -968,22 +968,36 @@ impl BackendState {
                         extension: path.extension().map(OsString::from),
                     };
 
-                    let Some(download_url) = &file.download_url else {
-                        continue;
-                    };
-
                     let meta = ModrinthDownloadMeta {
                         reason: ContentInstallReason::Modpack,
                         game_version: download_meta.game_version,
                         loader: download_meta.loader,
                     };
-                    tasks.push(self.download_file_into_library_inner(modal_action, name,
-                        &download_url, hash, file.file_length as usize, meta));
+                    if let Some(download_url) = &file.download_url {
+                        curseforge_tasks.push(self.download_file_into_library_inner(modal_action, name,
+                            &download_url, hash, file.file_length as usize, meta));
+                    } else {
+                        let (project_name, slug) = self.curseforge_project_name_and_slug(file.mod_id).await;
+                        manual_downloads.push(ManualCurseforgeDownload {
+                            project_id: file.mod_id,
+                            file_id: file.id,
+                            name: project_name,
+                            filename: file.file_name.clone(),
+                            sha1: hash,
+                            size: file.file_length,
+                            page_url: format!("https://www.curseforge.com/minecraft/mc-mods/{slug}/files/{}", file.id).into(),
+                        });
+                    }
                 }
+                _ = futures::future::try_join_all(curseforge_tasks).await;
             }
         }
 
         _ = futures::future::try_join_all(tasks).await;
+        if !manual_downloads.is_empty() {
+            self.create_manual_curseforge_download_session(manual_downloads).await
+                .map_err(|error| ContentInstallError::IoError(std::io::Error::other(error.to_string())))?;
+        }
         result.2 = self.mod_metadata_manager.get_path(&result.0);
 
         Ok(result)

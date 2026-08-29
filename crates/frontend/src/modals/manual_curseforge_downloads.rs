@@ -3,7 +3,7 @@ use std::{collections::HashSet, path::PathBuf};
 use bridge::{manual_download::{ManualCurseforgeDownload, ManualCurseforgeDownloadRequest, ManualCurseforgeDownloadStart}, message::MessageToBackend};
 use directories::BaseDirs;
 use gpui::{prelude::*, *};
-use gpui_component::{ActiveTheme, Disableable, WindowExt, button::{Button, ButtonVariants}, dialog::Dialog, h_flex, v_flex};
+use gpui_component::{ActiveTheme, Disableable, WindowExt, button::{Button, ButtonVariants}, dialog::Dialog, h_flex, scroll::ScrollableElement, v_flex};
 
 use crate::entity::DataEntities;
 
@@ -50,7 +50,11 @@ impl ManualCurseforgeDownloadsDialog {
 
     fn open_all(&mut self, cx: &mut Context<Self>) {
         self.start_watching(cx);
-        for file in self.files.iter() { cx.open_url(&file.page_url); }
+        for file in self.files.iter() {
+            if let Err(err) = open::that_detached(file.page_url.as_ref()) {
+                log::error!("Failed to open manual CurseForge download URL: {err}");
+            }
+        }
     }
 
     fn check_downloads(&mut self) {
@@ -60,9 +64,10 @@ impl ManualCurseforgeDownloadsDialog {
         });
     }
 
-    fn render(&mut self, modal: Dialog, _window: &mut Window, cx: &mut Context<Self>) -> Dialog {
+    fn render(&mut self, modal: Dialog, window: &mut Window, cx: &mut Context<Self>) -> Dialog {
         let files = self.files.clone();
         let directory = self.directory.display().to_string();
+        let max_list_height = window.viewport_size().height * 0.55;
         let select_folder = cx.listener(|_this, _: &ClickEvent, _, cx| {
             let receiver = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: Some("Choose downloads folder".into()) });
             cx.spawn(async move |this, cx| {
@@ -80,7 +85,7 @@ impl ManualCurseforgeDownloadsDialog {
                 .child(h_flex().w_full().gap_2()
                     .child(div().flex_1().min_w_0().text_ellipsis().child(format!("Downloads folder: {directory}")))
                     .child(Button::new("choose-folder").flex_shrink_0().label("Change folder").disabled(self.started).on_click(select_folder)))
-                .child(v_flex().gap_1().children(files.iter().map(|file| {
+                .child(v_flex().min_h_0().max_h(max_list_height).overflow_y_scrollbar().gap_1().children(files.iter().map(|file| {
                     let completed = self.completed.contains(&file.sha1);
                     let trailing = if completed {
                         div().flex_shrink_0().text_color(cx.theme().success).child("Downloaded ✓").into_any_element()

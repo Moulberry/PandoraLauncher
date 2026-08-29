@@ -2650,6 +2650,26 @@ hu = "A mod készítője letiltotta a harmadik féltől származó indítókon k
 sv = "Modförfattaren har blockerat nedladdningar från tredjeparts launchers"
 ru = "Автор мода заблокировал загрузку из сторонних лаунчеров"
 fr = "L'auteur du mod a bloqué les téléchargements depuis des lanceurs tiers"
+[instance.content.manual_curseforge_downloads.title]
+en = "Manual CurseForge downloads"
+[instance.content.manual_curseforge_downloads.description]
+en = "Some mod authors require their files to be downloaded through CurseForge. Pandora will verify each completed download automatically."
+[instance.content.manual_curseforge_downloads.downloads_folder]
+en = "Downloads folder: ${path: &str}"
+[instance.content.manual_curseforge_downloads.choose_folder]
+en = "Choose downloads folder"
+[instance.content.manual_curseforge_downloads.change_folder]
+en = "Change folder"
+[instance.content.manual_curseforge_downloads.downloaded]
+en = "Downloaded"
+[instance.content.manual_curseforge_downloads.open]
+en = "Open"
+[instance.content.manual_curseforge_downloads.open_all]
+en = "Open all"
+[instance.content.manual_curseforge_downloads.check_downloads]
+en = "Check downloads"
+[instance.content.manual_curseforge_downloads.watching]
+en = "Watching…"
 [instance.content.install.loading_files]
 en = "Loading files..."
 pl = "Wczytywanie plików..."

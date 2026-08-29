@@ -449,6 +449,9 @@ impl BackendState {
             MessageToBackend::StartManualCurseforgeDownloads { request } => {
                 self.start_manual_curseforge_downloads(request).await;
             },
+            MessageToBackend::CheckManualCurseforgeDownloads { session_id } => {
+                self.check_manual_curseforge_downloads(session_id).await;
+            },
             MessageToBackend::CancelManualCurseforgeDownloads { session_id } => {
                 self.cancel_manual_curseforge_downloads(session_id).await;
             },

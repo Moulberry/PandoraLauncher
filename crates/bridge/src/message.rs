@@ -202,6 +202,9 @@ pub enum MessageToBackend {
     StartManualCurseforgeDownloads {
         request: ManualCurseforgeDownloadStart,
     },
+    CheckManualCurseforgeDownloads {
+        session_id: Uuid,
+    },
     CancelManualCurseforgeDownloads {
         session_id: Uuid,
     },

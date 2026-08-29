@@ -213,6 +213,7 @@ pub struct ManualCurseforgeDownloadSession {
     files: Arc<[ManualCurseforgeDownload]>,
     completed_paths: Mutex<HashMap<[u8; 20], PathBuf>>,
     done: Notify,
+    rescan: Notify,
     cancelled: AtomicBool,
 }
 
@@ -341,6 +342,7 @@ mod manual_curseforge_download_tests {
             files: vec![file.clone(), file].into(),
             completed_paths: Mutex::new(HashMap::from([(hash, path.clone())])),
             done: Notify::new(),
+            rescan: Notify::new(),
             cancelled: AtomicBool::new(false),
         };
 
@@ -354,6 +356,7 @@ mod manual_curseforge_download_tests {
             files: vec![download([3; 20], "test.jar", 4)].into(),
             completed_paths: Default::default(),
             done: Notify::new(),
+            rescan: Notify::new(),
             cancelled: AtomicBool::new(true),
         };
         session.done.notify_one();
@@ -439,6 +442,7 @@ impl BackendState {
             files: files.clone(),
             completed_paths: Default::default(),
             done: Notify::new(),
+            rescan: Notify::new(),
             cancelled: AtomicBool::new(false),
         });
         let (completion_send, completion) = tokio::sync::oneshot::channel();
@@ -513,15 +517,25 @@ impl BackendState {
                     break;
                 }
                 drop(completed);
-                tokio::time::sleep(Duration::from_millis(750)).await;
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(750)) => {},
+                    _ = session.rescan.notified() => {},
+                }
             }
         });
+    }
+
+    pub async fn check_manual_curseforge_downloads(&self, session_id: Uuid) {
+        if let Some(session) = self.manual_curseforge_downloads.lock().await.get(&session_id) {
+            session.rescan.notify_one();
+        }
     }
 
     pub async fn cancel_manual_curseforge_downloads(&self, session_id: Uuid) {
         if let Some(session) = self.manual_curseforge_downloads.lock().await.get(&session_id) {
             session.cancelled.store(true, Ordering::Release);
             session.done.notify_one();
+            session.rescan.notify_one();
         }
     }
 

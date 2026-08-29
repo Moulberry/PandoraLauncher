@@ -33,7 +33,7 @@ impl PlayerModelWidget {
             SliderState::new().min(0.0).max(1.0).step(1.0/800.0).default_value(player_model::DEFAULT_ANIMATION as f32)
         });
         let zoom_slider_state = cx.new(|_| {
-            SliderState::new().min(0.5).max(4.0).step(0.1).default_value(player_model::DEFAULT_ZOOM as f32)
+            SliderState::new().min(0.5).max(4.0).step(0.01).default_value(player_model::DEFAULT_ZOOM as f32)
         });
 
         let variant = crate::skin_renderer::determine_skin_variant(&skin).unwrap_or(SkinVariant::Classic);
@@ -194,9 +194,9 @@ impl Render for RotatingModel {
 
 impl Render for PlayerModelWidget {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let (yaw, pitch) = {
+        let (yaw, pitch, zoom) = {
             let model_state = self.player_model_state.read(cx);
-            (model_state.yaw, model_state.pitch)
+            (model_state.yaw, model_state.pitch, model_state.zoom)
         };
 
         self.update_animations(window, cx);
@@ -323,7 +323,7 @@ impl Render for PlayerModelWidget {
                     .child(Slider::new(&self.animation_slider_state)))
                 .child(v_flex()
                     .child(div().w_full().text_sm()
-                        .child(t::skins::player_model::zoom()))
+                        .child(t::skins::player_model::zoom((zoom * 100.0_f64) as i32)))
                     .child(Slider::new(&self.zoom_slider_state)))
             )
     }

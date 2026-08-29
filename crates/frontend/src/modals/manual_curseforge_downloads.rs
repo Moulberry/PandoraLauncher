@@ -54,12 +54,14 @@ impl ManualCurseforgeDownloadsDialog {
         let cancel = self.data.backend_handle.clone();
         let session_id = self.session_id;
         modal.title("Manual CurseForge downloads")
-            .child(v_flex().gap_2().w(px(620.)).child("Some mod authors require their files to be downloaded through CurseForge. Pandora will verify each completed download automatically.")
-                .child(h_flex().justify_between().child(format!("Downloads folder: {directory}")).child(Button::new("choose-folder").label("Change folder").disabled(self.started).on_click(select_folder)))
+            .child(v_flex().gap_2().w_full().min_w_0().child(div().w_full().whitespace_normal().child("Some mod authors require their files to be downloaded through CurseForge. Pandora will verify each completed download automatically."))
+                .child(h_flex().w_full().gap_2()
+                    .child(div().flex_1().min_w_0().text_ellipsis().child(format!("Downloads folder: {directory}")))
+                    .child(Button::new("choose-folder").flex_shrink_0().label("Change folder").disabled(self.started).on_click(select_folder)))
                 .child(v_flex().gap_1().children(files.iter().map(|file| {
-                    h_flex().justify_between().p_2().rounded(cx.theme().radius_lg).bg(cx.theme().background)
-                        .child(format!("{} — {}", file.name, file.filename))
-                        .child(Button::new(SharedString::new(format!("open-{}", file.file_id))).label("Open").on_click({ let url = file.page_url.clone(); move |_, _, cx| cx.open_url(&url) }))
+                    h_flex().w_full().gap_2().p_2().rounded(cx.theme().radius_lg).bg(cx.theme().background)
+                        .child(div().flex_1().min_w_0().whitespace_normal().child(format!("{} — {}", file.name, file.filename)))
+                        .child(Button::new(SharedString::new(format!("open-{}", file.file_id))).flex_shrink_0().label("Open").on_click({ let url = file.page_url.clone(); move |_, _, cx| cx.open_url(&url) }))
                 }))))
             .footer(h_flex().justify_end().gap_2()
                 .child(Button::new("cancel").label("Cancel").on_click(move |_, _, _| { cancel.send(MessageToBackend::CancelManualCurseforgeDownloads { session_id }); }))

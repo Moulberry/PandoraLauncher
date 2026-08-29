@@ -214,6 +214,7 @@ pub struct ManualCurseforgeDownloadSession {
     completed_paths: Mutex<HashMap<[u8; 20], PathBuf>>,
     done: Notify,
     rescan: Notify,
+    progress: tokio::sync::mpsc::UnboundedSender<[u8; 20]>,
     cancelled: AtomicBool,
 }
 
@@ -338,11 +339,13 @@ mod manual_curseforge_download_tests {
         let hash = [7; 20];
         let file = download(hash, "test.jar", 4);
         let path = PathBuf::from("cached.jar");
+        let (progress, _) = tokio::sync::mpsc::unbounded_channel();
         let session = ManualCurseforgeDownloadSession {
             files: vec![file.clone(), file].into(),
             completed_paths: Mutex::new(HashMap::from([(hash, path.clone())])),
             done: Notify::new(),
             rescan: Notify::new(),
+            progress,
             cancelled: AtomicBool::new(false),
         };
 
@@ -352,11 +355,13 @@ mod manual_curseforge_download_tests {
 
     #[tokio::test]
     async fn cancellation_before_wait_is_not_lost() {
+        let (progress, _) = tokio::sync::mpsc::unbounded_channel();
         let session = ManualCurseforgeDownloadSession {
             files: vec![download([3; 20], "test.jar", 4)].into(),
             completed_paths: Default::default(),
             done: Notify::new(),
             rescan: Notify::new(),
+            progress,
             cancelled: AtomicBool::new(true),
         };
         session.done.notify_one();
@@ -438,17 +443,19 @@ impl BackendState {
     ) -> Result<Vec<PathBuf>, Arc<str>> {
         let session_id = Uuid::new_v4();
         let files: Arc<[ManualCurseforgeDownload]> = files.into();
+        let (progress_send, progress) = tokio::sync::mpsc::unbounded_channel();
         let session = Arc::new(ManualCurseforgeDownloadSession {
             files: files.clone(),
             completed_paths: Default::default(),
             done: Notify::new(),
             rescan: Notify::new(),
+            progress: progress_send,
             cancelled: AtomicBool::new(false),
         });
         let (completion_send, completion) = tokio::sync::oneshot::channel();
         self.manual_curseforge_downloads.lock().await.insert(session_id, session.clone());
         self.send.send(MessageToFrontend::ManualCurseforgeDownloadsRequired {
-            request: ManualCurseforgeDownloadRequest { session_id, files, completion },
+            request: ManualCurseforgeDownloadRequest { session_id, files, progress, completion },
         });
 
         let result = session.wait().await;
@@ -506,6 +513,7 @@ impl BackendState {
                                 },
                             };
                             session.completed_paths.lock().await.insert(hash, destination);
+                            _ = session.progress.send(hash);
                             session.done.notify_one();
                         }
                     }

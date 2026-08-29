@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use bridge::{manual_download::{ManualCurseforgeDownload, ManualCurseforgeDownloadRequest, ManualCurseforgeDownloadStart}, message::MessageToBackend};
 use directories::BaseDirs;
@@ -11,17 +11,27 @@ struct ManualCurseforgeDownloadsDialog {
     data: DataEntities,
     session_id: uuid::Uuid,
     files: std::sync::Arc<[ManualCurseforgeDownload]>,
+    completed: HashSet<[u8; 20]>,
     directory: PathBuf,
     started: bool,
 }
 
 pub fn open(request: ManualCurseforgeDownloadRequest, data: DataEntities, window: &mut Window, cx: &mut App) {
-    let ManualCurseforgeDownloadRequest { session_id, files, completion } = request;
+    let ManualCurseforgeDownloadRequest { session_id, files, mut progress, completion } = request;
     let directory = BaseDirs::new().map(|dirs| dirs.home_dir().join("Downloads")).unwrap_or_default();
-    let dialog = cx.new(|_| ManualCurseforgeDownloadsDialog { data, session_id, files, directory, started: false });
+    let dialog = cx.new(|_| ManualCurseforgeDownloadsDialog { data, session_id, files, completed: Default::default(), directory, started: false });
+    let progress_dialog = dialog.clone();
     window.open_dialog(cx, move |modal, window, cx| dialog.update(cx, |this, cx| this.render(modal, window, cx)));
 
     let window_handle = window.window_handle();
+    window.spawn(cx, async move |cx| {
+        while let Some(hash) = progress.recv().await {
+            progress_dialog.update(cx, |this, cx| {
+                this.completed.insert(hash);
+                cx.notify();
+            });
+        }
+    }).detach();
     window.spawn(cx, async move |cx| {
         _ = completion.await;
         _ = cx.update_window(window_handle, |_, window, cx| window.close_dialog(cx));
@@ -71,14 +81,20 @@ impl ManualCurseforgeDownloadsDialog {
                     .child(div().flex_1().min_w_0().text_ellipsis().child(format!("Downloads folder: {directory}")))
                     .child(Button::new("choose-folder").flex_shrink_0().label("Change folder").disabled(self.started).on_click(select_folder)))
                 .child(v_flex().gap_1().children(files.iter().map(|file| {
-                    let url = file.page_url.clone();
-                    let open = cx.listener(move |this, _: &ClickEvent, _, cx| {
-                        this.start_watching(cx);
-                        cx.open_url(&url);
-                    });
+                    let completed = self.completed.contains(&file.sha1);
+                    let trailing = if completed {
+                        div().flex_shrink_0().text_color(cx.theme().success).child("Downloaded ✓").into_any_element()
+                    } else {
+                        let url = file.page_url.clone();
+                        let open = cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.start_watching(cx);
+                            cx.open_url(&url);
+                        });
+                        Button::new(SharedString::new(format!("open-{}", file.file_id))).flex_shrink_0().label("Open").on_click(open).into_any_element()
+                    };
                     h_flex().w_full().gap_2().p_2().rounded(cx.theme().radius_lg).bg(cx.theme().background)
                         .child(div().flex_1().min_w_0().whitespace_normal().child(format!("{} — {}", file.name, file.filename)))
-                        .child(Button::new(SharedString::new(format!("open-{}", file.file_id))).flex_shrink_0().label("Open").on_click(open))
+                        .child(trailing)
                 }))))
             .footer(h_flex().justify_end().gap_2()
                 .child(Button::new("cancel").label("Cancel").on_click(move |_, _, _| { cancel.send(MessageToBackend::CancelManualCurseforgeDownloads { session_id }); }))

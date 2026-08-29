@@ -17,6 +17,7 @@ pub struct ManualCurseforgeDownload {
 pub struct ManualCurseforgeDownloadRequest {
     pub session_id: Uuid,
     pub files: Arc<[ManualCurseforgeDownload]>,
+    pub progress: tokio::sync::mpsc::UnboundedReceiver<[u8; 20]>,
     pub completion: tokio::sync::oneshot::Receiver<()>,
 }
 

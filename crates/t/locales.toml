@@ -3687,7 +3687,7 @@ en = "Zoom: ${value: i32}%"
 pl = "Zoom: ${value: i32}%"
 de = "Zoom: ${value: i32}%"
 hu = "Zoom: ${value: i32}%"
-ru = "Зум: ${value: i32}%"
+ru = "Масштаб: ${value: i32}%"
 fr = "Zoom: ${value: i32}%"
 [skins.add_from_file]
 en = "Add from file"

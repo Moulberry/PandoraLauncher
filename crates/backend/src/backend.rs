@@ -252,15 +252,25 @@ async fn cache_manual_curseforge_download(
             .unwrap_or(false)
     };
     if destination_valid {
+        if source != destination {
+            tokio::fs::remove_file(source).await?;
+        }
         return Ok(destination);
     }
 
     let mut temporary = destination.clone();
     temporary.set_extension(format!("{}.manual-download", Uuid::new_v4()));
-    if let Err(err) = tokio::fs::copy(source, &temporary).await {
-        _ = tokio::fs::remove_file(&temporary).await;
-        return Err(err);
-    }
+    let moved_source = match tokio::fs::rename(source, &temporary).await {
+        Ok(()) => true,
+        Err(err) if err.kind() == std::io::ErrorKind::CrossesDevices => {
+            if let Err(err) = tokio::fs::copy(source, &temporary).await {
+                _ = tokio::fs::remove_file(&temporary).await;
+                return Err(err);
+            }
+            false
+        },
+        Err(err) => return Err(err),
+    };
 
     let temporary_valid = {
         let temporary = temporary.clone();
@@ -270,7 +280,11 @@ async fn cache_manual_curseforge_download(
             .unwrap_or(false)
     };
     if !temporary_valid {
-        _ = tokio::fs::remove_file(&temporary).await;
+        if moved_source {
+            _ = tokio::fs::rename(&temporary, source).await;
+        } else {
+            _ = tokio::fs::remove_file(&temporary).await;
+        }
         return Err(std::io::Error::other("Cached manual CurseForge download failed SHA-1 verification"));
     }
 
@@ -278,13 +292,24 @@ async fn cache_manual_curseforge_download(
         Ok(()) => {},
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {},
         Err(err) => {
-            _ = tokio::fs::remove_file(&temporary).await;
+            if moved_source {
+                _ = tokio::fs::rename(&temporary, source).await;
+            } else {
+                _ = tokio::fs::remove_file(&temporary).await;
+            }
             return Err(err);
         },
     }
     if let Err(err) = tokio::fs::rename(&temporary, &destination).await {
-        _ = tokio::fs::remove_file(&temporary).await;
+        if moved_source {
+            _ = tokio::fs::rename(&temporary, source).await;
+        } else {
+            _ = tokio::fs::remove_file(&temporary).await;
+        }
         return Err(err);
+    }
+    if !moved_source {
+        tokio::fs::remove_file(source).await?;
     }
 
     Ok(destination)
@@ -356,24 +381,28 @@ mod manual_curseforge_download_tests {
         assert_eq!(cached, destination);
         assert_eq!(cached.extension(), Some(OsStr::new("jar")));
         assert_eq!(tokio::fs::read(cached).await.unwrap(), bytes);
+        assert!(!source.exists());
         std::fs::remove_dir_all(test_dir).unwrap();
     }
 
     #[tokio::test]
-    async fn valid_cache_entry_is_reused_without_source_file() {
+    async fn valid_cache_entry_consumes_redundant_source_file() {
         let test_dir = std::env::temp_dir().join(format!("pandora-manual-download-test-{}", Uuid::new_v4()));
         let content_library = test_dir.join("library");
+        let source = test_dir.join("downloaded.jar");
         let bytes = b"already cached";
         let hash: [u8; 20] = Sha1::digest(bytes).into();
         let file = download(hash, "expected-name.jar", bytes.len() as u64);
         let destination = crate::fs::create_content_library_path(&content_library, hash, Some("jar"));
         tokio::fs::create_dir_all(destination.parent().unwrap()).await.unwrap();
         tokio::fs::write(&destination, bytes).await.unwrap();
+        tokio::fs::write(&source, bytes).await.unwrap();
 
-        let cached = cache_manual_curseforge_download(&content_library, &file, &test_dir.join("missing.jar")).await.unwrap();
+        let cached = cache_manual_curseforge_download(&content_library, &file, &source).await.unwrap();
 
         assert_eq!(cached, destination);
         assert_eq!(tokio::fs::read(cached).await.unwrap(), bytes);
+        assert!(!source.exists());
         std::fs::remove_dir_all(test_dir).unwrap();
     }
 }
@@ -420,6 +449,11 @@ impl BackendState {
 
         let result = session.wait().await;
 
+        if let Ok(paths) = &result {
+            for path in paths {
+                self.mod_metadata_manager.get_path(path);
+            }
+        }
         self.manual_curseforge_downloads.lock().await.remove(&session_id);
         _ = completion_send.send(());
         result

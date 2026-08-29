@@ -3,7 +3,6 @@ use std::{path::Path, sync::Arc};
 use bridge::{handle::BackendHandle, message::{BackendConfigWithPassword, MessageToBackend}};
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
-    IndexPath,
     button::{Button, ButtonVariants},
     checkbox::Checkbox,
     h_flex,
@@ -16,7 +15,7 @@ use gpui_component::{
 use schema::backend_config::{BackendConfig, ProxyConfig, ProxyProtocol};
 
 use crate::{
-    component::named_dropdown::{NamedDropdown, NamedDropdownItem},
+    component::named_dropdown::{DropdownName, NamedDropdown, NamedDropdownItem},
     entity::DataEntities,
     icon::PandoraIcon,
     interface_config::{InterfaceConfig, LiveGameOutputDisplay},
@@ -57,13 +56,18 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
         let current_language = interface_config.language.clone();
         let current_live_game_output_display = interface_config.live_game_output_display;
 
-        let language_select = cx.new(|cx| {
-            let lang_options = Settings::build_language_options();
-            let selected_index = lang_options.iter()
-                .position(|item| item.item == current_language)
-                .map(IndexPath::new);
-            SelectState::new(NamedDropdown::new(lang_options), selected_index, window, cx)
-        });
+        let language_select = NamedDropdown::create_and_select(
+            std::iter::once(NamedDropdownItem {
+                name: DropdownName::translated(t::settings::language::system),
+                item: t::Language::System,
+            }).chain(t::languages().iter().map(|&(code, name)| NamedDropdownItem {
+                name: DropdownName::new(name),
+                item: t::Language::Code(code.to_string()),
+            })).collect(),
+            current_language,
+            window,
+            cx,
+        );
 
         cx.subscribe_in(&language_select, window, Settings::on_language_changed).detach();
 
@@ -92,15 +96,15 @@ pub fn build_settings_sheet(data: &DataEntities, window: &mut Window, cx: &mut A
 
         let live_game_output_select = NamedDropdown::create_and_select(vec![
             NamedDropdownItem {
-                name: t::settings::windows::live_game_output_display::tab_on_instance_page().into(),
+                name: DropdownName::translated(t::settings::windows::live_game_output_display::tab_on_instance_page),
                 item: LiveGameOutputDisplay::TabOnInstancePage,
             },
             NamedDropdownItem {
-                name: t::settings::windows::live_game_output_display::separate_window().into(),
+                name: DropdownName::translated(t::settings::windows::live_game_output_display::separate_window),
                 item: LiveGameOutputDisplay::SeparateWindow,
             },
             NamedDropdownItem {
-                name: t::settings::windows::live_game_output_display::hidden().into(),
+                name: DropdownName::translated(t::settings::windows::live_game_output_display::hidden),
                 item: LiveGameOutputDisplay::Hidden,
             },
         ], current_live_game_output_display, window, cx);
@@ -314,17 +318,6 @@ impl Settings {
         self.proxy_password_changed = false;
     }
 
-    fn build_language_options() -> Vec<NamedDropdownItem<t::Language>> {
-        std::iter::once(NamedDropdownItem {
-            name: t::settings::language::system().into(),
-            item: t::Language::System,
-        }).chain(t::languages().iter().map(|&(code, name)| NamedDropdownItem {
-            name: name.into(),
-            item: t::Language::Code(code.to_string()),
-        }))
-        .collect()
-    }
-
     fn on_language_changed(
         &mut self,
         _state: &Entity<SelectState<NamedDropdown<t::Language>>>,
@@ -337,20 +330,8 @@ impl Settings {
         };
         let lang = lang.clone();
         t::set_lang(&lang);
-
-        let lang_options = Self::build_language_options();
-        let selected_index = lang_options.iter()
-            .position(|option| option.item == lang)
-            .map(IndexPath::new);
-
         InterfaceConfig::get_mut(cx).language = lang;
-
-        self.language_select.update(cx, |select, cx| {
-            select.set_items(NamedDropdown::new(lang_options), window, cx);
-            select.set_selected_index(selected_index, window, cx);
-        });
-
-        cx.notify();
+        window.refresh();
     }
 
     fn render_interface_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

@@ -5,8 +5,24 @@ use gpui_component::{
 };
 
 #[derive(Clone)]
+pub enum DropdownName {
+    Literal(SharedString),
+    Translated(fn() -> &'static str),
+}
+
+impl DropdownName {
+    pub fn new(name: impl Into<SharedString>) -> Self {
+        Self::Literal(name.into())
+    }
+
+    pub fn translated(f: fn() -> &'static str) -> Self {
+        Self::Translated(f)
+    }
+}
+
+#[derive(Clone)]
 pub struct NamedDropdownItem<T: Clone + PartialEq> {
-    pub name: SharedString,
+    pub name: DropdownName,
     pub item: T
 }
 
@@ -20,7 +36,10 @@ impl<T: Clone + PartialEq> SelectItem for NamedDropdownItem<T> {
     type Value = T;
 
     fn title(&self) -> SharedString {
-        self.name.clone()
+        match &self.name {
+            DropdownName::Literal(name) => name.clone(),
+            DropdownName::Translated(name) => name().into(),
+        }
     }
 
     fn value(&self) -> &Self::Value {

@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use bridge::{handle::BackendHandle, keep_alive::KeepAliveHandle, message::MessageToBackend, meta::{MetadataRequest, MetadataResult}};
 use gpui::{prelude::*, *};
-use schema::{curseforge::{CurseforgeGetModFilesResult, CurseforgeSearchResult}, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, modrinth::{ModrinthProjectResult, ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
+use schema::{curseforge::{CurseforgeChangelogResult, CurseforgeGetModFilesResult, CurseforgeSearchResult}, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, modrinth::{ModrinthChangelogResult, ModrinthProjectResult, ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
 
 #[derive(Debug)]
 pub enum FrontendMetadataState {
@@ -71,15 +71,23 @@ impl FrontendMetadata {
     pub fn request(entity: &Entity<Self>, request: MetadataRequest, cx: &mut App) -> Entity<FrontendMetadataState> {
         entity.update(cx, |this, cx| {
             if let Some(existing) = this.data.get(&request) {
-                if let FrontendMetadataState::Loaded { keep_alive, .. } = existing.read(cx) {
-                    if !keep_alive.as_ref().map(|k| k.is_alive()).unwrap_or(true) {
-                        this.backend_handle.send(MessageToBackend::RequestMetadata {
-                            request: request.clone(),
-                            force_reload: false,
-                        });
-                    }
+                let mut failed = false;
+                match existing.read(cx) {
+                    FrontendMetadataState::Loaded { result: Err(_), .. } => failed = true,
+                    FrontendMetadataState::Loaded { keep_alive, .. } => {
+                        if !keep_alive.as_ref().map(|k| k.is_alive()).unwrap_or(true) {
+                            this.backend_handle.send(MessageToBackend::RequestMetadata {
+                                request: request.clone(),
+                                force_reload: false,
+                            });
+                        }
+                    },
+                    FrontendMetadataState::Loading => {},
                 }
-                return existing.clone();
+                if !failed {
+                    return existing.clone();
+                }
+                this.data.remove(&request);
             }
 
             let loading = cx.new(|_| FrontendMetadataState::Loading);
@@ -138,5 +146,7 @@ define_as_metadata_result!(FabricLoaderManifest);
 define_as_metadata_result!(ForgeMavenManifest);
 define_as_metadata_result!(NeoforgeMavenManifest);
 define_as_metadata_result!(ModrinthProjectResult);
+define_as_metadata_result!(ModrinthChangelogResult);
 define_as_metadata_result!(CurseforgeSearchResult);
 define_as_metadata_result!(CurseforgeGetModFilesResult);
+define_as_metadata_result!(CurseforgeChangelogResult);

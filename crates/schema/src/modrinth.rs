@@ -24,6 +24,11 @@ pub struct ModrinthProjectVersionsRequest {
     pub loaders: Option<Arc<[ModrinthLoader]>>,
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ModrinthChangelogRequest {
+    pub version_id: Arc<str>,
+}
+
 #[derive(Default, Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, EnumIter)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthSearchIndex {
@@ -127,6 +132,11 @@ impl ModrinthProjectType {
 pub struct ModrinthProjectVersionsResult(pub Arc<[ModrinthProjectVersion]>);
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ModrinthChangelogResult {
+    pub changelog: Option<Arc<str>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct ModrinthProjectVersion {
     pub game_versions: Option<Arc<[Ustr]>>,
     pub loaders: Option<Arc<[ModrinthLoader]>>,
@@ -134,6 +144,7 @@ pub struct ModrinthProjectVersion {
     pub project_id: Arc<str>,
     pub name: Option<Arc<str>>,
     pub version_number: Option<Arc<str>>,
+    pub date_published: Option<Arc<str>>,
     pub dependencies: Option<Vec<ModrinthDependency>>,
     pub version_type: Option<ModrinthVersionType>,
     pub status: Option<ModrinthVersionStatus>,
@@ -239,7 +250,7 @@ impl ModrinthLoader {
     }
 }
 
-#[derive(Debug, Copy, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum ModrinthVersionType {
     Release,
@@ -280,7 +291,7 @@ pub struct ModrinthHashes {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModrinthVersionFileUpdateResult(pub ModrinthProjectVersion);
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ModrinthVersionsFromHashesRequest {
     pub hashes: Arc<[Arc<str>]>,
     pub algorithm: Arc<str>,

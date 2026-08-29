@@ -7,7 +7,7 @@ use reqwest::StatusCode;
 use schema::{
     assets_index::AssetsIndex,
     curseforge::{
-        CurseforgeFingerprintRequest, CurseforgeFingerprintResponse, CurseforgeGetFilesRequest,
+        CurseforgeChangelogRequest, CurseforgeChangelogResult, CurseforgeFingerprintRequest, CurseforgeFingerprintResponse, CurseforgeGetFilesRequest,
         CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest,
         CurseforgeSearchResult
     },
@@ -15,11 +15,11 @@ use schema::{
     forge::{ForgeMavenManifest, NeoforgeMavenManifest}, java_runtime_component::JavaRuntimeComponentManifest,
     java_runtimes::JavaRuntimes,
     modrinth::{
-        ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion,
-        ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthProjectsRequest,
-        ModrinthProjectsResponse, ModrinthSearchRequest, ModrinthSearchResult,
-        ModrinthVersionFileUpdateResult, ModrinthVersionsFromHashesRequest,
-        ModrinthVersionsFromHashesResponse
+        ModrinthChangelogRequest, ModrinthChangelogResult, ModrinthProjectRequest,
+        ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest,
+        ModrinthProjectVersionsResult, ModrinthProjectsRequest, ModrinthProjectsResponse,
+        ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult,
+        ModrinthVersionsFromHashesRequest, ModrinthVersionsFromHashesResponse
     },
     version::MinecraftVersion, version_manifest::MinecraftVersionManifest
 };
@@ -50,12 +50,14 @@ pub struct MetadataManagerStates {
     pub(super) modrinth_project: HashMap<ModrinthProjectRequest, MetaLoadStateWrapper<ModrinthProjectResult>>,
     pub(super) modrinth_projects: HashMap<ModrinthProjectsRequest, MetaLoadStateWrapper<ModrinthProjectsResponse>>,
     pub(super) modrinth_versions: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthProjectVersion>>,
+    pub(super) modrinth_changelogs: HashMap<ModrinthChangelogRequest, MetaLoadStateWrapper<ModrinthChangelogResult>>,
     pub(super) modrinth_version_v2_updates: HashMap<ModrinthVersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
     pub(super) modrinth_version_v3_updates: HashMap<ModrinthV3VersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
     pub(super) modrinth_versions_from_hashes: HashMap<ModrinthVersionsFromHashesRequest, MetaLoadStateWrapper<ModrinthVersionsFromHashesResponse>>,
     pub(super) curseforge_search: HashMap<CurseforgeSearchRequest, MetaLoadStateWrapper<CurseforgeSearchResult>>,
     pub(super) curseforge_get_mod_files: HashMap<CurseforgeGetModFilesRequest, MetaLoadStateWrapper<CurseforgeGetModFilesResult>>,
     pub(super) curseforge_get_files: HashMap<CurseforgeGetFilesRequest, MetaLoadStateWrapper<CurseforgeGetModFilesResult>>,
+    pub(super) curseforge_changelogs: HashMap<CurseforgeChangelogRequest, MetaLoadStateWrapper<CurseforgeChangelogResult>>,
     pub(super) curseforge_fingerprints: HashMap<CurseforgeFingerprintRequest, MetaLoadStateWrapper<CurseforgeFingerprintResponse>>,
 }
 
@@ -204,7 +206,7 @@ impl MetadataManager {
         let mut wrapper = wrapper.lock().await;
 
         let is_valid = wrapper.0.as_ref().map(|h| h.is_alive()).unwrap_or(true);
-        if !is_valid || matches!(wrapper.1, MetaLoadState::Unloaded) {
+        if !is_valid || matches!(wrapper.1, MetaLoadState::Unloaded | MetaLoadState::Error(_)) {
             if item.expires() {
                 let keep_alive = KeepAlive::new();
                 let handle = keep_alive.create_handle();
@@ -231,7 +233,7 @@ impl MetadataManager {
         let mut wrapper = wrapper.lock().await;
 
         let is_valid = wrapper.0.as_ref().map(|h| h.is_alive()).unwrap_or(true);
-        if force_reload || !is_valid || matches!(wrapper.1, MetaLoadState::Unloaded) {
+        if force_reload || !is_valid || matches!(wrapper.1, MetaLoadState::Unloaded | MetaLoadState::Error(_)) {
             if item.expires() {
                 let keep_alive = KeepAlive::new();
                 let handle = keep_alive.create_handle();

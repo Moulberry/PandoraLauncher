@@ -2152,8 +2152,6 @@ impl LaunchContext {
             }
         }
 
-        log::info!("Here!");
-
         #[cfg(target_os = "linux")] {
             if self.configuration.linux_wrapper.map(|w| w.use_discrete_gpu).unwrap_or(true) {
                 if let Err(err) = linux_gpu::use_discrete_gpu(&mut command) {
@@ -2250,7 +2248,6 @@ impl LaunchContext {
                 self.libraries_dir.clone(),
                 self.log_configs_dir.clone(),
                 self.launch_wrapper_path.clone(),
-                self.assets_root.clone(),
             ];
 
             allow_read.push(java_path_parent_parent.into());
@@ -2261,6 +2258,7 @@ impl LaunchContext {
                     self.game_dir.clone(),
                     self.natives_dir.clone().into(),
                     self.synced_dir.clone(),
+                    self.assets_root.clone(),
                 ],
                 is_jvm: true,
                 grant_network_access: true,

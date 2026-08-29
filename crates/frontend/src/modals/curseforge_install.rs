@@ -612,6 +612,7 @@ impl InstallDialog {
                             mod_id: self.project_id,
                             game_version: Some(selected_game_version),
                             mod_loader_type,
+                            release_types: None,
                             page_size: None,
                         }),
                         cx,

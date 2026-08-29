@@ -6,7 +6,7 @@ use reqwest::RequestBuilder;
 use schema::{
     assets_index::AssetsIndex,
     curseforge::{
-        CURSEFORGE_API_KEY, CURSEFORGE_SEARCH_URL, CurseforgeFingerprintRequest, CurseforgeFingerprintResponse, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult, MINECRAFT_GAME_ID
+        CURSEFORGE_API_KEY, CURSEFORGE_SEARCH_URL, CurseforgeChangelogRequest, CurseforgeChangelogResult, CurseforgeFingerprintRequest, CurseforgeFingerprintResponse, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult, MINECRAFT_GAME_ID
     },
     fabric_launch::FabricLaunch,
     fabric_loader_manifest::{FABRIC_LOADER_MANIFEST_URL, FabricLoaderManifest},
@@ -15,11 +15,12 @@ use schema::{
     java_runtimes::{JAVA_RUNTIMES_URL, JavaRuntimes},
     maven::MavenMetadataXml,
     modrinth::{
-        MODRINTH_PROJECT_URL, MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectRequest,
-        ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest,
-        ModrinthProjectVersionsResult, ModrinthProjectsRequest, ModrinthProjectsResponse,
-        ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult,
-        ModrinthVersionsFromHashesRequest, ModrinthVersionsFromHashesResponse
+        MODRINTH_PROJECT_URL, MODRINTH_SEARCH_URL, ModrinthChangelogRequest, ModrinthChangelogResult,
+        ModrinthLoader, ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion,
+        ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthProjectsRequest,
+        ModrinthProjectsResponse, ModrinthSearchRequest, ModrinthSearchResult,
+        ModrinthVersionFileUpdateResult, ModrinthVersionType, ModrinthVersionsFromHashesRequest,
+        ModrinthVersionsFromHashesResponse
     },
     version::MinecraftVersion,
     version_manifest::{MOJANG_VERSION_MANIFEST_URL, MinecraftVersionLink, MinecraftVersionManifest}
@@ -346,10 +347,35 @@ impl MetadataItem for ModrinthVersionMetadataItem {
     }
 }
 
+#[derive(Debug)]
+pub struct ModrinthChangelogMetadataItem<'a>(pub &'a ModrinthChangelogRequest);
+
+impl<'a> MetadataItem for ModrinthChangelogMetadataItem<'a> {
+    type T = ModrinthChangelogResult;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        let url = format!("https://api.modrinth.com/v2/version/{}", self.0.version_id);
+        client.get(url)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.modrinth_changelogs.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Hash, PartialEq, Eq)]
 pub struct VersionUpdateParameters {
     pub loaders: Arc<[ModrinthLoader]>,
     pub game_versions: Arc<[Ustr]>,
+    pub version_types: &'static [ModrinthVersionType],
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -383,6 +409,7 @@ impl MetadataItem for ModrinthVersionUpdateMetadataItem {
 pub struct VersionV3UpdateParameters {
     pub loaders: Arc<[Arc<str>]>,
     pub loader_fields: VersionV3LoaderFields,
+    pub version_types: &'static [ModrinthVersionType],
 }
 
 #[derive(Clone, Debug, Serialize, Hash, PartialEq, Eq)]
@@ -645,6 +672,11 @@ impl<'a> MetadataItem for CurseforgeGetModFilesMetadataItem<'a> {
         if let Some(mod_loader_type) = self.0.mod_loader_type {
             req = req.query(&[("modLoaderType", mod_loader_type)]);
         }
+        if let Some(release_types) = &self.0.release_types {
+            for release_type in *release_types {
+                req = req.query(&[("releaseTypes", release_type)]);
+            }
+        }
         if let Some(page_size) = self.0.page_size {
             req = req.query(&[("pageSize", page_size)]);
         }
@@ -686,6 +718,30 @@ impl<'a> MetadataItem for CurseforgeGetFilesMetadataItem<'a> {
 
     fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
         states.curseforge_get_files.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
+#[derive(Debug)]
+pub struct CurseforgeChangelogMetadataItem<'a>(pub &'a CurseforgeChangelogRequest);
+
+impl<'a> MetadataItem for CurseforgeChangelogMetadataItem<'a> {
+    type T = CurseforgeChangelogResult;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        client.get(format!("https://api.curseforge.com/v1/mods/{}/files/{}/changelog", self.0.mod_id, self.0.file_id))
+            .header("x-api-key", CURSEFORGE_API_KEY)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+        states.curseforge_changelogs.entry(self.0.clone()).or_default().clone()
     }
 
     fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {

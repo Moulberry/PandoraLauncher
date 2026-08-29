@@ -33,7 +33,7 @@ impl PlayerModelWidget {
             SliderState::new().min(0.0).max(1.0).step(1.0/800.0).default_value(player_model::DEFAULT_ANIMATION as f32)
         });
         let zoom_slider_state = cx.new(|_| {
-            SliderState::new().min(0.0).max(1.0).step(0.01).default_value(player_model::DEFAULT_ZOOM as f32)
+            SliderState::new().min(0.1).max(2.0).step(0.01).default_value(player_model::DEFAULT_ZOOM as f32)
         });
 
         let variant = crate::skin_renderer::determine_skin_variant(&skin).unwrap_or(SkinVariant::Classic);
@@ -307,10 +307,9 @@ impl Render for PlayerModelWidget {
                             }))))
                     .child(Slider::new(&self.animation_slider_state)))
                 .child(v_flex()
-                    .child(h_flex().w_full().justify_between().text_sm()
-                        .child(t::skins::player_model::zoom())
+                    .child(div().w_full().text_sm()
+                        .child(t::skins::player_model::zoom()))
                     .child(Slider::new(&self.zoom_slider_state)))
-                )
             )
     }
 }

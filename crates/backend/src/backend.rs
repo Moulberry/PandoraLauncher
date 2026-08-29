@@ -236,6 +236,8 @@ impl BackendState {
 
         // Pre-fetch version manifest
         self.meta.load(&MinecraftVersionManifestMetadataItem).await;
+        
+        log::info!("Version Manifest loaded");
 
         Arc::new(self).handle(recv, watcher_rx).await;
     }

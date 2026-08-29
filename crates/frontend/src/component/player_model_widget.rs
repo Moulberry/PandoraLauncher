@@ -33,7 +33,7 @@ impl PlayerModelWidget {
             SliderState::new().min(0.0).max(1.0).step(1.0/800.0).default_value(player_model::DEFAULT_ANIMATION as f32)
         });
         let zoom_slider_state = cx.new(|_| {
-            SliderState::new().min(0.1).max(2.0).step(0.01).default_value(player_model::DEFAULT_ZOOM as f32)
+            SliderState::new().min(0.5).max(4.0).step(0.1).default_value(player_model::DEFAULT_ZOOM as f32)
         });
 
         let variant = crate::skin_renderer::determine_skin_variant(&skin).unwrap_or(SkinVariant::Classic);
@@ -245,6 +245,21 @@ impl Render for PlayerModelWidget {
                             });
                         }
                         widget.last_drag = Some(event.event.position);
+                    }
+                }))
+                .on_scroll_wheel(cx.listener({
+                    |widget, event: &ScrollWheelEvent, window, cx| {
+                        widget.player_model_state.update(cx, |state, cx| {
+                            let delta: f64 = match event.delta {
+                                ScrollDelta::Pixels(pixels) => pixels.y.into(),
+                                ScrollDelta::Lines(lines) => lines.y.into(),
+                            };
+                            state.zoom = (state.zoom + delta * 0.1).clamp(0.5, 4.0);
+                            widget.zoom_slider_state.update(cx, |slider, cx| {
+                                slider.set_value(state.zoom as f32, window, cx);
+                            });
+                            cx.notify();
+                        });
                     }
                 }))
             )

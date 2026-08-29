@@ -13,7 +13,7 @@ use strum::IntoEnumIterator;
 use crate::{
     component::error_alert::ErrorAlert, entity::{
         DataEntities, instance::ContentStates, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
-    }, icon::PandoraIcon, pages::modrinth_page::{InstalledContent, PrimaryAction, env_display, get_primary_action, icon_for}, format_downloads
+    }, icon::PandoraIcon, pages::modrinth_page::{InstalledContent, PrimaryAction, env_display, get_primary_action, icon_for}, format_downloads, format_followers
 };
 
 pub struct ModrinthProjectPage {
@@ -227,6 +227,9 @@ impl Render for ModrinthProjectPage {
                 .child(h_flex().gap_1()
                     .child(PandoraIcon::Download)
                     .child(format_downloads(project.downloads)))
+                .child(h_flex().gap_1()
+                    .child(PandoraIcon::Heart)
+                    .child(format_followers(project.followers)))
                 .when_some(categories_el, |this, el| this.child(el));
 
             let info_bar = h_flex()

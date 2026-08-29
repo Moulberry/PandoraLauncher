@@ -68,6 +68,7 @@ impl ManualCurseforgeDownloadsDialog {
         let files = self.files.clone();
         let directory = self.directory.display().to_string();
         let max_list_height = window.viewport_size().height * 0.55;
+        let list_height = px(files.len() as f32 * 72.0).min(max_list_height);
         let select_folder = cx.listener(|_this, _: &ClickEvent, _, cx| {
             let receiver = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: Some("Choose downloads folder".into()) });
             cx.spawn(async move |this, cx| {
@@ -85,7 +86,7 @@ impl ManualCurseforgeDownloadsDialog {
                 .child(h_flex().w_full().gap_2()
                     .child(div().flex_1().min_w_0().text_ellipsis().child(format!("Downloads folder: {directory}")))
                     .child(Button::new("choose-folder").flex_shrink_0().label("Change folder").disabled(self.started).on_click(select_folder)))
-                .child(v_flex().min_h_0().max_h(max_list_height).overflow_y_scrollbar().gap_1().children(files.iter().map(|file| {
+                .child(v_flex().h(list_height).flex_shrink_0().overflow_y_scrollbar().gap_1().children(files.iter().map(|file| {
                     let completed = self.completed.contains(&file.sha1);
                     let trailing = if completed {
                         div().flex_shrink_0().text_color(cx.theme().success).child("Downloaded ✓").into_any_element()

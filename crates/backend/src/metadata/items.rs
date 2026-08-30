@@ -6,7 +6,7 @@ use reqwest::RequestBuilder;
 use schema::{
     assets_index::AssetsIndex,
     curseforge::{
-        CURSEFORGE_API_KEY, CURSEFORGE_SEARCH_URL, CurseforgeFingerprintRequest, CurseforgeFingerprintResponse, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult, MINECRAFT_GAME_ID
+        CURSEFORGE_API_KEY, CURSEFORGE_SEARCH_URL, CurseforgeChangelogRequest, CurseforgeChangelogResult, CurseforgeFingerprintRequest, CurseforgeFingerprintResponse, CurseforgeGetFilesRequest, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeSearchRequest, CurseforgeSearchResult, MINECRAFT_GAME_ID
     },
     fabric_launch::FabricLaunch,
     fabric_loader_manifest::{FABRIC_LOADER_MANIFEST_URL, FabricLoaderManifest},
@@ -15,11 +15,12 @@ use schema::{
     java_runtimes::{JAVA_RUNTIMES_URL, JavaRuntimes},
     maven::MavenMetadataXml,
     modrinth::{
-        MODRINTH_PROJECT_URL, MODRINTH_SEARCH_URL, ModrinthLoader, ModrinthProjectRequest,
-        ModrinthProjectResult, ModrinthProjectVersion, ModrinthProjectVersionsRequest,
-        ModrinthProjectVersionsResult, ModrinthProjectsRequest, ModrinthProjectsResponse,
-        ModrinthSearchRequest, ModrinthSearchResult, ModrinthVersionFileUpdateResult,
-        ModrinthVersionsFromHashesRequest, ModrinthVersionsFromHashesResponse
+        MODRINTH_PROJECT_URL, MODRINTH_SEARCH_URL, ModrinthChangelogRequest, ModrinthChangelogResult,
+        ModrinthLoader, ModrinthProjectRequest, ModrinthProjectResult, ModrinthProjectVersion,
+        ModrinthProjectVersionsRequest, ModrinthProjectVersionsResult, ModrinthProjectsRequest,
+        ModrinthProjectsResponse, ModrinthSearchRequest, ModrinthSearchResult,
+        ModrinthVersionFileUpdateResult, ModrinthVersionType, ModrinthVersionsFromHashesRequest,
+        ModrinthVersionsFromHashesResponse
     },
     version::MinecraftVersion,
     version_manifest::{MOJANG_VERSION_MANIFEST_URL, MinecraftVersionLink, MinecraftVersionManifest}
@@ -27,14 +28,14 @@ use schema::{
 use serde::Serialize;
 use ustr::Ustr;
 
-use crate::metadata::manager::{MetaLoadError, MetaLoadStateWrapper, MetadataManager, MetadataManagerStates};
+use crate::metadata::manager::{MetaLoadError, MetaStateWrapper, MetadataManager, MetadataManagerStates};
 
 pub trait MetadataItem: Debug {
     type T: Send + Sync + 'static;
 
     fn request(&self, client: &reqwest::Client) -> RequestBuilder;
     fn expires(&self) -> bool;
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T>;
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T>;
     fn post_process_download(bytes: &[u8]) -> Result<Cow<'_, [u8]>, MetaLoadError> {
         Ok(Cow::Borrowed(bytes))
     }
@@ -65,7 +66,7 @@ impl MetadataItem for MinecraftVersionManifestMetadataItem {
         Some(Arc::clone(&metadata_manager.version_manifest_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.minecraft_version_manifest.clone()
     }
 
@@ -92,7 +93,7 @@ impl MetadataItem for MojangJavaRuntimesMetadataItem {
         Some(Arc::clone(&metadata_manager.mojang_java_runtimes_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.mojang_java_runtimes.clone()
     }
 
@@ -128,7 +129,7 @@ impl<'v> MetadataItem for MinecraftVersionMetadataItem<'v> {
         Some(path)
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.version_info.entry(self.0.url).or_default().clone()
     }
 
@@ -155,7 +156,7 @@ impl MetadataItem for AssetsIndexMetadataItem {
         false
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.assets_index.entry(self.url).or_default().clone()
     }
 
@@ -190,7 +191,7 @@ impl MetadataItem for MojangJavaRuntimeComponentMetadataItem {
         false
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.java_runtime_manifests.entry(self.url).or_default().clone()
     }
 
@@ -225,7 +226,7 @@ impl MetadataItem for FabricLoaderManifestMetadataItem {
         Some(Arc::clone(&metadata_manager.fabric_loader_manifest_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.fabric_loader_manifest.clone()
     }
 
@@ -258,7 +259,7 @@ impl MetadataItem for FabricLaunchMetadataItem {
         Some(path)
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         let key = (self.minecraft_version, self.loader_version);
         states.fabric_launch.entry(key).or_default().clone()
     }
@@ -282,7 +283,7 @@ impl<'a> MetadataItem for ModrinthSearchMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_search.entry(self.0.clone()).or_default().clone()
     }
 
@@ -313,7 +314,7 @@ impl<'a> MetadataItem for ModrinthProjectVersionsMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_project_versions.entry(self.0.clone()).or_default().clone()
     }
 
@@ -337,8 +338,32 @@ impl MetadataItem for ModrinthVersionMetadataItem {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_versions.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
+#[derive(Debug)]
+pub struct ModrinthChangelogMetadataItem<'a>(pub &'a ModrinthChangelogRequest);
+
+impl<'a> MetadataItem for ModrinthChangelogMetadataItem<'a> {
+    type T = ModrinthChangelogResult;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        let url = format!("https://api.modrinth.com/v2/version/{}", self.0.version_id);
+        client.get(url)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
+        states.modrinth_changelogs.entry(self.0.clone()).or_default().clone()
     }
 
     fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
@@ -350,6 +375,7 @@ impl MetadataItem for ModrinthVersionMetadataItem {
 pub struct VersionUpdateParameters {
     pub loaders: Arc<[ModrinthLoader]>,
     pub game_versions: Arc<[Ustr]>,
+    pub version_types: &'static [ModrinthVersionType],
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -370,7 +396,7 @@ impl MetadataItem for ModrinthVersionUpdateMetadataItem {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_version_v2_updates.entry(self.clone()).or_default().clone()
     }
 
@@ -383,6 +409,7 @@ impl MetadataItem for ModrinthVersionUpdateMetadataItem {
 pub struct VersionV3UpdateParameters {
     pub loaders: Arc<[Arc<str>]>,
     pub loader_fields: VersionV3LoaderFields,
+    pub version_types: &'static [ModrinthVersionType],
 }
 
 #[derive(Clone, Debug, Serialize, Hash, PartialEq, Eq)]
@@ -409,7 +436,7 @@ impl MetadataItem for ModrinthV3VersionUpdateMetadataItem {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_version_v3_updates.entry(self.clone()).or_default().clone()
     }
 
@@ -432,7 +459,7 @@ impl<'a> MetadataItem for ModrinthVersionsFromHashesMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_versions_from_hashes.entry(self.0.clone()).or_default().clone()
     }
 
@@ -466,7 +493,7 @@ impl<'a> MetadataItem for ModrinthProjectsMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_projects.entry(self.0.clone()).or_default().clone()
     }
 
@@ -493,7 +520,7 @@ impl MetadataItem for NeoforgeInstallerMavenMetadataItem {
         Some(Arc::clone(&metadata_manager.neoforge_installer_maven_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.neoforge_installer_maven_manifest.clone()
     }
 
@@ -528,7 +555,7 @@ impl MetadataItem for ForgeInstallerMavenMetadataItem {
         Some(Arc::clone(&metadata_manager.forge_installer_maven_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.forge_installer_maven_manifest.clone()
     }
 
@@ -570,7 +597,7 @@ impl<'a> MetadataItem for ModrinthProjectMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_project.entry(self.0.clone()).or_default().clone()
     }
 
@@ -597,7 +624,7 @@ impl<'a> MetadataItem for CurseforgeSearchMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.curseforge_search.entry(self.0.clone()).or_default().clone()
     }
 
@@ -622,7 +649,7 @@ impl<'a> MetadataItem for CurseforgeFingerprintMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.curseforge_fingerprints.entry(self.0.clone()).or_default().clone()
     }
 
@@ -645,6 +672,11 @@ impl<'a> MetadataItem for CurseforgeGetModFilesMetadataItem<'a> {
         if let Some(mod_loader_type) = self.0.mod_loader_type {
             req = req.query(&[("modLoaderType", mod_loader_type)]);
         }
+        if let Some(release_types) = &self.0.release_types {
+            for release_type in *release_types {
+                req = req.query(&[("releaseTypes", release_type)]);
+            }
+        }
         if let Some(page_size) = self.0.page_size {
             req = req.query(&[("pageSize", page_size)]);
         }
@@ -659,7 +691,7 @@ impl<'a> MetadataItem for CurseforgeGetModFilesMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.curseforge_get_mod_files.entry(self.0.clone()).or_default().clone()
     }
 
@@ -684,8 +716,32 @@ impl<'a> MetadataItem for CurseforgeGetFilesMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.curseforge_get_files.entry(self.0.clone()).or_default().clone()
+    }
+
+    fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {
+        Ok(serde_json::from_slice(bytes)?)
+    }
+}
+
+#[derive(Debug)]
+pub struct CurseforgeChangelogMetadataItem<'a>(pub &'a CurseforgeChangelogRequest);
+
+impl<'a> MetadataItem for CurseforgeChangelogMetadataItem<'a> {
+    type T = CurseforgeChangelogResult;
+
+    fn request(&self, client: &reqwest::Client) -> RequestBuilder {
+        client.get(format!("https://api.curseforge.com/v1/mods/{}/files/{}/changelog", self.0.mod_id, self.0.file_id))
+            .header("x-api-key", CURSEFORGE_API_KEY)
+    }
+
+    fn expires(&self) -> bool {
+        true
+    }
+
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
+        states.curseforge_changelogs.entry(self.0.clone()).or_default().clone()
     }
 
     fn deserialize(bytes: &[u8]) -> Result<Self::T, MetaLoadError> {

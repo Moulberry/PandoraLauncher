@@ -18,7 +18,7 @@ use strum::IntoEnumIterator;
 use crate::{
     component::{error_alert::ErrorAlert, instance_dropdown::InstanceDropdown},
     entity::{
-        DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}
+        DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
     },
     root,
 };
@@ -59,7 +59,7 @@ struct InstallDialog {
 }
 
 pub fn open(
-    name: &str,
+    name: SharedString,
     project_id: Arc<str>,
     project_type: ModrinthProjectType,
     install_for: Option<InstanceID>,
@@ -77,27 +77,16 @@ pub fn open(
         cx,
     );
 
-    open_from_entity(SharedString::new(name), project_versions, project_id, project_type, install_for, data.clone(), window, cx);
-}
-
-fn open_from_entity(
-    name: SharedString,
-    project_versions: Entity<FrontendMetadataState>,
-    project_id: Arc<str>,
-    project_type: ModrinthProjectType,
-    install_for: Option<InstanceID>,
-    data: DataEntities,
-    window: &mut Window,
-    cx: &mut App,
-) {
     let title: SharedString = t::instance::content::install::title(&name).into();
 
     let result: FrontendMetadataResult<ModrinthProjectVersionsResult> = project_versions.read(cx).result();
     match result {
         FrontendMetadataResult::Loading => {
-            let _subscription = window.observe(&project_versions, cx, move |project_versions, window, cx| {
+            let data = data.clone();
+            let name = name.clone();
+            let _subscription = window.observe(&project_versions, cx, move |_, window, cx| {
                 window.close_all_dialogs(cx);
-                open_from_entity(name.clone(), project_versions, project_id.clone(), project_type, install_for, data.clone(), window, cx);
+                open(name.clone(), project_id.clone(), project_type, install_for, &data, window, cx);
             });
             window.open_dialog(cx, move |dialog, _, _| {
                 let _ = &_subscription;
@@ -188,7 +177,7 @@ fn open_from_entity(
                     title,
                     name: name.into(),
                     project_versions: valid_project_versions.into(),
-                    data,
+                    data: data.clone(),
                     project_type,
                     project_id,
                     version_matrix,
@@ -250,7 +239,7 @@ fn open_from_entity(
                     title,
                     name: name.into(),
                     project_versions: valid_project_versions.into(),
-                    data,
+                    data: data.clone(),
                     project_type,
                     project_id,
                     version_matrix,
@@ -271,9 +260,24 @@ fn open_from_entity(
                 install_dialog.show(window, cx);
             }
         },
-        FrontendMetadataResult::Error(message) => {
+        FrontendMetadataResult::Error(error, alive) => {
+            let _task = if let Some(alive) = alive {
+                let data = data.clone();
+                let name = name.clone();
+                window.spawn(cx, async move |cx| {
+                    alive.await_notification().await;
+                    _ = cx.update(|window, cx| {
+                        window.close_all_dialogs(cx);
+                        open(name.clone(), project_id.clone(), project_type, install_for, &data, window, cx);
+                    });
+                })
+            } else {
+                Task::ready(())
+            };
+
             window.open_dialog(cx, move |modal, _, _| {
-                modal.title(title.clone()).child(ErrorAlert::new(t::instance::content::requesting_from_error("Modrinth").into(), message.clone()))
+                let _ = &_task;
+                modal.title(title.clone()).child(ErrorAlert::new(t::instance::content::requesting_from_error("Modrinth").into(), error.clone()))
             });
         },
     }

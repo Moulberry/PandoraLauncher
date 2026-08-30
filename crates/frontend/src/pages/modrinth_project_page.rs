@@ -12,15 +12,14 @@ use strum::IntoEnumIterator;
 
 use crate::{
     component::error_alert::ErrorAlert, entity::{
-        DataEntities, instance::ContentStates, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
-    }, icon::PandoraIcon, pages::modrinth_page::{InstalledContent, PrimaryAction, env_display, get_primary_action, icon_for}, format_downloads
+        DataEntities, instance::ContentStates, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}
+    }, format_downloads, icon::PandoraIcon, pages::modrinth_page::{InstalledContent, PrimaryAction, env_display, get_primary_action, icon_for}
 };
 
 pub struct ModrinthProjectPage {
     data: DataEntities,
     project_id: SharedString,
     install_for: Option<InstanceID>,
-    loading: Option<Subscription>,
     project: Option<Arc<ModrinthProjectResult>>,
     error: Option<SharedString>,
     active_tab: usize,
@@ -28,6 +27,8 @@ pub struct ModrinthProjectPage {
     specific_installed_content: enum_map::EnumMap<ContentFolder, Vec<InstalledContent>>,
     all_installed_content: Vec<InstalledContent>,
     content_states: Option<ContentStates>,
+    _project_retry_task: Task<()>,
+    _project_subscription: Option<Subscription>,
 }
 
 impl ModrinthProjectPage {
@@ -109,7 +110,6 @@ impl ModrinthProjectPage {
             data: data.clone(),
             project_id,
             install_for,
-            loading: None,
             project: None,
             error: None,
             active_tab: 0,
@@ -117,6 +117,8 @@ impl ModrinthProjectPage {
             specific_installed_content,
             all_installed_content,
             content_states,
+            _project_retry_task: Task::ready(()),
+            _project_subscription: None,
         };
         page.fetch_project(cx);
         page
@@ -133,33 +135,35 @@ impl ModrinthProjectPage {
 
         let state = FrontendMetadata::request(&self.data.metadata, request, cx);
 
+        self._project_subscription = Some(cx.observe(&state, |page, state, cx| {
+            page.update_project_from_metadata(state, cx);
+            cx.notify();
+        }));
+        self.update_project_from_metadata(state, cx);
+    }
+
+    fn update_project_from_metadata(&mut self, state: Entity<FrontendMetadataState>, cx: &mut Context<Self>) {
+        self.project = None;
+        self.error = None;
+
         let result: FrontendMetadataResult<ModrinthProjectResult> = state.read(cx).result();
         match result {
-            FrontendMetadataResult::Loading => {
-                let subscription = cx.observe(&state, |page, state, cx| {
-                    let result: FrontendMetadataResult<ModrinthProjectResult> =
-                        state.read(cx).result();
-                    match result {
-                        FrontendMetadataResult::Loading => {}
-                        FrontendMetadataResult::Loaded(project) => {
-                            page.project = Some(Arc::new(project.clone()));
-                            page.loading = None;
-                            cx.notify();
-                        }
-                        FrontendMetadataResult::Error(e) => {
-                            page.error = Some(e);
-                            page.loading = None;
-                            cx.notify();
-                        }
-                    }
-                });
-                self.loading = Some(subscription);
-            }
+            FrontendMetadataResult::Loading => {}
             FrontendMetadataResult::Loaded(project) => {
                 self.project = Some(Arc::new(project.clone()));
             }
-            FrontendMetadataResult::Error(e) => {
-                self.error = Some(e);
+            FrontendMetadataResult::Error(error, alive) => {
+                self.error = Some(error);
+
+                if let Some(alive) = alive {
+                    self._project_retry_task = cx.spawn(async move |page, cx| {
+                        alive.await_notification().await;
+                        let _ = page.update(cx, |page, cx| {
+                            page.fetch_project(cx);
+                            cx.notify();
+                        });
+                    });
+                }
             }
         }
     }
@@ -264,7 +268,7 @@ impl Render for ModrinthProjectPage {
                         let project_id_str = project_id_str.clone();
                         move |_, window, cx| {
                             if project_type != ModrinthProjectType::Other {
-                                primary_action.perform(project_name.as_str(), &project_id_str, project_type, install_for, &data, window, cx);
+                                primary_action.perform(project_name.clone(), &project_id_str, project_type, install_for, &data, window, cx);
                             } else {
                                 window.push_notification(
                                     (NotificationType::Error, t::instance::content::install::unknown_type()),

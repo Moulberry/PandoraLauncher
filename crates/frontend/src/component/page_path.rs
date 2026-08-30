@@ -22,7 +22,7 @@ impl RenderOnce for PagePath {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         h_flex()
             .gap_1p5()
-            .text_xl()
+            .text_lg()
             .text_color(cx.theme().muted_foreground)
             .children(self.breadcrumb.iter().enumerate().flat_map(|(i, page)| {
                 let item = div()
@@ -42,7 +42,7 @@ impl RenderOnce for PagePath {
                     }).into_any_element();
                 [
                     item,
-                    Icon::new(PandoraIcon::ChevronRight).size_3p5().into_any_element()
+                    Icon::new(PandoraIcon::ChevronRight).size_4().top_px().into_any_element()
                 ]
             }))
             .child(div().text_color(cx.theme().foreground).child(self.main_page.title(&self.data, cx)))

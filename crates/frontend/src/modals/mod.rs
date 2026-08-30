@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod change_version;
 pub mod create_instance;
 pub mod curseforge_install;
 pub mod delete_instance;

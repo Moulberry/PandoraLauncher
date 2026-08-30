@@ -3,6 +3,8 @@ use std::sync::Arc;
 use gpui::{App, AppContext, AvailableSpace, Bounds, Element, Entity, IntoElement, RenderImage, Size, Style, Task, px, size};
 use schema::{minecraft_profile::SkinVariant, unique_bytes::UniqueBytes};
 
+use crate::interface_config::InterfaceConfig;
+
 pub const DEFAULT_YAW: f64 = 22.5;
 pub const DEFAULT_PITCH: f64 = 10.5;
 pub const DEFAULT_ANIMATION: f64 = 1.0/16.0;
@@ -15,6 +17,7 @@ struct RenderedPlayerModel {
     yaw: f64,
     pitch: f64,
     animation: f64,
+    zoom: f64,
     width: u32,
     height: u32,
 }
@@ -50,13 +53,14 @@ impl PlayerModelState {
         entity
     }
 
-    pub fn needs_rerender(&self, width: u32, height: u32) -> bool {
+    pub fn needs_rerender(&self, width: u32, height: u32, zoom: f64) -> bool {
         let Some(rendered) = &self.rendered else {
             return true;
         };
         return rendered.width != width || rendered.height != height || rendered.yaw != self.yaw
             || rendered.pitch != self.pitch || rendered.animation != self.animation
-            || rendered.variant != self.variant || rendered.skin != self.skin || rendered.cape != self.cape;
+            || rendered.variant != self.variant || rendered.skin != self.skin || rendered.cape != self.cape
+            || rendered.zoom != zoom;
     }
 }
 
@@ -144,8 +148,9 @@ impl Element for PlayerModel {
         let window_scale = window.scale_factor();
         let image_height = (element_height * window_scale) as u32;
         let image_width = (element_width * window_scale) as u32;
+        let zoom = InterfaceConfig::get(cx).player_model_zoom.clamp(50, 400) as f64 / 100.0;
         self.state.update(cx, |state, cx| {
-            if state.render_task.is_none() && state.needs_rerender(image_width, image_height) {
+            if state.render_task.is_none() && state.needs_rerender(image_width, image_height, zoom) {
                 let skin = state.skin.clone();
                 let cape = state.cape.clone();
                 let yaw = state.yaw;
@@ -156,7 +161,7 @@ impl Element for PlayerModel {
                 let (send, recv) = tokio::sync::oneshot::channel();
 
                 cx.background_executor().spawn(async move {
-                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation, 0.0, 1.0))
+                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation, 0.0, zoom))
                 }).detach();
 
                 let skin = state.skin.clone();
@@ -184,6 +189,7 @@ impl Element for PlayerModel {
                             yaw,
                             pitch,
                             animation,
+                            zoom,
                             width: image_width,
                             height: image_height,
                         });

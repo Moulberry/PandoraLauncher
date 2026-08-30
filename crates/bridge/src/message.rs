@@ -5,7 +5,7 @@ use std::{
 use schema::{
     backend_config::{BackendConfig, ProxyConfig}, instance::{
         InstanceConfiguration, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration,
-        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration,
+        InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, UpdateChannel,
     }, loader::Loader, minecraft_profile::{MinecraftProfileCape, SkinVariant}, pandora_update::UpdatePrompt, unique_bytes::UniqueBytes
 };
 use ustr::Ustr;
@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
     account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLauncherJob, OtherLauncher}, install::ContentInstall, instance::{
         ContentFolder, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
-    }, keep_alive::KeepAliveHandle, manual_download::{ManualCurseforgeDownloadRequest, ManualCurseforgeDownloadStart}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction,
+    }, manual_download::{ManualCurseforgeDownloadRequest, ManualCurseforgeDownloadStart}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction, notify_signal::KeepAliveNotifySignalHandle,
 };
 
 #[derive(Debug)]
@@ -99,6 +99,10 @@ pub enum MessageToBackend {
     SetInstanceLoader {
         id: InstanceID,
         loader: Loader
+    },
+    SetInstanceUpdateChannel {
+        id: InstanceID,
+        update_channel: UpdateChannel,
     },
     SetInstancePreferredAccount {
     	id: InstanceID,
@@ -392,7 +396,7 @@ pub enum MessageToFrontend {
     MetadataResult {
         request: MetadataRequest,
         result: Result<MetadataResult, Arc<str>>,
-        keep_alive_handle: Option<KeepAliveHandle>,
+        keep_alive_handle: Option<KeepAliveNotifySignalHandle>,
     },
     SkinLibraryUpdated {
         skin_library: SkinLibrary,

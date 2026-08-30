@@ -17,7 +17,7 @@ use ustr::Ustr;
 use crate::{
     component::instance_dropdown::InstanceDropdown,
     entity::{
-        DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult, FrontendMetadataState}
+        DataEntities, instance::InstanceEntry, metadata::{AsMetadataResult, FrontendMetadata, FrontendMetadataResult}
     },
     root,
 };
@@ -39,8 +39,6 @@ struct InstallDialog {
     instances: Option<Entity<SelectState<InstanceDropdown>>>,
     unsupported_instances: usize,
 
-    mod_files: FxHashMap<(Ustr, Option<u32>), Entity<FrontendMetadataState>>,
-
     target: Option<InstallTarget>,
 
     last_selected_minecraft_version: Option<SharedString>,
@@ -56,6 +54,7 @@ struct InstallDialog {
     install_dependencies: bool,
 
     mod_version_select_state: Option<Entity<SelectState<SearchableVec<ModVersionItem>>>>,
+    mod_versions_retry_task: Task<()>,
 }
 
 pub fn open(
@@ -139,7 +138,6 @@ pub fn open(
             version_matrix,
             instances: None,
             unsupported_instances: 0,
-            mod_files: Default::default(),
             target: Some(InstallTarget::Instance(instance_id)),
             fixed_minecraft_version,
             minecraft_version_select_state: None,
@@ -151,6 +149,7 @@ pub fn open(
             install_dependencies: true,
             mod_version_select_state: None,
             last_selected_loader: None,
+            mod_versions_retry_task: Task::ready(()),
         };
         install_dialog.show(window, cx);
     } else {
@@ -201,7 +200,6 @@ pub fn open(
             version_matrix,
             instances,
             unsupported_instances,
-            mod_files: Default::default(),
             target: None,
             fixed_minecraft_version: None,
             minecraft_version_select_state: None,
@@ -213,6 +211,7 @@ pub fn open(
             install_dependencies: true,
             mod_version_select_state: None,
             last_selected_loader: None,
+            mod_versions_retry_task: Task::ready(()),
         };
         install_dialog.show(window, cx);
     }
@@ -603,20 +602,17 @@ impl InstallDialog {
                 Some(CurseforgeModLoaderType::from_name(selected_loader_string.as_str()) as u32)
             };
 
-            let request = self.mod_files
-                .entry((selected_game_version, mod_loader_type))
-                .or_insert_with(|| {
-                    FrontendMetadata::request(
-                        &self.data.metadata,
-                        MetadataRequest::CurseforgeGetModFiles(CurseforgeGetModFilesRequest {
-                            mod_id: self.project_id,
-                            game_version: Some(selected_game_version),
-                            mod_loader_type,
-                            page_size: None,
-                        }),
-                        cx,
-                    )
-                });
+            let request = FrontendMetadata::request(
+                &self.data.metadata,
+                MetadataRequest::CurseforgeGetModFiles(CurseforgeGetModFilesRequest {
+                    mod_id: self.project_id,
+                    game_version: Some(selected_game_version),
+                    mod_loader_type,
+                    release_types: None,
+                    page_size: None,
+                }),
+                cx,
+            );
 
             let result: FrontendMetadataResult<CurseforgeGetModFilesResult> = request.read(cx).result();
 
@@ -657,6 +653,7 @@ impl InstallDialog {
 
                     let highest = highest_release.or(highest_beta).or(highest_alpha);
 
+                    self.mod_versions_retry_task = Task::ready(());
                     self.mod_version_select_state = Some(cx.new(|cx| {
                         let mut select_state =
                             SelectState::new(SearchableVec::new(mod_versions), None, window, cx).searchable(true);
@@ -666,7 +663,18 @@ impl InstallDialog {
                         select_state
                     }));
                 },
-                FrontendMetadataResult::Error(shared_string) => {
+                FrontendMetadataResult::Error(shared_string, alive) => {
+                    if let Some(alive) = alive {
+                        self.mod_versions_retry_task = cx.spawn(async move |page, cx| {
+                            alive.await_notification().await;
+                            _ = page.update(cx, |page, cx| {
+                                page.mod_version_select_state = None;
+                                page.mod_versions_retry_task = Task::ready(());
+                                cx.notify();
+                            });
+                        });
+                    }
+
                     return t::instance::content::install::error_loading_files(&shared_string).into_any_element();
                 },
             }

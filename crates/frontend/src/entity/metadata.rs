@@ -1,22 +1,23 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::{Arc, atomic::AtomicBool}};
 
-use bridge::{handle::BackendHandle, keep_alive::KeepAliveHandle, message::MessageToBackend, meta::{MetadataRequest, MetadataResult}};
+use bridge::{handle::BackendHandle, message::MessageToBackend, meta::{MetadataRequest, MetadataResult}, notify_signal::KeepAliveNotifySignalHandle};
 use gpui::{prelude::*, *};
-use schema::{curseforge::{CurseforgeGetModFilesResult, CurseforgeSearchResult}, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, modrinth::{ModrinthProjectResult, ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
+use schema::{curseforge::{CurseforgeChangelogResult, CurseforgeGetModFilesResult, CurseforgeSearchResult}, fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, modrinth::{ModrinthChangelogResult, ModrinthProjectResult, ModrinthProjectVersionsResult, ModrinthSearchResult}, version_manifest::MinecraftVersionManifest};
 
 #[derive(Debug)]
 pub enum FrontendMetadataState {
     Loading,
     Loaded {
         result: Result<MetadataResult, Arc<str>>,
-        keep_alive: Option<KeepAliveHandle>,
+        alive: Option<KeepAliveNotifySignalHandle>,
+        can_send_reload: AtomicBool
     },
 }
 
 pub enum FrontendMetadataResult<'a, T> {
     Loading,
     Loaded(&'a T),
-    Error(SharedString),
+    Error(SharedString, Option<KeepAliveNotifySignalHandle>),
 }
 
 impl <'a, T> FrontendMetadataResult<'a, T> {
@@ -24,7 +25,7 @@ impl <'a, T> FrontendMetadataResult<'a, T> {
         match self {
             FrontendMetadataResult::Loading => TypelessFrontendMetadataResult::Loading,
             FrontendMetadataResult::Loaded(_) => TypelessFrontendMetadataResult::Loaded,
-            FrontendMetadataResult::Error(error) => TypelessFrontendMetadataResult::Error(error),
+            FrontendMetadataResult::Error(error, alive) => TypelessFrontendMetadataResult::Error(error, alive),
         }
     }
 }
@@ -32,7 +33,7 @@ impl <'a, T> FrontendMetadataResult<'a, T> {
 pub enum TypelessFrontendMetadataResult {
     Loading,
     Loaded,
-    Error(SharedString),
+    Error(SharedString, Option<KeepAliveNotifySignalHandle>),
 }
 
 pub struct FrontendMetadata {
@@ -71,13 +72,23 @@ impl FrontendMetadata {
     pub fn request(entity: &Entity<Self>, request: MetadataRequest, cx: &mut App) -> Entity<FrontendMetadataState> {
         entity.update(cx, |this, cx| {
             if let Some(existing) = this.data.get(&request) {
-                if let FrontendMetadataState::Loaded { keep_alive, .. } = existing.read(cx) {
-                    if !keep_alive.as_ref().map(|k| k.is_alive()).unwrap_or(true) {
+                let mut is_reloading_error = false;
+                if let FrontendMetadataState::Loaded { result, alive, can_send_reload } = existing.read(cx) {
+                    if alive.as_ref().map(|k| !k.is_alive()).unwrap_or(false)
+                        && can_send_reload.swap(false, std::sync::atomic::Ordering::Relaxed)
+                    {
                         this.backend_handle.send(MessageToBackend::RequestMetadata {
                             request: request.clone(),
                             force_reload: false,
                         });
+                        is_reloading_error = result.is_err();
                     }
+                }
+                if is_reloading_error {
+                    existing.update(cx, |value, cx| {
+                        *value = FrontendMetadataState::Loading;
+                        cx.notify();
+                    });
                 }
                 return existing.clone();
             }
@@ -96,14 +107,19 @@ impl FrontendMetadata {
         entity: &Entity<Self>,
         request: MetadataRequest,
         result: Result<MetadataResult, Arc<str>>,
-        keep_alive: Option<KeepAliveHandle>,
+        alive: Option<KeepAliveNotifySignalHandle>,
         cx: &mut App,
     ) {
         entity.update(cx, |this, cx| {
-            this.data.get(&request).unwrap().update(cx, |value, cx| {
-                *value = FrontendMetadataState::Loaded { result, keep_alive };
-                cx.notify();
-            });
+            let loaded = FrontendMetadataState::Loaded { result, alive, can_send_reload: AtomicBool::new(true) };
+            if let Some(existing) = this.data.get(&request) {
+                existing.update(cx, |value, cx| {
+                    *value = loaded;
+                    cx.notify();
+                });
+            } else {
+                this.data.insert(request, cx.new(|_| loaded));
+            }
         });
     }
 }
@@ -118,11 +134,11 @@ macro_rules! define_as_metadata_result {
             fn result(&self) -> FrontendMetadataResult<'_, $t> {
                 match self {
                     FrontendMetadataState::Loading => FrontendMetadataResult::Loading,
-                    FrontendMetadataState::Loaded { result, .. } => {
+                    FrontendMetadataState::Loaded { result, alive, .. } => {
                         match result {
                             Ok(MetadataResult::$t(result)) => FrontendMetadataResult::Loaded(&*result),
-                            Ok(_) => FrontendMetadataResult::Error(t::system::metadata_error().into()),
-                            Err(error) => FrontendMetadataResult::Error(SharedString::new(error.clone())),
+                            Ok(_) => FrontendMetadataResult::Error(t::system::metadata_error().into(), alive.clone()),
+                            Err(error) => FrontendMetadataResult::Error(SharedString::new(error.clone()), alive.clone()),
                         }
                     },
                 }
@@ -138,5 +154,7 @@ define_as_metadata_result!(FabricLoaderManifest);
 define_as_metadata_result!(ForgeMavenManifest);
 define_as_metadata_result!(NeoforgeMavenManifest);
 define_as_metadata_result!(ModrinthProjectResult);
+define_as_metadata_result!(ModrinthChangelogResult);
 define_as_metadata_result!(CurseforgeSearchResult);
 define_as_metadata_result!(CurseforgeGetModFilesResult);
+define_as_metadata_result!(CurseforgeChangelogResult);

@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::{
     account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLauncherJob, OtherLauncher}, install::ContentInstall, instance::{
         ContentFolder, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
-    }, keep_alive::KeepAliveHandle, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction,
+    }, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction, notify_signal::KeepAliveNotifySignalHandle,
 };
 
 #[derive(Debug)]
@@ -387,7 +387,7 @@ pub enum MessageToFrontend {
     MetadataResult {
         request: MetadataRequest,
         result: Result<MetadataResult, Arc<str>>,
-        keep_alive_handle: Option<KeepAliveHandle>,
+        keep_alive_handle: Option<KeepAliveNotifySignalHandle>,
     },
     SkinLibraryUpdated {
         skin_library: SkinLibrary,

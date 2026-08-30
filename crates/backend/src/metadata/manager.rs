@@ -2,7 +2,8 @@ use std::{
     collections::{HashMap, VecDeque}, fmt::Display, path::Path, sync::Arc, time::{Duration, Instant}
 };
 
-use bridge::keep_alive::{KeepAlive, KeepAliveHandle};
+use bridge::notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle};
+use parking_lot::Mutex;
 use reqwest::StatusCode;
 use schema::{
     assets_index::AssetsIndex,
@@ -30,39 +31,87 @@ use ustr::Ustr;
 
 use crate::metadata::items::{MetadataItem, ModrinthV3VersionUpdateMetadataItem, ModrinthVersionUpdateMetadataItem};
 
-const DATA_TTL: Duration = Duration::from_secs(5 * 60);
+pub struct MetaState<T> {
+    keep_alive: Option<KeepAliveNotifySignalHandle>,
+    load_state: MetaLoadState<T>,
+    failure_count: usize,
+}
 
-pub(super) type MetaLoadStateWrapper<T> = Arc<tokio::sync::Mutex<(Option<KeepAliveHandle>, MetaLoadState<T>)>>;
+impl <T> Default for MetaState<T> {
+    fn default() -> Self {
+        Self {
+            keep_alive: None,
+            load_state: MetaLoadState::Unloaded,
+            failure_count: 0
+        }
+    }
+}
+
+impl <T> MetaState<T> {
+    pub fn should_reload(&self, force: bool) -> bool {
+        match self.load_state {
+            MetaLoadState::Unloaded => true,
+            MetaLoadState::Pending(_) => false,
+            MetaLoadState::PendingOther(_) => false,
+            MetaLoadState::Loaded(_) | MetaLoadState::Error(_) => {
+                force || self.keep_alive.as_ref().map(|h| !h.is_alive()).unwrap_or(false)
+            },
+        }
+    }
+}
+
+pub type MetaStateWrapper<T> = Arc<Mutex<MetaState<T>>>;
 
 #[derive(Default)]
 pub struct MetadataManagerStates {
-    pub(super) minecraft_version_manifest: MetaLoadStateWrapper<MinecraftVersionManifest>,
-    pub(super) mojang_java_runtimes: MetaLoadStateWrapper<JavaRuntimes>,
-    pub(super) fabric_loader_manifest: MetaLoadStateWrapper<FabricLoaderManifest>,
-    pub(super) neoforge_installer_maven_manifest: MetaLoadStateWrapper<NeoforgeMavenManifest>,
-    pub(super) forge_installer_maven_manifest: MetaLoadStateWrapper<ForgeMavenManifest>,
-    pub(super) fabric_launch: HashMap<(Ustr, Ustr), MetaLoadStateWrapper<FabricLaunch>>,
-    pub(super) version_info: HashMap<Ustr, MetaLoadStateWrapper<MinecraftVersion>>,
-    pub(super) assets_index: HashMap<Ustr, MetaLoadStateWrapper<AssetsIndex>>,
-    pub(super) java_runtime_manifests: HashMap<Ustr, MetaLoadStateWrapper<JavaRuntimeComponentManifest>>,
-    pub(super) modrinth_search: HashMap<ModrinthSearchRequest, MetaLoadStateWrapper<ModrinthSearchResult>>,
-    pub(super) modrinth_project_versions: HashMap<ModrinthProjectVersionsRequest, MetaLoadStateWrapper<ModrinthProjectVersionsResult>>,
-    pub(super) modrinth_project: HashMap<ModrinthProjectRequest, MetaLoadStateWrapper<ModrinthProjectResult>>,
-    pub(super) modrinth_projects: HashMap<ModrinthProjectsRequest, MetaLoadStateWrapper<ModrinthProjectsResponse>>,
-    pub(super) modrinth_versions: HashMap<Arc<str>, MetaLoadStateWrapper<ModrinthProjectVersion>>,
-    pub(super) modrinth_changelogs: HashMap<ModrinthChangelogRequest, MetaLoadStateWrapper<ModrinthChangelogResult>>,
-    pub(super) modrinth_version_v2_updates: HashMap<ModrinthVersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
-    pub(super) modrinth_version_v3_updates: HashMap<ModrinthV3VersionUpdateMetadataItem, MetaLoadStateWrapper<ModrinthVersionFileUpdateResult>>,
-    pub(super) modrinth_versions_from_hashes: HashMap<ModrinthVersionsFromHashesRequest, MetaLoadStateWrapper<ModrinthVersionsFromHashesResponse>>,
-    pub(super) curseforge_search: HashMap<CurseforgeSearchRequest, MetaLoadStateWrapper<CurseforgeSearchResult>>,
-    pub(super) curseforge_get_mod_files: HashMap<CurseforgeGetModFilesRequest, MetaLoadStateWrapper<CurseforgeGetModFilesResult>>,
-    pub(super) curseforge_get_files: HashMap<CurseforgeGetFilesRequest, MetaLoadStateWrapper<CurseforgeGetModFilesResult>>,
-    pub(super) curseforge_changelogs: HashMap<CurseforgeChangelogRequest, MetaLoadStateWrapper<CurseforgeChangelogResult>>,
-    pub(super) curseforge_fingerprints: HashMap<CurseforgeFingerprintRequest, MetaLoadStateWrapper<CurseforgeFingerprintResponse>>,
+    pub(super) minecraft_version_manifest: MetaStateWrapper<MinecraftVersionManifest>,
+    pub(super) mojang_java_runtimes: MetaStateWrapper<JavaRuntimes>,
+    pub(super) fabric_loader_manifest: MetaStateWrapper<FabricLoaderManifest>,
+    pub(super) neoforge_installer_maven_manifest: MetaStateWrapper<NeoforgeMavenManifest>,
+    pub(super) forge_installer_maven_manifest: MetaStateWrapper<ForgeMavenManifest>,
+    pub(super) fabric_launch: HashMap<(Ustr, Ustr), MetaStateWrapper<FabricLaunch>>,
+    pub(super) version_info: HashMap<Ustr, MetaStateWrapper<MinecraftVersion>>,
+    pub(super) assets_index: HashMap<Ustr, MetaStateWrapper<AssetsIndex>>,
+    pub(super) java_runtime_manifests: HashMap<Ustr, MetaStateWrapper<JavaRuntimeComponentManifest>>,
+    pub(super) modrinth_search: HashMap<ModrinthSearchRequest, MetaStateWrapper<ModrinthSearchResult>>,
+    pub(super) modrinth_project_versions: HashMap<ModrinthProjectVersionsRequest, MetaStateWrapper<ModrinthProjectVersionsResult>>,
+    pub(super) modrinth_project: HashMap<ModrinthProjectRequest, MetaStateWrapper<ModrinthProjectResult>>,
+    pub(super) modrinth_projects: HashMap<ModrinthProjectsRequest, MetaStateWrapper<ModrinthProjectsResponse>>,
+    pub(super) modrinth_versions: HashMap<Arc<str>, MetaStateWrapper<ModrinthProjectVersion>>,
+    pub(super) modrinth_changelogs: HashMap<ModrinthChangelogRequest, MetaStateWrapper<ModrinthChangelogResult>>,
+    pub(super) modrinth_version_v2_updates: HashMap<ModrinthVersionUpdateMetadataItem, MetaStateWrapper<ModrinthVersionFileUpdateResult>>,
+    pub(super) modrinth_version_v3_updates: HashMap<ModrinthV3VersionUpdateMetadataItem, MetaStateWrapper<ModrinthVersionFileUpdateResult>>,
+    pub(super) modrinth_versions_from_hashes: HashMap<ModrinthVersionsFromHashesRequest, MetaStateWrapper<ModrinthVersionsFromHashesResponse>>,
+    pub(super) curseforge_search: HashMap<CurseforgeSearchRequest, MetaStateWrapper<CurseforgeSearchResult>>,
+    pub(super) curseforge_get_mod_files: HashMap<CurseforgeGetModFilesRequest, MetaStateWrapper<CurseforgeGetModFilesResult>>,
+    pub(super) curseforge_get_files: HashMap<CurseforgeGetFilesRequest, MetaStateWrapper<CurseforgeGetModFilesResult>>,
+    pub(super) curseforge_changelogs: HashMap<CurseforgeChangelogRequest, MetaStateWrapper<CurseforgeChangelogResult>>,
+    pub(super) curseforge_fingerprints: HashMap<CurseforgeFingerprintRequest, MetaStateWrapper<CurseforgeFingerprintResponse>>,
+}
+
+#[derive(Clone, Copy, enum_map::Enum)]
+enum ExpirationDuration {
+    Success,
+    RetryError1,
+    RetryError2,
+    RetryError3,
+    RetryError4,
+}
+
+impl ExpirationDuration {
+    pub fn duration(self) -> Duration {
+        match self {
+            ExpirationDuration::Success => Duration::from_secs(5 * 60),
+            ExpirationDuration::RetryError1 => Duration::from_secs(1),
+            ExpirationDuration::RetryError2 => Duration::from_secs(3),
+            ExpirationDuration::RetryError3 => Duration::from_secs(9),
+            ExpirationDuration::RetryError4 => Duration::from_secs(27),
+        }
+    }
 }
 
 pub struct MetadataManager {
-    states: tokio::sync::Mutex<MetadataManagerStates>,
+    states: Mutex<MetadataManagerStates>,
 
     pub(super) metadata_cache: Arc<Path>,
     pub(super) version_manifest_cache: Arc<Path>,
@@ -71,7 +120,7 @@ pub struct MetadataManager {
     pub(super) neoforge_installer_maven_cache: Arc<Path>,
     pub(super) forge_installer_maven_cache: Arc<Path>,
 
-    expiring: tokio::sync::Mutex<VecDeque<(Instant, KeepAlive)>>,
+    expiring: enum_map::EnumMap<ExpirationDuration, Mutex<VecDeque<(Instant, KeepAliveNotifySignal)>>>,
 
     http_client: reqwest::Client,
 }
@@ -80,12 +129,24 @@ pub struct MetadataManager {
 pub enum MetaLoadError {
     InvalidHash,
     Reqwest(Arc<reqwest::Error>),
+    TokioJoin(Arc<tokio::task::JoinError>),
+    // Parsing
     SerdeJson(Arc<serde_json::Error>),
     SerdeXml(Arc<serde_xml_rs::Error>),
-    TokioJoin(Arc<tokio::task::JoinError>),
+    // External
     Error(Arc<str>),
     ErrorWithDescription(Arc<str>, Arc<str>),
     NonOK(u16),
+}
+
+impl MetaLoadError {
+    pub fn should_retry_error(&self) -> bool {
+        match self {
+            MetaLoadError::Reqwest(_) => true,
+            MetaLoadError::NonOK(n) => *n >= 500 && *n <= 599, // retry on server errors
+            _ => false,
+        }
+    }
 }
 
 impl Display for MetaLoadError {
@@ -166,6 +227,7 @@ pub enum MetaLoadState<T> {
     #[default]
     Unloaded,
     Pending(JoinHandle<Result<Arc<T>, MetaLoadError>>),
+    PendingOther(KeepAliveNotifySignalHandle),
     Loaded(Arc<T>),
     Error(MetaLoadError),
 }
@@ -173,7 +235,7 @@ pub enum MetaLoadState<T> {
 impl MetadataManager {
     pub fn new(http_client: reqwest::Client, directory: Arc<Path>) -> Self {
         Self {
-            states: tokio::sync::Mutex::new(MetadataManagerStates::default()),
+            states: Mutex::new(MetadataManagerStates::default()),
 
             version_manifest_cache: directory.join("version_manifest.json").into(),
             mojang_java_runtimes_cache: directory.join("mojang_java_runtimes.json").into(),
@@ -188,39 +250,40 @@ impl MetadataManager {
         }
     }
 
-    pub async fn expire(&self) {
+    pub fn expire(&self) {
         let now = Instant::now();
 
-        let mut expiring = self.expiring.lock().await;
-        while let Some((expires_at, _)) = expiring.front() {
-            if now > *expires_at {
-                expiring.pop_front();
-                continue;
+        for expiring in self.expiring.values() {
+            let mut expiring = expiring.lock();
+            while let Some((expires_at, _)) = expiring.front() {
+                if now > *expires_at {
+                    // todo: can we also delete the state entry to free up memory?
+                    expiring.pop_front();
+                    continue;
+                }
+                break;
             }
-            return;
         }
     }
 
-    pub async fn load<I: MetadataItem>(&self, item: &I) {
-        let wrapper = item.state(&mut *self.states.lock().await);
-        let mut wrapper = wrapper.lock().await;
+    fn create_expiry_keepalive(&self, duration: ExpirationDuration) -> KeepAliveNotifySignalHandle {
+        let keep_alive = KeepAliveNotifySignal::new();
+        let handle = keep_alive.create_handle();
+        self.expiring[duration].lock().push_back((Instant::now() + duration.duration(), keep_alive));
+        handle
+    }
 
-        let is_valid = wrapper.0.as_ref().map(|h| h.is_alive()).unwrap_or(true);
-        if !is_valid || matches!(wrapper.1, MetaLoadState::Unloaded | MetaLoadState::Error(_)) {
+    pub fn preload<I: MetadataItem>(&self, item: &I) {
+        let wrapper = item.state(&mut *self.states.lock());
+        let mut wrapper = wrapper.lock();
+
+        if wrapper.should_reload(false) {
             if item.expires() {
-                let keep_alive = KeepAlive::new();
-                let handle = keep_alive.create_handle();
-                wrapper.0 = Some(handle);
-                self.expiring.lock().await.push_back((Instant::now() + DATA_TTL, keep_alive));
+                wrapper.keep_alive = Some(self.create_expiry_keepalive(ExpirationDuration::Success));
             }
 
             let cache_file = item.cache_file(self);
-            Self::inner_start_loading(
-                &mut wrapper.1,
-                item,
-                cache_file,
-                &self.http_client,
-            );
+            wrapper.load_state = Self::inner_start_loading(item, cache_file, &self.http_client);
         }
     }
 
@@ -228,60 +291,119 @@ impl MetadataManager {
         self.fetch_with_keepalive(item, false).await.0
     }
 
-    pub async fn fetch_with_keepalive<I: MetadataItem>(&self, item: &I, force_reload: bool) -> (Result<Arc<<I as MetadataItem>::T>, MetaLoadError>, Option<KeepAliveHandle>) {
-        let wrapper = item.state(&mut *self.states.lock().await);
-        let mut wrapper = wrapper.lock().await;
-
-        let is_valid = wrapper.0.as_ref().map(|h| h.is_alive()).unwrap_or(true);
-        if force_reload || !is_valid || matches!(wrapper.1, MetaLoadState::Unloaded | MetaLoadState::Error(_)) {
-            if item.expires() {
-                let keep_alive = KeepAlive::new();
-                let handle = keep_alive.create_handle();
-                wrapper.0 = Some(handle);
-                self.expiring.lock().await.push_back((Instant::now() + DATA_TTL, keep_alive));
+    pub async fn fetch_with_keepalive<I: MetadataItem>(&self, item: &I, mut force_reload: bool) -> (Result<Arc<<I as MetadataItem>::T>, MetaLoadError>, Option<KeepAliveNotifySignalHandle>) {
+        loop {
+            if let Some(result) = self.fetch_with_keepalive_inner(item, force_reload).await {
+                return result;
+            } else {
+                force_reload = true;
             }
-
-            let cache_file = item.cache_file(self);
-            Self::inner_start_loading(
-                &mut wrapper.1,
-                item,
-                cache_file,
-                &self.http_client,
-            );
-        }
-
-        let valid = wrapper.0.clone();
-
-        match &mut wrapper.1 {
-            MetaLoadState::Unloaded => unreachable!(),
-            MetaLoadState::Pending(join_handle) => {
-                let result = join_handle.await.map_err(MetaLoadError::from).flatten();
-                match result {
-                    Ok(value) => {
-                        wrapper.1 = MetaLoadState::Loaded(Arc::clone(&value));
-                        (Ok(value), valid)
-                    },
-                    Err(error) => {
-                        wrapper.1 = MetaLoadState::Error(error.clone());
-                        (Err(error), valid)
-                    },
-                }
-            },
-            MetaLoadState::Loaded(value) => {
-                (Ok(Arc::clone(value)), valid)
-            },
-            MetaLoadState::Error(meta_load_error) => {
-                (Err(meta_load_error.clone()), valid)
-            },
         }
     }
 
+    pub async fn fetch_with_keepalive_inner<I: MetadataItem>(&self, item: &I, mut force_reload: bool) -> Option<(Result<Arc<<I as MetadataItem>::T>, MetaLoadError>, Option<KeepAliveNotifySignalHandle>)> {
+        let state = item.state(&mut *self.states.lock());
+        enum LoopAction<T> {
+            Resolve(KeepAliveNotifySignal, JoinHandle<Result<Arc<T>, MetaLoadError>>),
+            Wait(KeepAliveNotifySignalHandle),
+        }
+        loop {
+            // This weird loop_action thing avoids async issues by ensuring the non-send lock goes out of scope
+            let loop_action = {
+                let mut wrapper = state.lock();
+
+                // Code for testing automatic metadata reloading
+                // if matches!(wrapper.load_state, MetaLoadState::Unloaded) && wrapper.failure_count == 0 {
+                //     wrapper.load_state = MetaLoadState::Error(MetaLoadError::Error("Initial metadata failure".into()));
+                //     wrapper.failure_count += 1;
+                //     wrapper.keep_alive = Some(self.create_expiry_keepalive(ExpirationDuration::RetryError1));
+                //     return Some((Err(MetaLoadError::Error("Initial metadata failure".into())), wrapper.keep_alive.clone()));
+                // }
+
+                if wrapper.should_reload(force_reload) {
+                    let cache_file = item.cache_file(self);
+                    wrapper.load_state = Self::inner_start_loading(item, cache_file, &self.http_client);
+                }
+                force_reload = false;
+
+                match &mut wrapper.load_state {
+                    MetaLoadState::Unloaded => unreachable!(),
+                    MetaLoadState::Pending(_) => {
+                        let signal = KeepAliveNotifySignal::new();
+                        let pending = std::mem::replace(&mut wrapper.load_state, MetaLoadState::PendingOther(signal.create_handle()));
+
+                        let MetaLoadState::Pending(join_handle) = pending else {
+                            unreachable!();
+                        };
+                        LoopAction::Resolve(signal, join_handle)
+                    },
+                    MetaLoadState::PendingOther(signal) => {
+                        LoopAction::Wait(signal.clone())
+                    },
+                    MetaLoadState::Loaded(value) => {
+                        return Some((Ok(Arc::clone(value)), wrapper.keep_alive.clone()));
+                    },
+                    MetaLoadState::Error(meta_load_error) => {
+                        return Some((Err(meta_load_error.clone()), wrapper.keep_alive.clone()));
+                    },
+                }
+            };
+
+            match loop_action {
+                LoopAction::Resolve(signal, join_handle) => {
+                    let result = join_handle.await.map_err(MetaLoadError::from).flatten();
+                    let mut wrapper = state.lock();
+
+                    scopeguard::defer! {
+                        drop(signal); // Signal other fetches waiting on us that they can try acquire the lock
+                    }
+
+                    match result {
+                        Ok(value) => {
+                            wrapper.load_state = MetaLoadState::Loaded(Arc::clone(&value));
+                            wrapper.failure_count = 0;
+                            if item.expires() {
+                                wrapper.keep_alive = Some(self.create_expiry_keepalive(ExpirationDuration::Success));
+                            }
+                            return Some((Ok(value), wrapper.keep_alive.clone()));
+                        },
+                        Err(error) => {
+                            wrapper.load_state = MetaLoadState::Error(error.clone());
+                            if error.should_retry_error() {
+                                wrapper.failure_count += 1;
+                                if wrapper.failure_count == 1 {
+                                    return None; // If first failure, immediately retry
+                                } else if wrapper.failure_count == 2 {
+                                    wrapper.keep_alive = Some(self.create_expiry_keepalive(ExpirationDuration::RetryError1));
+                                } else if wrapper.failure_count == 3 {
+                                    wrapper.keep_alive = Some(self.create_expiry_keepalive(ExpirationDuration::RetryError2));
+                                } else if wrapper.failure_count == 4 {
+                                    wrapper.keep_alive = Some(self.create_expiry_keepalive(ExpirationDuration::RetryError3));
+                                } else {
+                                    wrapper.keep_alive = Some(self.create_expiry_keepalive(ExpirationDuration::RetryError4));
+                                }
+                            } else {
+                                wrapper.failure_count = 0;
+                                wrapper.keep_alive = Some(self.create_expiry_keepalive(ExpirationDuration::Success));
+                            };
+                            return Some((Err(error), wrapper.keep_alive.clone()));
+                        },
+                    }
+                },
+                LoopAction::Wait(signal) => {
+                    signal.await_notification().await;
+                },
+            }
+
+        }
+    }
+
+    #[must_use]
     fn inner_start_loading<I: MetadataItem>(
-        state: &mut MetaLoadState<I::T>,
         item: &I,
         cache_file: Option<impl AsRef<Path> + Send + Sync + 'static>,
         http_client: &reqwest::Client,
-    ) {
+    ) -> MetaLoadState<I::T> {
         log::debug!("Loading metadata {:?}", item);
 
         let request = item.request(http_client);
@@ -407,6 +529,6 @@ impl MetadataManager {
             result
         });
 
-        *state = MetaLoadState::Pending(join_handle);
+        MetaLoadState::Pending(join_handle)
     }
 }

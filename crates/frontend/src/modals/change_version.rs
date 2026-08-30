@@ -8,7 +8,7 @@ use gpui_component::{
     ActiveTheme, Disableable, Sizable, button::{Button, ButtonVariants}, checkbox::Checkbox, dialog::Dialog, h_flex, list::ListState, notification::NotificationType, select::{SearchableVec, Select, SelectItem, SelectState}, skeleton::Skeleton, spinner::Spinner, text::TextView, v_flex, IndexPath, WindowExt
 };
 use parking_lot::Mutex;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 use schema::{
     content::{ContentInstallReason, ContentSource},
     curseforge::{CurseforgeChangelogRequest, CurseforgeChangelogResult, CurseforgeFile, CurseforgeGetModFilesRequest, CurseforgeGetModFilesResult, CurseforgeModLoaderType, CurseforgeReleaseType},
@@ -66,11 +66,13 @@ impl SelectItem for VersionItem {
     }
 }
 
+#[derive(Clone)]
 enum ChangelogContent {
     Markdown(SharedString),
     Html(SharedString),
 }
 
+#[derive(Clone)]
 enum ChangelogDisplay {
     Loading,
     Loaded(Option<ChangelogContent>),
@@ -211,17 +213,20 @@ struct ChangeVersionDialog {
     modrinth_loaders: Arc<[ModrinthLoader]>,
     curseforge_loader: Option<CurseforgeModLoaderType>,
 
-    versions_filtered: Option<Entity<FrontendMetadataState>>,
-    versions_unfiltered: Option<Entity<FrontendMetadataState>>,
     items: Option<Vec<VersionItem>>,
     version_select_state: Option<Entity<SelectState<SearchableVec<VersionItem>>>>,
     current_date_published: Option<Arc<str>>,
     show_incompatible: bool,
-    changelogs: FxHashMap<VersionKey, Entity<FrontendMetadataState>>,
+
     versions_error: Option<SharedString>,
+    versions_subscription: Option<Subscription>,
+    versions_retry_task: Task<()>,
+
+    current_changelog: Option<VersionKey>,
+    changelog_display: ChangelogDisplay,
     changelog_error: Option<SharedString>,
-    _versions_subscription: Option<Subscription>,
-    _changelog_subscription: Option<Subscription>,
+    changelog_subscription: Option<Subscription>,
+    changelog_retry_task: Task<()>,
 }
 
 pub fn open(
@@ -275,17 +280,18 @@ pub fn open(
         update_channel,
         modrinth_loaders,
         curseforge_loader,
-        versions_filtered: None,
-        versions_unfiltered: None,
         items: None,
         version_select_state: None,
         current_date_published: None,
         show_incompatible: false,
-        changelogs: Default::default(),
         versions_error: None,
+        versions_subscription: None,
+        versions_retry_task: Task::ready(()),
+        current_changelog: None,
         changelog_error: None,
-        _versions_subscription: None,
-        _changelog_subscription: None,
+        changelog_display: ChangelogDisplay::Loading,
+        changelog_subscription: None,
+        changelog_retry_task: Task::ready(()),
     };
 
     dialog.show(window, cx);
@@ -299,101 +305,183 @@ impl ChangeVersionDialog {
         });
     }
 
-    fn active_versions(&self) -> Option<&Entity<FrontendMetadataState>> {
-        if self.show_incompatible {
-            self.versions_unfiltered.as_ref()
-        } else {
-            self.versions_filtered.as_ref()
-        }
-    }
-
     fn request_versions(&mut self, cx: &mut Context<Self>) {
         if self.content_source == ContentSource::ModrinthUnknown {
             self.versions_error = Some("Unable to get versions for this project. Please reinstall it.".into());
             return;
         }
+        if !is_project(&self.content_source) {
+            self.versions_error = Some("This is not a project.".into());
+            return;
+        }
 
-        if is_project(&self.content_source) {
-            if self.active_versions().is_some() {
-                return;
-            }
+        let request = if self.show_incompatible {
+            versions_request(&self.content_source, None, None, None)
+        } else {
+            versions_request(&self.content_source, Some(self.minecraft_version), Some(self.modrinth_loaders.clone()), self.curseforge_loader)
+        };
 
-            let request = if self.show_incompatible {
-                versions_request(&self.content_source, None, None, None)
-            } else {
-                versions_request(&self.content_source, Some(self.minecraft_version), Some(self.modrinth_loaders.clone()), self.curseforge_loader)
-            };
+        let entity = FrontendMetadata::request(&self.data.metadata, request, cx);
+        self.versions_subscription = Some(cx.observe(&entity, |this, versions, cx| {
+            this.process_version_metadata(versions, cx);
+            cx.notify()
+        }));
+        self.process_version_metadata(entity, cx);
+    }
 
-            let entity = FrontendMetadata::request(&self.data.metadata, request, cx);
-            self._versions_subscription = Some(cx.observe(&entity, |_, _, cx| cx.notify()));
+    fn process_version_metadata(&mut self, versions: Entity<FrontendMetadataState>, cx: &mut Context<Self>) {
+        self.versions_error = None;
+        self.items = None;
+        self.version_select_state = None;
+        self.versions_retry_task = Task::ready(());
 
-            if self.show_incompatible {
-                self.versions_unfiltered = Some(entity);
-            } else {
-                self.versions_filtered = Some(entity);
-            }
+        match &self.content_source {
+            ContentSource::ModrinthProject { .. } => {
+                let result: FrontendMetadataResult<ModrinthProjectVersionsResult> = versions.read(cx).result();
+                match result {
+                    FrontendMetadataResult::Loaded(versions) => {
+                        self.items = Some(versions.0.iter().filter_map(modrinth_version_item).collect());
+                    },
+                    FrontendMetadataResult::Loading => {},
+                    FrontendMetadataResult::Error(error, alive) => {
+                        self.versions_error = Some(error);
+
+                        if let Some(alive) = alive {
+                            self.versions_retry_task = cx.spawn(async move |page, cx| {
+                                alive.await_notification().await;
+                                let _ = page.update(cx, |page, cx| {
+                                    page.request_versions(cx);
+                                    cx.notify();
+                                });
+                            });
+                        }
+                    },
+                }
+            },
+            ContentSource::CurseforgeProject { .. } => {
+                let result: FrontendMetadataResult<CurseforgeGetModFilesResult> = versions.read(cx).result();
+                match result {
+                    FrontendMetadataResult::Loaded(result) => {
+                        self.items = Some(result.data.iter().map(curseforge_version_item).collect());
+                    },
+                    FrontendMetadataResult::Loading => {},
+                    FrontendMetadataResult::Error(error, alive) => {
+                        self.versions_error = Some(error);
+
+                        if let Some(alive) = alive {
+                            self.versions_retry_task = cx.spawn(async move |page, cx| {
+                                alive.await_notification().await;
+                                let _ = page.update(cx, |page, cx| {
+                                    page.request_versions(cx);
+                                    cx.notify();
+                                });
+                            });
+                        }
+                    },
+                }
+            },
+            _ => {
+                self.items = Some(Vec::new());
+            },
         }
     }
 
     fn request_changelog(&mut self, key: &VersionKey, cx: &mut Context<Self>) {
-        let entity = if let Some(entity) = self.changelogs.get(key) {
-            entity.clone()
-        } else {
-            let request = match (key, &self.content_source) {
-                (VersionKey::Modrinth(version_id), _) => MetadataRequest::ModrinthChangelog(ModrinthChangelogRequest {
+        if self.current_changelog.as_ref() == Some(key) {
+            return;
+        }
+        self.current_changelog = Some(key.clone());
+
+        let request = match (key, &self.content_source) {
+            (VersionKey::Modrinth(version_id), _) => {
+                MetadataRequest::ModrinthChangelog(ModrinthChangelogRequest {
                     version_id: version_id.clone(),
-                }),
-                (VersionKey::Curseforge(file_id), ContentSource::CurseforgeProject { project_id }) => MetadataRequest::CurseforgeChangelog(CurseforgeChangelogRequest {
+                })
+            },
+            (VersionKey::Curseforge(file_id), ContentSource::CurseforgeProject { project_id }) => {
+                MetadataRequest::CurseforgeChangelog(CurseforgeChangelogRequest {
                     mod_id: *project_id,
                     file_id: *file_id,
-                }),
-                _ => return,
-            };
-
-            let entity = FrontendMetadata::request(&self.data.metadata, request, cx);
-            self.changelogs.insert(key.clone(), entity.clone());
-            entity
+                })
+            },
+            _ => return,
         };
 
-        self._changelog_subscription = Some(cx.observe(&entity, |_, _, cx| cx.notify()));
+        let entity = FrontendMetadata::request(&self.data.metadata, request, cx);
+        self.changelog_subscription = Some(cx.observe(&entity, {
+            let key = key.clone();
+            move |page, changelog, cx| {
+                page.process_changelog_metadata(&key, changelog, cx);
+                cx.notify()
+            }
+        }));
+        self.process_changelog_metadata(key, entity, cx);
+    }
+
+    fn process_changelog_metadata(&mut self, key: &VersionKey, changelog: Entity<FrontendMetadataState>, cx: &mut Context<Self>) {
+        if self.current_changelog.as_ref() != Some(key) {
+            return;
+        }
+        self.changelog_error = None;
+        self.changelog_retry_task = Task::ready(());
+
+        self.changelog_display = match key {
+            VersionKey::Modrinth(_) => {
+                let result: FrontendMetadataResult<ModrinthChangelogResult> = changelog.read(cx).result();
+                match result {
+                    FrontendMetadataResult::Loading => ChangelogDisplay::Loading,
+                    FrontendMetadataResult::Loaded(changelog) => ChangelogDisplay::Loaded(
+                        changelog.changelog.clone()
+                            .filter(|changelog| !changelog.trim_ascii().is_empty())
+                            .map(|changelog| ChangelogContent::Markdown(SharedString::from(changelog.to_string()))),
+                    ),
+                    FrontendMetadataResult::Error(error, alive) => {
+                        self.changelog_error = Some(error);
+
+                        if let Some(alive) = alive {
+                            self.changelog_retry_task = cx.spawn(async move |page, cx| {
+                                alive.await_notification().await;
+                                let _ = page.update(cx, |page, cx| {
+                                    page.current_changelog = None;
+                                    cx.notify();
+                                });
+                            });
+                        }
+
+                        ChangelogDisplay::Loaded(None)
+                    },
+                }
+            },
+            VersionKey::Curseforge(_) => {
+                let result: FrontendMetadataResult<CurseforgeChangelogResult> = changelog.read(cx).result();
+                match result {
+                    FrontendMetadataResult::Loading => ChangelogDisplay::Loading,
+                    FrontendMetadataResult::Loaded(changelog) => ChangelogDisplay::Loaded(
+                        changelog.data.clone()
+                            .filter(|data| !data.trim_ascii().is_empty())
+                            .map(|data| ChangelogContent::Html(SharedString::from(data.to_string()))),
+                    ),
+                    FrontendMetadataResult::Error(error, alive) => {
+                        self.changelog_error = Some(error);
+
+                        if let Some(alive) = alive {
+                            self.changelog_retry_task = cx.spawn(async move |page, cx| {
+                                alive.await_notification().await;
+                                let _ = page.update(cx, |page, cx| {
+                                    page.current_changelog = None;
+                                    cx.notify();
+                                });
+                            });
+                        }
+
+                        ChangelogDisplay::Loaded(None)
+                    },
+                }
+            },
+        }
     }
 
     fn render_version_select(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.items.is_none() {
-            match self.active_versions() {
-                Some(versions) => match &self.content_source {
-                    ContentSource::ModrinthProject { .. } => {
-                        let result: FrontendMetadataResult<ModrinthProjectVersionsResult> = versions.read(cx).result();
-                        match result {
-                            FrontendMetadataResult::Loaded(versions) => {
-                                self.versions_error = None;
-                                self.items = Some(versions.0.iter().filter_map(modrinth_version_item).collect());
-                            },
-                            FrontendMetadataResult::Loading => self.versions_error = None,
-                            FrontendMetadataResult::Error(error) => {
-                                self.versions_error = Some(error);
-                            },
-                        }
-                    },
-                    ContentSource::CurseforgeProject { .. } => {
-                        let result: FrontendMetadataResult<CurseforgeGetModFilesResult> = versions.read(cx).result();
-                        match result {
-                            FrontendMetadataResult::Loaded(result) => {
-                                self.versions_error = None;
-                                self.items = Some(result.data.iter().map(curseforge_version_item).collect());
-                            },
-                            FrontendMetadataResult::Loading => self.versions_error = None,
-                            FrontendMetadataResult::Error(error) => {
-                                self.versions_error = Some(error);
-                            },
-                        }
-                    },
-                    _ => self.items = Some(Vec::new()),
-                },
-                None => self.items = Some(Vec::new()),
-            }
-        }
-
         let Some(items) = self.items.as_ref() else {
             return Skeleton::new().w_full().min_h_8().max_h_8().rounded_md().into_any_element();
         };
@@ -438,52 +526,19 @@ impl ChangeVersionDialog {
         }
     }
 
-    fn changelog_display(&mut self, key: &VersionKey, cx: &App) -> ChangelogDisplay {
-        let Some(entity) = self.changelogs.get(key) else {
-            return ChangelogDisplay::Loading;
-        };
-        self.changelog_error = None;
-
-        match key {
-            VersionKey::Modrinth(_) => {
-                let result: FrontendMetadataResult<ModrinthChangelogResult> = entity.read(cx).result();
-                match result {
-                    FrontendMetadataResult::Loading => ChangelogDisplay::Loading,
-                    FrontendMetadataResult::Loaded(changelog) => ChangelogDisplay::Loaded(
-                        changelog.changelog.clone()
-                            .filter(|changelog| !changelog.trim_ascii().is_empty())
-                            .map(|changelog| ChangelogContent::Markdown(SharedString::from(changelog.to_string()))),
-                    ),
-                    FrontendMetadataResult::Error(error) => {
-                        self.changelog_error = Some(error);
-                        ChangelogDisplay::Loaded(None)
-                    },
-                }
-            },
-            VersionKey::Curseforge(_) => {
-                let result: FrontendMetadataResult<CurseforgeChangelogResult> = entity.read(cx).result();
-                match result {
-                    FrontendMetadataResult::Loading => ChangelogDisplay::Loading,
-                    FrontendMetadataResult::Loaded(changelog) => ChangelogDisplay::Loaded(
-                        changelog.data.clone()
-                            .filter(|data| !data.trim_ascii().is_empty())
-                            .map(|data| ChangelogContent::Html(SharedString::from(data.to_string()))),
-                    ),
-                    FrontendMetadataResult::Error(error) => {
-                        self.changelog_error = Some(error);
-                        ChangelogDisplay::Loaded(None)
-                    },
-                }
-            },
-        }
-    }
-
-    fn render_changelog_area(&mut self, selected_key: Option<&VersionKey>, cx: &App) -> AnyElement {
+    fn render_changelog_area(&mut self, selected_key: Option<&VersionKey>, cx: &mut Context<Self>) -> AnyElement {
         let display = match (selected_key, self.version_select_state.is_none()) {
             (None, true) => ChangelogDisplay::Loading,
             (None, false) => ChangelogDisplay::Loaded(None),
-            (Some(key), _) => self.changelog_display(key, cx),
+            (Some(key), _) => {
+                self.request_changelog(key, cx);
+                self.changelog_display.clone()
+            },
         };
+
+        if let Some(error) = self.changelog_error.clone() {
+            return ErrorAlert::new(t::instance::content::change_version::error_loading_changelog().into(), error).into_any_element();
+        }
 
         let body = match display {
             ChangelogDisplay::Loading => h_flex()
@@ -539,20 +594,17 @@ impl ChangeVersionDialog {
     fn render(&mut self, modal: Dialog, window: &mut Window, cx: &mut Context<Self>) -> Dialog {
         let modal = modal.title(self.title.clone()).width(px(560.0));
 
-        if self.items.is_none() {
+        if self.items.is_none() && self.versions_error.is_none() {
             self.request_versions(cx);
         }
-        let version_select = self.render_version_select(window, cx);
 
         if let Some(error) = self.versions_error.clone() {
-            return modal.child(v_flex().gap_3().child(ErrorAlert::new(t::common::error().into(), error)));
+            return modal.child(v_flex().gap_3().child(ErrorAlert::new(t::instance::content::change_version::error_loading_versions().into(), error)));
         }
+
+        let version_select = self.render_version_select(window, cx);
 
         let selected = self.version_select_state.as_ref().and_then(|state| state.read(cx).selected_value()).cloned();
-
-        if let Some(selected) = &selected {
-            self.request_changelog(&selected.key, cx);
-        }
 
         let selected_date = selected.as_ref().and_then(|selected| selected.date_published.clone());
         let is_downgrade = match (&selected_date, &self.current_date_published) {
@@ -683,10 +735,6 @@ impl ChangeVersionDialog {
 
         let changelog_area = self.render_changelog_area(selected.as_ref().map(|selected| &selected.key), cx);
 
-        if let Some(error) = self.changelog_error.clone() {
-            return modal.child(v_flex().gap_3().child(ErrorAlert::new(t::common::error().into(), error)));
-        }
-
         let content = v_flex().gap_2()
             .child(
                 v_flex()
@@ -706,8 +754,7 @@ impl ChangeVersionDialog {
                     .disabled(self.version_select_state.is_none())
                     .on_click(cx.listener(|this, checked: &bool, _, cx| {
                         this.show_incompatible = *checked;
-                        this.items = None;
-                        this.version_select_state = None;
+                        this.request_versions(cx);
                         cx.notify();
                     })),
             )

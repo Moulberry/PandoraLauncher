@@ -28,14 +28,14 @@ use schema::{
 use serde::Serialize;
 use ustr::Ustr;
 
-use crate::metadata::manager::{MetaLoadError, MetaLoadStateWrapper, MetadataManager, MetadataManagerStates};
+use crate::metadata::manager::{MetaLoadError, MetaStateWrapper, MetadataManager, MetadataManagerStates};
 
 pub trait MetadataItem: Debug {
     type T: Send + Sync + 'static;
 
     fn request(&self, client: &reqwest::Client) -> RequestBuilder;
     fn expires(&self) -> bool;
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T>;
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T>;
     fn post_process_download(bytes: &[u8]) -> Result<Cow<'_, [u8]>, MetaLoadError> {
         Ok(Cow::Borrowed(bytes))
     }
@@ -66,7 +66,7 @@ impl MetadataItem for MinecraftVersionManifestMetadataItem {
         Some(Arc::clone(&metadata_manager.version_manifest_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.minecraft_version_manifest.clone()
     }
 
@@ -93,7 +93,7 @@ impl MetadataItem for MojangJavaRuntimesMetadataItem {
         Some(Arc::clone(&metadata_manager.mojang_java_runtimes_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.mojang_java_runtimes.clone()
     }
 
@@ -129,7 +129,7 @@ impl<'v> MetadataItem for MinecraftVersionMetadataItem<'v> {
         Some(path)
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.version_info.entry(self.0.url).or_default().clone()
     }
 
@@ -156,7 +156,7 @@ impl MetadataItem for AssetsIndexMetadataItem {
         false
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.assets_index.entry(self.url).or_default().clone()
     }
 
@@ -191,7 +191,7 @@ impl MetadataItem for MojangJavaRuntimeComponentMetadataItem {
         false
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.java_runtime_manifests.entry(self.url).or_default().clone()
     }
 
@@ -226,7 +226,7 @@ impl MetadataItem for FabricLoaderManifestMetadataItem {
         Some(Arc::clone(&metadata_manager.fabric_loader_manifest_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.fabric_loader_manifest.clone()
     }
 
@@ -259,7 +259,7 @@ impl MetadataItem for FabricLaunchMetadataItem {
         Some(path)
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         let key = (self.minecraft_version, self.loader_version);
         states.fabric_launch.entry(key).or_default().clone()
     }
@@ -283,7 +283,7 @@ impl<'a> MetadataItem for ModrinthSearchMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_search.entry(self.0.clone()).or_default().clone()
     }
 
@@ -314,7 +314,7 @@ impl<'a> MetadataItem for ModrinthProjectVersionsMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_project_versions.entry(self.0.clone()).or_default().clone()
     }
 
@@ -338,7 +338,7 @@ impl MetadataItem for ModrinthVersionMetadataItem {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_versions.entry(self.0.clone()).or_default().clone()
     }
 
@@ -362,7 +362,7 @@ impl<'a> MetadataItem for ModrinthChangelogMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_changelogs.entry(self.0.clone()).or_default().clone()
     }
 
@@ -396,7 +396,7 @@ impl MetadataItem for ModrinthVersionUpdateMetadataItem {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_version_v2_updates.entry(self.clone()).or_default().clone()
     }
 
@@ -436,7 +436,7 @@ impl MetadataItem for ModrinthV3VersionUpdateMetadataItem {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_version_v3_updates.entry(self.clone()).or_default().clone()
     }
 
@@ -459,7 +459,7 @@ impl<'a> MetadataItem for ModrinthVersionsFromHashesMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_versions_from_hashes.entry(self.0.clone()).or_default().clone()
     }
 
@@ -493,7 +493,7 @@ impl<'a> MetadataItem for ModrinthProjectsMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_projects.entry(self.0.clone()).or_default().clone()
     }
 
@@ -520,7 +520,7 @@ impl MetadataItem for NeoforgeInstallerMavenMetadataItem {
         Some(Arc::clone(&metadata_manager.neoforge_installer_maven_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.neoforge_installer_maven_manifest.clone()
     }
 
@@ -555,7 +555,7 @@ impl MetadataItem for ForgeInstallerMavenMetadataItem {
         Some(Arc::clone(&metadata_manager.forge_installer_maven_cache))
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.forge_installer_maven_manifest.clone()
     }
 
@@ -597,7 +597,7 @@ impl<'a> MetadataItem for ModrinthProjectMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.modrinth_project.entry(self.0.clone()).or_default().clone()
     }
 
@@ -624,7 +624,7 @@ impl<'a> MetadataItem for CurseforgeSearchMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.curseforge_search.entry(self.0.clone()).or_default().clone()
     }
 
@@ -649,7 +649,7 @@ impl<'a> MetadataItem for CurseforgeFingerprintMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.curseforge_fingerprints.entry(self.0.clone()).or_default().clone()
     }
 
@@ -691,7 +691,7 @@ impl<'a> MetadataItem for CurseforgeGetModFilesMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.curseforge_get_mod_files.entry(self.0.clone()).or_default().clone()
     }
 
@@ -716,7 +716,7 @@ impl<'a> MetadataItem for CurseforgeGetFilesMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.curseforge_get_files.entry(self.0.clone()).or_default().clone()
     }
 
@@ -740,7 +740,7 @@ impl<'a> MetadataItem for CurseforgeChangelogMetadataItem<'a> {
         true
     }
 
-    fn state(&self, states: &mut MetadataManagerStates) -> MetaLoadStateWrapper<Self::T> {
+    fn state(&self, states: &mut MetadataManagerStates) -> MetaStateWrapper<Self::T> {
         states.curseforge_changelogs.entry(self.0.clone()).or_default().clone()
     }
 

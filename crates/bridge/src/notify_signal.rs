@@ -71,4 +71,8 @@ impl KeepAliveNotifySignalHandle {
     pub fn is_notified(&self) -> bool {
         self.0.is_notified()
     }
+
+    pub fn is_alive(&self) -> bool {
+        !self.is_notified()
+    }
 }

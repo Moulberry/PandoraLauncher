@@ -235,7 +235,7 @@ impl BackendState {
         tokio::task::spawn(crate::update::check_for_updates(self.redirecting_http_client.clone(), self.send.clone()));
 
         // Pre-fetch version manifest
-        self.meta.load(&MinecraftVersionManifestMetadataItem).await;
+        self.meta.preload(&MinecraftVersionManifestMetadataItem);
 
         Arc::new(self).handle(recv, watcher_rx).await;
     }
@@ -418,7 +418,7 @@ impl BackendState {
                     }
                 },
                 _ = interval.tick() => {
-                    self.handle_tick().await;
+                    self.handle_tick();
                 }
             }
 
@@ -426,7 +426,7 @@ impl BackendState {
                 while let Some(message) = backend_recv.try_recv() {
                     self.handle_message(message).await;
                 }
-                self.handle_tick().await;
+                self.handle_tick();
                 break;
             }
         }
@@ -434,8 +434,8 @@ impl BackendState {
         self.send.send(MessageToFrontend::Quit);
     }
 
-    async fn handle_tick(&self) { // todo: make this non-async
-        self.meta.expire().await;
+    fn handle_tick(&self) {
+        self.meta.expire();
         self.mod_metadata_manager.write_changes();
 
         let mut any_process_alive = false;

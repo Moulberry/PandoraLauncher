@@ -29,6 +29,7 @@ pub struct CurseforgeSearchPage {
     search_state: Entity<InputState>,
     _search_input_subscription: Subscription,
     _delayed_clear_task: Task<()>,
+    _meta_reload_task: Task<()>,
     filter_loaders: EnumSet<Loader>,
     filter_categories: BTreeSet<u32>,
     sort_field: CurseforgeSortField,
@@ -203,6 +204,7 @@ impl CurseforgeSearchPage {
             search_state,
             _search_input_subscription,
             _delayed_clear_task: Task::ready(()),
+            _meta_reload_task: Task::ready(()),
             filter_loaders: Default::default(),
             filter_categories: Default::default(),
             show_categories: Arc::new(AtomicBool::new(false)),
@@ -314,6 +316,7 @@ impl CurseforgeSearchPage {
         }
         self.pending_reload = false;
         self.search_error = None;
+        self._meta_reload_task = Task::ready(());
 
         let query = if self.last_search.is_empty() {
             None
@@ -394,9 +397,20 @@ impl CurseforgeSearchPage {
                             page.loading = None;
                             cx.notify();
                         },
-                        FrontendMetadataResult::Error(shared_string) => {
-                            page.search_error = Some(shared_string);
+                        FrontendMetadataResult::Error(error, alive) => {
+                            page.search_error = Some(error);
                             page.loading = None;
+
+                            if let Some(alive) = alive {
+                                page._meta_reload_task = cx.spawn(async move |page, cx| {
+                                    alive.await_notification().await;
+                                    let _ = page.update(cx, |page, cx| {
+                                        page.load_more(cx);
+                                        cx.notify();
+                                    });
+                                });
+                            }
+
                             cx.notify();
                         },
                     }
@@ -409,8 +423,19 @@ impl CurseforgeSearchPage {
             FrontendMetadataResult::Loaded(result) => {
                 self.apply_search_data(result);
             },
-            FrontendMetadataResult::Error(shared_string) => {
-                self.search_error = Some(shared_string);
+            FrontendMetadataResult::Error(error, alive) => {
+                self.search_error = Some(error);
+                self.loading = None;
+
+                if let Some(alive) = alive {
+                    self._meta_reload_task = cx.spawn(async move |page, cx| {
+                        alive.await_notification().await;
+                        let _ = page.update(cx, |page, cx| {
+                            page.load_more(cx);
+                            cx.notify();
+                        });
+                    });
+                }
             },
         }
     }

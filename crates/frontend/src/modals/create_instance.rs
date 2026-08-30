@@ -130,7 +130,7 @@ impl CreateInstanceModalState {
                     self.error_loading_versions = None;
                     (Vec::new(), None)
                 },
-                FrontendMetadataResult::Error(error) => {
+                FrontendMetadataResult::Error(error, _) => {
                     self.loaded_versions = false;
                     self.error_loading_versions = Some(error);
                     (Vec::new(), None)

@@ -5,7 +5,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Disableable, Icon, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent, Textarea, TextareaState}, notification::{Notification, NotificationType}, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
+    ActiveTheme as _, Disableable, Icon, IndexPath, Sizable, WindowExt, button::{Button, ButtonVariants}, checkbox::Checkbox, h_flex, input::{Input, InputEvent, InputState, NumberInput, NumberInputEvent, Textarea, TextareaState}, notification::{Notification, NotificationType}, scroll::ScrollableElement, select::{SearchableVec, Select, SelectEvent, SelectState}, skeleton::Skeleton, v_flex
 };
 use schema::{fabric_loader_manifest::FabricLoaderManifest, forge::{ForgeMavenManifest, NeoforgeMavenManifest}, instance::{AUTO_LIBRARY_PATH_GLFW, AUTO_LIBRARY_PATH_OPENAL, InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceLinuxWrapperConfiguration, InstanceMemoryConfiguration, InstanceSystemLibrariesConfiguration, InstanceWrapperCommandConfiguration, LwjglLibraryPath, UpdateChannel}, loader::Loader, version_manifest::MinecraftVersionManifest};
 use strum::IntoEnumIterator;
@@ -771,6 +771,7 @@ impl Render for InstanceSettingsSubpage {
         let mut basic_content = v_flex()
             .gap_4()
             .size_full()
+            .overflow_y_scrollbar()
             .child(crate::labelled(
                 t::instance::instance_name(),
                 h_flex()
@@ -915,6 +916,7 @@ impl Render for InstanceSettingsSubpage {
         let runtime_content = v_flex()
             .gap_4()
             .size_full()
+            .overflow_y_scrollbar()
             .child(v_flex()
                 .gap_1()
                 .child(Checkbox::new("memory").label(t::instance::memory()).checked(memory_override_enabled).on_click(cx.listener(|page, value, _, cx| {
@@ -1098,6 +1100,7 @@ impl Render for InstanceSettingsSubpage {
         let actions_content = v_flex()
             .gap_4()
             .size_full()
+            .overflow_y_scrollbar()
             .child(crate::labelled(
                 t::instance::folder(),
                 self.instance_root_label.button("relocate").on_click({

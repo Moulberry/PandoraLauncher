@@ -717,10 +717,9 @@ impl ChangeVersionDialog {
                         files: vec![install_file].into(),
                     };
 
-                    updating.lock().insert(filename_hash);
+                    root::change_mod_version(content_install, filename_hash, &updating, &backend_handle, window, cx);
                     content_list.update(cx, |_, cx| cx.notify());
                     window.close_dialog(cx);
-                    root::start_install(content_install, &backend_handle, window, cx);
                 }
             }));
 

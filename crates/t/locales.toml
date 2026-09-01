@@ -6,11 +6,8 @@ hu = "Magyar"
 sv = "Svenska"
 ru = "Русский"
 fr = "Français"
-<<<<<<< HEAD
 it = "Italiano"
-=======
 tr = "Türkçe"
->>>>>>> 5db393774 (turkish localization)
 
 [modrinth.name]
 en = "Modrinth"
@@ -1103,11 +1100,8 @@ fr = "${name: &str} (Beta)"
 it = "${name: &str} (Beta)"
 [modrinth.versions.range]
 en = "${first: &str} - ${last: &str} (${count: usize} versions)"
-<<<<<<< HEAD
 hu = "${first: &str} - ${last: &str} (${count: usize} verzió)"
-=======
 tr = "${first: &str} - ${last: &str} (${count: usize} sürüm)"
->>>>>>> 5db393774 (turkish localization)
 ru = "${first: &str} - ${last: &str} (всего версий: ${count: usize})"
 it = "${first: &str} - ${last: &str} (${count: usize} versioni)"
 
@@ -1357,11 +1351,8 @@ en = "Continue"
 en = "Skip"
 [common.cannot_be_undone]
 en = "This cannot be undone"
-<<<<<<< HEAD
 hu = "Ezt nem lehet visszacsinálni"
-=======
 tr = "Bu işlem geri alınamaz"
->>>>>>> 5db393774 (turkish localization)
 ru = "Это действие нельзя отменить"
 it = "Questo non può essere annullato"
 [common.nav.top]
@@ -1812,11 +1803,8 @@ fr = "Serveurs"
 it = "Server"
 [instance.live_game_output]
 en = "Live Game Output"
-<<<<<<< HEAD
 hu = "Élő játék kimenet"
-=======
 tr = "Canlı Oyun Çıktısı"
->>>>>>> 5db393774 (turkish localization)
 ru = "Логи в реальном времени"
 it = "Output del gioco in tempo reale"
 [instance.total_playtime]
@@ -3370,21 +3358,16 @@ it = "L'autore del mod ha bloccato i download dai launcher di terze parti"
 en = "Manual CurseForge downloads"
 tr = "Elle CurseForge indirmeleri"
 [instance.content.manual_curseforge_downloads.description]
-<<<<<<< HEAD
 en = "Some mod authors require their files to be downloaded through CurseForge. Pandora will scan your downloads directory and automatically copy the downloaded file."
-=======
 en = "Some mod authors require their files to be downloaded through CurseForge. Pandora will verify each completed download automatically."
 tr = "Bazı mod geliştiricileri dosyalarının CurseForge üzerinden indirilmesini gerektirir. Pandora tamamlanan her indirmeyi otomatik olarak doğrular."
->>>>>>> 5db393774 (turkish localization)
 [instance.content.manual_curseforge_downloads.downloads_folder]
 en = "Downloads folder: ${path: &str}"
 tr = "İndirilenler klasörü: ${path: &str}"
 [instance.content.manual_curseforge_downloads.choose_folder]
 en = "Choose downloads folder"
-<<<<<<< HEAD
 [instance.content.manual_curseforge_downloads.downloaded]
 en = "Downloaded ✓"
-=======
 tr = "İndirilenler klasörünü seç"
 [instance.content.manual_curseforge_downloads.change_folder]
 en = "Change folder"
@@ -3392,14 +3375,11 @@ tr = "Klasörü değiştir"
 [instance.content.manual_curseforge_downloads.downloaded]
 en = "Downloaded"
 tr = "İndirildi"
->>>>>>> 5db393774 (turkish localization)
 [instance.content.manual_curseforge_downloads.open]
 en = "Open"
 tr = "Aç"
 [instance.content.manual_curseforge_downloads.open_all]
 en = "Open all"
-<<<<<<< HEAD
-=======
 tr = "Tümünü aç"
 [instance.content.manual_curseforge_downloads.check_downloads]
 en = "Check downloads"
@@ -3407,7 +3387,6 @@ tr = "İndirmeleri denetle"
 [instance.content.manual_curseforge_downloads.watching]
 en = "Watching…"
 tr = "İzleniyor..."
->>>>>>> 5db393774 (turkish localization)
 [instance.content.install.loading_files]
 en = "Loading files..."
 tr = "Dosyalar yükleniyor..."
@@ -3645,9 +3624,7 @@ hu = "Hiba a frissítések keresése közben"
 sv = "Fel vid sökandet efter uppdateringar"
 ru = "Ошибка проверки обновлений"
 fr = "Erreur lors de la recherche de mises à jour"
-<<<<<<< HEAD
 it = "Errore durante il controllo degli aggiornamenti"
-=======
 [instance.content.update.check.error_404]
 en = "Error while checking updates - 404 not found"
 tr = "Güncellemeler denetlenirken hata oluştu - 404 bulunamadı"
@@ -3657,7 +3634,6 @@ hu = "Hiba a frissítések keresése közben - 404 nem található"
 sv = "Fel vid sökandet efter uppdateringar - 404 hittades ej"
 ru = "Ошибка при проверке обновлений - 404 не найдено"
 fr = "Erreur lors de la recherche de mises à jour - erreur 404 (page introuvable)"
->>>>>>> 5db393774 (turkish localization)
 [instance.content.update.check.invalid_hash_error]
 en = "Error while checking updates - returned invalid hash"
 tr = "Güncellemeler denetlenirken hata oluştu - geçersiz özet döndürüldü"
@@ -3667,9 +3643,7 @@ hu = "Hiba a frissítések keresése közben - helytelen a hash"
 sv = "Fel vid sökandet efter uppdateringar - ogiltig hash"
 ru = "Ошибка при проверке обновлений - неверный хеш"
 fr = "Erreur lors de la vérification des mises à jour - hachage non valide renvoyé"
-<<<<<<< HEAD
 it = "Errore durante il controllo degli aggiornamenti - hash non valido"
-=======
 [instance.content.update.check.last_up_to_date]
 en = "Up-to-date as of last check"
 tr = "Son denetime göre güncel"
@@ -3679,7 +3653,6 @@ hu = "Legutóbbi ellenőrzés óta naprakész"
 sv = "Uppdaterad från senaste kontrollen"
 ru = "Актуально на момент последней проверки"
 fr = "Informations à jour à la date de la dernière vérification"
->>>>>>> 5db393774 (turkish localization)
 [instance.content.update.check.up_to_date]
 en = "Up-to-date"
 tr = "Güncel"
@@ -3699,9 +3672,7 @@ hu = "Hiba a frissítés letöltése közben"
 sv = "Fel vid nedladdning av uppdatering"
 ru = "Ошибка загрузки обновления"
 fr = "Erreur lors du téléchargement de la mise à jour"
-<<<<<<< HEAD
 it = "Errore durante il download dell'aggiornamento"
-=======
 [instance.content.update.download.from_modrinth]
 en = "Download update from Modrinth"
 tr = "Güncellemeyi Modrinth'ten indir"
@@ -3720,7 +3691,6 @@ hu = "Frissítés letöltése a Curseforgeról"
 sv = "Ladda ned uppdatering från Curseforge"
 ru = "Скачать обновление с Curseforge"
 fr = "Télécharger la mise à jour depuis Curseforge"
->>>>>>> 5db393774 (turkish localization)
 [instance.content.update.error]
 en = "Error updating mod"
 tr = "Mod güncellenirken hata oluştu"
@@ -3794,47 +3764,32 @@ en = "Downgrade to ${version: &str}"
 ru = "Откатить до ${version: &str}"
 [instance.content.unzip.tooltip]
 en = "Unzip Modpack"
-<<<<<<< HEAD
 hu = "Modcsomag kicsomagolása"
-=======
 tr = "Mod Paketini Ayıkla"
->>>>>>> 5db393774 (turkish localization)
 ru = "Распаковать сборку"
 it = "Decomprimere il Modpack"
 [instance.content.unzip.action]
 en = "Unzip"
-<<<<<<< HEAD
 hu = "Kicsomagolás"
-=======
 tr = "Ayıkla"
->>>>>>> 5db393774 (turkish localization)
 ru = "Распаковать"
 it = "Decomprimi"
 [instance.content.unzip.title]
 en = "Unzip '${name: &str}'"
-<<<<<<< HEAD
 hu = "'${name: &str}' kicsomagolása"
-=======
 tr = "'${name: &str}' Paketini Ayıkla"
->>>>>>> 5db393774 (turkish localization)
 ru = "Распаковка \"${name: &str}\""
 it = "Decomprimi '${name: &str}'"
 [instance.content.unzip.warning]
 en = "Unzipping this modpack will place all the mods directly into your mods folder. The mods will be treated individually instead of being tied to the modpack"
-<<<<<<< HEAD
 hu = "A modcsomag kicsomagolása az összes modot rögtön a mod mappádba helyezi. A modok külön lesznek kezelve ahelyett, hogy a modcsomaghoz lennének kötve"
-=======
 tr = "Bu mod paketini ayıklamak tüm modları doğrudan mods klasörünüze yerleştirir. Modlar, mod paketine bağlı olmak yerine ayrı ayrı işlenir"
->>>>>>> 5db393774 (turkish localization)
 ru = "После распаковки все моды из этой сборки окажутся прямо в папке для модов. Они будут считаться отдельными модами, а не частью сборки"
 it = "Decomprimendo questo modpack, tutti i mod verranno posizionati direttamente nella tua cartella dei mod. I mod verranno trattati individualmente invece di essere collegati al modpack"
 [instance.content.unzip.error]
 en = "Error while unzipping modpack"
-<<<<<<< HEAD
 hu = "Hiba a modcsomag kicsomagolásakor"
-=======
 tr = "Mod paketi ayıklanırken hata oluştu"
->>>>>>> 5db393774 (turkish localization)
 ru = "Ошибка при распаковке сборки"
 it = "Errore durante la decompressione del modpack"
 
@@ -4719,20 +4674,14 @@ fr = "Sélectionnez un compte pour afficher/modifier les skins"
 it = "Seleziona un account per visualizzare/modificare le skin"
 [skins.player_model.classic]
 en = "Classic"
-<<<<<<< HEAD
 hu = "Klasszikus"
-=======
 tr = "Klasik"
->>>>>>> 5db393774 (turkish localization)
 ru = "Classic"
 it = "Classico"
 [skins.player_model.slim]
 en = "Slim"
-<<<<<<< HEAD
 hu = "Karcsú"
-=======
 tr = "İnce"
->>>>>>> 5db393774 (turkish localization)
 ru = "Slim"
 it = "Slim"
 [skins.player_model.yaw]

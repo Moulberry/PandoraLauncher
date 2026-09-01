@@ -1,5 +1,7 @@
 use std::{path::Path, sync::{Arc, atomic::AtomicBool}};
 
+use parking_lot::Mutex;
+
 use bridge::{
     handle::BackendHandle,
     install::ContentInstall,
@@ -9,6 +11,7 @@ use bridge::{
 };
 use gpui::{prelude::*, *};
 use gpui_component::{Root, Theme, WindowExt, scroll::ScrollableElement, v_flex};
+use rustc_hash::FxHashSet;
 
 use crate::{Backwards, CloseWindow, Forwards, MAIN_FONT, OpenSettings, entity::DataEntities, game_output::{GameOutput, GameOutputRoot}, interface_config::{InterfaceConfig, LiveGameOutputDisplay}, modals, pages::instance::instance_page::InstanceSubpageType, ui::{LauncherUI, PageType}};
 
@@ -248,6 +251,32 @@ pub fn start_install(
     modals::generic::show_notification(window, cx, t::instance::content::install::error().into(), modal_action);
 }
 
+pub fn change_mod_version(
+    content_install: ContentInstall,
+    hash: u64,
+    updating: &Arc<Mutex<FxHashSet<u64>>>,
+    backend_handle: &BackendHandle,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let modal_action = ModalAction::default();
+
+    updating.lock().insert(hash);
+    modal_action.add_finish_effect({
+        let updating = updating.clone();
+        move || {
+            updating.lock().remove(&hash);
+        }
+    });
+
+    backend_handle.send(MessageToBackend::InstallContent {
+        content: content_install.clone(),
+        modal_action: modal_action.clone(),
+    });
+
+    modals::generic::show_notification(window, cx, t::instance::content::install::error().into(), modal_action);
+}
+
 pub fn start_update_check(
     instance: InstanceID,
     backend_handle: &BackendHandle,
@@ -268,11 +297,21 @@ pub fn start_update_check(
 pub fn update_single_mod(
     instance: InstanceID,
     mod_id: InstanceContentID,
+    hash: u64,
+    updating: &Arc<Mutex<FxHashSet<u64>>>,
     backend_handle: &BackendHandle,
     window: &mut Window,
     cx: &mut App,
 ) {
     let modal_action = ModalAction::default();
+
+    updating.lock().insert(hash);
+    modal_action.add_finish_effect({
+        let updating = updating.clone();
+        move || {
+            updating.lock().remove(&hash);
+        }
+    });
 
     backend_handle.send(MessageToBackend::UpdateContent {
         instance,

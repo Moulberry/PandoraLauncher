@@ -352,19 +352,12 @@ impl Render for InstanceContentSubpage {
                     .on_click({
                         cx.listener(move |page, _, window, cx| {
                             if let Some(content) = page.content.read(cx).clone() {
-                                let hashes: Vec<u64> = content.iter()
-                                    .filter(|summary| summary.update.can_update(page.instance_loader, page.instance_version.as_str()))
-                                    .map(|summary| summary.filename_hash)
-                                    .collect();
-
-                                page.updating.lock().extend(hashes.iter());
-                                page.content_list.update(cx, |_, cx| cx.notify());
-
                                 for summary in content.iter() {
                                     if summary.update.can_update(page.instance_loader, page.instance_version.as_str()) {
-                                        crate::root::update_single_mod(page.instance, summary.id, &page.backend_handle, window, cx);
+                                        crate::root::update_single_mod(page.instance, summary.id, summary.filename_hash, &page.updating, &page.backend_handle, window, cx);
                                     }
                                 }
+                                page.content_list.update(cx, |_, cx| cx.notify());
                             }
                         })
                     }))

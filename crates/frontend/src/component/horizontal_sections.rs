@@ -112,7 +112,7 @@ impl Element for HorizontalSections {
                 let available_space_for_children = bounds.size.width - total_gap_width;
                 if available_space_for_children < Pixels::ZERO {
                     for child in self.children.iter_mut() {
-                        let available_space = Size::new(AvailableSpace::Definite(Pixels::ZERO), AvailableSpace::MinContent);
+                        let available_space = Size::new(AvailableSpace::Definite(Pixels::ZERO), AvailableSpace::Definite(bounds.size.height));
                         child.layout_as_root(available_space, window, cx);
                         child.prepaint_at(bounds.origin, window, cx);
                     }
@@ -121,7 +121,7 @@ impl Element for HorizontalSections {
                     let offset = width + gap_width;
 
                     for (index, child) in self.children.iter_mut().enumerate() {
-                        let available_space = Size::new(AvailableSpace::Definite(width), AvailableSpace::MinContent);
+                        let available_space = Size::new(AvailableSpace::Definite(width), AvailableSpace::Definite(bounds.size.height));
                         child.layout_as_root(available_space, window, cx);
                         let mut origin = bounds.origin;
                         origin.x += offset * index;

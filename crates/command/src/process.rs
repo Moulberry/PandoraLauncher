@@ -151,8 +151,8 @@ impl PandoraProcess {
         #[cfg(unix)]
         {
             let mut status = 0 as libc::c_int;
-            cvt_r(|| unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) })?;
-            if status == 0 {
+            let pid = cvt_r(|| unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) })?;
+            if pid == 0 {
                 return Ok(None);
             } else {
                 self.exit_status = Some(PandoraExitStatus(status));

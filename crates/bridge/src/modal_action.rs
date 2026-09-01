@@ -8,7 +8,7 @@ use std::{
 };
 
 use atomic_time::AtomicOptionInstant;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
 #[derive(Default, Clone, Debug)]
@@ -39,18 +39,34 @@ pub struct ModalActionVisitUrl {
 pub struct ModalActionInner {
     notify: Arc<tokio::sync::Notify>,
     finished_at: AtomicOptionInstant,
+    finish_effects: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
     error: RwLock<Option<Arc<str>>>,
     visit_url: RwLock<Option<ModalActionVisitUrl>>,
     trackers: Arc<RwLock<Vec<ProgressTracker>>>,
     pub request_cancel: CancellationToken,
 }
 
+impl Drop for ModalActionInner {
+    fn drop(&mut self) {
+        for effect in self.finish_effects.lock().drain(..) {
+            (effect)();
+        }
+    }
+}
+
 impl ModalActionInner {
+    pub fn add_finish_effect(&self, effect: impl FnOnce() + Send + 'static) {
+        self.finish_effects.lock().push(Box::new(effect));
+    }
+
     pub fn get_notify(&self) -> Arc<tokio::sync::Notify> {
         self.notify.clone()
     }
 
     pub fn set_finished(&self) {
+        for effect in self.finish_effects.lock().drain(..) {
+            (effect)();
+        }
         let _ = self.finished_at.compare_exchange(None, Some(Instant::now()), Ordering::SeqCst, Ordering::Relaxed);
         self.notify.notify_one();
     }

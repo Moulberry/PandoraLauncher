@@ -406,7 +406,15 @@ impl BackendState {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         tokio::pin!(interval);
 
+        #[cfg(unix)]
+        let mut signal = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child()).unwrap();
+
         loop {
+            #[cfg(unix)]
+            let signal_recv = signal.recv();
+            #[cfg(not(unix))]
+            let signal_recv = std::future::pending::<Option<()>>();
+
             tokio::select! {
                 message = backend_recv.recv() => {
                     if let Some(message) = message {
@@ -423,6 +431,9 @@ impl BackendState {
                         log::info!("Backend filesystem has shut down");
                         break;
                     }
+                },
+                _ = signal_recv => {
+                    self.check_child_processes();
                 },
                 _ = interval.tick() => {
                     self.handle_tick();
@@ -444,7 +455,10 @@ impl BackendState {
     fn handle_tick(&self) {
         self.meta.expire();
         self.mod_metadata_manager.write_changes();
+        self.check_child_processes();
+    }
 
+    fn check_child_processes(&self) {
         let mut any_process_alive = false;
 
         let mut instance_state = self.instance_state.write();

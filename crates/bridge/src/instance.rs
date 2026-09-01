@@ -305,8 +305,8 @@ pub enum ContentUpdateStatus {
 impl ContentUpdateStatus {
     pub fn can_update(&self) -> bool {
         match self {
-            ContentUpdateStatus::Modrinth => true,
-            _ => false,
+            ContentUpdateStatus::Modrinth | ContentUpdateStatus::Curseforge => true,
+            ContentUpdateStatus::Unknown | ContentUpdateStatus::ManualInstall | ContentUpdateStatus::ErrorNotFound | ContentUpdateStatus::ErrorInvalidHash | ContentUpdateStatus::AlreadyUpToDate => false,
         }
     }
 }

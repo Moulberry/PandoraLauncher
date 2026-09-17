@@ -2251,6 +2251,12 @@ impl LaunchContext {
             ];
 
             allow_read.push(java_path_parent_parent.into());
+            // Packaged JREs may keep their configuration outside their directory
+            if let Ok(java_conf_dir) = java_path_parent_parent.join("conf").canonicalize()
+                && !java_conf_dir.starts_with(java_path_parent_parent)
+            {
+                allow_read.push(java_conf_dir.into());
+            }
 
             command.spawn_sandboxed(PandoraSandbox {
                 allow_read,

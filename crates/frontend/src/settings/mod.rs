@@ -438,7 +438,7 @@ impl SettingsRoot {
                             .max_w_3_5()
                             .child((item.title)())
                             .child(div().text_color(cx.theme().muted_foreground).child((item.description)())))
-                        .child(h_flex().max_w_2_5().child(widget));
+                        .child(h_flex().max_w_2_5().min_w_0().overflow_x_hidden().justify_end().child(widget));
 
                     item_elements.push(item_element);
                 }

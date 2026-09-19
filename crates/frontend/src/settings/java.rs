@@ -290,6 +290,9 @@ fn create_jvm_binary_widget() -> SettingItemWidget {
         let path_label = jvm_binary.path.as_ref().map(|path| PathLabel::new(path.clone(), false));
         PathLabel::button_opt(&path_label, "select-default-jvm-binary")
             .disabled(!jvm_binary.enabled)
+            .w(px(280.0))
+            .min_w_0()
+            .flex_shrink(1.0)
             .on_click(cx.listener(|root, _, window, cx| {
                 root.select_file(t::settings::java::defaults::select_jvm_binary(), |root, path, cx| {
                     let Some(backend) = root.backend_config().cloned() else {

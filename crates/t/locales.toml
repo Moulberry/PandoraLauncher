@@ -1199,6 +1199,7 @@ fr = "Rechercher..."
 it = "Cerca..."
 [common.no_results]
 en = "No results!"
+ru = "Ничего не найдено!"
 [common.error]
 en = "Error"
 tr = "Hata"
@@ -1349,8 +1350,10 @@ fr = "OK"
 it = "OK"
 [common.cont]
 en = "Continue"
+ru = "Продолжить"
 [common.skip]
 en = "Skip"
+ru = "Пропустить"
 [common.cannot_be_undone]
 en = "This cannot be undone"
 hu = "Ezt nem lehet visszacsinálni"
@@ -1687,6 +1690,7 @@ it = "Errore durante l'aggiunta dell'account"
 
 [quickplay.title]
 en = "Quickplay"
+ru = "Быстрая игра"
 
 [instance.title]
 en = "Instances"
@@ -3352,23 +3356,30 @@ it = "L'autore del mod ha bloccato i download dai launcher di terze parti"
 [instance.content.manual_curseforge_downloads.title]
 en = "Manual CurseForge downloads"
 tr = "Elle CurseForge indirmeleri"
+ru = "Загрузка вручную через CurseForge"
 [instance.content.manual_curseforge_downloads.description]
 en = "Some mod authors require their files to be downloaded through CurseForge. Pandora will scan your downloads directory and automatically copy the downloaded file."
 tr = "Bazı mod geliştiricileri dosyalarının CurseForge üzerinden indirilmesini gerektirir. Pandora tamamlanan her indirmeyi otomatik olarak doğrular."
+ru = "Некоторые авторы модов требуют, чтобы их файлы загружались через CurseForge. Pandora просканирует папку загрузок и автоматически скопирует скачанный файл."
 [instance.content.manual_curseforge_downloads.downloads_folder]
 en = "Downloads folder: ${path: &str}"
 tr = "İndirilenler klasörü: ${path: &str}"
+ru = "Папка загрузок: ${path: &str}"
 [instance.content.manual_curseforge_downloads.choose_folder]
 en = "Choose downloads folder"
+ru = "Выбор папки загрузок"
 [instance.content.manual_curseforge_downloads.downloaded]
 en = "Downloaded ✓"
 tr = "İndirilenler klasörünü seç ✓"
+ru = "Загружено ✓"
 [instance.content.manual_curseforge_downloads.open]
 en = "Open"
 tr = "Aç"
+ru = "Открыть"
 [instance.content.manual_curseforge_downloads.open_all]
 en = "Open all"
 tr = "Tümünü aç"
+ru = "Открыть все"
 [instance.content.install.loading_files]
 en = "Loading files..."
 tr = "Dosyalar yükleniyor..."
@@ -3688,8 +3699,10 @@ ru = "${name: &str} (${loader: &str} ${mc_version: &str})"
 fr = "${name: &str} (${loader: &str} ${mc_version: &str})"
 [instance.content.change_version.error_loading_versions]
 en = "Error loading versions"
+ru = "Ошибка загрузки версий"
 [instance.content.change_version.error_loading_changelog]
 en = "Error loading changelog"
+ru = "Ошибка загрузки списка изменений"
 [instance.content.change_version.show_incompatible]
 en = "Show incompatible"
 ru = "Показать несовместимые"
@@ -4244,9 +4257,11 @@ fr = "Paramètres"
 it = "Impostazioni"
 [settings.loading]
 en = "Loading settings..."
+ru = "Загрузка настроек..."
 
 [settings.general]
 en = "General"
+ru = "Общие настройки"
 
 [settings.general.general.language]
 en = "Language"
@@ -4257,6 +4272,9 @@ hu = "Nyelv"
 ru = "Язык"
 fr = "Langue"
 it = "Lingua"
+[settings.general.general.language_desc]
+en = "Pandora Launcher interface language"
+ru = "Язык интерфейса Pandora Launcher"
 [settings.general.general.language.system]
 en = "System language"
 tr = "Sistem dili"
@@ -4268,21 +4286,26 @@ fr = "Langue du système"
 it = "Lingua di sistema"
 [settings.general.general.quick_delete_mods]
 en = "Quick delete mods"
+ru = "Быстрое удаление модов"
 [settings.general.general.quick_delete_mods_desc]
 en = "Shift+Click the delete mod button to skip the confirmation"
+ru = "Удерживайте Shift при удалении мода, чтобы пропустить подтверждение"
 [settings.general.general.quick_delete_instance]
 en = "Quick delete instance"
+ru = "Быстрое удаление экземпляра"
 [settings.general.general.quick_delete_instance_desc]
 en = "Shift+Click the delete instance button to skip the confirmation"
+ru = "Удерживайте Shift при удалении экземпляра, чтобы пропустить подтверждение"
 [settings.general.general.live_game_output_display]
 en = "Live game output display"
 tr = "Canlı oyun çıktısı görünümü"
 de = "Live-Anzeige der Spielausgabe"
 hu = "Élő játék kimenet stílusa"
-ru = "Показ логов в реальном времени"
+ru = "Отображение логов в реальном времени"
 it = "Visualizzazione dell'output del gioco in tempo reale"
 [settings.general.general.live_game_output_display_desc]
 en = "Where to display the game's live log output"
+ru = "Где показывать логи игры в реальном времени"
 [settings.general.general.live_game_output_display.tab_on_instance_page]
 en = "Tab on Instance Page"
 tr = "Profil Sayfasında Sekme"
@@ -4327,6 +4350,7 @@ fr = "Masquer les noms d'utilisateur"
 it = "Nascondi i nomi utente"
 [settings.general.privacy.hide_usernames_desc]
 en = "Hide usernames in the launcher"
+ru = "Скрывать имена пользователей в лаунчере"
 [settings.general.privacy.hide_skins]
 en = "Hide skins"
 tr = "Dış görünüşleri gizle"
@@ -4339,6 +4363,7 @@ fr = "Masquer les skins"
 it = "Nascondi le skin"
 [settings.general.privacy.hide_skins_desc]
 en = "Hide skins in the launcher"
+ru = "Скрывать скины в лаунчере"
 [settings.general.privacy.hide_server_addresses]
 en = "Hide server addresses"
 tr = "Sunucu adreslerini gizle"
@@ -4351,9 +4376,11 @@ fr = "Masquer les adresses des serveurs"
 it = "Nascondi gli indirizzi dei server"
 [settings.general.privacy.hide_server_addresses_desc]
 en = "Hide server addresses in the launcher"
+ru = "Скрывать адреса серверов в лаунчере"
 
 [settings.appearance]
 en = "Appearance"
+ru = "Внешний вид"
 [settings.appearance.theme]
 en = "Theme"
 tr = "Tema"
@@ -4366,8 +4393,10 @@ fr = "Thème"
 it = "Tema"
 [settings.appearance.theme.base_theme]
 en = "Base theme"
+ru = "Тема"
 [settings.appearance.theme.base_theme_desc]
 en = "Base colour scheme and other properties"
+ru = "Цветовая схема и другие свойства"
 [settings.appearance.theme.open_theme_folder]
 en = "Open theme folder"
 tr = "Tema klasörünü aç"
@@ -4380,16 +4409,22 @@ fr = "Ouvrir le dossier Thèmes"
 it = "Apri la cartella dei temi"
 [settings.appearance.theme.open_theme_folder_desc]
 en = "Put custom theme.json files here"
+ru = "Поместите свои файлы theme.json в эту папку"
 [settings.appearance.theme.font]
 en = "Font"
+ru = "Шрифт"
 [settings.appearance.theme.font_desc]
 en = "Font family name"
+ru = "Семейство шрифтов"
 [settings.appearance.theme.font_size]
 en = "Font size"
+ru = "Размер шрифта"
 [settings.appearance.theme.font_size_desc]
 en = "Font size (8 to 32)"
+ru = "Размер шрифта (от 8 до 32)"
 [settings.appearance.window]
 en = "Window"
+ru = "Окно"
 [settings.appearance.window.use_os_titlebar]
 en = "Use OS titlebar"
 tr = "İşletim sistemi başlık çubuğunu kullan"
@@ -4402,6 +4437,7 @@ fr = "Utiliser la barre de titre du système d'exploitation"
 it = "Usa la barra del titolo del sistema operativo"
 [settings.appearance.window.use_os_titlebar_desc]
 en = "Use the default operating system titlebar instead of the custom titlebar (requires restart!)"
+ru = "Использовать стандартный заголовок окна, предоставляемый операционной системой (требуется перезапуск!)"
 [settings.appearance.window.hide_main_window]
 en = "Hide main window on launch"
 tr = "Başlatırken ana pencereyi gizle"
@@ -4409,15 +4445,18 @@ pl = "Ukryj główne okno przy uruchomieniu"
 de = "Verstecke Hauptfenster beim Start"
 hu = "Fő ablak elrejtése a játék indításakor"
 sv = "Göm huvudfönstret vid spelstart"
-ru = "Скрывать главное окно при запуске"
+ru = "Скрывать главное окно при запуске Minecraft"
 fr = "Masquer la fenêtre principale au démarrage"
 it = "Nascondi la finestra principale all'avvio"
 [settings.appearance.window.hide_main_window_desc]
 en = "Hide the main Pandora Launcher window when the game is launched, and reopen the window after the game is closed"
+ru = "Скрывать главное окно Pandora Launcher при запуске игры и снова показывать после её закрытия"
 [settings.appearance.window.quit_when_main_window_closed]
 en = "Quit when main window closed"
+ru = "Выходить при закрытии главного окна"
 [settings.appearance.window.quit_when_main_window_closed_desc]
 en = "Close all other windows when the main Pandora Launcher window is closed"
+ru = "Закрывать все остальные окна при закрытии главного окна Pandora Launcher"
 
 [settings.network]
 en = "Network"
@@ -4431,6 +4470,7 @@ fr = "Réseau"
 it = "Rete"
 [settings.network.launcher_proxy]
 en = "Launcher Proxy"
+ru = "Прокси для лаунчера"
 [settings.network.launcher_proxy.enable_proxy]
 en = "Enable Proxy"
 tr = "Vekil Sunucuyu Etkinleştir"
@@ -4443,6 +4483,7 @@ fr = "Activer le proxy"
 it = "Attiva il proxy"
 [settings.network.launcher_proxy.enable_proxy_desc]
 en = "Whether to enable proxying (note: only applies to the launcher's network requests, not the game)"
+ru = "Включить использование прокси (примечание: применяется только к лаунчеру, а не к самой игре)"
 [settings.network.launcher_proxy.protocol]
 en = "Protocol"
 tr = "Protokol"
@@ -4455,6 +4496,7 @@ fr = "Protocole"
 it = "Protocollo"
 [settings.network.launcher_proxy.protocol_desc]
 en = "Proxy protocol (HTTP, HTTPS or SOCKS5)"
+ru = "Протокол прокси (HTTP, HTTPS или SOCKS5)"
 [settings.network.launcher_proxy.host]
 en = "Host"
 tr = "Ana Makine"
@@ -4467,6 +4509,7 @@ fr = "Hôte"
 it = "Host"
 [settings.network.launcher_proxy.host_desc]
 en = "Proxy host (e.g. proxy.exaple.com)"
+ru = "Адрес прокси (например, proxy.example.com)"
 [settings.network.launcher_proxy.port]
 en = "Port"
 tr = "Bağlantı Noktası"
@@ -4479,6 +4522,7 @@ fr = "Port"
 it = "Port"
 [settings.network.launcher_proxy.port_desc]
 en = "Proxy port (e.g. 8080)"
+ru = "Порт прокси (например, 8080)"
 [settings.network.launcher_proxy.use_auth]
 en = "Use Authentication"
 tr = "Kimlik Doğrulama Kullan"
@@ -4491,6 +4535,7 @@ fr = "Utiliser l'authentification"
 it = "Usa l'autentificazione"
 [settings.network.launcher_proxy.use_auth_desc]
 en = "Whether to use username/password authentication for the proxy"
+ru = "Аутентификация по имени пользователя и паролю для прокси"
 [settings.network.launcher_proxy.username]
 en = "Username"
 tr = "Kullanıcı Adı"
@@ -4503,6 +4548,7 @@ fr = "Nom d'utilisateur"
 it = "Nome utente"
 [settings.network.launcher_proxy.username_desc]
 en = "Proxy username (when authentication enabled)"
+ru = "Имя пользователя прокси (при включённой аутентификации)"
 [settings.network.launcher_proxy.password]
 en = "Password"
 tr = "Parola"
@@ -4515,6 +4561,10 @@ fr = "Mot de passe"
 it = "Password"
 [settings.network.launcher_proxy.password_desc]
 en = "Proxy password (when authentication enabled)"
+ru = "Пароль прокси (при включённой аутентификации)"
+[settings.network.launcher_proxy.password_hidden]
+en = "(hidden)"
+ru = "(скрыт)"
 
 [skins.title]
 en = "Skins"

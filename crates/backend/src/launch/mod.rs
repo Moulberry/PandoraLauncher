@@ -28,6 +28,9 @@ use crate::{
     }}
 };
 
+mod defaults;
+pub use defaults::apply_global_launch_defaults;
+
 #[cfg(target_os = "linux")]
 mod linux_gpu;
 

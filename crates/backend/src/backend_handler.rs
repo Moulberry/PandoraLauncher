@@ -1189,6 +1189,13 @@ impl BackendState {
             MessageToBackend::GetBackendConfiguration { channel } => {
                 _ = channel.send(self.config.lock().get().clone());
             },
+            MessageToBackend::SetLaunchDefaults { memory, jvm_flags, jvm_binary } => {
+                self.config.lock().modify(|backend_config| {
+                    backend_config.memory = memory;
+                    backend_config.jvm_flags = jvm_flags;
+                    backend_config.jvm_binary = jvm_binary;
+                });
+            },
             MessageToBackend::CleanupOldLogFiles { instance: id } => {
                 let mut deleted = 0;
 
@@ -1917,7 +1924,7 @@ impl BackendState {
     ) {
         let keepalive = KeepAlive::new();
 
-        let (dot_minecraft, configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+        let (dot_minecraft, mut configuration) = if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
             if let Some(launch_keepalive) = &instance.launch_keepalive && launch_keepalive.is_alive() {
                 modal_action.set_finished_with_error("Can't launch instance, already launching".into());
                 return;
@@ -1936,6 +1943,8 @@ impl BackendState {
             modal_action.set_finished_with_error("Can't launch instance, unknown id".into());
             return;
         };
+
+        crate::launch::apply_global_launch_defaults(&mut configuration, self.config.lock().get());
 
         scopeguard::defer! {
             modal_action.set_finished();

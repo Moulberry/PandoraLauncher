@@ -31,6 +31,12 @@ pub(super) fn create_page(window: &mut Window, cx: &mut App) -> SettingPage {
                         ..Default::default()
                     },
                     SettingItem {
+                        title: t::settings::general::general::show_quickplay_page,
+                        description: t::settings::general::general::show_quickplay_page_desc,
+                        widget: SettingItemWidget::Switch(|cfg| cfg.show_quickplay_page, |cfg, val| cfg.show_quickplay_page = val),
+                        ..Default::default()
+                    },
+                    SettingItem {
                         title: t::settings::general::general::live_game_output_display,
                         description: t::settings::general::general::live_game_output_display_desc,
                         widget: create_live_game_output_dropdown(window, cx),

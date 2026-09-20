@@ -64,6 +64,8 @@ pub struct InterfaceConfig {
     pub instances_view_mode: InstancesViewMode,
     #[serde(default, deserialize_with = "schema::try_deserialize")]
     pub instance_subpage: InstanceSubpageType,
+    #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
+    pub show_quickplay_page: bool,
 
     // Content
     #[serde(default = "schema::default_true", deserialize_with = "schema::try_deserialize")]
@@ -285,6 +287,7 @@ impl Default for InterfaceConfig {
             show_snapshots_in_create_instance: Default::default(),
             instances_view_mode: Default::default(),
             instance_subpage: Default::default(),
+            show_quickplay_page: true,
             collapse_capes_in_skins_page: false,
             skin_list_sort_desc: false,
             skin_list_show_3d: true,

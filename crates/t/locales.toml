@@ -4274,6 +4274,10 @@ en = "Shift+Click the delete mod button to skip the confirmation"
 en = "Quick delete instance"
 [settings.general.general.quick_delete_instance_desc]
 en = "Shift+Click the delete instance button to skip the confirmation"
+[settings.general.general.show_quickplay_page]
+en = "Show quickplay page"
+[settings.general.general.show_quickplay_page_desc]
+en = "Show the quickplay page in the sidebar"
 [settings.general.general.live_game_output_display]
 en = "Live game output display"
 tr = "Canlı oyun çıktısı görünümü"

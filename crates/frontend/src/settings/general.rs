@@ -14,7 +14,7 @@ pub(super) fn create_page(window: &mut Window, cx: &mut App) -> SettingPage {
                 items: vec![
                     SettingItem {
                         title: t::settings::general::general::language,
-                        description: t::settings::general::general::language,
+                        description: t::settings::general::general::language_desc,
                         widget: create_language_dropdown(window, cx),
                         ..Default::default()
                     },

@@ -1,15 +1,19 @@
-use std::rc::Rc;
+use std::{path::Path, rc::Rc, sync::Arc};
 
 use bridge::{handle::BackendHandle, message::MessageToBackend};
 use gpui::{*, prelude::*};
-use gpui_component::{ActiveTheme, Root, StyledExt, h_flex, input::{Input, InputEvent, InputState}, separator::Separator, spinner::Spinner, switch::Switch, v_flex};
-use schema::backend_config::{BackendConfig, ProxyConfig};
+use gpui_component::{ActiveTheme, Root, StyledExt, WindowExt, h_flex, input::{Input, InputEvent, InputState}, notification::{Notification, NotificationType}, separator::Separator, spinner::Spinner, switch::Switch, v_flex};
+use schema::{
+    backend_config::{BackendConfig, ProxyConfig},
+    instance::{InstanceJvmBinaryConfiguration, InstanceJvmFlagsConfiguration, InstanceMemoryConfiguration},
+};
 
 use crate::{component::{generic_title_bar::TitleBar, resize_panel::{ResizePanel, ResizePanelState}}, entity::DataEntities, icon::PandoraIcon, interface_config::InterfaceConfig};
 
 mod general;
 mod appearance;
 mod network;
+mod java;
 
 struct SettingsRoot {
     settings: Settings,
@@ -22,6 +26,7 @@ struct SettingsRoot {
     actual_backend_config: Option<BackendConfig>,
     temp_backend_config: Option<BackendConfig>,
     on_receive_backend_config: OnReceiveBackendConfig,
+    _select_file_task: Task<()>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -53,6 +58,73 @@ impl SettingsRoot {
         });
 
         self.update_backend_configuration(cx);
+    }
+
+    pub fn set_launch_defaults(
+        &mut self,
+        memory: Option<InstanceMemoryConfiguration>,
+        jvm_flags: Option<InstanceJvmFlagsConfiguration>,
+        jvm_binary: Option<InstanceJvmBinaryConfiguration>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.actual_backend_config.is_some() {
+            self.on_receive_backend_config = if self.temp_backend_config.is_some() {
+                OnReceiveBackendConfig::RequestAgainThenClearTemp
+            } else {
+                OnReceiveBackendConfig::ClearTemp
+            };
+            let pending = self.temp_backend_config.get_or_insert_with(|| self.actual_backend_config.clone().unwrap());
+            pending.memory = memory.clone();
+            pending.jvm_flags = jvm_flags.clone();
+            pending.jvm_binary = jvm_binary.clone();
+        }
+
+        self.backend_handle.send(MessageToBackend::SetLaunchDefaults {
+            memory,
+            jvm_flags,
+            jvm_binary,
+        });
+
+        self.update_backend_configuration(cx);
+    }
+
+    pub fn select_file(
+        &mut self,
+        message: &'static str,
+        handle: impl FnOnce(&mut Self, Option<Arc<Path>>, &mut Context<Self>) + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let receiver = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some(message.into()),
+        });
+
+        let this_entity = cx.entity();
+        self._select_file_task = window.spawn(cx, async move |cx| {
+            let Ok(result) = receiver.await else {
+                return;
+            };
+            _ = cx.update_window_entity(&this_entity, move |this, window, cx| {
+                match result {
+                    Ok(Some(paths)) => {
+                        (handle)(this, paths.first().map(|v| v.as_path().into()), cx);
+                        cx.notify();
+                    },
+                    Ok(None) => {},
+                    Err(error) => {
+                        let error = format!("{}", error);
+                        let notification = Notification::new()
+                            .autohide(false)
+                            .with_type(NotificationType::Error)
+                            .title(error);
+                        window.push_notification(notification, cx);
+                    },
+                }
+            });
+        });
     }
 
     pub fn update_backend_configuration(&mut self, cx: &mut Context<Self>) {
@@ -366,7 +438,7 @@ impl SettingsRoot {
                             .max_w_3_5()
                             .child((item.title)())
                             .child(div().text_color(cx.theme().muted_foreground).child((item.description)())))
-                        .child(h_flex().max_w_2_5().child(widget));
+                        .child(h_flex().max_w_2_5().min_w_0().overflow_x_hidden().justify_end().child(widget));
 
                     item_elements.push(item_element);
                 }
@@ -698,7 +770,8 @@ pub fn open_settings_window(main_window: &Window, data: &DataEntities, cx: &mut 
                 get_configuration_task: None,
                 actual_backend_config: None,
                 temp_backend_config: None,
-                on_receive_backend_config: OnReceiveBackendConfig::DoNothing
+                on_receive_backend_config: OnReceiveBackendConfig::DoNothing,
+                _select_file_task: Task::ready(()),
             };
 
             root.update_backend_configuration(cx);
@@ -714,6 +787,7 @@ fn create_settings(data: &DataEntities, window: &mut Window, cx: &mut App) -> Se
         pages: vec![
             general::create_page(window, cx),
             appearance::create_page(data, window, cx),
+            java::create_page(),
             network::create_page(),
         ].into_boxed_slice(),
         selected_page: Some(0),

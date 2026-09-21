@@ -188,7 +188,7 @@ impl Default for InstanceMemoryConfiguration {
     }
 }
 
-fn is_default_memory_configuration(config: &Option<InstanceMemoryConfiguration>) -> bool {
+pub fn is_default_memory_configuration(config: &Option<InstanceMemoryConfiguration>) -> bool {
     if let Some(config) = config {
         !config.enabled
             && config.min == InstanceMemoryConfiguration::DEFAULT_MIN
@@ -218,7 +218,7 @@ pub struct InstanceJvmFlagsConfiguration {
     pub flags: Arc<str>,
 }
 
-fn is_default_jvm_flags_configuration(config: &Option<InstanceJvmFlagsConfiguration>) -> bool {
+pub fn is_default_jvm_flags_configuration(config: &Option<InstanceJvmFlagsConfiguration>) -> bool {
     if let Some(config) = config {
         !config.enabled && config.flags.trim_ascii().is_empty()
     } else {
@@ -232,7 +232,7 @@ pub struct InstanceJvmBinaryConfiguration {
     pub path: Option<Arc<Path>>,
 }
 
-fn is_default_jvm_binary_configuration(config: &Option<InstanceJvmBinaryConfiguration>) -> bool {
+pub fn is_default_jvm_binary_configuration(config: &Option<InstanceJvmBinaryConfiguration>) -> bool {
     if let Some(config) = config {
         !config.enabled && config.path.is_none()
     } else {

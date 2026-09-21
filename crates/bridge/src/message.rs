@@ -242,6 +242,11 @@ pub enum MessageToBackend {
     GetBackendConfiguration {
         channel: tokio::sync::oneshot::Sender<BackendConfig>,
     },
+    SetLaunchDefaults {
+        memory: Option<InstanceMemoryConfiguration>,
+        jvm_flags: Option<InstanceJvmFlagsConfiguration>,
+        jvm_binary: Option<InstanceJvmBinaryConfiguration>,
+    },
     SetSyncing {
         target: Arc<str>,
         is_file: bool,

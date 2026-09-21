@@ -1199,6 +1199,9 @@ fr = "Rechercher..."
 it = "Cerca..."
 [common.no_results]
 en = "No results!"
+tr = "Sonuç bulunamadı!"
+ru = "Ничего не найдено!"
+hu = "Nincs találat!"
 [common.error]
 en = "Error"
 tr = "Hata"
@@ -1261,9 +1264,12 @@ fr = "OU"
 it = "O"
 [common.and]
 en = "${first: &str} and ${second: &str}"
+tr = "${first: &str} ve ${second: &str}"
 ru = "${first: &str} и ${second: &str}"
+hu = "${first: &str} és ${second: &str}"
 [common.range]
 en = "${from: &str}-${to: &str}"
+tr = "${from: &str}-${to: &str}"
 pl = "${from: &str}-${to: &str}"
 de = "${from: &str}-${to: &str}"
 hu = "${from: &str}-${to: &str}"
@@ -1349,8 +1355,14 @@ fr = "OK"
 it = "OK"
 [common.cont]
 en = "Continue"
+tr = "Devam et"
+ru = "Продолжить"
+hu = "Tovább"
 [common.skip]
 en = "Skip"
+tr = "Atla"
+ru = "Пропустить"
+hu = "Kihagyás"
 [common.cannot_be_undone]
 en = "This cannot be undone"
 hu = "Ezt nem lehet visszacsinálni"
@@ -1687,6 +1699,8 @@ it = "Errore durante l'aggiunta dell'account"
 
 [quickplay.title]
 en = "Quickplay"
+tr = "Hızlı Oyna"
+ru = "Быстрая игра"
 
 [instance.title]
 en = "Instances"
@@ -2604,16 +2618,24 @@ it = "Impossibile isolare: mancano i comandi bwrap e xdg-dbus-proxy"
 
 [instance.update_channel.label]
 en = "Update Channel"
+hu = "Frissítési csatorna"
 ru = "Канал обновления"
+tr = "Güncelleme Kanalı"
 [instance.update_channel.release]
 en = "Release"
+hu = "Kiadás"
 ru = "Релиз"
+tr = "Kararlı"
 [instance.update_channel.beta]
 en = "Beta"
+hu = "Béta"
 ru = "Бета"
+tr = "Beta"
 [instance.update_channel.alpha]
 en = "Alpha"
+hu = "Alfa"
 ru = "Альфа"
+tr = "Alfa"
 
 [instance.linux.label]
 en = "Linux Performance"
@@ -3351,24 +3373,39 @@ fr = "L'auteur du mod a bloqué les téléchargements depuis des lanceurs tiers"
 it = "L'autore del mod ha bloccato i download dai launcher di terze parti"
 [instance.content.manual_curseforge_downloads.title]
 en = "Manual CurseForge downloads"
+hu = "Egyedi CurseForge letöltések"
 tr = "Elle CurseForge indirmeleri"
+ru = "Загрузка вручную через CurseForge"
 [instance.content.manual_curseforge_downloads.description]
 en = "Some mod authors require their files to be downloaded through CurseForge. Pandora will scan your downloads directory and automatically copy the downloaded file."
+hu = "Néhány modkészítő kötelezi, hogy csak a CurseForge-on keresztül töltsd le a modját. Pandora átnézi a letöltések mappádat, és autómatikusan bemásolja a letöltött fájlokat."
 tr = "Bazı mod geliştiricileri dosyalarının CurseForge üzerinden indirilmesini gerektirir. Pandora tamamlanan her indirmeyi otomatik olarak doğrular."
+ru = "Некоторые авторы модов требуют, чтобы их файлы загружались через CurseForge. Pandora просканирует папку загрузок и автоматически скопирует скачанный файл."
 [instance.content.manual_curseforge_downloads.downloads_folder]
 en = "Downloads folder: ${path: &str}"
+hu = "Letöltések mappa: ${path: &str}"
 tr = "İndirilenler klasörü: ${path: &str}"
+ru = "Папка загрузок: ${path: &str}"
 [instance.content.manual_curseforge_downloads.choose_folder]
 en = "Choose downloads folder"
+tr = "İndirilenler klasörünü seç"
+ru = "Выбор папки загрузок"
+hu = "Válaszd ki a letöltések mappát"
 [instance.content.manual_curseforge_downloads.downloaded]
 en = "Downloaded ✓"
+hu = "Letöltve ✓"
 tr = "İndirilenler klasörünü seç ✓"
+ru = "Загружено ✓"
 [instance.content.manual_curseforge_downloads.open]
 en = "Open"
+hu = "Megnyitás"
 tr = "Aç"
+ru = "Открыть"
 [instance.content.manual_curseforge_downloads.open_all]
 en = "Open all"
+hu = "Mindegyik megnyitása"
 tr = "Tümünü aç"
+ru = "Открыть все"
 [instance.content.install.loading_files]
 en = "Loading files..."
 tr = "Dosyalar yükleniyor..."
@@ -3650,12 +3687,17 @@ it = "Errore durante l'aggiornamento del mod"
 
 [instance.content.change_version.title]
 en = "Change version of ${name: &str}"
+tr = "${name: &str} sürümünü değiştir"
+hu = "${name: &str} verziójának megváltoztatása"
 ru = "Смена версии ${name: &str}"
 [instance.content.change_version.button]
 en = "Change version via ${source: &str}"
+tr = "${source: &str} üzerinden sürümü değiştir"
+hu = "Verzió megváltoztatása ezzel: ${source: &str}"
 ru = "Сменить версию через ${source: &str}"
 [instance.content.change_version.up_to_date]
 en = "Up-to-date as of last check"
+tr = "Son denetime göre güncel"
 pl = "Aktualne na moment ostatniego sprawdzenia"
 de = "Aktuell, Stand letzter Überprüfung"
 hu = "Legutóbbi ellenőrzés óta naprakész"
@@ -3664,9 +3706,13 @@ ru = "Актуальна на момент последней проверки"
 fr = "Informations à jour à la date de la dernière vérification"
 [instance.content.change_version.update_available]
 en = "Update available from ${source: &str} (Shift-Click for quick download)"
+tr = "${source: &str} üzerinde güncelleme mevcut (hızlı indirmek için Shift tuşunu basılı tutarak tıklayın)"
+hu = "Frissítés elérhető innen: ${source: &str} (Shift+Katt a gyorsletöltéshez)"
 ru = "Доступно обновление от ${source: &str} (Shift+клик для быстрой загрузки)"
 [instance.content.change_version.no_compatible_versions]
 en = "No compatible versions found"
+tr = "Uyumlu sürüm bulunamadı"
+hu = "Nem található kompatibilis verzió"
 ru = "Совместимые версии не найдены"
 [instance.content.change_version.installed_manually]
 en = "Installed manually - cannot automatically update"
@@ -3680,6 +3726,7 @@ fr = "Installé manuellement - ne peut pas être mis à jour automatiquement"
 it = "Installato manualmente - non può essere aggiornato automaticamente"
 [instance.content.change_version.version]
 en = "${name: &str} (${loader: &str} ${mc_version: &str})"
+tr = "${name: &str} (${loader: &str} ${mc_version: &str})"
 pl = "${name: &str} (${loader: &str} ${mc_version: &str})"
 de = "${name: &str} (${loader: &str} ${mc_version: &str})"
 hu = "${name: &str} (${loader: &str} ${mc_version: &str})"
@@ -3688,25 +3735,43 @@ ru = "${name: &str} (${loader: &str} ${mc_version: &str})"
 fr = "${name: &str} (${loader: &str} ${mc_version: &str})"
 [instance.content.change_version.error_loading_versions]
 en = "Error loading versions"
+tr = "Sürümler yüklenirken hata oluştu"
+ru = "Ошибка загрузки версий"
+hu = "Hiba a verziók betöltésekor"
 [instance.content.change_version.error_loading_changelog]
 en = "Error loading changelog"
+tr = "Değişiklik günlüğü yüklenirken hata oluştu"
+ru = "Ошибка загрузки списка изменений"
+hu = "Hiba a változásjegyzék betöltésekor"
 [instance.content.change_version.show_incompatible]
 en = "Show incompatible"
+tr = "Uyumsuz sürümleri göster"
+hu = "Nem kompatibilisek megjelenítése"
 ru = "Показать несовместимые"
 [instance.content.change_version.changelog]
 en = "Changelog"
+tr = "Değişiklik günlüğü"
+hu = "Változásjegyzék"
 ru = "Список изменений"
 [instance.content.change_version.loading_changelog]
 en = "Loading changelog..."
+tr = "Değişiklik günlüğü yükleniyor..."
+hu = "Változásjegyzék betöltése..."
 ru = "Загрузка списка изменений..."
 [instance.content.change_version.no_changelog]
 en = "No changelog"
+tr = "Değişiklik günlüğü yok"
+hu = "Nincs változásjegyzék"
 ru = "Нет списка изменений"
 [instance.content.change_version.update_to]
 en = "Update to ${version: &str}"
+tr = "${version: &str} sürümüne güncelle"
+hu = "Frissítés ${version: &str} verzióra"
 ru = "Обновить до ${version: &str}"
 [instance.content.change_version.downgrade_to]
 en = "Downgrade to ${version: &str}"
+tr = "${version: &str} sürümüne geri dön"
+hu = "Verzió váltása erre: ${version: &str}"
 ru = "Откатить до ${version: &str}"
 [instance.content.unzip.tooltip]
 en = "Unzip Modpack"
@@ -4244,9 +4309,15 @@ fr = "Paramètres"
 it = "Impostazioni"
 [settings.loading]
 en = "Loading settings..."
+tr = "Ayarlar yükleniyor..."
+ru = "Загрузка настроек..."
+hu = "Beállítások betöltése..."
 
 [settings.general]
 en = "General"
+tr = "Genel"
+ru = "Общие настройки"
+hu = "Általános"
 
 [settings.general.general.language]
 en = "Language"
@@ -4257,6 +4328,9 @@ hu = "Nyelv"
 ru = "Язык"
 fr = "Langue"
 it = "Lingua"
+[settings.general.general.language_desc]
+en = "Pandora Launcher interface language"
+ru = "Язык интерфейса Pandora Launcher"
 [settings.general.general.language.system]
 en = "System language"
 tr = "Sistem dili"
@@ -4268,12 +4342,24 @@ fr = "Langue du système"
 it = "Lingua di sistema"
 [settings.general.general.quick_delete_mods]
 en = "Quick delete mods"
+tr = "Modları hızlı sil"
+ru = "Быстрое удаление модов"
+hu = "Modok gyors törlése"
 [settings.general.general.quick_delete_mods_desc]
 en = "Shift+Click the delete mod button to skip the confirmation"
+tr = "Onayı atlamak için Shift tuşunu basılı tutarak mod silme düğmesine tıklayın"
+ru = "Удерживайте Shift при удалении мода, чтобы пропустить подтверждение"
+hu = "Shift+Katt a mod törlése gombra, hogy átlépd a megerősítést"
 [settings.general.general.quick_delete_instance]
 en = "Quick delete instance"
+tr = "Profili hızlı sil"
+ru = "Быстрое удаление экземпляра"
+hu = "Példány gyors törlése"
 [settings.general.general.quick_delete_instance_desc]
 en = "Shift+Click the delete instance button to skip the confirmation"
+tr = "Onayı atlamak için Shift tuşunu basılı tutarak profil silme düğmesine tıklayın"
+ru = "Удерживайте Shift при удалении экземпляра, чтобы пропустить подтверждение"
+hu = "Shift+Katt a példány törlése gombra, hogy átlépd a megerősítést"
 [settings.general.general.show_quickplay_page]
 en = "Show quickplay page"
 [settings.general.general.show_quickplay_page_desc]
@@ -4283,10 +4369,13 @@ en = "Live game output display"
 tr = "Canlı oyun çıktısı görünümü"
 de = "Live-Anzeige der Spielausgabe"
 hu = "Élő játék kimenet stílusa"
-ru = "Показ логов в реальном времени"
+ru = "Отображение логов в реальном времени"
 it = "Visualizzazione dell'output del gioco in tempo reale"
 [settings.general.general.live_game_output_display_desc]
 en = "Where to display the game's live log output"
+tr = "Oyunun canlı günlük çıktısının nerede gösterileceği"
+ru = "Где показывать логи игры в реальном времени"
+hu = "Hol jelenjen meg a játék élő kimenete"
 [settings.general.general.live_game_output_display.tab_on_instance_page]
 en = "Tab on Instance Page"
 tr = "Profil Sayfasında Sekme"
@@ -4331,6 +4420,9 @@ fr = "Masquer les noms d'utilisateur"
 it = "Nascondi i nomi utente"
 [settings.general.privacy.hide_usernames_desc]
 en = "Hide usernames in the launcher"
+tr = "Başlatıcıdaki kullanıcı adlarını gizle"
+ru = "Скрывать имена пользователей в лаунчере"
+hu = "Felhasználónevek elrejtése az indítóban"
 [settings.general.privacy.hide_skins]
 en = "Hide skins"
 tr = "Dış görünüşleri gizle"
@@ -4343,6 +4435,9 @@ fr = "Masquer les skins"
 it = "Nascondi le skin"
 [settings.general.privacy.hide_skins_desc]
 en = "Hide skins in the launcher"
+tr = "Başlatıcıdaki dış görünüşleri gizle"
+ru = "Скрывать скины в лаунчере"
+hu = "Kinézetek elrejtése az indítóban"
 [settings.general.privacy.hide_server_addresses]
 en = "Hide server addresses"
 tr = "Sunucu adreslerini gizle"
@@ -4355,9 +4450,15 @@ fr = "Masquer les adresses des serveurs"
 it = "Nascondi gli indirizzi dei server"
 [settings.general.privacy.hide_server_addresses_desc]
 en = "Hide server addresses in the launcher"
+tr = "Başlatıcıdaki sunucu adreslerini gizle"
+ru = "Скрывать адреса серверов в лаунчере"
+hu = "Szerver IP-címek elrejtése az indítóban"
 
 [settings.appearance]
 en = "Appearance"
+tr = "Görünüm"
+ru = "Внешний вид"
+hu = "Megjelenés"
 [settings.appearance.theme]
 en = "Theme"
 tr = "Tema"
@@ -4370,8 +4471,14 @@ fr = "Thème"
 it = "Tema"
 [settings.appearance.theme.base_theme]
 en = "Base theme"
+tr = "Temel tema"
+ru = "Тема"
+hu = "Alap téma"
 [settings.appearance.theme.base_theme_desc]
 en = "Base colour scheme and other properties"
+tr = "Temel renk şeması ve diğer özellikler"
+ru = "Цветовая схема и другие свойства"
+hu = "Alap színösszeállítás és más tulajdonságok"
 [settings.appearance.theme.open_theme_folder]
 en = "Open theme folder"
 tr = "Tema klasörünü aç"
@@ -4384,16 +4491,34 @@ fr = "Ouvrir le dossier Thèmes"
 it = "Apri la cartella dei temi"
 [settings.appearance.theme.open_theme_folder_desc]
 en = "Put custom theme.json files here"
+tr = "Özel theme.json dosyalarını buraya yerleştirin"
+ru = "Поместите свои файлы theme.json в эту папку"
+hu = "Ide rakd az egyedi theme.json fájlokat"
 [settings.appearance.theme.font]
 en = "Font"
+tr = "Yazı tipi"
+ru = "Шрифт"
+hu = "Betűtípus"
 [settings.appearance.theme.font_desc]
 en = "Font family name"
+tr = "Yazı tipi adı"
+ru = "Семейство шрифтов"
+hu = "Betűcsalád neve"
 [settings.appearance.theme.font_size]
 en = "Font size"
+tr = "Yazı tipi boyutu"
+ru = "Размер шрифта"
+hu = "Betűméret"
 [settings.appearance.theme.font_size_desc]
 en = "Font size (8 to 32)"
+tr = "Yazı tipi boyutu (8 ile 32 arasında)"
+ru = "Размер шрифта (от 8 до 32)"
+hu = "Betűméret (8-tól 32-ig)"
 [settings.appearance.window]
 en = "Window"
+tr = "Pencere"
+ru = "Окно"
+hu = "Ablak"
 [settings.appearance.window.use_os_titlebar]
 en = "Use OS titlebar"
 tr = "İşletim sistemi başlık çubuğunu kullan"
@@ -4406,6 +4531,9 @@ fr = "Utiliser la barre de titre du système d'exploitation"
 it = "Usa la barra del titolo del sistema operativo"
 [settings.appearance.window.use_os_titlebar_desc]
 en = "Use the default operating system titlebar instead of the custom titlebar (requires restart!)"
+tr = "Özel başlık çubuğu yerine işletim sisteminin varsayılan başlık çubuğunu kullan (yeniden başlatma gerekir!)"
+ru = "Использовать стандартный заголовок окна, предоставляемый операционной системой (требуется перезапуск!)"
+hu = "Az alap oprendszer-címsor használata az egyedi helyett (újraindítás szükséges!)"
 [settings.appearance.window.hide_main_window]
 en = "Hide main window on launch"
 tr = "Başlatırken ana pencereyi gizle"
@@ -4413,15 +4541,59 @@ pl = "Ukryj główne okno przy uruchomieniu"
 de = "Verstecke Hauptfenster beim Start"
 hu = "Fő ablak elrejtése a játék indításakor"
 sv = "Göm huvudfönstret vid spelstart"
-ru = "Скрывать главное окно при запуске"
+ru = "Скрывать главное окно при запуске Minecraft"
 fr = "Masquer la fenêtre principale au démarrage"
 it = "Nascondi la finestra principale all'avvio"
 [settings.appearance.window.hide_main_window_desc]
 en = "Hide the main Pandora Launcher window when the game is launched, and reopen the window after the game is closed"
+tr = "Oyun başlatıldığında ana Pandora Launcher penceresini gizle ve oyun kapatıldıktan sonra pencereyi yeniden aç"
+ru = "Скрывать главное окно Pandora Launcher при запуске игры и снова показывать после её закрытия"
+hu = "A fő Pandora Launcher ablak elrejtése a játék indulásakor, majd megjelenítése a játék bezárása után"
 [settings.appearance.window.quit_when_main_window_closed]
 en = "Quit when main window closed"
+tr = "Ana pencere kapatıldığında çık"
+ru = "Выходить при закрытии главного окна"
+hu = "Kilépés a fő ablak bezárásakor"
 [settings.appearance.window.quit_when_main_window_closed_desc]
 en = "Close all other windows when the main Pandora Launcher window is closed"
+tr = "Ana Pandora Launcher penceresi kapatıldığında diğer tüm pencereleri kapat"
+ru = "Закрывать все остальные окна при закрытии главного окна Pandora Launcher"
+hu = "Minden másik ablak bezárása a fő Pandora Launcher ablak bezárásakor"
+
+[settings.java]
+en = "Java"
+[settings.java.defaults]
+en = "Launch Defaults"
+[settings.java.defaults.enable_memory]
+en = "Default Memory"
+[settings.java.defaults.enable_memory_desc]
+en = "Default memory limits for instances"
+[settings.java.defaults.memory_min]
+en = "Minimum Memory"
+[settings.java.defaults.memory_min_desc]
+en = "Default minimum memory in MiB"
+[settings.java.defaults.memory_max]
+en = "Maximum Memory"
+[settings.java.defaults.memory_max_desc]
+en = "Default maximum memory in MiB"
+[settings.java.defaults.enable_jvm_flags]
+en = "Default JVM Flags"
+[settings.java.defaults.enable_jvm_flags_desc]
+en = "Apply default JVM flags to instances"
+[settings.java.defaults.jvm_flags]
+en = "JVM Flags"
+[settings.java.defaults.jvm_flags_desc]
+en = "Default JVM flags to apply to every instance"
+[settings.java.defaults.enable_jvm_binary]
+en = "Default JVM Binary"
+[settings.java.defaults.enable_jvm_binary_desc]
+en = "Default JVM binary for instances"
+[settings.java.defaults.jvm_binary]
+en = "JVM Binary"
+[settings.java.defaults.jvm_binary_desc]
+en = "Path to the default Java executable"
+[settings.java.defaults.select_jvm_binary]
+en = "Select JVM Binary"
 
 [settings.network]
 en = "Network"
@@ -4435,6 +4607,9 @@ fr = "Réseau"
 it = "Rete"
 [settings.network.launcher_proxy]
 en = "Launcher Proxy"
+tr = "Başlatıcı Vekil Sunucusu"
+ru = "Прокси для лаунчера"
+hu = "Indító proxy"
 [settings.network.launcher_proxy.enable_proxy]
 en = "Enable Proxy"
 tr = "Vekil Sunucuyu Etkinleştir"
@@ -4447,6 +4622,9 @@ fr = "Activer le proxy"
 it = "Attiva il proxy"
 [settings.network.launcher_proxy.enable_proxy_desc]
 en = "Whether to enable proxying (note: only applies to the launcher's network requests, not the game)"
+tr = "Vekil sunucu kullanımını etkinleştir (yalnızca başlatıcının ağ istekleri için geçerlidir, oyunu etkilemez)"
+ru = "Включить использование прокси (примечание: применяется только к лаунчеру, а не к самой игре)"
+hu = "Használjon e proxyt (megjegyzés: csak az indító hálózati kéréseire hat, nem a játékra)"
 [settings.network.launcher_proxy.protocol]
 en = "Protocol"
 tr = "Protokol"
@@ -4459,6 +4637,9 @@ fr = "Protocole"
 it = "Protocollo"
 [settings.network.launcher_proxy.protocol_desc]
 en = "Proxy protocol (HTTP, HTTPS or SOCKS5)"
+tr = "Vekil sunucu protokolü (HTTP, HTTPS veya SOCKS5)"
+ru = "Протокол прокси (HTTP, HTTPS или SOCKS5)"
+hu = "Proxy protokoll (HTTP, HTTPS vagy SOCKS5)"
 [settings.network.launcher_proxy.host]
 en = "Host"
 tr = "Ana Makine"
@@ -4471,6 +4652,9 @@ fr = "Hôte"
 it = "Host"
 [settings.network.launcher_proxy.host_desc]
 en = "Proxy host (e.g. proxy.exaple.com)"
+tr = "Vekil sunucu adresi (ör. proxy.example.com)"
+ru = "Адрес прокси (например, proxy.example.com)"
+hu = "Proxy kiszolgáló (pl.: proxy.példa.com)"
 [settings.network.launcher_proxy.port]
 en = "Port"
 tr = "Bağlantı Noktası"
@@ -4483,6 +4667,9 @@ fr = "Port"
 it = "Port"
 [settings.network.launcher_proxy.port_desc]
 en = "Proxy port (e.g. 8080)"
+tr = "Vekil sunucu bağlantı noktası (ör. 8080)"
+ru = "Порт прокси (например, 8080)"
+hu = "Proxy port (pl.: 8080)"
 [settings.network.launcher_proxy.use_auth]
 en = "Use Authentication"
 tr = "Kimlik Doğrulama Kullan"
@@ -4495,6 +4682,9 @@ fr = "Utiliser l'authentification"
 it = "Usa l'autentificazione"
 [settings.network.launcher_proxy.use_auth_desc]
 en = "Whether to use username/password authentication for the proxy"
+tr = "Vekil sunucu için kullanıcı adı ve parola ile kimlik doğrulamayı kullan"
+ru = "Аутентификация по имени пользователя и паролю для прокси"
+hu = "Használjon e felhasználónév/jelszó hitelesítést a proxyhoz"
 [settings.network.launcher_proxy.username]
 en = "Username"
 tr = "Kullanıcı Adı"
@@ -4507,6 +4697,9 @@ fr = "Nom d'utilisateur"
 it = "Nome utente"
 [settings.network.launcher_proxy.username_desc]
 en = "Proxy username (when authentication enabled)"
+tr = "Vekil sunucu kullanıcı adı (kimlik doğrulama etkin olduğunda)"
+ru = "Имя пользователя прокси (при включённой аутентификации)"
+hu = "Proxy felhasználónév (ha bevan kapcsolva a hitelesítés)"
 [settings.network.launcher_proxy.password]
 en = "Password"
 tr = "Parola"
@@ -4519,6 +4712,12 @@ fr = "Mot de passe"
 it = "Password"
 [settings.network.launcher_proxy.password_desc]
 en = "Proxy password (when authentication enabled)"
+tr = "Vekil sunucu parolası (kimlik doğrulama etkin olduğunda)"
+ru = "Пароль прокси (при включённой аутентификации)"
+hu = "Proxy jelszó (ha bevan kapcsolva a hitelesítés)"
+[settings.network.launcher_proxy.password_hidden]
+en = "(hidden)"
+ru = "(скрыт)"
 
 [skins.title]
 en = "Skins"
@@ -4630,6 +4829,7 @@ fr = "Animation"
 it = "Animazione"
 [skins.player_model.zoom]
 en = "Zoom: ${value: i32}%"
+tr = "Yakınlaştırma: %${value: i32}"
 pl = "Zoom: ${value: i32}%"
 de = "Zoom: ${value: i32}%"
 hu = "Zoom: ${value: i32}%"

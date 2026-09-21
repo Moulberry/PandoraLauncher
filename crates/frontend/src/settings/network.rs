@@ -273,7 +273,7 @@ fn create_proxy_password_widget() -> SettingItemWidget {
         let mut created = false;
         let state = window.use_keyed_state("proxy-password", cx, |window, cx| {
             created = true;
-            InputState::new(window, cx).masked(true).placeholder("(hidden)")
+            InputState::new(window, cx).masked(true).placeholder(t::settings::network::launcher_proxy::password_hidden())
         });
         let mut dirty = false;
         let mut empty = false;

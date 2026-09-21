@@ -2252,6 +2252,15 @@ impl LaunchContext {
 
             allow_read.push(java_path_parent_parent.into());
 
+            // Some java installations will contain symlinks to external folders (e.g. arch symlinks conf, legal and man)
+            for folder in ["bin", "conf", "demo", "include", "jmods", "legal", "lib", "man"] {
+                if let Ok(real_dir) =  java_path_parent_parent.join(folder).canonicalize()
+                    && !real_dir.starts_with(java_path_parent_parent)
+                {
+                    allow_read.push(real_dir.into());
+                }
+            }
+
             command.spawn_sandboxed(PandoraSandbox {
                 allow_read,
                 allow_write: vec![

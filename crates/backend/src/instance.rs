@@ -6,7 +6,7 @@ use anyhow::Context;
 use base64::Engine;
 use bridge::{
     instance::{
-        ContentFolder, ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
+        ContentFolder, ContentSummary, ContentUpdateContext, ContentUpdateStatus, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceScreenshotSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
     }, keep_alive::KeepAliveHandle, message::{BridgeDataLoadState, MessageToFrontend}, notify_signal::{KeepAliveNotifySignal, KeepAliveNotifySignalHandle},
 };
 use command::PandoraProcess;
@@ -47,6 +47,12 @@ pub struct Instance {
     dirty_servers: bool,
     pending_servers_load: Option<KeepAliveNotifySignalHandle>,
     servers: Option<Arc<[InstanceServerSummary]>>,
+
+    pub screenshots_path: Arc<Path>,
+    pub screenshots_state: BridgeDataLoadState,
+    dirty_screenshots: bool,
+    pending_screenshots_load: Option<KeepAliveNotifySignalHandle>,
+    screenshots: Option<Arc<[InstanceScreenshotSummary]>>,
 
     content_generation: usize,
 
@@ -145,6 +151,9 @@ impl Instance {
         self.saves_path = dot_minecraft_path.join("saves").into();
         self.mark_world_dirty(backend, FolderChanges::all_dirty(), true);
 
+        self.screenshots_path = dot_minecraft_path.join("screenshots").into();
+        self.mark_screenshots_dirty(backend, true);
+
         self.dot_minecraft_path = dot_minecraft_path.into();
     }
 
@@ -157,6 +166,11 @@ impl Instance {
 
         if self.worlds_state.is_not_unloaded() {
             file_watching.watch_filesystem(self.saves_path.clone(), WatchTarget::InstanceSavesDir { id: self.id });
+            watch_dot_minecraft = true;
+        }
+
+        if self.screenshots_state.is_not_unloaded() {
+            file_watching.watch_filesystem(self.screenshots_path.clone(), WatchTarget::InstanceScreenshotsDir { id: self.id });
             watch_dot_minecraft = true;
         }
 
@@ -178,6 +192,7 @@ impl Instance {
         }
         self.mark_servers_dirty(backend, reload);
         self.mark_world_dirty(backend, FolderChanges::all_dirty(), reload);
+        self.mark_screenshots_dirty(backend, reload);
     }
 
     pub fn try_get_content(&self, id: InstanceContentID) -> Option<(&InstanceContentSummary, ContentFolder)> {
@@ -516,6 +531,126 @@ impl Instance {
         result
     }
 
+    pub async fn load_screenshots(
+        backend: Arc<BackendState>,
+        id: InstanceID,
+    ) -> Option<Arc<[InstanceScreenshotSummary]>> {
+        Self::load_screenshots_inner(backend, id).await
+    }
+
+    fn load_screenshots_inner(
+        backend: Arc<BackendState>,
+        id: InstanceID,
+    ) -> futures::future::BoxFuture<'static, Option<Arc<[InstanceScreenshotSummary]>>> {
+        async move {
+            let mut await_pending: Option<KeepAliveNotifySignalHandle> = None;
+
+            let (future, keep_alive) = loop {
+                if let Some(pending) = await_pending {
+                    pending.await_notification().await;
+                }
+
+                let mut guard = backend.instance_state.write();
+                let this = guard.instances.get_mut(id)?;
+
+                if let Some(pending) = &this.pending_screenshots_load && !pending.is_notified() {
+                    await_pending = Some(pending.clone());
+                    continue;
+                }
+
+                let mut file_watching = backend.file_watching.write();
+                file_watching.watch_filesystem(this.dot_minecraft_path.clone(), WatchTarget::InstanceDotMinecraftDir {
+                    id: this.id,
+                });
+                file_watching.watch_filesystem(this.screenshots_path.clone(), WatchTarget::InstanceScreenshotsDir {
+                    id: this.id,
+                });
+
+                let future = if let Some(last) = &this.screenshots && !this.dirty_screenshots {
+                    return Some(last.clone());
+                } else {
+                    let screenshots_path = this.screenshots_path.clone();
+                    tokio::task::spawn_blocking(move || {
+                        Self::load_screenshots_all(&screenshots_path)
+                    })
+                };
+
+                let keep_alive = KeepAliveNotifySignal::new();
+                this.pending_screenshots_load = Some(keep_alive.create_handle());
+                this.screenshots_state.load_started();
+
+                this.dirty_screenshots = false;
+
+                break (future, keep_alive);
+            };
+
+            let screenshots = future.await.unwrap();
+
+            let mut guard = backend.instance_state.write();
+            let this = guard.instances.get_mut(id)?;
+
+            this.screenshots = Some(screenshots.clone());
+            this.screenshots_state.load_finished();
+            let should_load = this.screenshots_state.should_load();
+            drop(guard);
+
+            backend.send.send(MessageToFrontend::InstanceScreenshotsUpdated {
+                id,
+                screenshots: Arc::clone(&screenshots)
+            });
+
+            keep_alive.notify();
+            if should_load {
+                tokio::task::spawn(Self::load_screenshots_inner(backend, id));
+            }
+            Some(screenshots)
+        }.boxed()
+    }
+
+    // Screenshots are cheap to list, so any change just rescans the folder
+    fn load_screenshots_all(screenshots_path: &Path) -> Arc<[InstanceScreenshotSummary]> {
+        log::debug!("Loading screenshots from {:?}", screenshots_path);
+
+        let Ok(directory) = std::fs::read_dir(screenshots_path) else {
+            return Arc::from([]);
+        };
+
+        let mut screenshots = Vec::new();
+        for entry in directory.flatten() {
+            let path = entry.path();
+            let Some(filename) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let is_image = path.extension().and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("png") || ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("jpeg"));
+            if !is_image {
+                continue;
+            }
+            let Ok(metadata) = entry.metadata() else {
+                continue;
+            };
+            if !metadata.is_file() {
+                continue;
+            }
+            let modified_unix_ms = metadata.modified().ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_millis() as u64)
+                .unwrap_or(0);
+            screenshots.push(InstanceScreenshotSummary {
+                filename: filename.into(),
+                path: path.into(),
+                modified_unix_ms,
+            });
+        }
+
+        screenshots.sort_by(|a, b| {
+            b.modified_unix_ms.cmp(&a.modified_unix_ms)
+                .then_with(|| a.filename.cmp(&b.filename))
+        });
+
+        screenshots.into()
+    }
+
     pub async fn load_content(
         backend: Arc<BackendState>,
         id: InstanceID,
@@ -768,6 +903,7 @@ impl Instance {
 
         let saves_path = dot_minecraft_path.join("saves");
         let server_dat_path = dot_minecraft_path.join("servers.dat");
+        let screenshots_path = dot_minecraft_path.join("screenshots");
 
         let content_state = enum_map::EnumMap::from_fn(|content_type: ContentFolder| {
             ContentFolderState::new(dot_minecraft_path.join(content_type.folder_name()).into())
@@ -782,6 +918,7 @@ impl Instance {
             dot_minecraft_path: dot_minecraft_path.into(),
             server_dat_path: server_dat_path.into(),
             saves_path: saves_path.into(),
+            screenshots_path: screenshots_path.into(),
             name: path.file_name().unwrap().to_string_lossy().into_owned().into(),
             icon,
             configuration: instance_info,
@@ -801,6 +938,11 @@ impl Instance {
             dirty_servers: true,
             pending_servers_load: None,
             servers: None,
+
+            screenshots_state: BridgeDataLoadState::default(),
+            dirty_screenshots: true,
+            pending_screenshots_load: None,
+            screenshots: None,
 
             content_generation: 0,
 
@@ -831,6 +973,18 @@ impl Instance {
         self.servers_state.set_dirty();
         if reload && self.servers_state.should_load() {
             tokio::task::spawn(Self::load_servers_inner(backend.clone(), self.id));
+        }
+    }
+
+    pub fn mark_screenshots_dirty(&mut self, backend: &Arc<BackendState>, reload: bool) {
+        if self.dirty_screenshots {
+            return;
+        }
+        self.dirty_screenshots = true;
+
+        self.screenshots_state.set_dirty();
+        if reload && self.screenshots_state.should_load() {
+            tokio::task::spawn(Self::load_screenshots_inner(backend.clone(), self.id));
         }
     }
 

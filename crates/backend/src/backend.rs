@@ -211,6 +211,7 @@ pub enum WatchTarget {
     InstanceDotMinecraftDir { id: InstanceID },
     InstanceWorldDir { id: InstanceID },
     InstanceSavesDir { id: InstanceID },
+    InstanceScreenshotsDir { id: InstanceID },
     InstanceContentDir { id: InstanceID, folder: ContentFolder },
     SkinLibraryDir,
     ManualCurseForgeDownloadDirectory { session_id: usize },
@@ -432,6 +433,7 @@ impl BackendState {
                 playtime: instance.playtime(),
                 worlds_state: instance.worlds_state.clone(),
                 servers_state: instance.servers_state.clone(),
+                screenshots_state: instance.screenshots_state.clone(),
                 content_states: enum_map::EnumMap::from_fn(|folder| {
                     instance.content_state[folder].load_state.clone()
                 }),
@@ -1548,6 +1550,7 @@ impl BackendStateFileWatching {
             WatchTarget::InstanceDotMinecraftDir { id },
             WatchTarget::InstanceWorldDir { id },
             WatchTarget::InstanceSavesDir { id },
+            WatchTarget::InstanceScreenshotsDir { id },
         ];
         let content_folder_targets = ContentFolder::iter().map(|folder| {
             WatchTarget::InstanceContentDir { id, folder }

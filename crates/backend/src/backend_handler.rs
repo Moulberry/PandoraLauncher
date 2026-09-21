@@ -83,6 +83,25 @@ impl BackendState {
             MessageToBackend::RequestLoadServers { id } => {
                 tokio::task::spawn(Instance::load_servers(self.clone(), id));
             },
+            MessageToBackend::RequestLoadScreenshots { id } => {
+                tokio::task::spawn(Instance::load_screenshots(self.clone(), id));
+            },
+            MessageToBackend::DeleteScreenshots { id, path } => {
+                let mut instance_state = self.instance_state.write();
+                let Some(instance) = instance_state.instances.get_mut(id) else {
+                    self.send.send_error("Unable to find instance, unknown id");
+                    return;
+                };
+                if !path.starts_with(&*instance.screenshots_path) {
+                    self.send.send_error("Unable to delete screenshot, invalid path");
+                    return;
+                }
+
+                if let Err(err) = std::fs::remove_file(&path) {
+                    log::warn!("Unable to delete screenshot {:?}: {err}", path);
+                }
+                instance.mark_screenshots_dirty(self, true);
+            },
             MessageToBackend::ReorderServers { id, from_index, to_index } => {
                 tokio::task::spawn(Instance::reorder_servers(self.clone(), id, from_index, to_index));
             },

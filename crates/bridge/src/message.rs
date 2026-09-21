@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     account::Account, game_output::GameOutputLogLevel, import::{ImportFromOtherLauncherJob, OtherLauncher}, install::ContentInstall, instance::{
-        ContentFolder, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
+        ContentFolder, InstanceContentID, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceScreenshotSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary
     }, manual_download::{ManualCurseforgeDownloadRequest}, meta::{MetadataRequest, MetadataResult}, modal_action::ModalAction, notify_signal::KeepAliveNotifySignalHandle,
 };
 
@@ -166,6 +166,13 @@ pub enum MessageToBackend {
     },
     RequestLoadServers {
         id: InstanceID,
+    },
+    RequestLoadScreenshots {
+        id: InstanceID,
+    },
+    DeleteScreenshots {
+        id: InstanceID,
+        path: Arc<Path>,
     },
     ReorderServers {
         id: InstanceID,
@@ -349,6 +356,7 @@ pub enum MessageToFrontend {
         playtime: InstancePlaytime,
         worlds_state: BridgeDataLoadState,
         servers_state: BridgeDataLoadState,
+        screenshots_state: BridgeDataLoadState,
         content_states: enum_map::EnumMap<ContentFolder, BridgeDataLoadState>,
     },
     InstanceRemoved {
@@ -375,6 +383,10 @@ pub enum MessageToFrontend {
     InstanceServersUpdated {
         id: InstanceID,
         servers: Arc<[InstanceServerSummary]>,
+    },
+    InstanceScreenshotsUpdated {
+        id: InstanceID,
+        screenshots: Arc<[InstanceScreenshotSummary]>,
     },
     InstanceContentUpdated {
         id: InstanceID,

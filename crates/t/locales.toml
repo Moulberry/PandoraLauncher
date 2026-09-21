@@ -1782,6 +1782,10 @@ sv = "snabbspel"
 ru = "Быстрый запуск"
 fr = "Lancement rapide"
 it = "Lancio rapido"
+[instance.screenshots]
+en = "Screenshots"
+[instance.screenshots.empty]
+en = "No screenshots yet"
 [instance.quickplay.pinging]
 en = "Pinging..."
 tr = "Yoklanıyor..."

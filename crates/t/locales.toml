@@ -4465,6 +4465,20 @@ sv = "Tema"
 ru = "Тема оформления"
 fr = "Thème"
 it = "Tema"
+[settings.appearance.background_image]
+en = "Background image"
+[settings.appearance.background_image_desc]
+en = "Choose an image to blend with the current theme background"
+[settings.appearance.choose_image]
+en = "Choose image"
+[settings.appearance.change_image]
+en = "Change image"
+[settings.appearance.background_opacity]
+en = "Background opacity"
+[settings.appearance.background_opacity_desc]
+en = "Adjust the opacity of the background image"
+[settings.appearance.choose_background]
+en = "Choose background image"
 [settings.appearance.theme.base_theme]
 en = "Base theme"
 tr = "Temel tema"

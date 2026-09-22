@@ -61,6 +61,13 @@ pub struct InstanceWorldSummary {
 }
 
 #[derive(Debug, Clone)]
+pub struct InstanceScreenshotSummary {
+    pub filename: Arc<str>,
+    pub path: Arc<Path>,
+    pub modified_unix_ms: u64,
+}
+
+#[derive(Debug, Clone)]
 pub struct InstanceServerSummary {
     pub name: Arc<str>,
     pub ip: Arc<str>,

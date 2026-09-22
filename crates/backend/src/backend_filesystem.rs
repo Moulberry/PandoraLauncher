@@ -32,6 +32,7 @@ struct AfterDebounceEffects {
     content_changes: FxHashMap<(InstanceID, ContentFolder), FolderChanges>,
     world_changes: FxHashMap<InstanceID, FolderChanges>,
     server_dat_changes: FxHashSet<InstanceID>,
+    screenshot_changes: FxHashSet<InstanceID>,
 }
 
 impl BackendState {
@@ -43,6 +44,7 @@ impl BackendState {
                     content_changes: Default::default(),
                     world_changes: Default::default(),
                     server_dat_changes: Default::default(),
+                    screenshot_changes: Default::default(),
                 };
 
                 let mut last_event: Option<FilesystemEvent> = None;
@@ -81,6 +83,11 @@ impl BackendState {
                 for instance in after_debounce_effects.server_dat_changes {
                     if let Some(instance) = instances.instances.get_mut(instance) {
                         instance.mark_servers_dirty(self, true);
+                    }
+                }
+                for instance in after_debounce_effects.screenshot_changes {
+                    if let Some(instance) = instances.instances.get_mut(instance) {
+                        instance.mark_screenshots_dirty(self, true);
                     }
                 }
             },
@@ -230,6 +237,10 @@ impl BackendState {
                     .dirty_all();
                 true
             },
+            WatchTarget::InstanceScreenshotsDir { id } => {
+                after_debounce_effects.screenshot_changes.insert(id);
+                true
+            },
             WatchTarget::InstanceContentDir { id, folder } => {
                 after_debounce_effects.content_changes.entry((id, folder))
                     .or_insert_with(FolderChanges::no_changes)
@@ -369,6 +380,13 @@ impl BackendState {
                             }
                             return;
                         },
+                        "screenshots" => {
+                            after_debounce_effects.screenshot_changes.insert(id);
+                            if instance.screenshots_state.is_not_unloaded() {
+                                self.file_watching.write().watch_filesystem(path.clone(), WatchTarget::InstanceScreenshotsDir { id });
+                            }
+                            return;
+                        },
                         "servers.dat" => {
                             after_debounce_effects.server_dat_changes.insert(id);
                             return;
@@ -412,6 +430,9 @@ impl BackendState {
                 after_debounce_effects.world_changes.entry(id)
                     .or_insert_with(FolderChanges::no_changes)
                     .dirty_path(path.clone());
+            },
+            WatchTarget::InstanceScreenshotsDir { id } => {
+                after_debounce_effects.screenshot_changes.insert(id);
             },
             WatchTarget::InstanceContentDir { id, folder } => {
                 after_debounce_effects.content_changes.entry((id, folder))

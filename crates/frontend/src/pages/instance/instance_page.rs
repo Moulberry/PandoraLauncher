@@ -10,7 +10,7 @@ use gpui_component::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entity::{DataEntities, instance::InstanceEntry}, game_output::GameOutputRoot, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{content_subpage::InstanceContentSubpage, logs_subpage::InstanceLogsSubpage, quickplay_subpage::InstanceQuickplaySubpage, settings_subpage::InstanceSettingsSubpage}, page::Page}, root
+    entity::{DataEntities, instance::InstanceEntry}, game_output::GameOutputRoot, icon::PandoraIcon, interface_config::InterfaceConfig, pages::{instance::{content_subpage::InstanceContentSubpage, logs_subpage::InstanceLogsSubpage, quickplay_subpage::InstanceQuickplaySubpage, screenshots_subpage::InstanceScreenshotsSubpage, settings_subpage::InstanceSettingsSubpage}, page::Page}, root
 };
 
 use super::content_subpage::ContentType;
@@ -174,9 +174,10 @@ impl Render for InstancePage {
             InstanceSubpage::Logs(_) => 1,
             InstanceSubpage::Mods(_) => 2,
             InstanceSubpage::ResourcePacks(_) => 3,
-            InstanceSubpage::Shaders(_) => 4,
-            InstanceSubpage::Settings(_) => if show_shader_tab { 5 } else { 4 },
-            InstanceSubpage::LiveGameOutput(_) => if show_shader_tab { 6 } else { 5 },
+            InstanceSubpage::Screenshots(_) => 4,
+            InstanceSubpage::Shaders(_) => 5,
+            InstanceSubpage::Settings(_) => if show_shader_tab { 6 } else { 5 },
+            InstanceSubpage::LiveGameOutput(_) => if show_shader_tab { 7 } else { 6 },
         };
 
         v_flex()
@@ -190,6 +191,7 @@ impl Render for InstancePage {
                     .child(Tab::new().label(t::instance::logs::title()))
                     .child(Tab::new().label(t::instance::content::mods()))
                     .child(Tab::new().label(t::instance::content::resourcepacks()))
+                    .child(Tab::new().label(t::instance::screenshots()))
                     .when(show_shader_tab, |this| {
                         this.child(Tab::new().label(t::instance::content::shaders()))
                     })
@@ -203,12 +205,13 @@ impl Render for InstancePage {
                             1 => InstanceSubpageType::Logs,
                             2 => InstanceSubpageType::Mods,
                             3 => InstanceSubpageType::ResourcePacks,
-                            4 => if show_shader_tab {
+                            4 => InstanceSubpageType::Screenshots,
+                            5 => if show_shader_tab {
                                 InstanceSubpageType::Shaders
                             } else {
                                 InstanceSubpageType::Settings
                             },
-                            5 => {
+                            6 => {
                                 if show_shader_tab {
                                     InstanceSubpageType::Settings
                                 } else if show_live_game_output {
@@ -217,7 +220,7 @@ impl Render for InstancePage {
                                     return;
                                 }
                             },
-                            6 => {
+                            7 => {
                                 InstanceSubpageType::LiveGameOutput
                             },
                             _ => {
@@ -227,7 +230,7 @@ impl Render for InstancePage {
                         InterfaceConfig::get_mut(cx).instance_subpage = page_type;
                     })),
             )
-            .child(self.subpage.clone().into_any_element())
+            .child(v_flex().flex_1().min_h_0().size_full().child(self.subpage.clone().into_any_element()))
     }
 }
 
@@ -239,6 +242,7 @@ pub enum InstanceSubpageType {
     Logs,
     Mods,
     ResourcePacks,
+    Screenshots,
     Shaders,
     Settings,
     LiveGameOutput,
@@ -266,6 +270,9 @@ impl InstanceSubpageType {
             InstanceSubpageType::ResourcePacks => InstanceSubpage::ResourcePacks(cx.new(|cx| {
                 InstanceContentSubpage::new(instance, ContentType::ResourcePacks, data, backend_handle, window, cx)
             })),
+            InstanceSubpageType::Screenshots => InstanceSubpage::Screenshots(cx.new(|cx| {
+                InstanceScreenshotsSubpage::new(instance, data, window, cx)
+            })),
             InstanceSubpageType::Shaders => InstanceSubpage::Shaders(cx.new(|cx| {
                 InstanceContentSubpage::new(instance, ContentType::Shaders, data, backend_handle, window, cx)
             })),
@@ -289,6 +296,7 @@ pub enum InstanceSubpage {
     Logs(Entity<InstanceLogsSubpage>),
     Mods(Entity<InstanceContentSubpage>),
     ResourcePacks(Entity<InstanceContentSubpage>),
+    Screenshots(Entity<InstanceScreenshotsSubpage>),
     Shaders(Entity<InstanceContentSubpage>),
     Settings(Entity<InstanceSettingsSubpage>),
     LiveGameOutput(Entity<GameOutputRoot>),
@@ -301,6 +309,7 @@ impl InstanceSubpage {
             InstanceSubpage::Logs(_) => InstanceSubpageType::Logs,
             InstanceSubpage::Mods(_) => InstanceSubpageType::Mods,
             InstanceSubpage::ResourcePacks(_) => InstanceSubpageType::ResourcePacks,
+            InstanceSubpage::Screenshots(_) => InstanceSubpageType::Screenshots,
             InstanceSubpage::Shaders(_) => InstanceSubpageType::Shaders,
             InstanceSubpage::Settings(_) => InstanceSubpageType::Settings,
             InstanceSubpage::LiveGameOutput(_) => InstanceSubpageType::LiveGameOutput,
@@ -313,6 +322,7 @@ impl InstanceSubpage {
             Self::Logs(entity) => entity.into_any_element(),
             Self::Mods(entity) => entity.into_any_element(),
             Self::ResourcePacks(entity) => entity.into_any_element(),
+            Self::Screenshots(entity) => entity.into_any_element(),
             Self::Shaders(entity) => entity.into_any_element(),
             Self::Settings(entity) => entity.into_any_element(),
             Self::LiveGameOutput(entity) => entity.into_any_element(),

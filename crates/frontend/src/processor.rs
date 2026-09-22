@@ -66,6 +66,7 @@ impl Processor {
                 playtime,
                 worlds_state,
                 servers_state,
+                screenshots_state,
                 content_states
             } => {
                 InstanceEntries::add(
@@ -79,6 +80,7 @@ impl Processor {
                     playtime,
                     worlds_state,
                     servers_state,
+                    screenshots_state,
                     ContentStates::new(id, content_states, self.data.backend_handle.clone()),
                     cx,
                 );
@@ -135,6 +137,9 @@ impl Processor {
             },
             MessageToFrontend::InstanceServersUpdated { id, servers } => {
                 InstanceEntries::set_servers(&self.data.instances, id, servers, cx);
+            },
+            MessageToFrontend::InstanceScreenshotsUpdated { id, screenshots } => {
+                InstanceEntries::set_screenshots(&self.data.instances, id, screenshots, cx);
             },
             MessageToFrontend::InstanceContentUpdated { id, content_folder, content } => {
                 InstanceEntries::set_content(&self.data.instances, id, content_folder, content, cx);

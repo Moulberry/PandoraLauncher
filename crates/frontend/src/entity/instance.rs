@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use bridge::{
-    handle::BackendHandle, instance::{ContentFolder, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceServerSummary, InstanceStatus, InstanceWorldSummary}, message::{BridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
+    handle::BackendHandle, instance::{ContentFolder, InstanceContentSummary, InstanceID, InstancePlaytime, InstanceScreenshotSummary, InstanceServerSummary, InstanceStatus, InstanceWorldSummary}, message::{BridgeDataLoadState, MessageToBackend}, serial::AtomicOptionSerial
 };
 use gpui::{prelude::*, *};
 use gpui_component::select::SelectItem;
@@ -24,6 +24,7 @@ impl InstanceEntries {
         playtime: InstancePlaytime,
         worlds_state: BridgeDataLoadState,
         servers_state: BridgeDataLoadState,
+        screenshots_state: BridgeDataLoadState,
         content_states: ContentStates,
         cx: &mut App,
     ) {
@@ -42,6 +43,8 @@ impl InstanceEntries {
                 worlds: cx.new(|_| None),
                 servers_state,
                 servers: cx.new(|_| None),
+                screenshots_state,
+                screenshots: cx.new(|_| None),
                 content_states,
                 content: enum_map::EnumMap::from_fn(|_| cx.new(|_| None)),
                 live_game_output: None,
@@ -156,6 +159,24 @@ impl InstanceEntries {
         });
     }
 
+    pub fn set_screenshots(
+        entity: &Entity<Self>,
+        id: InstanceID,
+        screenshots: Arc<[InstanceScreenshotSummary]>,
+        cx: &mut App,
+    ) {
+        entity.update(cx, |entries, cx| {
+            if let Some(instance) = entries.entries.get_mut(&id) {
+                instance.update(cx, |instance, cx| {
+                    instance.screenshots.update(cx, |existing_screenshots, cx| {
+                        *existing_screenshots = Some(screenshots);
+                        cx.notify();
+                    })
+                });
+            }
+        });
+    }
+
     pub fn set_content(entity: &Entity<Self>, id: InstanceID, content_folder: ContentFolder, content: Arc<[InstanceContentSummary]>, cx: &mut App) {
         entity.update(cx, |entries, cx| {
             if let Some(instance) = entries.entries.get_mut(&id) {
@@ -208,6 +229,8 @@ pub struct InstanceEntry {
     pub worlds: Entity<Option<Arc<[InstanceWorldSummary]>>>,
     pub servers_state: BridgeDataLoadState,
     pub servers: Entity<Option<Arc<[InstanceServerSummary]>>>,
+    pub screenshots_state: BridgeDataLoadState,
+    pub screenshots: Entity<Option<Arc<[InstanceScreenshotSummary]>>>,
     pub content_states: ContentStates,
     pub content: enum_map::EnumMap<ContentFolder, Entity<Option<Arc<[InstanceContentSummary]>>>>,
     pub live_game_output: Option<Entity<crate::game_output::GameOutputRoot>>,

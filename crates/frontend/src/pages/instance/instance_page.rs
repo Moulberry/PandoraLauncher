@@ -230,7 +230,7 @@ impl Render for InstancePage {
                         InterfaceConfig::get_mut(cx).instance_subpage = page_type;
                     })),
             )
-            .child(div().flex_1().min_h_0().size_full().child(self.subpage.clone().into_any_element()))
+            .child(v_flex().flex_1().min_h_0().size_full().child(self.subpage.clone().into_any_element()))
     }
 }
 

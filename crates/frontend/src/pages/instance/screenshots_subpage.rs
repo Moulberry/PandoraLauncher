@@ -429,12 +429,15 @@ impl InstanceScreenshotsSubpage {
             .child(self.delete_button(id, &delete_path, "delete", cx));
 
         let body: AnyElement = if let Some(image) = image {
-            div()
+            h_flex()
                 .flex_1()
                 .min_h_0()
+                .size_full()
                 .p_4()
+                .items_center()
+                .justify_center()
                 .overflow_hidden()
-                .child(image.size_full().object_fit(ObjectFit::Contain))
+                .child(image.size_full().max_w_full().max_h_full().object_fit(ObjectFit::Contain))
                 .into_any_element()
         } else {
             v_flex()

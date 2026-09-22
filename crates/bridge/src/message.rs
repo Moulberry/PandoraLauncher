@@ -214,7 +214,7 @@ pub enum MessageToBackend {
     },
     UpdateContent {
         instance: InstanceID,
-        content_id: InstanceContentID,
+        content_ids: Vec<InstanceContentID>,
         modal_action: ModalAction,
     },
     UnzipModpack {

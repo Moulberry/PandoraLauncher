@@ -352,11 +352,11 @@ impl Render for InstanceContentSubpage {
                     .on_click({
                         cx.listener(move |page, _, window, cx| {
                             if let Some(content) = page.content.read(cx).clone() {
-                                for summary in content.iter() {
-                                    if summary.update.can_update(page.instance_loader, page.instance_version.as_str()) {
-                                        crate::root::update_single_mod(page.instance, summary.id, summary.filename_hash, &page.updating, &page.backend_handle, window, cx);
-                                    }
-                                }
+                                let mods = content.iter().filter_map(|summary| {
+                                    summary.update.can_update(page.instance_loader, page.instance_version.as_str())
+                                        .then_some((summary.id, summary.filename_hash))
+                                });
+                                crate::root::update_mods(page.instance, mods, &page.updating, &page.backend_handle, window, cx);
                                 page.content_list.update(cx, |_, cx| cx.notify());
                             }
                         })

@@ -262,11 +262,12 @@ impl ContentListDelegate {
 
                             let delegate = this.delegate_mut();
                             if delegate.is_selected(element_id) {
-                                for summary in &delegate.content {
-                                    if delegate.is_selected(summary.filename_hash) && summary.update.can_update(delegate.for_loader, delegate.for_version.as_str()) {
-                                        crate::root::update_single_mod(id, summary.id, summary.filename_hash, &updating, &backend_handle, window, cx);
-                                    }
-                                }
+                                let mods = delegate.content.iter().filter_map(|summary| {
+                                    (delegate.is_selected(summary.filename_hash)
+                                        && summary.update.can_update(delegate.for_loader, delegate.for_version.as_str()))
+                                        .then_some((summary.id, summary.filename_hash))
+                                });
+                                crate::root::update_mods(id, mods, &updating, &backend_handle, window, cx);
                                 delegate.selected.clear();
                                 delegate.selected_range.clear();
                                 delegate.last_clicked_non_range = None;

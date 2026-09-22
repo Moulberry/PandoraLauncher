@@ -348,32 +348,58 @@ pub fn start_update_check(
     modals::generic::show_modal(window, cx, title, t::instance::content::update::check::error().into(), modal_action);
 }
 
-pub fn update_single_mod(
+pub fn update_mods(
     instance: InstanceID,
-    mod_id: InstanceContentID,
-    hash: u64,
+    mods: impl IntoIterator<Item = (InstanceContentID, u64)>,
     updating: &Arc<Mutex<FxHashSet<u64>>>,
     backend_handle: &BackendHandle,
     window: &mut Window,
     cx: &mut App,
 ) {
-    let modal_action = ModalAction::default();
+    let mods: Vec<(InstanceContentID, u64)> = mods.into_iter().collect();
+    if mods.is_empty() {
+        return;
+    }
 
-    updating.lock().insert(hash);
+    let modal_action = ModalAction::default();
+    let filename_hashes: Vec<u64> = mods.iter().map(|(_, filename_hash)| *filename_hash).collect();
+    let content_ids: Vec<InstanceContentID> = mods.into_iter().map(|(content_id, _)| content_id).collect();
+
+    {
+        let mut updating = updating.lock();
+        for filename_hash in &filename_hashes {
+            updating.insert(*filename_hash);
+        }
+    }
     modal_action.add_finish_effect({
         let updating = updating.clone();
         move || {
-            updating.lock().remove(&hash);
+            let mut updating = updating.lock();
+            for filename_hash in filename_hashes {
+                updating.remove(&filename_hash);
+            }
         }
     });
 
     backend_handle.send(MessageToBackend::UpdateContent {
         instance,
-        content_id: mod_id,
+        content_ids,
         modal_action: modal_action.clone(),
     });
 
     modals::generic::show_notification(window, cx, t::instance::content::update::download::error().into(), modal_action);
+}
+
+pub fn update_single_mod(
+    instance: InstanceID,
+    mod_id: InstanceContentID,
+    filename_hash: u64,
+    updating: &Arc<Mutex<FxHashSet<u64>>>,
+    backend_handle: &BackendHandle,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    update_mods(instance, [(mod_id, filename_hash)], updating, backend_handle, window, cx);
 }
 
 pub fn upload_log_file(

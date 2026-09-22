@@ -1,4 +1,4 @@
-use std::{path::Path, sync::{Arc, atomic::AtomicBool}};
+use std::{path::{Path, PathBuf}, sync::{Arc, atomic::AtomicBool}};
 
 use parking_lot::Mutex;
 
@@ -10,7 +10,7 @@ use bridge::{
     modal_action::ModalAction,
 };
 use gpui::{prelude::*, *};
-use gpui_component::{Root, Theme, scroll::ScrollableElement, v_flex};
+use gpui_component::{ActiveTheme, Root, Theme, scroll::ScrollableElement, v_flex};
 use rustc_hash::FxHashSet;
 use schema::quickplay::QuickplayPreset;
 use ustr::Ustr;
@@ -82,7 +82,8 @@ impl Render for LauncherRoot {
         let dialog_layer = Root::render_dialog_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
 
-        v_flex()
+        let config = InterfaceConfig::get(cx);
+        let content = v_flex()
             .size_full()
             .child(self.ui.clone())
             .children(sheet_layer)
@@ -130,7 +131,24 @@ impl Render for LauncherRoot {
                     });
                 }
             })
-            .into_any_element()
+            .into_any_element();
+
+        if let Some(path) = config.background_image.as_deref() {
+            let image = img(ImageSource::from(PathBuf::from(path)))
+                .size_full()
+                .absolute()
+                .inset_0()
+                .object_fit(ObjectFit::Cover)
+                .opacity(config.background_opacity as f32 / 100.0);
+            v_flex()
+                .relative()
+                .size_full()
+                .child(image)
+                .child(v_flex().size_full().absolute().inset_0().bg(cx.theme().background.opacity(0.66)).child(content))
+                .into_any_element()
+        } else {
+            content
+        }
     }
 }
 

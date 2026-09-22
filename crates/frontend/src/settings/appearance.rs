@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use gpui::*;
-use gpui_component::{ActiveTheme, ThemeRegistry, button::{Button, ButtonVariants}, select::{Select, SelectEvent}};
+use gpui_component::{ActiveTheme, ThemeRegistry, button::{Button, ButtonVariants}, select::{Select, SelectEvent}, slider::{Slider, SliderEvent, SliderState}, h_flex};
 
 use crate::{component::named_dropdown::{DropdownName, NamedDropdownItem, SearchableNamedDropdown}, entity::DataEntities, icon::PandoraIcon, interface_config::InterfaceConfig, settings::{SettingGroup, SettingItem, SettingItemWidget, SettingPage}};
 
@@ -31,6 +31,53 @@ pub(super) fn create_page(data: &DataEntities, window: &mut Window, cx: &mut App
                                     }
                                 }).into_any_element()
                             }
+                        })),
+                        ..Default::default()
+                    },
+                    SettingItem {
+                        title: t::settings::appearance::background_image,
+                        description: t::settings::appearance::background_image_desc,
+                        widget: SettingItemWidget::Any(Rc::new(|_window, cx| {
+                            let has_background = InterfaceConfig::get(cx).background_image.is_some();
+                            let choose = Button::new("choose-background")
+                                .icon(PandoraIcon::Image)
+                                .label(if has_background { t::settings::appearance::change_image() } else { t::settings::appearance::choose_image() })
+                                .on_click(cx.listener(|root, _, window, cx| {
+                                    root.select_file(t::settings::appearance::choose_background(), |_, path, cx| {
+                                        InterfaceConfig::get_mut(cx).background_image = path.map(|path| path.to_string_lossy().into_owned());
+                                        cx.refresh_windows();
+                                    }, window, cx);
+                                }));
+                            let controls = h_flex().gap_2();
+                            let controls = if has_background {
+                                let clear = Button::new("clear-background").label("×").danger().on_click(cx.listener(|_, _, _, cx| {
+                                    InterfaceConfig::get_mut(cx).background_image = None;
+                                    cx.refresh_windows();
+                                }));
+                                controls.child(choose).child(clear)
+                            } else {
+                                controls.child(choose)
+                            };
+                            controls.into_any_element()
+                        })),
+                        ..Default::default()
+                    },
+                    SettingItem {
+                        title: t::settings::appearance::background_opacity,
+                        description: t::settings::appearance::background_opacity_desc,
+                        widget: SettingItemWidget::Any(Rc::new(|window, cx| {
+                            let opacity = InterfaceConfig::get(cx).background_opacity as f32;
+                            let enabled = InterfaceConfig::get(cx).background_image.is_some();
+                            let state = window.use_keyed_state("background-opacity", cx, move |_, _| {
+                                SliderState::new().min(0.0).max(100.0).step(1.0).default_value(opacity)
+                            });
+                            cx.subscribe_in(&state, window, |_, _, event: &SliderEvent, _, cx| {
+                                if let SliderEvent::Change(gpui_component::slider::SliderValue::Single(value)) = event {
+                                    InterfaceConfig::get_mut(cx).background_opacity = *value as i32;
+                                    cx.refresh_windows();
+                                }
+                            }).detach();
+                            Slider::new(&state).w_32().px_2().disabled(!enabled).opacity(if enabled { 1.0 } else { 0.33 }).into_any_element()
                         })),
                         ..Default::default()
                     },

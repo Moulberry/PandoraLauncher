@@ -440,9 +440,9 @@ impl Render for LauncherUI {
             }
         }
 
-        let (page_type, show_skins, iconized_sidebar, show_sidebar_icons, show_quickplay_page) = {
+        let (page_type, show_skins, iconized_sidebar, show_sidebar_icons, show_quickplay_page, has_background) = {
             let config = InterfaceConfig::get(cx);
-            (config.main_page.clone(), !config.hide_skins, config.sidebar_width == ICONIZED_SIDEBAR_WIDTH, config.show_sidebar_icons, config.show_quickplay_page)
+            (config.main_page.clone(), !config.hide_skins, config.sidebar_width == ICONIZED_SIDEBAR_WIDTH, config.show_sidebar_icons, config.show_quickplay_page, config.background_image.is_some())
         };
 
         let page_groups: &[(&'static str, &[(bool, &'static str, PandoraIcon, PageType)])] = &[
@@ -772,7 +772,7 @@ impl Render for LauncherUI {
             .size_full()
             .min_size_full()
             .max_size_full()
-            .bg(cx.theme().sidebar)
+            .bg(if has_background { cx.theme().sidebar.opacity(0.66) } else { cx.theme().sidebar })
             .text_color(cx.theme().sidebar_foreground)
             .child(header)
             .child(sidebar_pages)

@@ -29,6 +29,10 @@ pub struct InterfaceConfig {
     pub font_family: Option<SharedString>,
     #[serde(default, skip_serializing_if = "schema::skip_if_none", deserialize_with = "schema::try_deserialize")]
     pub font_size: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "schema::try_deserialize")]
+    pub background_image: Option<String>,
+    #[serde(default = "default_background_opacity", deserialize_with = "schema::try_deserialize")]
+    pub background_opacity: i32,
 
     // Window state
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -269,6 +273,8 @@ impl Default for InterfaceConfig {
             active_theme: Default::default(),
             font_family: None,
             font_size: None,
+            background_image: None,
+            background_opacity: default_background_opacity(),
             main_window_bounds: Default::default(),
             main_page: Default::default(),
             page_path: Default::default(),
@@ -308,6 +314,10 @@ impl Default for InterfaceConfig {
             quickplay_minecraft_version: None,
         }
     }
+}
+
+fn default_background_opacity() -> i32 {
+    35
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

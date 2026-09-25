@@ -1,4 +1,4 @@
-use std::{ffi::{OsStr, OsString}, io::Write, path::Path, sync::Arc};
+use std::{ffi::{OsStr, OsString}, io::Write, path::{Path, PathBuf}, sync::Arc};
 
 use bridge::{
     install::{ContentDownload, ContentInstall, ContentInstallFile, ContentInstallPath, InstallTarget}, instance::{ContentFolder, ContentSummary, ContentType, ModpackFileSource}, manual_download::ManualCurseforgeDownload, modal_action::{ModalAction, ProgressTrackerFinishType}, safe_path::SafePath
@@ -184,7 +184,7 @@ impl BackendState {
         }
 
         let mut dot_minecraft_dir = None;
-        let mut instance_running = false;
+        let mut original_mods_dir: Option<PathBuf> = None;
 
         let loader = content.loader;
         let minecraft_version = content.minecraft_version;
@@ -206,7 +206,9 @@ impl BackendState {
         if let bridge::install::InstallTarget::Instance(instance_id) = content.target {
             let mut instance_state = self.instance_state.write();
             if let Some(instance) = instance_state.instances.get_mut(instance_id) {
-                instance_running = !instance.processes.is_empty();
+                if instance.frozen_mods_folder {
+                    original_mods_dir = Some(instance.root_path.join("original_mods"));
+                }
 
                 if instance.configuration.get().loader == Loader::Vanilla {
                     instance.configuration.modify(|config| {
@@ -223,7 +225,6 @@ impl BackendState {
 
         if let Some(dot_minecraft_dir) = dot_minecraft_dir {
             let mods_dir = dot_minecraft_dir.join("mods");
-            let mut cannot_modify_while_running = false;
 
             for install in files {
                 let Some(install_path) = install.install_path else {
@@ -233,10 +234,15 @@ impl BackendState {
 
                 let target_path = dot_minecraft_dir.join(&install_path);
 
-                if instance_running && target_path.starts_with(&mods_dir) {
-                    cannot_modify_while_running = true;
-                    continue;
-                }
+                let target_path = if let Some(ref orig) = original_mods_dir {
+                    if let Ok(rel) = target_path.strip_prefix(&mods_dir) {
+                        orig.join(rel)
+                    } else {
+                        target_path
+                    }
+                } else {
+                    target_path
+                };
 
                 let _ = std::fs::create_dir_all(target_path.parent().unwrap());
 
@@ -259,10 +265,6 @@ impl BackendState {
                         modal_action.set_finished_with_error(Arc::from(message.as_str()));
                     },
                 }
-            }
-
-            if cannot_modify_while_running {
-                self.send.send_warning("Cannot modify mods folder while instance is running");
             }
         }
 

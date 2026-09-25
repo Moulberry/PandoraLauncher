@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::{BufRead, Read}, sync::{Arc, atomic::Ordering}, time::{Duration, Instant, SystemTime}};
+use std::{borrow::Cow, collections::HashSet, io::{BufRead, Read}, sync::{Arc, atomic::Ordering}, time::{Duration, Instant, SystemTime}};
 
 use auth::{credentials::AccountCredentials, models::MinecraftAccessToken, secret::PlatformSecretStorage};
 use bridge::{
@@ -347,7 +347,11 @@ impl BackendState {
                     return;
                 };
 
-                let mut cannot_modify_while_running = false;
+                let original_mods_dir = instance.frozen_mods_folder.then(|| instance.root_path.join("original_mods"));
+                let mods_dir = instance.content_state[ContentFolder::Mods].path.clone();
+
+                let mut mods_changed = false;
+                let mut other_changed_folders = HashSet::new();
 
                 for mod_id in mod_ids {
                     if let Some((instance_mod, folder)) = instance.try_get_content(mod_id) {
@@ -355,24 +359,41 @@ impl BackendState {
                             continue;
                         }
 
-                        if folder == ContentFolder::Mods && !instance.processes.is_empty() {
-                            cannot_modify_while_running = true;
-                            continue;
-                        }
-
-                        let mut new_path = instance_mod.path.to_path_buf();
+                        let current_path = if folder == ContentFolder::Mods {
+                            if let Some(ref orig) = original_mods_dir {
+                                if let Ok(rel) = instance_mod.path.strip_prefix(&mods_dir) {
+                                    orig.join(rel)
+                                } else {
+                                    instance_mod.path.to_path_buf()
+                                }
+                            } else {
+                                instance_mod.path.to_path_buf()
+                            }
+                        } else {
+                            instance_mod.path.to_path_buf()
+                        };
+                        let mut new_path = current_path.clone();
                         if instance_mod.enabled {
                             new_path.add_extension("disabled");
                         } else {
                             new_path.set_extension("");
                         };
 
-                        let _ = std::fs::rename(&instance_mod.path, new_path);
+                        if std::fs::rename(&current_path, new_path).is_ok() {
+                            if folder == ContentFolder::Mods {
+                                mods_changed = true;
+                            } else {
+                                other_changed_folders.insert(folder);
+                            }
+                        }
                     }
                 }
 
-                if cannot_modify_while_running {
-                    self.send.send_warning("Cannot modify mods folder while instance is running");
+                if mods_changed {
+                    instance.mark_content_dirty(self, ContentFolder::Mods, FolderChanges::all_dirty(), true);
+                }
+                for folder in other_changed_folders {
+                    instance.mark_content_dirty(self, folder, FolderChanges::all_dirty(), true);
                 }
             },
             MessageToBackend::SetContentChildEnabled { id, content_id: mod_id, child_id, child_name, child_filename, disabled_default, enabled } => {
@@ -380,14 +401,26 @@ impl BackendState {
                 if let Some(instance) = instance_state.instances.get_mut(id)
                     && let Some((instance_mod, folder)) = instance.try_get_content(mod_id)
                 {
-                    let Some(aux_path) = crate::fs::pandora_aux_path_for_content(instance_mod) else {
-                        return;
+                    let aux_path = if folder == ContentFolder::Mods && instance.frozen_mods_folder {
+                        let mods_dir = &instance.content_state[ContentFolder::Mods].path;
+                        let original_mods_dir = instance.root_path.join("original_mods");
+                        let remapped_mod_path = instance_mod.path
+                            .strip_prefix(mods_dir)
+                            .ok()
+                            .map(|rel| original_mods_dir.join(rel))
+                            .map(std::sync::Arc::from)
+                            .unwrap_or_else(|| instance_mod.path.clone());
+
+                        let mut remapped = instance_mod.clone();
+                        remapped.path = remapped_mod_path;
+                        crate::fs::pandora_aux_path_for_content(&remapped)
+                    } else {
+                        crate::fs::pandora_aux_path_for_content(instance_mod)
                     };
 
-                    if folder == ContentFolder::Mods && !instance.processes.is_empty() {
-                        self.send.send_warning("Cannot modify mods folder while instance is running");
+                    let Some(aux_path) = aux_path else {
                         return;
-                    }
+                    };
 
                     let mut aux: AuxiliaryContentMeta = crate::fs::read_json(&aux_path).unwrap_or_default();
 
@@ -546,7 +579,11 @@ impl BackendState {
                     return;
                 };
 
-                let mut cannot_modify_while_running = false;
+                let original_mods_dir = instance.frozen_mods_folder.then(|| instance.root_path.join("original_mods"));
+                let mods_dir = instance.content_state[ContentFolder::Mods].path.clone();
+
+                let mut mods_changed = false;
+                let mut other_changed_folders = HashSet::new();
 
                 for mod_id in mod_ids {
                     let Some((instance_mod, folder)) = instance.try_get_content(mod_id) else {
@@ -554,20 +591,42 @@ impl BackendState {
                         continue;
                     };
 
-                    if folder == ContentFolder::Mods && !instance.processes.is_empty() {
-                        cannot_modify_while_running = true;
-                        continue;
+                    let (mod_path, aux_path) = if folder == ContentFolder::Mods {
+                        if let Some(ref orig) = original_mods_dir {
+                            if let Ok(rel) = instance_mod.path.strip_prefix(&mods_dir) {
+                                let remapped: std::sync::Arc<std::path::Path> = orig.join(rel).into();
+                                let mut remapped_summary = instance_mod.clone();
+                                remapped_summary.path = remapped.clone();
+                                let aux = crate::fs::pandora_aux_path_for_content(&remapped_summary);
+                                (remapped, aux)
+                            } else {
+                                (instance_mod.path.clone(), crate::fs::pandora_aux_path_for_content(instance_mod))
+                            }
+                        } else {
+                            (instance_mod.path.clone(), crate::fs::pandora_aux_path_for_content(instance_mod))
+                        }
+                    } else {
+                        (instance_mod.path.clone(), crate::fs::pandora_aux_path_for_content(instance_mod))
+                    };
+
+                    _ = std::fs::remove_file(&mod_path);
+
+                    if let Some(aux_path) = aux_path {
+                        _ = std::fs::remove_file(aux_path);
                     }
 
-                    _ = std::fs::remove_file(&instance_mod.path);
-
-                    if let Some(aux_path) = crate::fs::pandora_aux_path_for_content(&instance_mod) {
-                        _ = std::fs::remove_file(aux_path);
+                    if folder == ContentFolder::Mods {
+                        mods_changed = true;
+                    } else {
+                        other_changed_folders.insert(folder);
                     }
                 }
 
-                if cannot_modify_while_running {
-                    self.send.send_warning("Cannot modify mods folder while instance is running");
+                if mods_changed {
+                    instance.mark_content_dirty(self, ContentFolder::Mods, FolderChanges::all_dirty(), true);
+                }
+                for folder in other_changed_folders {
+                    instance.mark_content_dirty(self, folder, FolderChanges::all_dirty(), true);
                 }
             },
             MessageToBackend::UpdateCheck { instance: id, modal_action } => {

@@ -555,12 +555,19 @@ impl Instance {
                     folder: content_folder
                 });
 
-                if this.frozen_mods_folder && content_folder == ContentFolder::Mods && let Some(last) = &state.summaries {
-                    return Some(last.clone());
-                }
-
                 let (all_dirty, dirty_paths) = state.dirty_paths.take();
-                let future = if let Some(last) = &state.summaries && !all_dirty {
+                let original_mods_path = (this.frozen_mods_folder && content_folder == ContentFolder::Mods)
+                    .then(|| this.root_path.join("original_mods"))
+                    .filter(|path| path.is_dir());
+                let future = if let Some(path) = original_mods_path {
+                    let mod_metadata_manager = backend.mod_metadata_manager.clone();
+                    let config = this.configuration.get();
+                    let for_loader = config.loader;
+                    let for_version = config.minecraft_version;
+                    tokio::task::spawn_blocking(move || {
+                        Self::load_content_all(&path, mod_metadata_manager, for_loader, for_version)
+                    })
+                } else if let Some(last) = &state.summaries && !all_dirty {
                     if !dirty_paths.is_empty() {
                         let mod_metadata_manager = backend.mod_metadata_manager.clone();
                         let last = last.clone();

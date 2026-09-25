@@ -19,3 +19,21 @@ pub fn create_wrapper(temp_dir: &Path) -> PathBuf {
 
     launch_wrapper
 }
+
+const SANDBOX_AGENT: &[u8] = include_bytes!("../../../sandboxagent/SandboxAgent.jar");
+
+pub fn create_sandbox_agent(temp_dir: &Path) -> PathBuf {
+    let mut hasher = Sha1::new();
+    hasher.update(SANDBOX_AGENT);
+    let hash = hasher.finalize();
+
+    let hash = hex::encode(hash);
+    let sandbox_agent = temp_dir.join(format!("SandboxAgent-{}.jar", hash));
+
+    if !sandbox_agent.exists() {
+        log::info!("Writing sandbox agent jar to {:?}", sandbox_agent);
+        _ = crate::fs::write_safe(&sandbox_agent, SANDBOX_AGENT);
+    }
+
+    sandbox_agent
+}

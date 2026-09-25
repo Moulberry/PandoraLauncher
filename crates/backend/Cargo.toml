@@ -60,6 +60,9 @@ scopeguard.workspace = true
 hickory-resolver.workspace = true
 command.workspace = true
 reflink-copy.workspace = true
+httparse.workspace = true
+urlencoding.workspace = true
+open.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 junction.workspace = true

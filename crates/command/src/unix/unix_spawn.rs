@@ -101,14 +101,14 @@ pub fn spawn(mut command: PandoraCommand, context: &mut SpawnContext) -> std::io
         None
     };
 
-    let pid = unsafe { cvt(libc::fork())? };
-
     argv.ensure_null_terminated();
     env.ensure_null_terminated();
     #[cfg(target_os = "macos")]
     if let Some(sandbox_params) = &mut command.sandbox_params {
         sandbox_params.ensure_null_terminated();
     }
+
+    let pid = unsafe { cvt(libc::fork())? };
 
     if pid == 0 {
         _ = exec(

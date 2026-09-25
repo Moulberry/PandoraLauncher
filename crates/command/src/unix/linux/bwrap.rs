@@ -362,6 +362,7 @@ pub fn spawn(mut command: PandoraCommand, sandbox: PandoraSandbox, context: &mut
     builder.push_os_string(format!("{}", seccomp_fd.as_raw_fd()).into());
     command.pass_fds.push(seccomp_fd);
 
+    // Dbus Proxy
     let dbus_proxy = if let Some(dbus_proxy) = &context.dbus_proxy {
         dbus_proxy
     } else {

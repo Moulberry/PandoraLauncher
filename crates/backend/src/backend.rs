@@ -57,6 +57,7 @@ impl HttpClientProvider {
             reqwest::ClientBuilder::new()
                 .connect_timeout(Duration::from_secs(15))
                 .read_timeout(Duration::from_secs(15))
+                .http1_title_case_headers()
                 .use_rustls_tls()
                 .user_agent(user_agent)
         };

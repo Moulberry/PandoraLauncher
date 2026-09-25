@@ -2,6 +2,7 @@ use std::{
     borrow::Cow, cmp::Ordering, collections::{BTreeSet, HashMap, HashSet}, ffi::{OsStr, OsString}, fs::File, io::Write, path::{Path, PathBuf}, process::Stdio, sync::{Arc, OnceLock, atomic::AtomicBool}
 };
 
+use auth::models::MinecraftAccessToken;
 use bridge::{
     handle::FrontendHandle, message::{MessageToFrontend, QuickPlayLaunch}, modal_action::{ModalAction, ProgressTracker, ProgressTrackerFinishType}, safe_path::SafePath
 };
@@ -23,13 +24,15 @@ use sha1::{Digest, Sha1};
 use ustr::Ustr;
 
 use crate::{
-    account::MinecraftLoginInfo, directories::LauncherDirectories, launch_wrapper, metadata::{items::{AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem}, manager::{
+    account::MinecraftLoginInfo, directories::LauncherDirectories, launch::sandboxapi::{AccessTokenReplacement, SandboxApi}, launch_wrapper, metadata::{items::{AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem}, manager::{
         MetaLoadError, MetadataManager,
     }}
 };
 
 mod defaults;
 pub use defaults::apply_global_launch_defaults;
+
+mod sandboxapi;
 
 #[cfg(target_os = "linux")]
 mod linux_gpu;
@@ -39,6 +42,7 @@ pub struct Launcher {
     meta: Arc<MetadataManager>,
     directories: Arc<LauncherDirectories>,
     launch_wrapper: Arc<Path>,
+    sandbox_agent: Arc<Path>,
     sender: FrontendHandle,
 }
 
@@ -86,10 +90,12 @@ pub enum AddVanillaJar {
 impl Launcher {
     pub fn new(meta: Arc<MetadataManager>, directories: Arc<LauncherDirectories>, sender: FrontendHandle) -> Self {
         let launch_wrapper = launch_wrapper::create_wrapper(&directories.temp_dir).into();
+        let sandbox_agent = launch_wrapper::create_sandbox_agent(&directories.temp_dir).into();
         Self {
             meta,
             directories,
             launch_wrapper,
+            sandbox_agent,
             sender,
         }
     }
@@ -100,7 +106,7 @@ impl Launcher {
         dot_minecraft_path: Arc<Path>,
         instance_info: InstanceConfiguration,
         quick_play: Option<QuickPlayLaunch>,
-        login_info: MinecraftLoginInfo,
+        mut login_info: MinecraftLoginInfo,
         read_game_output: bool,
         launch_tracker: &ProgressTracker,
         modal_action: &ModalAction,
@@ -230,8 +236,63 @@ impl Launcher {
             }
         }
 
+        // todo: don't start multiple times
+        let sandbox_agent_info = if instance_info.sandbox {
+            let sandbox_agent_secret = "test".to_string();
+            let sandbox_agent_port = 28881;
+            struct TestService;
+            impl SandboxApi for TestService {
+                async fn open_url(&self, url: url::Url) -> bool {
+                    todo!()
+                }
+
+                async fn open_folder(&self, folder: PathBuf) -> bool {
+                    todo!()
+                }
+
+                async fn open_file(&self, file: PathBuf) -> bool {
+                    todo!()
+                }
+
+                async fn open_file_dialog<'a>(&self, args: sandboxapi::OpenFileDialogArgs<'a>) -> sandboxapi::OpenFileDialogResult {
+                    todo!()
+                }
+
+                async fn should_allow_join_server<'a>(&self, uuid: uuid::Uuid, server: &'a str) -> bool {
+                    todo!()
+                }
+            }
+            let access_token_replacement = if let Some(access_token) = &mut login_info.access_token {
+                let dummy: Arc<str> = "SandboxDummy_insertRandomStringHere".into();
+
+                let replacement = AccessTokenReplacement {
+                    dummy: dummy.clone(),
+                    real: access_token.secret().into(),
+                };
+
+                *access_token = MinecraftAccessToken::make_dummy(dummy.clone());
+                Some(replacement)
+            } else {
+                None
+            };
+
+            let do_sandbox_auth = access_token_replacement.is_some();
+            let service = sandboxapi::SandboxApiService::new(&sandbox_agent_secret, TestService, sandbox_agent_port, access_token_replacement, http_client.clone());
+            tokio::task::spawn(service.run_localhost_server());
+
+            Some(SandboxAgentInfo {
+                agent_jar: self.sandbox_agent.clone(),
+                secret: sandbox_agent_secret,
+                port: sandbox_agent_port,
+                do_sandbox_auth
+            })
+        } else {
+            None
+        };
+
         let launch_context = LaunchContext {
             launch_wrapper_path: self.launch_wrapper.clone(),
+            sandbox_agent_info,
             java_path,
             natives_dir,
             libraries_dir: self.directories.libraries_dir.clone(),
@@ -2060,8 +2121,16 @@ impl LaunchRuleContext {
     }
 }
 
+pub struct SandboxAgentInfo {
+    agent_jar: Arc<Path>,
+    secret: String,
+    port: u16,
+    do_sandbox_auth: bool,
+}
+
 pub struct LaunchContext {
     pub launch_wrapper_path: Arc<Path>,
+    pub sandbox_agent_info: Option<SandboxAgentInfo>,
     pub java_path: PathBuf,
     pub natives_dir: PathBuf,
     pub libraries_dir: Arc<Path>,
@@ -2182,6 +2251,28 @@ impl LaunchContext {
 
         self.classpath.push(self.launch_wrapper_path.to_path_buf());
 
+        if let Some(info) = &self.sandbox_agent_info {
+            self.classpath.push(info.agent_jar.to_path_buf());
+
+            let mut agent_argument = OsString::new();
+            agent_argument.push("-javaagent:");
+            agent_argument.push(info.agent_jar.as_os_str());
+            agent_argument.push("=");
+            agent_argument.push(&info.secret);
+            agent_argument.push(",");
+            agent_argument.push(info.port.to_string());
+            command.arg(agent_argument);
+
+            if info.do_sandbox_auth {
+                command.arg("-Drealms.environment=sandboxauth");
+                command.arg("-Dminecraft.api.env=sandboxauth");
+                command.arg(format!("-Dminecraft.api.discovery.host=http://127.0.0.1:{}/sandboxauth/discovery", info.port));
+                command.arg(format!("-Dminecraft.api.session.host=http://127.0.0.1:{}/sandboxauth/session", info.port));
+                command.arg(format!("-Dminecraft.api.services.host=http://127.0.0.1:{}/sandboxauth/services", info.port));
+                command.arg(format!("-Dminecraft.api.profiles.host=http://127.0.0.1:{}/sandboxauth/profiles", info.port));
+            }
+        }
+
         // Force stdout/stderr to use UTF-8
         command.arg("-Dstdout.encoding=UTF-8");
         command.arg("-Dsun.stdout.encoding=UTF-8");
@@ -2252,6 +2343,10 @@ impl LaunchContext {
                 self.log_configs_dir.clone(),
                 self.launch_wrapper_path.clone(),
             ];
+
+            if let Some(agent_info) = &self.sandbox_agent_info {
+                allow_read.push(agent_info.agent_jar.clone());
+            }
 
             allow_read.push(java_path_parent_parent.into());
 

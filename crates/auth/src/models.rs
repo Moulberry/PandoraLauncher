@@ -8,6 +8,10 @@ use url::Url;
 pub struct MinecraftAccessToken(pub(crate) Arc<str>);
 
 impl MinecraftAccessToken {
+    pub fn make_dummy(inner: Arc<str>) -> Self {
+        Self(inner)
+    }
+
     pub fn secret(&self) -> &str {
         &self.0
     }

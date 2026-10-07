@@ -355,6 +355,7 @@ dependencies = [
  "getrandom 0.4.3",
  "serde",
  "serde_repr",
+ "tokio",
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
@@ -695,6 +696,7 @@ name = "backend"
 version = "5.3.1"
 dependencies = [
  "anyhow",
+ "ashpd",
  "auth",
  "base64",
  "bridge",
@@ -720,6 +722,9 @@ dependencies = [
  "nbt",
  "notify 8.2.0",
  "notify-debouncer-full",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
  "once_cell",
  "open",
  "os_info",
@@ -747,6 +752,7 @@ dependencies = [
  "slab",
  "strum 0.27.2",
  "tar",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "toml 0.9.12+spec-1.1.0",
@@ -8526,6 +8532,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -10665,6 +10672,7 @@ dependencies = [
  "rustix 1.1.4",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",

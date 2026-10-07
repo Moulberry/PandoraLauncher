@@ -24,7 +24,7 @@ use sha1::{Digest, Sha1};
 use ustr::Ustr;
 
 use crate::{
-    account::MinecraftLoginInfo, directories::LauncherDirectories, launch::sandboxapi::{AccessTokenReplacement, SandboxApi}, launch_wrapper, metadata::{items::{AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem}, manager::{
+    account::MinecraftLoginInfo, directories::LauncherDirectories, launch::sandboxapi::AccessTokenReplacement, launch_wrapper, metadata::{items::{AssetsIndexMetadataItem, FabricLaunchMetadataItem, FabricLoaderManifestMetadataItem, ForgeInstallerMavenMetadataItem, MinecraftVersionManifestMetadataItem, MinecraftVersionMetadataItem, MojangJavaRuntimeComponentMetadataItem, MojangJavaRuntimesMetadataItem, NeoforgeInstallerMavenMetadataItem}, manager::{
         MetaLoadError, MetadataManager,
     }}
 };
@@ -240,28 +240,6 @@ impl Launcher {
         let sandbox_agent_info = if instance_info.sandbox {
             let sandbox_agent_secret = "test".to_string();
             let sandbox_agent_port = 28881;
-            struct TestService;
-            impl SandboxApi for TestService {
-                async fn open_url(&self, url: url::Url) -> bool {
-                    todo!()
-                }
-
-                async fn open_folder(&self, folder: PathBuf) -> bool {
-                    todo!()
-                }
-
-                async fn open_file(&self, file: PathBuf) -> bool {
-                    todo!()
-                }
-
-                async fn open_file_dialog<'a>(&self, args: sandboxapi::OpenFileDialogArgs<'a>) -> sandboxapi::OpenFileDialogResult {
-                    todo!()
-                }
-
-                async fn should_allow_join_server<'a>(&self, uuid: uuid::Uuid, server: &'a str) -> bool {
-                    todo!()
-                }
-            }
             let access_token_replacement = if let Some(access_token) = &mut login_info.access_token {
                 let dummy: Arc<str> = "SandboxDummy_insertRandomStringHere".into();
 
@@ -277,7 +255,7 @@ impl Launcher {
             };
 
             let do_sandbox_auth = access_token_replacement.is_some();
-            let service = sandboxapi::SandboxApiService::new(&sandbox_agent_secret, TestService, sandbox_agent_port, access_token_replacement, http_client.clone());
+            let service = sandboxapi::SandboxApiService::new(&sandbox_agent_secret, sandbox_agent_port, access_token_replacement, http_client.clone());
             tokio::task::spawn(service.run_localhost_server());
 
             Some(SandboxAgentInfo {

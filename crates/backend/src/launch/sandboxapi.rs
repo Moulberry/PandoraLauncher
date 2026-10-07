@@ -9,136 +9,136 @@ use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream};
 use url::Url;
 use uuid::Uuid;
 
-pub enum WindowIdentifier<'a> {
-    WindowsHWND(usize),
-    WaylandExportHandleString(&'a str),
-    X11WindowNumber(u64),
-    MacOSNSWindowPtr(usize),
-}
+// pub enum WindowIdentifier<'a> {
+//     WindowsHWND(usize),
+//     WaylandExportHandleString(&'a str),
+//     X11WindowNumber(u64),
+//     MacOSNSWindowPtr(usize),
+// }
 
-pub struct OpenFileDialogFilter<'a> {
-    user_friendly_name: &'a str,
-    glob_pattern: &'a str,
-}
+// pub struct OpenFileDialogFilter<'a> {
+//     user_friendly_name: &'a str,
+//     glob_pattern: &'a str,
+// }
 
-pub struct OpenFileDialogArgs<'a> {
-    /// Title of the dialog window
-    title: &'a str,
-    /// Label for the accept button
-    accept_label: Option<&'a str>,
-    /// Label for the cancel button
-    cancel_label: Option<&'a str>,
-    /// Window that the file dialog should be modal for
-    modal_for: Option<WindowIdentifier<'a>>,
-    /// Whether the dialog should be a save dialog instead of an open dialog
-    save: bool,
-    /// Whether multiple files can be selected
-    multiple: bool,
-    /// Whether folders should be selected instead of files
-    directory: bool,
-    /// List of filters to apply
-    filters: &'a [OpenFileDialogFilter<'a>],
-    /// Default path (may be folder or file)
-    ///
-    /// Security note: May be automatically filtered to avoid malware from
-    /// opening a file dialog pointing directly at sensitive files
-    default_location: Option<&'a str>,
-}
+// pub struct OpenFileDialogArgs<'a> {
+//     /// Title of the dialog window
+//     title: &'a str,
+//     /// Label for the accept button
+//     accept_label: Option<&'a str>,
+//     /// Label for the cancel button
+//     cancel_label: Option<&'a str>,
+//     /// Window that the file dialog should be modal for
+//     modal_for: Option<WindowIdentifier<'a>>,
+//     /// Whether the dialog should be a save dialog instead of an open dialog
+//     save: bool,
+//     /// Whether multiple files can be selected
+//     multiple: bool,
+//     /// Whether folders should be selected instead of files
+//     directory: bool,
+//     /// List of filters to apply
+//     filters: &'a [OpenFileDialogFilter<'a>],
+//     /// Default path (may be folder or file)
+//     ///
+//     /// Security note: May be automatically filtered to avoid malware from
+//     /// opening a file dialog pointing directly at sensitive files
+//     default_location: Option<&'a str>,
+// }
 
-pub enum OpenFileDialogResult {
-    Forbidden,
-    Success {
-        /// The path(s) selected by the user, empty if the operation was cancelled
-        paths: Vec<PathBuf>,
-        /// The filter that was chosen by the user
-        filter: usize,
-    }
-}
+// pub enum OpenFileDialogResult {
+//     Forbidden,
+//     Success {
+//         /// The path(s) selected by the user, empty if the operation was cancelled
+//         paths: Vec<PathBuf>,
+//         /// The filter that was chosen by the user
+//         filter: usize,
+//     }
+// }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum KnownDragAndDropFile {
-    Resourcepack,
-    Datapack,
-    Shaderpack,
-    Mod,
-    FlashbackReplay,
-    ReplayModReplay,
-}
+// #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+// pub enum KnownDragAndDropFile {
+//     Resourcepack,
+//     Datapack,
+//     Shaderpack,
+//     Mod,
+//     FlashbackReplay,
+//     ReplayModReplay,
+// }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum IKnowWhatIAmDoingArbitraryFileAccess {
-    Yes,
-    No,
-}
+// #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+// pub enum IKnowWhatIAmDoingArbitraryFileAccess {
+//     Yes,
+//     No,
+// }
 
-pub trait SandboxApi {
-    /// Open the given url in a web browser
-    /// Returns true on success
-    ///
-    /// Implementation notes:
-    /// Should not be called on macOS, since sandboxed opens are handled correctly by the OS
-    fn open_url(&self, url: Url) -> impl std::future::Future<Output = bool> + std::marker::Send;
+// pub trait SandboxApi {
+//     /// Open the given url in a web browser
+//     /// Returns true on success
+//     ///
+//     /// Implementation notes:
+//     /// Should not be called on macOS, since sandboxed opens are handled correctly by the OS
+//     fn open_url(&self, url: Url) -> impl std::future::Future<Output = bool> + std::marker::Send;
 
-    /// Open the given folder in a file browser
-    /// Returns true on success
-    ///
-    /// Implementation notes:
-    /// Should not be called on macOS, since sandboxed opens are handled correctly by the OS
-    async fn open_folder(&self, folder: PathBuf) -> bool;
+//     /// Open the given folder in a file browser
+//     /// Returns true on success
+//     ///
+//     /// Implementation notes:
+//     /// Should not be called on macOS, since sandboxed opens are handled correctly by the OS
+//     async fn open_folder(&self, folder: PathBuf) -> bool;
 
-    /// Open the given file using the default handler (e.g. an image viewer for pngs, a video player for mp4s)
-    /// Returns true on success
-    ///
-    /// Implementation notes:
-    /// Should not be called on macOS, since sandboxed opens are handled correctly by the OS
-    /// The service will only call this for files that it is confident are safe (e.g. images, video, etc.)
-    async fn open_file(&self, file: PathBuf) -> bool;
+//     /// Open the given file using the default handler (e.g. an image viewer for pngs, a video player for mp4s)
+//     /// Returns true on success
+//     ///
+//     /// Implementation notes:
+//     /// Should not be called on macOS, since sandboxed opens are handled correctly by the OS
+//     /// The service will only call this for files that it is confident are safe (e.g. images, video, etc.)
+//     async fn open_file(&self, file: PathBuf) -> bool;
 
-    /// Open a file dialog
-    ///
-    /// Implementation notes:
-    /// Should not be called on macOS, since sandboxed NSOpenPanels are handled correctly by the OS
-    ///
-    /// The service may choose to reject the paths if it believes the files are sensitive
-    ///
-    /// Any files which are not exposed to the sandbox will be copied into a temp
-    /// share folder prior to being sent back to the game.
-    /// If 'save' is true, the service will listen for file changes and copy the temp
-    /// file back to the source
-    ///
-    /// For folders, the behaviour is platform-dependent:
-    /// - Windows: The user will be granted read-write access to the folder directly
-    /// - Linux: The folder will be bind mounted into the temp share folder
-    async fn open_file_dialog<'a>(&self, args: OpenFileDialogArgs<'a>) -> OpenFileDialogResult;
+//     /// Open a file dialog
+//     ///
+//     /// Implementation notes:
+//     /// Should not be called on macOS, since sandboxed NSOpenPanels are handled correctly by the OS
+//     ///
+//     /// The service may choose to reject the paths if it believes the files are sensitive
+//     ///
+//     /// Any files which are not exposed to the sandbox will be copied into a temp
+//     /// share folder prior to being sent back to the game.
+//     /// If 'save' is true, the service will listen for file changes and copy the temp
+//     /// file back to the source
+//     ///
+//     /// For folders, the behaviour is platform-dependent:
+//     /// - Windows: The user will be granted read-write access to the folder directly
+//     /// - Linux: The folder will be bind mounted into the temp share folder
+//     async fn open_file_dialog<'a>(&self, args: OpenFileDialogArgs<'a>) -> OpenFileDialogResult;
 
-    /// Whether to allow a /session/minecraft/join request
-    /// May be used to display a confirmation dialog to the user
-    /// Returning false will make the request return 403 Forbidden
-    ///
-    /// Security: While the sandbox may protect the access token directly,
-    /// malicious mods can still use the game to authenticate on their behalf.
-    /// Servers may enable prevent-proxy-connections in server.properties to make
-    /// this more difficult to do in practice (but still not impossible!)
-    async fn should_allow_join_server<'a>(&self, uuid: Uuid, server: &'a str) -> bool;
+//     /// Whether to allow a /session/minecraft/join request
+//     /// May be used to display a confirmation dialog to the user
+//     /// Returning false will make the request return 403 Forbidden
+//     ///
+//     /// Security: While the sandbox may protect the access token directly,
+//     /// malicious mods can still use the game to authenticate on their behalf.
+//     /// Servers may enable prevent-proxy-connections in server.properties to make
+//     /// this more difficult to do in practice (but still not impossible!)
+//     async fn should_allow_join_server<'a>(&self, uuid: Uuid, server: &'a str) -> bool;
 
-    /// Whether to allow read access to an arbitrary file on the system
-    ///
-    /// This is used in order to allow file drag-and-drop to work on Windows/Linux.
-    /// This is a dangerous function, since malware can send a request for an arbitrary path.
-    /// By default, we only allow the access if we can verify that the file format is one which
-    /// we know to be used by the game for drag-and-drop (resourcepacks, shaderpacks, etc.)
-    ///
-    /// Implementation note:
-    /// If the sandbox requests access to a file that doesn't exist, it will be blocked
-    /// from all future requests
-    async fn should_allow_arbitrary_file_access(&self, _path: &Path, known: Option<KnownDragAndDropFile>) -> IKnowWhatIAmDoingArbitraryFileAccess {
-        if known.is_some() {
-            IKnowWhatIAmDoingArbitraryFileAccess::Yes
-        } else {
-            IKnowWhatIAmDoingArbitraryFileAccess::No
-        }
-    }
-}
+//     /// Whether to allow read access to an arbitrary file on the system
+//     ///
+//     /// This is used in order to allow file drag-and-drop to work on Windows/Linux.
+//     /// This is a dangerous function, since malware can send a request for an arbitrary path.
+//     /// By default, we only allow the access if we can verify that the file format is one which
+//     /// we know to be used by the game for drag-and-drop (resourcepacks, shaderpacks, etc.)
+//     ///
+//     /// Implementation note:
+//     /// If the sandbox requests access to a file that doesn't exist, it will be blocked
+//     /// from all future requests
+//     async fn should_allow_arbitrary_file_access(&self, _path: &Path, known: Option<KnownDragAndDropFile>) -> IKnowWhatIAmDoingArbitraryFileAccess {
+//         if known.is_some() {
+//             IKnowWhatIAmDoingArbitraryFileAccess::Yes
+//         } else {
+//             IKnowWhatIAmDoingArbitraryFileAccess::No
+//         }
+//     }
+// }
 
 #[derive(Clone)]
 pub struct AccessTokenReplacement {
@@ -154,37 +154,22 @@ pub struct ReplaceAccessTokenEndpoints {
     replace_authorization_header: FxHashMap<Arc<str>, Url>,
 }
 
-pub struct SandboxApiService<S: SandboxApi + Sync + Send + 'static> {
+#[derive(Clone)]
+pub struct SandboxApiService {
     reuse_buffer: Arc<Mutex<Option<Vec<u8>>>>,
     replace_access_token_endpoints: Arc<Mutex<ReplaceAccessTokenEndpoints>>,
     secret: Arc<str>,
-    api: Arc<S>,
     port: u16,
     access_token_replacement: Option<AccessTokenReplacement>,
     http_client: reqwest::Client,
 }
 
-impl <S: SandboxApi + Sync + Send + 'static> Clone for SandboxApiService<S> {
-    fn clone(&self) -> Self {
-        Self {
-            reuse_buffer: self.reuse_buffer.clone(),
-            replace_access_token_endpoints: self.replace_access_token_endpoints.clone(),
-            secret: self.secret.clone(),
-            api: self.api.clone(),
-            port: self.port,
-            access_token_replacement: self.access_token_replacement.clone(),
-            http_client: self.http_client.clone(),
-        }
-    }
-}
-
-impl <S: SandboxApi + Sync + Send + 'static> SandboxApiService<S> {
-    pub fn new(secret: &str, api: S, port: u16, access_token_replacement: Option<AccessTokenReplacement>, http_client: reqwest::Client) -> Self {
+impl SandboxApiService {
+    pub fn new(secret: &str, port: u16, access_token_replacement: Option<AccessTokenReplacement>, http_client: reqwest::Client) -> Self {
         Self {
             reuse_buffer: Default::default(),
             replace_access_token_endpoints: Default::default(),
             secret: secret.trim_ascii().into(),
-            api: Arc::new(api),
             port,
             access_token_replacement,
             http_client,
@@ -292,7 +277,8 @@ impl <S: SandboxApi + Sync + Send + 'static> SandboxApiService<S> {
                     RequestStatus::MethodNotAllowed.write(stream).await;
                     return;
                 }
-                self.handle_request_open_uri(params).await;
+                let status = self.handle_request_open_uri(params).await;
+                status.write(stream).await;
             },
             "/sandboxauth/session/session/minecraft/join" => {
                 let Ok(mut join_request) = serde_json::from_slice::<MinecraftJoinRequest>(body) else {
@@ -337,8 +323,6 @@ impl <S: SandboxApi + Sync + Send + 'static> SandboxApiService<S> {
                         return;
                     },
                 };
-
-                log::info!("Before: {}", serde_json::to_string(&discovery_result).unwrap());
 
                 discovery_result.environment = Some("sandboxauth".into());
                 for (service_name, endpoints) in &mut discovery_result.discovery.services {
@@ -389,8 +373,6 @@ impl <S: SandboxApi + Sync + Send + 'static> SandboxApiService<S> {
                         }
                     }
                 }
-
-                log::info!("After: {}", serde_json::to_string(&discovery_result).unwrap());
 
                 if write_json_response(stream, &discovery_result).await.is_err() {
                     RequestStatus::InternalServerError.write(stream).await;
@@ -520,30 +502,124 @@ impl <S: SandboxApi + Sync + Send + 'static> SandboxApiService<S> {
             return RequestStatus::BadRequest;
         };
 
-        // Allow http and https
         if url.scheme() == "http" || url.scheme() == "https" {
-            if self.api.open_url(url).await {
-                return RequestStatus::OK;
-            } else {
-                return RequestStatus::InternalServerError;
-            }
+            tokio::task::spawn_blocking(move || Self::open_url(url));
+            return RequestStatus::OK;
         } else if url.scheme() == "file" && url.host_str().is_none() {
             let Ok(path) = url.to_file_path() else {
                 return RequestStatus::BadRequest;
             };
-            let Ok(path) = path.canonicalize() else {
-                return RequestStatus::BadRequest;
+            if let Ok(path) = path.canonicalize() {
+                if path.is_dir() {
+                    tokio::task::spawn_blocking(move || Self::open_dir(path));
+                } else {
+                    tokio::task::spawn_blocking(move || Self::open_file(path));
+                }
             };
-
-            // We need to copy the file to a directory that the sandbox doesn't have write access to
-            // before checking the mime type.
-            // todo: finish comment
-
-            todo!();
+            // If the path doesn't exist, do nothing. This prevents enumeration of existing files
+            return RequestStatus::OK;
         } else {
             return RequestStatus::Forbidden;
         }
     }
+
+    async fn open_url(url: Url) {
+        if let Ok(uri) = ashpd::Uri::parse(url.as_str()) {
+            let result = ashpd::desktop::open_uri::OpenFileRequest::default()
+                .send_uri(&uri)
+                .await;
+            if let Err(err) = result {
+                log::error!("SandboxAPI failed to send OpenURI: {err}");
+            } else {
+                return;
+            }
+        }
+
+        assert!(matches!(url.scheme(), "http" | "https"));
+        if let Err(err) = open::that_detached(url.as_str()) {
+            log::error!("SandboxAPI failed to open url: {err}");
+        }
+    }
+
+    async fn open_dir(path: PathBuf) {
+        // We have to be very careful here, using something like open::that(path) will work,
+        // however it opens us up to a TOCTOU exploit where the folder's path is replaced by an executable file.
+        // Therefore, we use platform specific operations that are designed to specifically open a folder
+        #[cfg(target_os = "macos")]
+        {
+            let Some(path_str) = path.to_str() else {
+                return;
+            };
+            let workspace = objc2_app_kit::NSWorkspace::sharedWorkspace();
+            let path = objc2_foundation::NSString::from_str(path_str);
+            workspace.selectFile_inFileViewerRootedAtPath(None, &path);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let mut command = std::process::Command::new("explorer.exe");
+            command.arg(path);
+            let result = Self::spawn_detached(command);
+            if let Err(err) = result {
+                log::error!("SandboxAPI failed to spawn explorer.exe: {err}");
+            }
+        }
+        {
+            let Ok(directory) = std::fs::File::open(path) else {
+                return;
+            };
+            let result = ashpd::desktop::open_uri::OpenDirectoryRequest::default()
+                .send(&std::os::fd::AsFd::as_fd(&directory))
+                .await;
+            if let Err(err) = result {
+                log::error!("SandboxAPI failed to send OpenDirectory: {err}");
+            }
+        }
+    }
+
+    fn open_file(path: PathBuf) {
+        // For security reasons, we need to copy the file to a safe place before we check the mime type
+        // of the file. This is to prevent a TOCTOU exploit where the program could replace the file
+        // with a malicious executable after we check the mime.
+
+        tempfile::NamedTempFile::with_suffix(path.ex)
+        tempfile::Builder::new()
+            .prefix("").tempfile()
+    }
+
+    fn spawn_detached(mut command: std::process::Command) -> std::io::Result<()> {
+        command.stdin(std::process::Stdio::null());
+        command.stdout(std::process::Stdio::null());
+        command.stderr(std::process::Stdio::null());
+
+        #[cfg(unix)]
+        unsafe {
+            use std::os::unix::process::CommandExt as _;
+
+            command.pre_exec(move || {
+                match libc::fork() {
+                    -1 => return Err(std::io::Error::last_os_error()),
+                    0 => (),
+                    _ => libc::_exit(0),
+                }
+
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+
+                Ok(())
+            });
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            self.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+        }
+
+        command.spawn().map(|_| ())
+    }
+
 }
 
 #[derive(Debug, Serialize, Deserialize)]

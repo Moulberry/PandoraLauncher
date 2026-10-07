@@ -23,7 +23,7 @@ public class TransformerMap implements ClassFileTransformer {
     public byte[] transform(ClassLoader classLoader, String className, Class<?> clazz, ProtectionDomain protectionDomain, byte[] classBytes) {
         HashMap<String, HashMap<String, Transformer>> byMethod = transformers.get(className);
         if (byMethod == null) {
-            return classBytes;
+            return null;
         }
 
         final ClassNode classNode = new ClassNode();
@@ -46,7 +46,7 @@ public class TransformerMap implements ClassFileTransformer {
         }
 
         if (!modified) {
-            return classBytes;
+            return null;
         }
 
         ClassWriter classWriter = new ClassWriter(reader, ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);

@@ -63,6 +63,12 @@ reflink-copy.workspace = true
 httparse.workspace = true
 urlencoding.workspace = true
 open.workspace = true
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true
+libc.workspace = true
+ashpd.workspace = true
+tempfile.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
 junction.workspace = true

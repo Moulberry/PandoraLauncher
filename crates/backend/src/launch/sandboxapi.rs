@@ -428,13 +428,10 @@ impl SandboxApiService {
         let method = request.method
             .and_then(|method| reqwest::Method::from_bytes(method.as_bytes()).ok())
             .unwrap_or(reqwest::Method::GET);
-        dbg!(request);
-        dbg!(body.len());//reqwest::header::HOST
-        let Ok(response) = dbg!(self.http_client.request(method, to).headers(headers).body(body)).send().await else {
+        let Ok(response) = self.http_client.request(method, to).headers(headers).body(body).send().await else {
             RequestStatus::InternalServerError.write(stream).await;
             return;
         };
-        dbg!(response.status());
 
         let mut builder = Vec::from("HTTP/1.1 ");
         builder.extend_from_slice(response.status().as_str().as_bytes());

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use image::{GenericImageView, ImageFormat, Pixel, RgbaImage};
 use schema::minecraft_profile::SkinVariant;
 
@@ -55,7 +57,7 @@ impl Mat3 {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BodyPartType {
     Head,
     Body,
@@ -815,6 +817,7 @@ fn collect_quads(
     yaw_deg: f64,
     pitch_deg: f64,
     sway_progress: f64,
+    disabled_layers: &HashSet<BodyPartType>,
 ) -> Vec<ProjectedQuad> {
     let rot = Mat3::rotation_yx(yaw_deg.to_radians(), pitch_deg.to_radians());
 
@@ -829,8 +832,11 @@ fn collect_quads(
 
     let light0 = V3::new(0.16169041669088866, 0.8084520834544432, -0.5659164584181102);
     let light1 = V3::new(-0.16169041669088866, 0.8084520834544432, 0.5659164584181102);
-
+    
     for part in parts.iter() {
+        if disabled_layers.contains(&part.part_type) {
+            continue;
+        }
         part.add_projected_quads(&mut projected_quads, &rot, light0, light1, sway_progress);
     }
 
@@ -870,6 +876,7 @@ pub fn render_skin_3d(
     sway_progress: f64,
     y_offset: f64,
     zoom: f64,
+    disabled_layers: HashSet<BodyPartType>,
 ) -> Option<RgbaImage> {
     let skin = image::load_from_memory_with_format(skin_png_bytes, ImageFormat::Png).ok()?;
     let cape = cape_png_bytes.map(|cape| image::load_from_memory_with_format(cape, ImageFormat::Png).ok()).flatten();
@@ -887,7 +894,7 @@ pub fn render_skin_3d(
         SkinVariant::Other => !is_legacy && skin.get_pixel(54, 20)[3] < 20,
     };
 
-    let mut projected_quads = collect_quads(is_legacy, is_slim, cape.is_some(), yaw_deg, pitch_deg, sway_progress);
+    let mut projected_quads = collect_quads(is_legacy, is_slim, cape.is_some(), yaw_deg, pitch_deg, sway_progress, &disabled_layers);
 
     // Sort back-to-front (painter's algorithm): smaller Z = further from camera = draw first
     projected_quads.sort_by(|a, b| a.avg_z.partial_cmp(&b.avg_z).unwrap_or(std::cmp::Ordering::Equal));
@@ -935,6 +942,7 @@ pub fn brute_force_bounds() {
     let pitch_acc = 128;
     let mut yaw_offset = 0.0;
     let mut pitch_offset = 0.0;
+    let disabled_layers = HashSet::new();
 
     log::info!("Calculating largest width");
     loop {
@@ -944,7 +952,7 @@ pub fn brute_force_bounds() {
                 let yaw = y as f64 / yaw_acc as f64 * scale + yaw_offset;
                 let pitch = p as f64 / pitch_acc as f64 * scale + pitch_offset;
 
-                let projected_quads = collect_quads(false, true, true, yaw, pitch, MAX_CAPE_ANGLE_SWAY_PROGRESS);
+                let projected_quads = collect_quads(false, true, true, yaw, pitch, MAX_CAPE_ANGLE_SWAY_PROGRESS, &disabled_layers);
                 let mut w = f64::MIN;
                 for quad in &projected_quads {
                     for vert in &quad.verts {
@@ -996,7 +1004,7 @@ pub fn brute_force_bounds() {
                 let yaw = y as f64 / yaw_acc as f64 * scale + yaw_offset;
                 let pitch = p as f64 / pitch_acc as f64 * scale + pitch_offset;
 
-                let projected_quads = collect_quads(false, true, true, yaw, pitch, MAX_CAPE_ANGLE_SWAY_PROGRESS);
+                let projected_quads = collect_quads(false, true, true, yaw, pitch, MAX_CAPE_ANGLE_SWAY_PROGRESS, &disabled_layers);
                 let mut h = f64::MIN;
                 for quad in &projected_quads {
                     for vert in &quad.verts {

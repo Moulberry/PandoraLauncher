@@ -1,10 +1,10 @@
 use std::time::Instant;
 
 use gpui::{prelude::*, *};
-use gpui_component::{Selectable, Sizable, button::Button, h_flex, slider::{Slider, SliderEvent, SliderState}, v_flex};
+use gpui_component::{Selectable, Sizable, button::Button, h_flex, menu::ContextMenuExt, slider::{Slider, SliderEvent, SliderState}, v_flex};
 use schema::{minecraft_profile::SkinVariant, unique_bytes::UniqueBytes};
 
-use crate::{component::player_model::{self, PlayerModel, PlayerModelState}, icon::PandoraIcon, interface_config::InterfaceConfig};
+use crate::{component::player_model::{self, PlayerModel, PlayerModelState}, icon::PandoraIcon, interface_config::InterfaceConfig, skin_renderer::BodyPartType};
 
 pub struct PlayerModelWidget {
     player_model_state: Entity<PlayerModelState>,
@@ -114,6 +114,16 @@ impl PlayerModelWidget {
         })
     }
 
+    fn on_layer_toggled(&mut self, event: &ToggleSkinPartOverlayEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let layer = event.0;
+        self.player_model_state.update(cx, move |this, cx| {
+            if !this.disabled_layers.insert(layer) {
+                this.disabled_layers.remove(&layer);
+            }
+            cx.notify();
+        });
+    }
+
     pub fn update_animations(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.animating_yaw && !self.animating_pitch && !self.animating_animation {
             return;
@@ -176,6 +186,19 @@ impl Render for RotatingModel {
     }
 }
 
+#[derive(Clone, PartialEq, Action)]
+#[action(no_json)]
+pub struct ToggleSkinPartOverlayEvent(pub BodyPartType);
+
+const OVERLAYS: [(&str, BodyPartType); 6] = [
+    ("Head", BodyPartType::HeadOverlay),
+    ("Body", BodyPartType::BodyOverlay),
+    ("Right Arm", BodyPartType::RightArmOverlay),
+    ("Left Arm", BodyPartType::LeftArmOverlay),
+    ("Right Leg", BodyPartType::RightLegOverlay),
+    ("Left Leg", BodyPartType::LeftLegOverlay),
+];
+
 impl Render for PlayerModelWidget {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (yaw, pitch) = {
@@ -183,6 +206,8 @@ impl Render for PlayerModelWidget {
             (model_state.yaw, model_state.pitch)
         };
 
+        let disabled_layers = self.player_model_state.read(cx).disabled_layers.clone();
+        
         self.update_animations(window, cx);
 
         v_flex()
@@ -242,6 +267,16 @@ impl Render for PlayerModelWidget {
                         config.player_model_zoom = (config.player_model_zoom + delta * 5).clamp(50, 400);
                     }
                 }))
+                .on_action(cx.listener(|this, action: &ToggleSkinPartOverlayEvent, window, cx| {
+                    this.on_layer_toggled(action, window, cx);
+                }))
+                .context_menu(move |mut menu, _, _| {
+                    menu = menu.label("Toggle Overlay Layers").check_side(gpui_component::Side::Right);
+                    for (name, part) in OVERLAYS {
+                        menu = menu.menu_with_check(name, !disabled_layers.contains(&part), Box::new(ToggleSkinPartOverlayEvent(part)))
+                    }
+                    menu
+                })
             )
             .child(v_flex().p_4().w_full()
                 .child(h_flex()

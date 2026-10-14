@@ -114,7 +114,7 @@ impl PlayerModelWidget {
         })
     }
 
-    fn on_layer_toggled(&mut self, event: &ToggleSkinPartOverlayEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_layer_toggled(&mut self, event: &ToggleSkinPartOverlayEvent, cx: &mut Context<Self>) {
         let layer = event.0;
         self.player_model_state.update(cx, move |this, cx| {
             if !this.disabled_layers.insert(layer) {
@@ -267,8 +267,8 @@ impl Render for PlayerModelWidget {
                         config.player_model_zoom = (config.player_model_zoom + delta * 5).clamp(50, 400);
                     }
                 }))
-                .on_action(cx.listener(|this, action: &ToggleSkinPartOverlayEvent, window, cx| {
-                    this.on_layer_toggled(action, window, cx);
+                .on_action(cx.listener(|this, action: &ToggleSkinPartOverlayEvent, _, cx| {
+                    this.on_layer_toggled(action, cx);
                 }))
                 .context_menu(move |mut menu, _, _| {
                     menu = menu.label("Toggle Overlay Layers").check_side(gpui_component::Side::Right);

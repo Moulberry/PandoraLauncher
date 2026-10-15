@@ -190,15 +190,6 @@ impl Render for RotatingModel {
 #[action(no_json)]
 pub struct ToggleSkinPartOverlayEvent(pub BodyPartType);
 
-const OVERLAYS: [(&str, BodyPartType); 6] = [
-    ("Head", BodyPartType::HeadOverlay),
-    ("Body", BodyPartType::BodyOverlay),
-    ("Right Arm", BodyPartType::RightArmOverlay),
-    ("Left Arm", BodyPartType::LeftArmOverlay),
-    ("Right Leg", BodyPartType::RightLegOverlay),
-    ("Left Leg", BodyPartType::LeftLegOverlay),
-];
-
 impl Render for PlayerModelWidget {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (yaw, pitch) = {
@@ -210,6 +201,16 @@ impl Render for PlayerModelWidget {
         
         self.update_animations(window, cx);
 
+        // if locales.toml generated constant functions this could / should be a const
+        let overlays: [(&str, BodyPartType); 6] = [
+            (t::skins::player_model::overlay::head(), BodyPartType::HeadOverlay),
+            (t::skins::player_model::overlay::body(), BodyPartType::BodyOverlay),
+            (t::skins::player_model::overlay::right_arm(), BodyPartType::RightArmOverlay),
+            (t::skins::player_model::overlay::left_arm(), BodyPartType::LeftArmOverlay),
+            (t::skins::player_model::overlay::right_leg(), BodyPartType::RightLegOverlay),
+            (t::skins::player_model::overlay::left_leg(), BodyPartType::LeftLegOverlay),
+        ];
+        
         v_flex()
             .h_full()
             .child(v_flex()
@@ -272,7 +273,7 @@ impl Render for PlayerModelWidget {
                 }))
                 .context_menu(move |mut menu, _, _| {
                     menu = menu.label("Toggle Overlay Layers").check_side(gpui_component::Side::Right);
-                    for (name, part) in OVERLAYS {
+                    for (name, part) in overlays {
                         menu = menu.menu_with_check(name, !disabled_layers.contains(&part), Box::new(ToggleSkinPartOverlayEvent(part)))
                     }
                     menu

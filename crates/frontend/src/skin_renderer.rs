@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use image::{GenericImageView, ImageFormat, Pixel, RgbaImage};
 use schema::minecraft_profile::SkinVariant;
 
@@ -57,7 +55,7 @@ impl Mat3 {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum BodyPartType {
     Head,
     Body,
@@ -817,7 +815,7 @@ fn collect_quads(
     yaw_deg: f64,
     pitch_deg: f64,
     sway_progress: f64,
-    disabled_layers: &HashSet<BodyPartType>,
+    disabled_layers: &Vec<BodyPartType>,
 ) -> Vec<ProjectedQuad> {
     let rot = Mat3::rotation_yx(yaw_deg.to_radians(), pitch_deg.to_radians());
 
@@ -876,7 +874,7 @@ pub fn render_skin_3d(
     sway_progress: f64,
     y_offset: f64,
     zoom: f64,
-    disabled_layers: HashSet<BodyPartType>,
+    disabled_layers: Vec<BodyPartType>,
 ) -> Option<RgbaImage> {
     let skin = image::load_from_memory_with_format(skin_png_bytes, ImageFormat::Png).ok()?;
     let cape = cape_png_bytes.map(|cape| image::load_from_memory_with_format(cape, ImageFormat::Png).ok()).flatten();
@@ -942,7 +940,7 @@ pub fn brute_force_bounds() {
     let pitch_acc = 128;
     let mut yaw_offset = 0.0;
     let mut pitch_offset = 0.0;
-    let disabled_layers = HashSet::new();
+    let disabled_layers = vec![];
 
     log::info!("Calculating largest width");
     loop {

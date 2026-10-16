@@ -114,16 +114,6 @@ impl PlayerModelWidget {
         })
     }
 
-    fn on_layer_toggled(&mut self, event: &ToggleSkinPartOverlayEvent, cx: &mut Context<Self>) {
-        let layer = event.0;
-        self.player_model_state.update(cx, move |this, cx| {
-            if !this.disabled_layers.insert(layer) {
-                this.disabled_layers.remove(&layer);
-            }
-            cx.notify();
-        });
-    }
-
     pub fn update_animations(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.animating_yaw && !self.animating_pitch && !self.animating_animation {
             return;
@@ -197,8 +187,6 @@ impl Render for PlayerModelWidget {
             (model_state.yaw, model_state.pitch)
         };
 
-        let disabled_layers = self.player_model_state.read(cx).disabled_layers.clone();
-        
         self.update_animations(window, cx);
 
         // if locales.toml generated constant functions this could / should be a const
@@ -268,11 +256,19 @@ impl Render for PlayerModelWidget {
                         config.player_model_zoom = (config.player_model_zoom + delta * 5).clamp(50, 400);
                     }
                 }))
-                .on_action(cx.listener(|this, action: &ToggleSkinPartOverlayEvent, _, cx| {
-                    this.on_layer_toggled(action, cx);
+                .on_action(cx.listener(|_, action: &ToggleSkinPartOverlayEvent, _, cx| {
+                    let layer = action.0;
+                    let config = InterfaceConfig::get_mut(cx);
+                    match config.disabled_layers.iter().position(|part| part == &layer) {
+                        Some(pos) => { config.disabled_layers.swap_remove(pos); },
+                        None => config.disabled_layers.push(layer),
+                    }
                 }))
-                .context_menu(move |mut menu, _, _| {
-                    menu = menu.label("Toggle Overlay Layers").check_side(gpui_component::Side::Right);
+                .context_menu(move |mut menu, _, cx| {
+                    menu = menu.label(t::skins::player_model::overlay::toggle()).check_side(gpui_component::Side::Right);
+                    let config = InterfaceConfig::get_mut(cx);
+                    let disabled_layers = config.disabled_layers.clone();
+                    
                     for (name, part) in overlays {
                         menu = menu.menu_with_check(name, !disabled_layers.contains(&part), Box::new(ToggleSkinPartOverlayEvent(part)))
                     }

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use gpui::{App, AppContext, AvailableSpace, Bounds, Element, Entity, IntoElement, RenderImage, Size, Style, Task, px, size};
 use schema::{minecraft_profile::SkinVariant, unique_bytes::UniqueBytes};
@@ -17,7 +17,7 @@ struct RenderedPlayerModel {
     yaw: f64,
     pitch: f64,
     animation: f64,
-    disabled_layers: HashSet<BodyPartType>,
+    disabled_layers: Vec<BodyPartType>,
     zoom: f64,
     width: u32,
     height: u32,
@@ -30,7 +30,6 @@ pub struct PlayerModelState {
     pub yaw: f64,
     pub pitch: f64,
     pub animation: f64,
-    pub disabled_layers: HashSet<BodyPartType>,
     rendered: Option<RenderedPlayerModel>,
     render_task: Option<Task<()>>,
 }
@@ -44,7 +43,6 @@ impl PlayerModelState {
             yaw: DEFAULT_YAW,
             pitch: DEFAULT_PITCH,
             animation: DEFAULT_ANIMATION,
-            disabled_layers: HashSet::new(),
             rendered: None,
             render_task: None,
         });
@@ -56,14 +54,14 @@ impl PlayerModelState {
         entity
     }
 
-    pub fn needs_rerender(&self, width: u32, height: u32, zoom: f64) -> bool {
+    pub fn needs_rerender(&self, width: u32, height: u32, zoom: f64, disabled_layers: &Vec<BodyPartType>) -> bool {
         let Some(rendered) = &self.rendered else {
             return true;
         };
         return rendered.width != width || rendered.height != height || rendered.yaw != self.yaw
             || rendered.pitch != self.pitch || rendered.animation != self.animation
             || rendered.variant != self.variant || rendered.skin != self.skin || rendered.cape != self.cape
-            || rendered.zoom != zoom || rendered.disabled_layers != self.disabled_layers;
+            || rendered.zoom != zoom || &rendered.disabled_layers != disabled_layers;
     }
 }
 
@@ -152,25 +150,25 @@ impl Element for PlayerModel {
         let image_height = (element_height * window_scale) as u32;
         let image_width = (element_width * window_scale) as u32;
         let zoom = InterfaceConfig::get(cx).player_model_zoom.clamp(50, 400) as f64 / 100.0;
+        let disabled_layers = InterfaceConfig::get(cx).disabled_layers.clone();
         self.state.update(cx, |state, cx| {
-            if state.render_task.is_none() && state.needs_rerender(image_width, image_height, zoom) {
+            if state.render_task.is_none() && state.needs_rerender(image_width, image_height, zoom, &disabled_layers) {
                 let skin = state.skin.clone();
                 let cape = state.cape.clone();
                 let yaw = state.yaw;
                 let pitch = state.pitch;
                 let animation = state.animation;
                 let variant = state.variant;
-                let disabled_layers = state.disabled_layers.clone();
+                let disabled_layers_clone = disabled_layers.clone();
 
                 let (send, recv) = tokio::sync::oneshot::channel();
 
                 cx.background_executor().spawn(async move {
-                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation, 0.0, zoom, disabled_layers))
+                    send.send(crate::skin_renderer::render_skin_3d(&skin, cape.as_deref(), variant, image_width, image_height, yaw, pitch, animation, 0.0, zoom, disabled_layers_clone))
                 }).detach();
 
                 let skin = state.skin.clone();
                 let cape = state.cape.clone();
-                let disabled_layers = state.disabled_layers.clone();
                 
                 state.render_task = Some(cx.spawn(async move |state, cx| {
                     let Ok(Some(mut data)) = recv.await else {

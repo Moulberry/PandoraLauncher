@@ -4841,6 +4841,20 @@ de = "Zoom: ${value: i32}%"
 hu = "Zoom: ${value: i32}%"
 ru = "Масштаб: ${value: i32}%"
 fr = "Zoom: ${value: i32}%"
+[skins.player_model.overlay.toggle]
+en = "Toggle Overlay Layers"
+[skins.player_model.overlay.head]
+en = "Head"
+[skins.player_model.overlay.body]
+en = "Body"
+[skins.player_model.overlay.right_arm]
+en = "Right Arm"
+[skins.player_model.overlay.left_arm]
+en = "Left Arm"
+[skins.player_model.overlay.right_leg]
+en = "Right Leg"
+[skins.player_model.overlay.left_leg]
+en = "Left Leg"
 [skins.add_from_file]
 en = "Add from file"
 tr = "Dosyadan ekle"

@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::{VecDeque}, sync::Arc};
 
 use gpui::{App, AppContext, Context, Entity, RenderImage, Task};
 use image::{Frame, RgbaImage as SkinImage};
@@ -95,6 +95,7 @@ impl SkinThumbnailCache {
                     THUMB_ANIMATION,
                     THUMB_Y_OFFSET,
                     THUMB_ZOOM,
+                    vec![],
                 );
                 let result = result.map(|mut img| {
                     for px in img.chunks_exact_mut(4) {

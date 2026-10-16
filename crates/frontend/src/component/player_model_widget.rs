@@ -1,10 +1,10 @@
 use std::time::Instant;
 
 use gpui::{prelude::*, *};
-use gpui_component::{Selectable, Sizable, button::Button, h_flex, slider::{Slider, SliderEvent, SliderState}, v_flex};
+use gpui_component::{Selectable, Sizable, button::Button, h_flex, menu::ContextMenuExt, slider::{Slider, SliderEvent, SliderState}, v_flex};
 use schema::{minecraft_profile::SkinVariant, unique_bytes::UniqueBytes};
 
-use crate::{component::player_model::{self, PlayerModel, PlayerModelState}, icon::PandoraIcon, interface_config::InterfaceConfig};
+use crate::{component::player_model::{self, PlayerModel, PlayerModelState}, icon::PandoraIcon, interface_config::InterfaceConfig, skin_renderer::BodyPartType};
 
 pub struct PlayerModelWidget {
     player_model_state: Entity<PlayerModelState>,
@@ -176,6 +176,10 @@ impl Render for RotatingModel {
     }
 }
 
+#[derive(Clone, PartialEq, Action)]
+#[action(no_json)]
+pub struct ToggleSkinPartOverlayEvent(pub BodyPartType);
+
 impl Render for PlayerModelWidget {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (yaw, pitch) = {
@@ -185,6 +189,16 @@ impl Render for PlayerModelWidget {
 
         self.update_animations(window, cx);
 
+        // if locales.toml generated constant functions this could / should be a const
+        let overlays: [(&str, BodyPartType); 6] = [
+            (t::skins::player_model::overlay::head(), BodyPartType::HeadOverlay),
+            (t::skins::player_model::overlay::body(), BodyPartType::BodyOverlay),
+            (t::skins::player_model::overlay::right_arm(), BodyPartType::RightArmOverlay),
+            (t::skins::player_model::overlay::left_arm(), BodyPartType::LeftArmOverlay),
+            (t::skins::player_model::overlay::right_leg(), BodyPartType::RightLegOverlay),
+            (t::skins::player_model::overlay::left_leg(), BodyPartType::LeftLegOverlay),
+        ];
+        
         v_flex()
             .h_full()
             .child(v_flex()
@@ -242,6 +256,24 @@ impl Render for PlayerModelWidget {
                         config.player_model_zoom = (config.player_model_zoom + delta * 5).clamp(50, 400);
                     }
                 }))
+                .on_action(cx.listener(|_, action: &ToggleSkinPartOverlayEvent, _, cx| {
+                    let layer = action.0;
+                    let config = InterfaceConfig::get_mut(cx);
+                    match config.disabled_layers.iter().position(|part| part == &layer) {
+                        Some(pos) => { config.disabled_layers.swap_remove(pos); },
+                        None => config.disabled_layers.push(layer),
+                    }
+                }))
+                .context_menu(move |mut menu, _, cx| {
+                    menu = menu.label(t::skins::player_model::overlay::toggle()).check_side(gpui_component::Side::Right);
+                    let config = InterfaceConfig::get_mut(cx);
+                    let disabled_layers = config.disabled_layers.clone();
+                    
+                    for (name, part) in overlays {
+                        menu = menu.menu_with_check(name, !disabled_layers.contains(&part), Box::new(ToggleSkinPartOverlayEvent(part)))
+                    }
+                    menu
+                })
             )
             .child(v_flex().p_4().w_full()
                 .child(h_flex()

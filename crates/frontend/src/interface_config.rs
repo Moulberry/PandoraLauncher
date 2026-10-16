@@ -7,7 +7,7 @@ use rustc_hash::FxHashSet;
 use schema::{curseforge::CurseforgeClassId, modrinth::ModrinthProjectType, quickplay::QuickplayPreset};
 use serde::{Deserialize, Serialize};
 
-use crate::{component::named_dropdown::DropdownName, pages::instance::instance_page::InstanceSubpageType, ui::PageType};
+use crate::{component::named_dropdown::DropdownName, pages::instance::instance_page::InstanceSubpageType, skin_renderer::BodyPartType, ui::PageType};
 
 struct InterfaceConfigHolder {
     config: InterfaceConfig,
@@ -113,6 +113,8 @@ pub struct InterfaceConfig {
     pub skin_list_show_3d: bool,
     #[serde(default = "default_zoom", deserialize_with = "schema::try_deserialize")]
     pub player_model_zoom: i32,
+    #[serde(default, deserialize_with = "schema::try_deserialize")]
+    pub disabled_layers: Vec<BodyPartType>,
 
     // Quickplay
     #[serde(default, deserialize_with = "schema::try_deserialize")]
@@ -304,6 +306,7 @@ impl Default for InterfaceConfig {
             skin_list_sort_desc: false,
             skin_list_show_3d: true,
             player_model_zoom: default_zoom(),
+            disabled_layers: vec![],
             quickplay_preset: QuickplayPreset::Vanilla,
             quickplay_minecraft_version: None,
         }

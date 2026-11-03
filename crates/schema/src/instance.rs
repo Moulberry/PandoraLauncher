@@ -21,6 +21,8 @@ pub struct InstanceConfiguration {
     pub memory: Option<InstanceMemoryConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_wrapper_command_configuration")]
     pub wrapper_command: Option<InstanceWrapperCommandConfiguration>,
+    #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_wrapper_command_configuration")]
+    pub pre_launch_command: Option<InstanceWrapperCommandConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_flags_configuration")]
     pub jvm_flags: Option<InstanceJvmFlagsConfiguration>,
     #[serde(default, deserialize_with = "crate::try_deserialize", skip_serializing_if = "is_default_jvm_binary_configuration")]
@@ -51,6 +53,7 @@ impl InstanceConfiguration {
             preferred_account: None,
             memory: None,
             wrapper_command: None,
+            pre_launch_command: None,
             jvm_flags: None,
             jvm_binary: None,
             linux_wrapper: None,

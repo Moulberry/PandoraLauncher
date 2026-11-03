@@ -121,6 +121,10 @@ pub enum MessageToBackend {
         id: InstanceID,
         wrapper_command: InstanceWrapperCommandConfiguration,
     },
+    SetInstancePreLaunchCommand {
+        id: InstanceID,
+        pre_launch_command: InstanceWrapperCommandConfiguration,
+    },
     SetInstanceJvmFlags {
         id: InstanceID,
         jvm_flags: InstanceJvmFlagsConfiguration,

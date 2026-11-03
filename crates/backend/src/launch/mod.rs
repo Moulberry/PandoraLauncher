@@ -31,6 +31,8 @@ use crate::{
 mod defaults;
 pub use defaults::apply_global_launch_defaults;
 
+mod pre_launch;
+
 #[cfg(target_os = "linux")]
 mod linux_gpu;
 
@@ -2080,6 +2082,10 @@ pub struct LaunchContext {
 
 impl LaunchContext {
     pub async fn launch(mut self, version_info: &MinecraftVersion, read_game_output: bool) -> std::io::Result<PandoraChild> {
+        if let Some(InstanceWrapperCommandConfiguration { enabled: true, ref flags }) = self.configuration.pre_launch_command {
+            pre_launch::run(flags, &self.java_path, &self.game_dir).await?;
+        }
+
         let mut wrapping_command: Vec<Cow<'static, OsStr>> = Vec::new();
 
         if let Some(InstanceWrapperCommandConfiguration { enabled: true, ref flags }) = self.configuration.wrapper_command {

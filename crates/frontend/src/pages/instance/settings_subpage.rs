@@ -47,6 +47,8 @@ pub struct InstanceSettingsSubpage {
     memory_max_input_state: Entity<InputState>,
     wrapper_command_enabled: bool,
     wrapper_command_input_state: Entity<TextareaState>,
+    pre_launch_command_enabled: bool,
+    pre_launch_command_input_state: Entity<TextareaState>,
     jvm_flags_enabled: bool,
     jvm_flags_input_state: Entity<TextareaState>,
     jvm_binary_enabled: bool,
@@ -108,6 +110,7 @@ impl InstanceSettingsSubpage {
 
         let memory = entry.configuration.memory.unwrap_or_default();
         let wrapper_command = entry.configuration.wrapper_command.clone().unwrap_or_default();
+        let pre_launch_command = entry.configuration.pre_launch_command.clone().unwrap_or_default();
         let jvm_flags = entry.configuration.jvm_flags.clone().unwrap_or_default();
         let jvm_binary = entry.configuration.jvm_binary.clone().unwrap_or_default();
         #[cfg(target_os = "linux")]
@@ -217,6 +220,11 @@ impl InstanceSettingsSubpage {
         });
         cx.subscribe(&wrapper_command_input_state, Self::on_wrapper_command_changed).detach();
 
+        let pre_launch_command_input_state = cx.new(|cx| {
+            TextareaState::new(window, cx).auto_grow(1, 8).default_value(pre_launch_command.flags)
+        });
+        cx.subscribe(&pre_launch_command_input_state, Self::on_pre_launch_command_changed).detach();
+
         let jvm_flags_input_state = cx.new(|cx| {
             TextareaState::new(window, cx).auto_grow(1, 8).default_value(jvm_flags.flags)
         });
@@ -243,6 +251,8 @@ impl InstanceSettingsSubpage {
             memory_max_input_state,
             wrapper_command_enabled: wrapper_command.enabled,
             wrapper_command_input_state,
+            pre_launch_command_enabled: pre_launch_command.enabled,
+            pre_launch_command_input_state,
             jvm_flags_enabled: jvm_flags.enabled,
             jvm_flags_input_state,
             jvm_binary_enabled: jvm_binary.enabled,
@@ -645,6 +655,29 @@ impl InstanceSettingsSubpage {
         }
     }
 
+    pub fn on_pre_launch_command_changed(
+        &mut self,
+        _: Entity<TextareaState>,
+        event: &InputEvent,
+        cx: &mut Context<Self>,
+    ) {
+        if let InputEvent::Change = event {
+            self.backend_handle.send(MessageToBackend::SetInstancePreLaunchCommand {
+                id: self.instance_id,
+                pre_launch_command: self.get_pre_launch_command_configuration(cx)
+            });
+        }
+    }
+
+    fn get_pre_launch_command_configuration(&self, cx: &App) -> InstanceWrapperCommandConfiguration {
+        let flags = self.pre_launch_command_input_state.read(cx).value();
+
+        InstanceWrapperCommandConfiguration {
+            enabled: self.pre_launch_command_enabled,
+            flags: flags.into(),
+        }
+    }
+
     pub fn on_jvm_flags_changed(
         &mut self,
         _: Entity<TextareaState>,
@@ -753,6 +786,7 @@ impl Render for InstanceSettingsSubpage {
 
         let memory_override_enabled = self.memory_override_enabled;
         let wrapper_command_enabled = self.wrapper_command_enabled;
+        let pre_launch_command_enabled = self.pre_launch_command_enabled;
         let jvm_flags_enabled = self.jvm_flags_enabled;
         let jvm_binary_enabled = self.jvm_binary_enabled;
 
@@ -1035,6 +1069,19 @@ impl Render for InstanceSettingsSubpage {
                     }
                 })))
                 .child(Textarea::new(&self.wrapper_command_input_state).disabled(!wrapper_command_enabled))
+            ).child(v_flex()
+                .gap_1()
+                .child(Checkbox::new("pre_launch_command").label(t::instance::pre_launch_command()).checked(pre_launch_command_enabled).on_click(cx.listener(|page, value, _, cx| {
+                    if page.pre_launch_command_enabled != *value {
+                        page.pre_launch_command_enabled = *value;
+                        page.backend_handle.send(MessageToBackend::SetInstancePreLaunchCommand {
+                            id: page.instance_id,
+                            pre_launch_command: page.get_pre_launch_command_configuration(cx)
+                        });
+                        cx.notify();
+                    }
+                })))
+                .child(Textarea::new(&self.pre_launch_command_input_state).disabled(!pre_launch_command_enabled))
             );
 
         #[cfg(target_os = "linux")]

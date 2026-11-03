@@ -2506,6 +2506,10 @@ sv = "Lägg till ett wrapper-kommand"
 ru = "Добавить команду-обёртку"
 fr = "Ajouter une commande de lancement"
 it = "Aggiungi comando wrapper"
+[instance.pre_launch_command]
+en = "Add Pre-Launch Command"
+de = "Pre-Launch-Befehl hinzufügen"
+hu = "Indítás előtti parancs hozzáadása"
 [instance.jvm_flags]
 en = "Add JVM Flags"
 tr = "JVM Bayrakları Ekle"

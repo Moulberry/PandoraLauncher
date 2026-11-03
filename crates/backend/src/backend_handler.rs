@@ -180,6 +180,13 @@ impl BackendState {
                     });
                 }
             },
+            MessageToBackend::SetInstancePreLaunchCommand { id, pre_launch_command } => {
+                if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
+                    instance.configuration.modify(|configuration| {
+                        configuration.pre_launch_command = Some(pre_launch_command);
+                    });
+                }
+            },
             MessageToBackend::SetInstanceJvmFlags { id, jvm_flags } => {
                 if let Some(instance) = self.instance_state.write().instances.get_mut(id) {
                     instance.configuration.modify(|configuration| {
